@@ -8,29 +8,38 @@
 
 */ 
 
+/// Definition for storage engine reference type.
 typedef st_plugin_int* storage_engine_ref;
 
 // Macro which transforms plugin_ref to storage_engine_ref
 #ifdef DBUG_OFF
+/// Macro to map plugin_ref to se_ref
 #define plugin_ref_to_se_ref(A) (A)
+/// Macro to map se_ref ro plugin_ref
 #define se_ref_to_plugin_ref(A) (A)
 #else
+/// Macro to map plugin_ref to se_ref
 #define plugin_ref_to_se_ref(A) ((A) ? *(A) : NULL)
+/// Macro to map se_ref ro plugin_ref
 #define se_ref_to_plugin_ref(A) &(A)
 #endif
 
+/// Return the storage engine name.
 inline
 const char* se_name(storage_engine_ref se)
 { return se->name.str; }
 
+/// Return the version of the plugin.
 inline
 uint se_version(storage_engine_ref se)
 { return se->plugin->version; }  // Q: Or, should it be A->plugin_dl->version?
 
+/// Return the pointer to the handlerton.
 inline
 handlerton* se_hton(storage_engine_ref se)
 { return (handlerton*)(se->data); }
 
+/// Return a storage engine reference by name.
 inline
 storage_engine_ref get_se_by_name(const LEX_STRING name)
 { 
@@ -48,30 +57,55 @@ namespace backup {
  */
 struct LEX_STRING: public ::LEX_STRING
 {
+  /// Base constructor for null string.
   LEX_STRING()
   {
     str= NULL;
     length= 0;
   }
 
+  /** 
+    Constructor for LEX_STRING class.
+
+    @param[in]  s  LEX_STRING string.
+  */
   LEX_STRING(const ::LEX_STRING &s)
   {
     str= s.str;
     length= s.length;
   }
 
+  /** 
+    Constructor for LEX_STRING class.
+
+    @param[in]  s  Character class.
+  */
   LEX_STRING(const char *s)
   {
     str= const_cast<char*>(s);
     length= strlen(s);
   }
 
+  /** 
+    Constructor for LEX_STRING class.
+
+    @param[in]  s  String class.
+  */
   LEX_STRING(const String &s)
   {
     str= const_cast<char*>(s.ptr());
     length= s.length();
   }
 
+  /**
+     Constructor for the string class.
+
+     This constructor takes a begging and ending pointer to construct the
+     string.
+
+     @param[in]  begin  Pointer to start of string.
+     @param[in]  end    Pointer to end of string.
+  */
   LEX_STRING(byte *begin, byte *end)
   {
     str= (char*)begin;
@@ -89,11 +123,21 @@ struct LEX_STRING: public ::LEX_STRING
  */
 class String: public ::String
 {
- public:
+public:
 
+  /** 
+    Constructor for string class.
+
+    @param[in]  s  String class.
+  */
   String(const ::String &s) : ::String(s)
   {}
 
+  /** 
+    Constructor for string class.
+
+    @param[in]  s  LEX_STRING string.
+  */
   String(const ::LEX_STRING &s)
     : ::String(s.str, (uint32)s.length, &::my_charset_bin)
   {
@@ -101,6 +145,15 @@ class String: public ::String
     DBUG_ASSERT(s.length <= ~((uint32)0));
   }
 
+  /**
+     Constructor 
+
+     This constructor takes a begging and ending pointer to construct the
+     string.
+
+     @param[in]  begin  Pointer to start of string.
+     @param[in]  end    Pointer to end of string.
+  */
   String(byte *begin, byte *end)
     : ::String((char*)begin, (uint32)(end - begin), &::my_charset_bin)
   {
@@ -120,14 +173,30 @@ class String: public ::String
      set((char*)NULL, 0, NULL); // Note: explicit cast is needed to disambiguate.
   }
 
+  /** 
+    Constructor for string class.
+
+    @param[in]  s  Character string.
+  */
   String(const char *s)
     : ::String(s, &::my_charset_bin)
   {}
 
+  /// Base constructor for null string class.
   String() : ::String()
   {}
 };
 
+/**
+  Set a table into a TABLE_LIST.
+
+  @param[in]  tl         The table list.
+  @param[in]  tbl        A table for the list.
+  @param[in]  lock_type  The lock type.
+  @param[in]  mem        Pointer to base memory.
+
+  @retval  TABLE_LIST
+*/
 inline
 int set_table_list(TABLE_LIST &tl, const Table_ref &tbl,
                    thr_lock_type lock_type, MEM_ROOT *mem)
@@ -146,6 +215,15 @@ int set_table_list(TABLE_LIST &tl, const Table_ref &tbl,
   return 0;
 }
 
+/**
+  Build a new TABLE_LIST.
+
+  @param[in]  tbl        A table for the list.
+  @param[in]  lock_type  The lock type.
+  @param[in]  mem        Pointer to base memory.
+
+  @retval  TABLE_LIST
+*/
 inline
 TABLE_LIST* mk_table_list(const Table_ref &tbl, thr_lock_type lock_type, 
                           MEM_ROOT *mem)
@@ -166,6 +244,14 @@ TABLE_LIST* mk_table_list(const Table_ref &tbl, thr_lock_type lock_type,
   return ptr;
 }
 
+/**
+  Link two table lists together.
+
+  @param[in] tl   The list to append onto.
+  @param[in] next The list to append.
+  
+  @returns New list pointer.
+*/
 inline
 TABLE_LIST* link_table_list(TABLE_LIST &tl, TABLE_LIST *next)
 {
@@ -174,14 +260,14 @@ TABLE_LIST* link_table_list(TABLE_LIST &tl, TABLE_LIST *next)
 }
 
 TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock);
-void free_table_list(TABLE_LIST*);
+void free_table_list(TABLE_LIST* tables);
 
 } // backup namespace
 
 /**
   Implements a dynamic map from A to B* (also known as hash array).
   
-  An instance @map of calss @c Map<A,B> can store mappings from values of 
+  An instance @c map of class @c Map<A,B> can store mappings from values of 
   type @c A to pointers of type @c B*. Such mappings are added with
   @code
    A a;
@@ -223,15 +309,16 @@ class Map
 {
   HASH m_hash;
   
- public:
+public:
 
+  /// Constructor
   Map(size_t);
   ~Map();
 
   int insert(const A&, B*);
   B* operator[](const A&) const;
   
- private:
+private:
  
   struct Node;
 };
@@ -250,11 +337,17 @@ struct Map<A,B>::Node
     Note: key member must be first for correct key offset value in HASH 
     initialization.
    */
-  A key;  
-  B *ptr;
+  A key;   ///< key or index in hash/map.
+  B *ptr;  ///< pointer to item in hash/map.
 
+  /// Constructor
   Node(const A &a, B *b) :key(a), ptr(b) {}
   
+  /**
+    Delete the node by key.
+
+    @param[in]  node  The node to delete.
+  */
   static void del_key(void *node)
   { delete (Node*) node; }
 };
@@ -263,15 +356,15 @@ template<class A, class B>
 inline
 Map<A,B>::Map(size_t init_size)
 {
-  hash_init(&m_hash, &::my_charset_bin, init_size, 
-            0, sizeof(A), NULL, Node::del_key, MYF(0));
+  my_hash_init(&m_hash, &::my_charset_bin, init_size,
+               0, sizeof(A), NULL, Node::del_key, MYF(0));
 }
 
 template<class A, class B>
 inline
 Map<A,B>::~Map()
 {
-  hash_free(&m_hash);
+  my_hash_free(&m_hash);
 }
 
 /** 
@@ -293,7 +386,7 @@ template<class A, class B>
 inline
 B* Map<A,B>::operator[](const A &a) const
 {
-  Node *n= (Node*) hash_search(&m_hash, (uchar*) &a, sizeof(A));
+  Node *n= (Node*) my_hash_search(&m_hash, (uchar*) &a, sizeof(A));
   
   return n ? n->ptr : NULL;
 }
@@ -308,15 +401,31 @@ class Map<uint,T>: public ::Dynamic_array< T* >
 {
   typedef Dynamic_array< T* > Base;
   
- public:
+public:
 
-   Map(uint init_size, uint increment);
+  /// Constructor
+  Map(uint init_size, uint increment);
 
-   T* operator[](ulong pos) const;
-   int insert(ulong pos, T *ptr);
-   ulong count() const;
+  /**
+    The index operator.
 
- private:
+    @param[in]  pos  Position to retrieve.
+
+    @returns The item and position @c pos.
+  */
+  T* operator[](ulong pos) const;
+  /**
+    Insert an item in the map.
+
+    @param[in]  pos  Desired position.
+    @param[in]  ptr  Item to insert. 
+
+    @retval  Status of insert.
+  */
+  int insert(ulong pos, T *ptr); 
+  ulong count() const;
+
+private:
 
    void clear_free_space();
 };

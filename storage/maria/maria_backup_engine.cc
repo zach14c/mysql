@@ -35,6 +35,7 @@ C_MODE_START
 C_MODE_END
 #include "backup/backup_engine.h"
 #include "backup/backup_aux.h"         // for build_table_list()
+#include "debug_sync.h"
 #include <hash.h>
 
 /**
@@ -487,7 +488,7 @@ Backup::~Backup()
   delete image;
   if (hash_of_tables)
   {
-    hash_free(hash_of_tables);
+    my_hash_free(hash_of_tables);
     delete hash_of_tables;
     hash_of_tables= NULL;
   }
@@ -567,9 +568,9 @@ result_t Backup::begin(const size_t)
   }
   hash_of_tables= new HASH;
   if (!hash_of_tables ||
-      hash_init(hash_of_tables, &my_charset_bin, m_tables.count(), 0, 0,
-                (hash_get_key)backup_get_table_from_hash_key,
-                (hash_free_key)backup_free_hash_key, 0))
+      my_hash_init(hash_of_tables, &my_charset_bin, m_tables.count(), 0, 0,
+                   (my_hash_get_key)backup_get_table_from_hash_key,
+                   (my_hash_free_key)backup_free_hash_key, 0))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
   /* Build the hash of tables for the Maria layer (ma_log.c etc) */
   for (uint n=0 ; n < m_tables.count() ; n++ )

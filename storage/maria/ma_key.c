@@ -26,7 +26,8 @@
 
 #define CHECK_KEYS                              /* Enable safety checks */
 
-static int _ma_put_key_in_record(MARIA_HA *info,uint keynr,uchar *record);
+static int _ma_put_key_in_record(MARIA_HA *info, uint keynr,
+                                 my_bool unpack_blobs, uchar *record);
 
 #define FIX_LENGTH(cs, pos, length, char_length)                            \
             do {                                                            \
@@ -476,6 +477,9 @@ void _ma_copy_key(MARIA_KEY *to, const MARIA_KEY *from)
     _ma_put_key_in_record()
     info		MARIA handler
     keynr		Key number that was used
+    unpack_blobs        TRUE  <=> Unpack blob columns
+                        FALSE <=> Skip them. This is used by index condition 
+                                  pushdown check function
     record 		Store key here
 
     Last read key is in info->lastkey
@@ -489,7 +493,7 @@ void _ma_copy_key(MARIA_KEY *to, const MARIA_KEY *from)
 */
 
 static int _ma_put_key_in_record(register MARIA_HA *info, uint keynr,
-				 uchar *record)
+				 my_bool unpack_blobs, uchar *record)
 {
   reg2 uchar *key;
   uchar *pos,*key_end;
@@ -582,16 +586,19 @@ static int _ma_put_key_in_record(register MARIA_HA *info, uint keynr,
       if (length > keyseg->length || key+length > key_end)
 	goto err;
 #endif
-      memcpy(record+keyseg->start+keyseg->bit_start,
-	     (char*) &blob_ptr,sizeof(char*));
-      memcpy(blob_ptr,key,length);
-      blob_ptr+=length;
+      if (unpack_blobs)
+      {
+        memcpy(record+keyseg->start+keyseg->bit_start,
+               (char*) &blob_ptr,sizeof(char*));
+        memcpy(blob_ptr,key,length);
+        blob_ptr+=length;
 
-      /* The above changed info->lastkey2. Inform maria_rnext_same(). */
-      info->update&= ~HA_STATE_RNEXT_SAME;
+        /* The above changed info->lastkey2. Inform maria_rnext_same(). */
+        info->update&= ~HA_STATE_RNEXT_SAME;
 
-      _ma_store_blob_length(record+keyseg->start,
-			    (uint) keyseg->bit_start,length);
+        _ma_store_blob_length(record+keyseg->start,
+                              (uint) keyseg->bit_start,length);
+      }
       key+=length;
     }
     else if (keyseg->flag & HA_SWAP_KEY)
@@ -634,7 +641,7 @@ int _ma_read_key_record(MARIA_HA *info, uchar *buf, MARIA_RECORD_POS filepos)
   {
     if (info->lastinx >= 0)
     {				/* Read only key */
-      if (_ma_put_key_in_record(info,(uint) info->lastinx,buf))
+      if (_ma_put_key_in_record(info, (uint)info->lastinx, TRUE, buf))
       {
         maria_print_error(info->s, HA_ERR_CRASHED);
 	my_errno=HA_ERR_CRASHED;
@@ -671,7 +678,7 @@ int ma_check_index_cond(register MARIA_HA *info, uint keynr, uchar *record)
 {
   if (info->index_cond_func)
   {
-    if (_ma_put_key_in_record(info, keynr, record))
+    if (_ma_put_key_in_record(info, keynr, FALSE, record))
     {
       maria_print_error(info->s, HA_ERR_CRASHED);
       my_errno=HA_ERR_CRASHED;

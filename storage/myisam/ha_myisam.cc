@@ -550,8 +550,7 @@ ha_myisam::ha_myisam(handlerton *hton, TABLE_SHARE *table_arg)
                   HA_DUPLICATE_POS | HA_CAN_INDEX_BLOBS | HA_AUTO_PART_KEY |
                   HA_FILE_BASED | HA_CAN_GEOMETRY | HA_NO_TRANSACTIONS |
                   HA_CAN_INSERT_DELAYED | HA_CAN_BIT_FIELD | HA_CAN_RTREEKEYS |
-                  HA_HAS_RECORDS | HA_STATS_RECORDS_IS_EXACT |
-                  HA_NEED_READ_RANGE_BUFFER | HA_MRR_CANT_SORT),
+                  HA_HAS_RECORDS | HA_STATS_RECORDS_IS_EXACT),
    can_enable_indexes(1)
 {}
 
@@ -659,8 +658,6 @@ int ha_myisam::open(const char *name, int mode, uint test_if_locked)
       int_table_flags|= HA_HAS_OLD_CHECKSUM;
   }
   
-  keys_with_parts.clear_all();
-
   for (i= 0; i < table->s->keys; i++)
   {
     plugin_ref parser= table->key_info[i].parser;
@@ -668,17 +665,6 @@ int ha_myisam::open(const char *name, int mode, uint test_if_locked)
       file->s->keyinfo[i].parser=
         (struct st_mysql_ftparser *)plugin_decl(parser)->info;
     table->key_info[i].block_size= file->s->keyinfo[i].block_length;
-
-    KEY_PART_INFO *kp= table->key_info[i].key_part;
-    KEY_PART_INFO *kp_end= kp + table->key_info[i].key_parts;
-    for (; kp != kp_end; kp++)
-    {
-      if (!kp->field->part_of_key.is_set(i))
-      {
-        keys_with_parts.set_bit(i);
-        break;
-      }
-    }
   }
   my_errno= 0;
   goto end;
@@ -1135,7 +1121,7 @@ int ha_myisam::preload_keys(THD* thd, HA_CHECK_OPT *check_opt)
   ulonglong map;
   TABLE_LIST *table_list= table->pos_in_table_list;
   my_bool ignore_leaves= table_list->ignore_leaves;
-  char buf[ERRMSGSIZE+20];
+  char buf[MYSQL_ERRMSG_SIZE];
 
   DBUG_ENTER("ha_myisam::preload_keys");
 
@@ -1163,7 +1149,7 @@ int ha_myisam::preload_keys(THD* thd, HA_CHECK_OPT *check_opt)
       errmsg= "Failed to allocate buffer";
       break;
     default:
-      my_snprintf(buf, ERRMSGSIZE,
+      my_snprintf(buf, sizeof(buf),
                   "Failed to read from index file (errno: %d)", my_errno);
       errmsg= buf;
     }
@@ -1602,23 +1588,6 @@ int ha_myisam::index_next_same(uchar *buf,
   return error;
 }
 
-int ha_myisam::read_range_first(const key_range *start_key,
-		 	        const key_range *end_key,
-			        bool eq_range_arg,
-                                bool sorted /* ignored */)
-{
-  int res;
-  res= handler::read_range_first(start_key, end_key, eq_range_arg, sorted);
-  return res;
-}
-
-
-int ha_myisam::read_range_next()
-{
-  int res= handler::read_range_next();
-  return res;
-}
-
 
 int ha_myisam::rnd_init(bool scan)
 {
@@ -1674,7 +1643,7 @@ int ha_myisam::info(uint flag)
     stats.data_file_length=  misam_info.data_file_length;
     stats.index_file_length= misam_info.index_file_length;
     stats.delete_length=     misam_info.delete_length;
-    stats.check_time=        misam_info.check_time;
+    stats.check_time=        (ulong) misam_info.check_time;
     stats.mean_rec_length=   misam_info.mean_reclength;
   }
   if (flag & HA_STATUS_CONST)
@@ -1682,8 +1651,7 @@ int ha_myisam::info(uint flag)
     TABLE_SHARE *share= table->s;
     stats.max_data_file_length=  misam_info.max_data_file_length;
     stats.max_index_file_length= misam_info.max_index_file_length;
-    stats.create_time= misam_info.create_time;
-    stats.mrr_length_per_rec= misam_info.reflength + 8; // 8 = max(sizeof(void *))
+    stats.create_time= (ulong) misam_info.create_time;
     /* 
       We want the value of stats.mrr_length_per_rec to be platform independent.
       The size of the chunk at the end of the join buffer used for MRR needs
@@ -1732,7 +1700,7 @@ int ha_myisam::info(uint flag)
     my_store_ptr(dup_ref, ref_length, misam_info.dupp_key_pos);
   }
   if (flag & HA_STATUS_TIME)
-    stats.update_time = misam_info.update_time;
+    stats.update_time = (ulong) misam_info.update_time;
   if (flag & HA_STATUS_AUTO)
     stats.auto_increment_value= misam_info.auto_increment;
 
@@ -2045,13 +2013,12 @@ int ha_myisam::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                      uint n_ranges, uint mode, 
                                      HANDLER_BUFFER *buf)
 {
-  return ds_mrr.dsmrr_init(this, &table->key_info[active_index], 
-                           seq, seq_init_param, n_ranges, mode, buf);
+  return ds_mrr.dsmrr_init(this, seq, seq_init_param, n_ranges, mode, buf);
 }
 
 int ha_myisam::multi_range_read_next(char **range_info)
 {
-  return ds_mrr.dsmrr_next(this, range_info);
+  return ds_mrr.dsmrr_next(range_info);
 }
 
 ha_rows ha_myisam::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,

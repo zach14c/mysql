@@ -182,7 +182,6 @@ public:
   Item *idx_cond_push(uint keyno, Item* idx_cond);
 private:
   DsMrr_impl ds_mrr;
-  key_map keys_with_parts;
   friend my_bool index_cond_func_maria(void *arg);
 };
 

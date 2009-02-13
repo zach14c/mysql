@@ -237,7 +237,7 @@ protected:
   virtual enum enum_protocol_type type() { return PROTOCOL_LOCAL; };
 
   virtual void send_ok(uint server_status, uint statement_warn_count,
-                       ha_rows affected_rows, ulonglong last_insert_id,
+                       ulonglong affected_rows, ulonglong last_insert_id,
                        const char *message);
 
   virtual void send_eof(uint server_status, uint statement_warn_count);
@@ -1100,9 +1100,9 @@ static bool insert_params_from_vars(Prepared_statement *stmt,
   {
     Item_param *param= *it;
     varname= var_it++;
-    entry= (user_var_entry*)hash_search(&stmt->thd->user_vars,
-                                        (uchar*) varname->str,
-                                         varname->length);
+    entry= (user_var_entry*)my_hash_search(&stmt->thd->user_vars,
+                                           (uchar*) varname->str,
+                                           varname->length);
     if (param->set_from_user_var(stmt->thd, entry) ||
         param->convert_str_value(stmt->thd))
       DBUG_RETURN(1);
@@ -1147,8 +1147,8 @@ static bool insert_params_from_vars_with_log(Prepared_statement *stmt,
     Item_param *param= *it;
     varname= var_it++;
 
-    entry= (user_var_entry *) hash_search(&thd->user_vars, (uchar*) varname->str,
-                                          varname->length);
+    entry= (user_var_entry *) my_hash_search(&thd->user_vars, (uchar*)
+                                             varname->str, varname->length);
     /*
       We have to call the setup_one_conversion_function() here to set
       the parameter's members that might be needed further
@@ -1913,7 +1913,7 @@ static bool check_prepared_statement(Prepared_statement *stmt)
                                                      get_table_list());
 
   /* Reset warning count for each query that uses tables */
-  if ((tables || !lex->is_single_level_stmt()) && !thd->spcont)
+  if (tables)
     thd->warning_info->opt_clear_warning_info(thd->query_id);
 
   switch (sql_command) {
@@ -2216,9 +2216,9 @@ static const char *get_dynamic_sql_string(LEX *lex, uint *query_len)
       convert it for error messages to be uniform.
     */
     if ((entry=
-         (user_var_entry*)hash_search(&thd->user_vars,
-                                      (uchar*)lex->prepared_stmt_code.str,
-                                      lex->prepared_stmt_code.length))
+         (user_var_entry*)my_hash_search(&thd->user_vars,
+                                         (uchar*)lex->prepared_stmt_code.str,
+                                         lex->prepared_stmt_code.length))
         && entry->value)
     {
       my_bool is_var_null;
@@ -4327,7 +4327,7 @@ bool Protocol_local::send_out_parameters(List<Item_param> *sp_params)
 
 void
 Protocol_local::send_ok(uint server_status, uint statement_warn_count,
-                        ha_rows affected_rows, ulonglong last_insert_id,
+                        ulonglong affected_rows, ulonglong last_insert_id,
                         const char *message)
 {
   /*

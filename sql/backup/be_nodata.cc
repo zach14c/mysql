@@ -45,19 +45,14 @@ using backup::Buffer;
 
 using namespace backup;
 
-Engine::Engine(THD *t_thd)
-{
-  m_thd= t_thd;
-}
-
 /**
   Create a nodata backup backup driver.
   
   Creates a stubbed driver class for the backup kernel code. This
   allows the driver to be used in a backup while not reading data.
   
-  @param[IN]  tables list of tables to be backed-up.
-  @param[OUT] eng    pointer to backup driver instance.
+  @param[in]  tables list of tables to be backed-up.
+  @param[out] drv    pointer to backup driver instance.
   
   @retval  ERROR  if cannot create backup driver class.
   @retval  OK     on success.
@@ -78,6 +73,10 @@ result_t Engine::get_backup(const uint32, const Table_list &tables,
 
   This method is the main method used in the backup operation. It
   is stubbed and does not read any data.
+
+  @param[in]  buf  buffer to be filled with backup data
+
+  @returns DONE
 */
 result_t Backup::get_data(Buffer &buf)
 {
@@ -93,16 +92,19 @@ result_t Backup::get_data(Buffer &buf)
   
   Creates a stubbed driver class for the backup kernel code. This
   allows the driver to be used in a restore while not writing data.
-  
-  @param[IN]  version  version of the backup image.
-  @param[IN]  tables   list of tables to be restored.
-  @param[OUT] eng      pointer to restore driver instance.
-  
+
+  @param[in]  version  version of the backup image.
+  @param[in]  flags    additional info about restore operation.
+  @param[in]  tables   list of tables to be restored.
+  @param[out] drv      pointer to restore driver instance.
+
   @retval ERROR  if cannot create restore driver class.
   @retval OK     on success.
 */
-result_t Engine::get_restore(version_t, const uint32, 
-                             const Table_list &tables, Restore_driver* &drv)
+result_t Engine::get_restore(const version_t, 
+                             const uint32, 
+                             const Table_list &tables, 
+                             Restore_driver* &drv)
 {
   DBUG_ENTER("Engine::get_restore");
   Restore *ptr= new nodata_backup::Restore(tables, m_thd);

@@ -850,8 +850,8 @@ int maria_create(const char *name, enum data_file_type datafile_type,
     Maria) this would solve the problem.
   */
   DBUG_ASSERT((options & HA_OPTION_TMP_TABLE) || !ma_log_tables_physical ||
-              !hash_search(ma_log_tables_physical, filename,
-                           strlen(filename)));
+              !my_hash_search(ma_log_tables_physical, filename,
+                              strlen(filename)));
 
   if ((file= my_create_with_symlink(linkname_ptr, filename, 0, create_mode,
 				    MYF(MY_WME|create_flag))) < 0)

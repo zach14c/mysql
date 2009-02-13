@@ -32,11 +32,78 @@ Now starting real tests
 
 DROP DATABASE IF EXISTS backup_logs;
 PURGE BACKUP LOGS;
+Check backup logs when log_backup_output is TABLE and FILE
+SET @@global.log_backup_output = 'TABLE,FILE';
+CREATE USER 'tom'@'localhost' IDENTIFIED BY 'abc';
+GRANT ALL ON *.* TO 'tom'@'localhost' WITH GRANT OPTION;
+SHOW GRANTS FOR 'tom'@'localhost';
+Grants for tom@localhost
+GRANT ALL PRIVILEGES ON *.* TO 'tom'@'localhost' IDENTIFIED BY PASSWORD '*0D3CED9BEC10A777AEC23CCC353A8C08A633045E' WITH GRANT OPTION
+SELECT user, host, password FROM mysql.user WHERE user='tom';
+user	host	password
+tom	localhost	*0D3CED9BEC10A777AEC23CCC353A8C08A633045E
+SELECT CURRENT_USER();
+CURRENT_USER()
+tom@localhost
 CREATE DATABASE backup_logs;
-con1: Create table and new users.
+Perform backup
+BACKUP DATABASE backup_logs TO 'backup_logs1.bak'
+Get last backup_id
+SELECT MAX(backup_id) INTO @backup_id_history FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
+Verify the result
+LET =`SELECT @backup_id_history = backup_id AS are_identical`
+
+Verification of backup_id from history table and command is:
+1
+We can notice that, if result is 1 then backup_id
+from backup_history log and from backup_command is same.
+con1: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'after_backup_log_init     SIGNAL started   WAIT_FOR do_run';
+SET DEBUG_SYNC= 'after_backup_start_backup SIGNAL running   WAIT_FOR finish';
+Perform backup database operation with database alone.
+BACKUP DATABASE backup_logs TO 'backup_logs1.bak';
+con default: Wait for the backup to be started.
+SET DEBUG_SYNC= 'now WAIT_FOR started';
+Let backup step to running state.
+SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR running';
+con default: Let backup finish.
+SET DEBUG_SYNC= 'now SIGNAL finish';
+con1: Finish backup command
+backup_id
+#
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
+SELECT operation,num_objects, username, command FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+operation	num_objects	username	command
+backup	0	tom	BACKUP DATABASE backup_logs TO 'backup_logs1.bak'
+SELECT CURRENT_USER();
+CURRENT_USER()
+root@localhost
+Perform Backup and verify the username as 'root' in backup history log
+BACKUP DATABASE backup_logs TO 'backup_logs1.bak';
+backup_id
+#
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
+SELECT operation,num_objects, username, command FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+operation	num_objects	username	command
+backup	0	root	BACKUP DATABASE backup_logs TO 'backup_logs1.bak'
+
+From the above tables we can notice that num_objects shows '0' if only DB
+is included in backup image(BUG#39109)
+
+Include all objects in database(Databases, tables, procedures and
+functions, views, triggers and events) and perform backup operation.
+con1: Create tables
 CREATE TABLE backup_logs.t1 (a char(30));
 CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
 CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
+CREATE TABLE backup_logs.t4(id INT, name CHAR(20))ENGINE=BLACKHOLE;
 INSERT INTO backup_logs.t1 VALUES ("01 Test #1 - progress");
 INSERT INTO backup_logs.t1 VALUES ("02 Test #1 - progress");
 INSERT INTO backup_logs.t1 VALUES ("03 Test #1 - progress");
@@ -54,6 +121,35 @@ INSERT INTO backup_logs.t3 VALUES ("01 Test #1 - progress");
 INSERT INTO backup_logs.t3 VALUES ("02 Test #1 - progress");
 INSERT INTO backup_logs.t3 VALUES ("03 Test #1 - progress");
 INSERT INTO backup_logs.t3 VALUES ("04 Test #1 - progress");
+INSERT INTO backup_logs.t4 VALUES(1,'aa1'),(2,'aa2'),(3,'aa3');
+SELECT * FROM backup_logs.t4;
+id	name
+create all objects like views, procedures, functions, triggers
+and events.
+** create view **
+CREATE VIEW backup_logs.v1 AS SELECT * FROM backup_logs.t1;
+CREATE VIEW backup_logs.vv AS SELECT * FROM backup_logs.v1;
+** create triggers **
+CREATE TRIGGER backup_logs.trg AFTER INSERT ON backup_logs.t1 FOR EACH ROW
+BEGIN
+INSERT INTO backup_logs.t3 VALUES('Test objects count');
+END;||
+** create procedures **
+CREATE PROCEDURE backup_logs.p1()
+BEGIN
+SELECT * FROM backup_logs.t1;
+END;
+||
+** create functions **
+CREATE FUNCTION backup_logs.f1() RETURNS INTEGER
+BEGIN
+RETURN (SELECT COUNT(*) FROM backup_logs.t1);
+END;
+||
+** create event **
+CREATE EVENT backup_logs.e1 ON SCHEDULE EVERY 1 YEAR DO
+DELETE FROM objects.t4 WHERE id=10;
+
 Do backup of database
 con2: Activate sync points for the backup statement.
 SET DEBUG_SYNC= 'after_backup_log_init     SIGNAL started   WAIT_FOR do_run';
@@ -65,37 +161,47 @@ SET SESSION debug="+d,set_backup_id";
 con2: Send backup command. 
 con2: Backup id = 500.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+SET time_zone='+0:00';
+SELECT now() INTO @start_backup;
 con1: Wait for the backup to be started.
 SET DEBUG_SYNC= 'now WAIT_FOR started';
+
 con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
-notes
-starting
+backup progress tables will always show start_time, stop_time,total_bytes
+and progress as '0' for all phases of backup operation.
+BUG#39356 Backup progress table details aren't updated properly
+SELECT total_bytes, progress, notes FROM mysql.backup_progress 
+WHERE backup_id = 500;
+total_bytes	progress	notes
+0	0	starting
 con1: Let backup step to running state.
 SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR phase1';
 con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
-notes
-starting
-running
+SELECT total_bytes, progress, notes FROM mysql.backup_progress 
+WHERE backup_id = 500;
+total_bytes	progress	notes
+0	0	starting
+0	0	running
 con1: Let backup do the backup phase1.
 SET DEBUG_SYNC= 'now SIGNAL backup WAIT_FOR validated';
 con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
-notes
-starting
-running
-validity point
+SELECT total_bytes, progress, notes FROM mysql.backup_progress 
+WHERE backup_id = 500;
+total_bytes	progress	notes
+0	0	starting
+0	0	running
+0	0	validity point
 con1: Let backup do the backup phase2.
 SET DEBUG_SYNC= 'now SIGNAL do_phase2 WAIT_FOR phase2';
 con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
-notes
-starting
-running
-validity point
-vp time
-running
+SELECT total_bytes, progress, notes FROM mysql.backup_progress 
+WHERE backup_id = 500;
+total_bytes	progress	notes
+0	0	starting
+0	0	running
+0	0	validity point
+0	0	vp time
+0	0	running
 con1: Let backup finish.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 con2: Finish backup command
@@ -104,6 +210,42 @@ backup_id
 FLUSH BACKUP LOGS;
 Turn off debugging session.
 SET SESSION debug="-d";
+SET time_zone='+0:00';
+SELECT now() INTO @stop_backup;
+We calculate the timedifference between backup start time and stop
+time. If this difference is '0', then backup start time and stop time
+are same.
+SELECT timediff(@stop_backup, @start_backup) > 5;
+timediff(@stop_backup, @start_backup) > 5
+0
+
+Now verify actual start time / stop time of backup and start time /
+stop time from backup_history table. If the both times are same, 
+the timediff will be '0'
+
+SELECT timediff(start_time, @start_backup) > 5 from mysql.backup_history
+WHERE backup_id=500;
+timediff(start_time, @start_backup) > 5
+0
+SELECT timediff(stop_time, @stop_backup) > 5 from mysql.backup_history
+WHERE backup_id=500;
+timediff(stop_time, @stop_backup) > 5
+0
+Now verify that start_time <= vp_time <= stop_time
+SELECT timediff(validity_point_time, start_time) >= 0, 
+timediff(stop_time, validity_point_time) >=0
+from mysql.backup_history WHERE backup_id=500;
+timediff(validity_point_time, start_time) >= 0	timediff(stop_time, validity_point_time) >=0
+1	1
+
+From backup_history log we will notice that "drivers" column will show
+Myisam, snapshot, default and no-data drivers
+"error_num" will be '0' as both backup and restore was successful
+"num_objects" count is always 5(as there are 5 tables in database).
+It does not list other objects from the backup image(BUG#39109)
+SHOW VARIABLES LIKE 'log_backup_output';
+Variable_name	Value
+log_backup_output	FILE,TABLE
 SELECT * FROM mysql.backup_history WHERE backup_id = 500;;
 backup_id	#
 process_id	#
@@ -112,18 +254,18 @@ binlog_file	#
 backup_state	complete
 operation	backup
 error_num	0
-num_objects	3
-total_bytes	3971
+num_objects	4
+total_bytes	5215
 validity_point_time	#
 start_time	#
 stop_time	#
 host_or_server_name	localhost
-username	root
+username	tom
 backup_file	#
 backup_file_path	#
 user_comment	
 command	BACKUP DATABASE backup_logs to 'backup_logs_orig.bak'
-drivers	MyISAM, Snapshot, Default
+drivers	MyISAM, Snapshot, Default, Nodata
 SELECT * FROM mysql.backup_progress WHERE backup_id = 500;
 backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	starting
@@ -132,33 +274,47 @@ backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	vp time
 #	backup kernel	#	#	0	0	0	running
 #	backup kernel	#	#	0	0	0	complete
+File sizes are not identical
+
+The actual backup file size and from backup_history logs are different
+because of bug#37980. Once this bug is fixed, both should show 
+same bytes.
 con2: Activate sync points for the backup statement.
 SET DEBUG_SYNC= 'after_backup_log_init      SIGNAL started WAIT_FOR do_run';
 SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL running WAIT_FOR finish';
 con2: Send restore command.
 con2: Backup id = 501.
 RESTORE FROM 'backup_logs_orig.bak' OVERWRITE;
+SELECT now() INTO @start_restore;
 con1: Wait for the restore to be started.
 SET DEBUG_SYNC= 'now WAIT_FOR started';
 con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 501;
-notes
-starting
+SELECT total_bytes, progress,notes FROM mysql.backup_progress 
+WHERE backup_id = 501;
+total_bytes	progress	notes
+0	0	starting
 con1: Let restore step to running state.
 SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR running';
 con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 501;
-notes
-starting
-running
+SELECT total_bytes, progress,notes FROM mysql.backup_progress 
+WHERE backup_id = 501;
+total_bytes	progress	notes
+0	0	starting
+0	0	running
 con1: Let restore do its job and finish.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 con2: Finish restore command
 backup_id
-501
+#
 FLUSH BACKUP LOGS;
 SET DEBUG_SYNC= 'now SIGNAL complete';
 SET DEBUG_SYNC= 'now WAIT_FOR complete';
+We calculate the time difference between restore start time and stop
+time. If this difference is '0', then restore start time and stop time
+are same.
+SELECT timediff(now(),@start_restore) > 5;
+timediff(now(),@start_restore) > 5
+0
 SELECT * FROM mysql.backup_history WHERE backup_id = 501;;
 backup_id	#
 process_id	#
@@ -167,24 +323,33 @@ binlog_file	#
 backup_state	complete
 operation	restore
 error_num	0
-num_objects	3
+num_objects	4
 total_bytes	1483
 validity_point_time	#
 start_time	#
 stop_time	#
 host_or_server_name	localhost
-username	root
+username	tom
 backup_file	#
 backup_file_path	#
 user_comment	
 command	RESTORE FROM 'backup_logs_orig.bak' OVERWRITE
-drivers	MyISAM, Snapshot, Default
+drivers	MyISAM, Snapshot, Default, Nodata
 SELECT * FROM mysql.backup_progress WHERE backup_id = 501;
 backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	starting
 #	backup kernel	#	#	0	0	0	running
 #	backup kernel	#	#	0	0	0	complete
 SET DEBUG_SYNC= 'RESET';
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+backup_id
+500
+SET SESSION debug="-d";
+The backup id for this command should be 501.
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+backup_id
+501
 The backup id for this command should be 502.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 backup_id
@@ -201,4 +366,5 @@ The backup id for this command should be 505.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 backup_id
 505
+SET DEBUG_SYNC= 'reset';
 DROP DATABASE backup_logs;

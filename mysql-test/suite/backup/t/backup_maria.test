@@ -5,10 +5,12 @@
 --source include/not_embedded.inc
 --source include/have_debug_sync.inc
 
+let $MYSQLD_DATADIR= `select @@datadir`;
+
 --disable_warnings
 DROP DATABASE IF EXISTS mysqltest;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 --enable_warnings
 
 CREATE DATABASE mysqltest;
@@ -49,7 +51,7 @@ CHECKSUM TABLE t1;
 CHECKSUM TABLE t2;
 CHECKSUM TABLE t3;
 CHECKSUM TABLE t4;
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 
 # Then test that backup is "at end"
 
@@ -125,7 +127,7 @@ SET DEBUG_SYNC= 'now SIGNAL bup_finish';
     CHECK TABLE t4 EXTENDED;
 
 connection default;
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 
 # Once more, with deletion of all rows
 
@@ -204,7 +206,7 @@ SET DEBUG_SYNC= 'now SIGNAL bup_finish';
 
 connection default;
 drop database mysqltest;
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 
 # test for BUG#42519 "Maria: RESTORE leads to corrupted table and assertion":
 
@@ -237,4 +239,5 @@ select * from mysqltest.t1;
 --echo connection default: cleanup
 connection default;
 drop database mysqltest;
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
+SET DEBUG_SYNC= 'RESET';

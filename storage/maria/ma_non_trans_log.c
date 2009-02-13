@@ -510,7 +510,7 @@ static int ma_log_start_physical(const char *log_filename, const HASH *tables)
   int error;
   DBUG_ENTER("ma_log_start_physical");
   DBUG_ASSERT(log_filename != NULL);
-  DBUG_ASSERT(hash_inited(tables));
+  DBUG_ASSERT(my_hash_inited(tables));
 
   pthread_mutex_lock(&THR_LOCK_maria);
   if (ma_log_tables_physical) /* physical logging already running */
@@ -533,9 +533,9 @@ static int ma_log_start_physical(const char *log_filename, const HASH *tables)
     MARIA_SHARE *share= info->s;
     DBUG_PRINT("info",("table '%s' 0x%lx tested against hash",
                        share->unique_file_name.str, (ulong)info));
-    if (!hash_search(ma_log_tables_physical,
-                     (uchar *)share->unique_file_name.str,
-                     share->unique_file_name.length))
+    if (!my_hash_search(ma_log_tables_physical,
+                        (uchar *)share->unique_file_name.str,
+                        share->unique_file_name.length))
       continue;
     /* Backup kernel shouldn't ask for temporary table's backup */
     DBUG_ASSERT(!share->temporary);

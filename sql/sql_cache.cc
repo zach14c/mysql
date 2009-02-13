@@ -799,6 +799,9 @@ void Query_cache::end_of_result(THD *thd)
   if (query_cache_tls->first_query_block == NULL)
     DBUG_VOID_RETURN;
 
+  /* Ensure that only complete results are cached. */
+  DBUG_ASSERT(thd->stmt_da->is_eof());
+
   if (thd->killed)
   {
     query_cache_abort(&thd->query_cache_tls);
@@ -1019,6 +1022,8 @@ void Query_cache::store_query(THD *thd, TABLE_LIST *tables_used)
     DBUG_ASSERT(flags.protocol_type != (unsigned int) Protocol::PROTOCOL_LOCAL);
     flags.more_results_exists= test(thd->server_status &
                                     SERVER_MORE_RESULTS_EXISTS);
+    flags.in_trans= test(thd->server_status & SERVER_STATUS_IN_TRANS);
+    flags.autocommit= test(thd->server_status & SERVER_STATUS_AUTOCOMMIT);
     flags.pkt_nr= net->pkt_nr;
     flags.character_set_client_num=
       thd->variables.character_set_client->number;
@@ -1040,7 +1045,7 @@ void Query_cache::store_query(THD *thd, TABLE_LIST *tables_used)
 long %d, 4.1: %d, bin_proto: %d, more results %d, pkt_nr: %d, \
 CS client: %u, CS result: %u, CS conn: %u, limit: %lu, TZ: %p, \
 sql mode: 0x%lx, sort len: %lu, conncat len: %lu, div_precision: %lu, \
-def_week_frmt: %lu",                          
+def_week_frmt: %lu, in_trans: %d, autocommit: %d",
                           (int)flags.client_long_flag,
                           (int)flags.client_protocol_41,
                           (int)flags.protocol_type,
@@ -1055,7 +1060,10 @@ def_week_frmt: %lu",
                           flags.max_sort_length,
                           flags.group_concat_max_len,
                           flags.div_precision_increment,
-                          flags.default_week_format));
+                          flags.default_week_format,
+                          (int)flags.in_trans,
+                          (int)flags.autocommit));
+
     /*
      Make InnoDB to release the adaptive hash index latch before
      acquiring the query cache mutex.
@@ -1104,7 +1112,7 @@ def_week_frmt: %lu",
 
     /* Check if another thread is processing the same query? */
     Query_cache_block *competitor = (Query_cache_block *)
-      hash_search(&queries, (uchar*) thd->query, tot_length);
+      my_hash_search(&queries, (uchar*) thd->query, tot_length);
     DBUG_PRINT("qcache", ("competitor %p", competitor));
     if (competitor == 0)
     {
@@ -1133,7 +1141,7 @@ def_week_frmt: %lu",
 	{
 	  refused++;
 	  DBUG_PRINT("warning", ("tables list including failed"));
-	  hash_delete(&queries, (uchar *) query_block);
+	  my_hash_delete(&queries, (uchar *) query_block);
 	  header->unlock_n_destroy();
 	  free_memory_block(query_block);
 	  STRUCT_UNLOCK(&structure_guard_mutex);
@@ -1284,6 +1292,8 @@ Query_cache::send_result_to_client(THD *thd, char *sql, uint query_length)
   flags.protocol_type= (unsigned int) thd->protocol->type();
   flags.more_results_exists= test(thd->server_status &
                                   SERVER_MORE_RESULTS_EXISTS);
+  flags.in_trans= test(thd->server_status & SERVER_STATUS_IN_TRANS);
+  flags.autocommit= test(thd->server_status & SERVER_STATUS_AUTOCOMMIT);
   flags.pkt_nr= thd->net.pkt_nr;
   flags.character_set_client_num= thd->variables.character_set_client->number;
   flags.character_set_results_num=
@@ -1303,7 +1313,7 @@ Query_cache::send_result_to_client(THD *thd, char *sql, uint query_length)
 long %d, 4.1: %d, bin_proto: %d, more results %d, pkt_nr: %d, \
 CS client: %u, CS result: %u, CS conn: %u, limit: %lu, TZ: %p, \
 sql mode: 0x%lx, sort len: %lu, conncat len: %lu, div_precision: %lu, \
-def_week_frmt: %lu",                          
+def_week_frmt: %lu, in_trans: %d, autocommit: %d",
                           (int)flags.client_long_flag,
                           (int)flags.client_protocol_41,
                           (int)flags.protocol_type,
@@ -1318,11 +1328,13 @@ def_week_frmt: %lu",
                           flags.max_sort_length,
                           flags.group_concat_max_len,
                           flags.div_precision_increment,
-                          flags.default_week_format));
+                          flags.default_week_format,
+                          (int)flags.in_trans,
+                          (int)flags.autocommit));
   memcpy((uchar *)(sql + (tot_length - QUERY_CACHE_FLAGS_SIZE)),
 	 (uchar*) &flags, QUERY_CACHE_FLAGS_SIZE);
-  query_block = (Query_cache_block *)  hash_search(&queries, (uchar*) sql,
-						   tot_length);
+  query_block = (Query_cache_block *)  my_hash_search(&queries, (uchar*) sql,
+                                                      tot_length);
   /* Quick abort on unlocked data */
   if (query_block == 0 ||
       query_block->query()->result() == 0 ||
@@ -1351,7 +1363,7 @@ def_week_frmt: %lu",
   }
   DBUG_PRINT("qcache", ("Query have result %p", query));
 
-  if ((thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) &&
+  if (thd->in_multi_stmt_transaction() &&
       (query->tables_type() & HA_CACHE_TBL_TRANSACT))
   {
     DBUG_PRINT("qcache",
@@ -1509,8 +1521,7 @@ void Query_cache::invalidate(THD *thd, TABLE_LIST *tables_used,
   if (is_disabled())
     DBUG_VOID_RETURN;
 
-  using_transactions= using_transactions &&
-    (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
+  using_transactions= using_transactions && thd->in_multi_stmt_transaction();
   for (; tables_used; tables_used= tables_used->next_local)
   {
     DBUG_ASSERT(!using_transactions || tables_used->table!=0);
@@ -1591,8 +1602,7 @@ void Query_cache::invalidate(THD *thd, TABLE *table,
   if (is_disabled())
     DBUG_VOID_RETURN;
 
-  using_transactions= using_transactions &&
-    (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
+  using_transactions= using_transactions && thd->in_multi_stmt_transaction();
   if (using_transactions && 
       (table->file->table_cache_type() == HA_CACHE_TBL_TRANSACT))
     thd->add_changed_table(table);
@@ -1610,8 +1620,7 @@ void Query_cache::invalidate(THD *thd, const char *key, uint32  key_length,
   if (is_disabled())
     DBUG_VOID_RETURN;
 
-  using_transactions= using_transactions &&
-    (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
+  using_transactions= using_transactions && thd->in_multi_stmt_transaction();
   if (using_transactions) // used for innodb => has_transactions() is TRUE
     thd->add_changed_table(key, key_length);
   else
@@ -1997,8 +2006,8 @@ ulong Query_cache::init_cache()
 
   DUMP(this);
 
-  (void) hash_init(&queries, &my_charset_bin, def_query_hash_size, 0, 0,
-		 query_cache_query_get_key, 0, 0);
+  (void) my_hash_init(&queries, &my_charset_bin, def_query_hash_size, 0, 0,
+                      query_cache_query_get_key, 0, 0);
 #ifndef FN_NO_CASE_SENCE
   /*
     If lower_case_table_names!=0 then db and table names are already 
@@ -2008,8 +2017,8 @@ ulong Query_cache::init_cache()
     lower_case_table_names == 0 then we should distinguish my_table
     and MY_TABLE cases and so again can use binary collation.
   */
-  (void) hash_init(&tables, &my_charset_bin, def_table_hash_size, 0, 0,
-		 query_cache_table_get_key, 0, 0);
+  (void) my_hash_init(&tables, &my_charset_bin, def_table_hash_size, 0, 0,
+                      query_cache_table_get_key, 0, 0);
 #else
   /*
     On windows, OS/2, MacOS X with HFS+ or any other case insensitive
@@ -2019,10 +2028,11 @@ ulong Query_cache::init_cache()
     file system) and so should use case insensitive collation for
     comparison.
   */
-  (void) hash_init(&tables,
-		 lower_case_table_names ? &my_charset_bin :
-		 files_charset_info,
-		 def_table_hash_size, 0, 0,query_cache_table_get_key, 0, 0);
+  (void) my_hash_init(&tables,
+                      lower_case_table_names ? &my_charset_bin :
+                      files_charset_info,
+                      def_table_hash_size, 0, 0,query_cache_table_get_key,
+                      0, 0);
 #endif
 
   queries_in_cache = 0;
@@ -2072,8 +2082,8 @@ void Query_cache::free_cache()
 
   my_free((uchar*) cache, MYF(MY_ALLOW_ZERO_PTR));
   make_disabled();
-  hash_free(&queries);
-  hash_free(&tables);
+  my_hash_free(&queries);
+  my_hash_free(&tables);
   DBUG_VOID_RETURN;
 }
 
@@ -2266,7 +2276,7 @@ void Query_cache::free_query(Query_cache_block *query_block)
 		      query_block,
 		      query_block->query()->length() ));
 
-  hash_delete(&queries,(uchar *) query_block);
+  my_hash_delete(&queries,(uchar *) query_block);
   free_query_internal(query_block);
 
   DBUG_VOID_RETURN;
@@ -2620,7 +2630,7 @@ void
 Query_cache::invalidate_table_internal(THD *thd, uchar *key, uint32 key_length)
 {
   Query_cache_block *table_block=
-    (Query_cache_block*)hash_search(&tables, key, key_length);
+    (Query_cache_block*)my_hash_search(&tables, key, key_length);
   if (table_block)
   {
     Query_cache_block_table *list_root= table_block->table(0);
@@ -2819,7 +2829,7 @@ Query_cache::insert_table(uint key_len, char *key,
   THD *thd= current_thd;
 
   Query_cache_block *table_block= 
-    (Query_cache_block *)hash_search(&tables, (uchar*) key, key_len);
+    (Query_cache_block *) my_hash_search(&tables, (uchar*) key, key_len);
 
   if (table_block &&
       table_block->table()->engine_data() != engine_data)
@@ -2935,7 +2945,7 @@ void Query_cache::unlink_table(Query_cache_block_table *node)
     Query_cache_block *table_block= neighbour->block();
     double_linked_list_exclude(table_block,
                                &tables_blocks);
-    hash_delete(&tables,(uchar *) table_block);
+    my_hash_delete(&tables,(uchar *) table_block);
     free_memory_block(table_block);
   }
   DBUG_VOID_RETURN;
@@ -3463,7 +3473,7 @@ Query_cache::is_cacheable(THD *thd, size_t query_len, const char *query,
                                                 tables_type)))
       DBUG_RETURN(0);
 
-    if ((thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) &&
+    if (thd->in_multi_stmt_transaction() &&
 	((*tables_type)&HA_CACHE_TBL_TRANSACT))
     {
       DBUG_PRINT("qcache", ("not in autocommin mode"));
@@ -3620,7 +3630,7 @@ my_bool Query_cache::move_by_type(uchar **border,
     uchar *key;
     size_t key_length;
     key=query_cache_table_get_key((uchar*) block, &key_length, 0);
-    hash_first(&tables, (uchar*) key, key_length, &record_idx);
+    my_hash_first(&tables, (uchar*) key, key_length, &record_idx);
 
     block->destroy();
     new_block->init(len);
@@ -3654,7 +3664,7 @@ my_bool Query_cache::move_by_type(uchar **border,
     /* Fix pointer to table name */
     new_block->table()->table(new_block->table()->db() + tablename_offset);
     /* Fix hash to point at moved block */
-    hash_replace(&tables, &record_idx, (uchar*) new_block);
+    my_hash_replace(&tables, &record_idx, (uchar*) new_block);
 
     DBUG_PRINT("qcache", ("moved %lu bytes to %p, new gap at %p",
 			len, new_block, *border));
@@ -3680,7 +3690,7 @@ my_bool Query_cache::move_by_type(uchar **border,
     uchar *key;
     size_t key_length;
     key=query_cache_query_get_key((uchar*) block, &key_length, 0);
-    hash_first(&queries, (uchar*) key, key_length, &record_idx);
+    my_hash_first(&queries, (uchar*) key, key_length, &record_idx);
     // Move table of used tables 
     memmove((char*) new_block->table(0), (char*) block->table(0),
 	   ALIGN_SIZE(n_tables*sizeof(Query_cache_block_table)));
@@ -3748,7 +3758,7 @@ my_bool Query_cache::move_by_type(uchar **border,
       query_cache_tls->first_query_block= new_block;
     }
     /* Fix hash to point at moved block */
-    hash_replace(&queries, &record_idx, (uchar*) new_block);
+    my_hash_replace(&queries, &record_idx, (uchar*) new_block);
     DBUG_PRINT("qcache", ("moved %lu bytes to %p, new gap at %p",
 			len, new_block, *border));
     break;
@@ -4162,13 +4172,13 @@ my_bool Query_cache::check_integrity(bool locked)
   while (is_flushing())
     pthread_cond_wait(&COND_cache_status_changed,&structure_guard_mutex);
 
-  if (hash_check(&queries))
+  if (my_hash_check(&queries))
   {
     DBUG_PRINT("error", ("queries hash is damaged"));
     result = 1;
   }
 
-  if (hash_check(&tables))
+  if (my_hash_check(&tables))
   {
     DBUG_PRINT("error", ("tables hash is damaged"));
     result = 1;
@@ -4335,7 +4345,7 @@ my_bool Query_cache::check_integrity(bool locked)
 			    block, (uint) block->type));
       size_t length;
       uchar *key = query_cache_query_get_key((uchar*) block, &length, 0);
-      uchar* val = hash_search(&queries, key, length);
+      uchar* val = my_hash_search(&queries, key, length);
       if (((uchar*)block) != val)
       {
 	DBUG_PRINT("error", ("block %p found in queries hash like %p",
@@ -4370,7 +4380,7 @@ my_bool Query_cache::check_integrity(bool locked)
 			    block, (uint) block->type));
       size_t length;
       uchar *key = query_cache_table_get_key((uchar*) block, &length, 0);
-      uchar* val = hash_search(&tables, key, length);
+      uchar* val = my_hash_search(&tables, key, length);
       if (((uchar*)block) != val)
       {
 	DBUG_PRINT("error", ("block %p found in tables hash like %p",

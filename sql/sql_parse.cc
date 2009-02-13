@@ -32,6 +32,7 @@
 #include "sql_audit.h"
 #include "transaction.h"
 #include "sql_prepare.h"
+#include "debug_sync.h"
 
 #ifdef BACKUP_TEST
 #include "backup/backup_test.h"
@@ -762,6 +763,7 @@ static my_bool deny_updates_if_read_only_option(THD *thd,
   /* Assuming that only temporary tables are modified. */
   DBUG_RETURN(FALSE);
 }
+
 
 /**
   Perform one connection-level (COM_XXXX) command.
@@ -1849,9 +1851,8 @@ mysql_execute_command(THD *thd)
     A better approach would be to reset this for any commands
     that is not a SHOW command or a select that only access local
     variables, but for now this is probably good enough.
-    Don't reset warnings when executing a stored routine.
   */
-  if ((all_tables || !lex->is_single_level_stmt()) && !thd->spcont)
+  if (all_tables)
     thd->warning_info->opt_clear_warning_info(thd->query_id);
 
 #ifdef HAVE_REPLICATION
@@ -2302,6 +2303,14 @@ mysql_execute_command(THD *thd)
     goto error;
 #else
   {
+    /* 
+       Reset warnings for BACKUP and RESTORE commands. Note: this will
+       cause problems if BACKUP/RESTORE is allowed inside stored
+       routines and events. In that case, warnings should not be
+       cleared.
+    */
+    thd->warning_info->opt_clear_warning_info(thd->query_id);
+
     /*
       Create a string from the backupdir system variable and pass
       to backup system.
@@ -5201,9 +5210,15 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
     if ((sctx->master_access & want_access) == want_access &&
         thd->db)
       tables->grant.privilege= want_access;
-    else if (check_access(thd,want_access,tables->get_db_name(),
-                          &tables->grant.privilege,
-                          0, no_errors, 0))
+    else if (tables->db && thd->db && strcmp(tables->db, thd->db) == 0)
+    {
+      if (check_access(thd, want_access, tables->get_db_name(),
+                       &tables->grant.privilege, 0, no_errors, 
+                       test(tables->schema_table)))
+        goto deny;                            // Access denied
+    }
+    else if (check_access(thd, want_access, tables->get_db_name(),
+                          &tables->grant.privilege, 0, no_errors, 0))
       goto deny;
   }
   thd->security_ctx= backup_ctx;
@@ -5371,9 +5386,10 @@ bool check_stack_overrun(THD *thd, long margin,
   if ((stack_used=used_stack(thd->thread_stack,(char*) &stack_used)) >=
       (long) (my_thread_stack_size - margin))
   {
-    sprintf(errbuff[0],ER(ER_STACK_OVERRUN_NEED_MORE),
-            stack_used,my_thread_stack_size,margin);
-    my_message(ER_STACK_OVERRUN_NEED_MORE,errbuff[0],MYF(ME_FATALERROR));
+    char ebuff[MYSQL_ERRMSG_SIZE];
+    my_snprintf(ebuff, sizeof(ebuff), ER(ER_STACK_OVERRUN_NEED_MORE),
+                stack_used, my_thread_stack_size, margin);
+    my_message(ER_STACK_OVERRUN_NEED_MORE, ebuff, MYF(ME_FATALERROR));
     return 1;
   }
 #ifndef DBUG_OFF
@@ -5462,7 +5478,7 @@ void mysql_reset_thd_for_next_command(THD *thd)
     OPTION_STATUS_NO_TRANS_UPDATE | OPTION_KEEP_LOG to not get warnings
     in ha_rollback_trans() about some tables couldn't be rolled back.
   */
-  if (!(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+  if (!thd->in_multi_stmt_transaction())
   {
     thd->options&= ~OPTION_KEEP_LOG;
     thd->transaction.all.modified_non_trans_table= FALSE;
@@ -6032,7 +6048,19 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
   if (!ptr->derived && !my_strcasecmp(system_charset_info, ptr->db,
                                       INFORMATION_SCHEMA_NAME.str))
   {
-    ST_SCHEMA_TABLE *schema_table= find_schema_table(thd, ptr->table_name);
+    ST_SCHEMA_TABLE *schema_table;
+    if (ptr->updating &&
+        /* Special cases which are processed by commands itself */
+        lex->sql_command != SQLCOM_CHECK &&
+        lex->sql_command != SQLCOM_CHECKSUM)
+    {
+      my_error(ER_DBACCESS_DENIED_ERROR, MYF(0),
+               thd->security_ctx->priv_user,
+               thd->security_ctx->priv_host,
+               INFORMATION_SCHEMA_NAME.str);
+      DBUG_RETURN(0);
+    }
+    schema_table= find_schema_table(thd, ptr->table_name);
     if (!schema_table ||
         (schema_table->hidden && 
          ((sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND) == 0 || 
@@ -6666,8 +6694,8 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
       tmp_write_to_binlog= 0;
       if (lock_global_read_lock(thd))
 	return 1;                               // Killed
-      if (close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
-                                  FALSE : TRUE))
+      if (close_cached_tables(thd, tables, FALSE,
+                              (options & REFRESH_FAST) ? FALSE : TRUE))
           result= 1;
       
       if (make_global_read_lock_block_commit(thd)) // Killed
@@ -6706,8 +6734,9 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
         }
       }
 
-      result= close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
-                                  FALSE : TRUE);
+      if (close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
+                              FALSE : TRUE))
+        result= 1;
     }
     my_dbopt_cleanup();
   }

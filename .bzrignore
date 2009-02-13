@@ -760,7 +760,9 @@ mysql-test/dump.txt
 mysql-test/funcs_1-ps.log
 mysql-test/funcs_1.log
 mysql-test/funcs_1.tar
+mysql-test/gmon.out
 mysql-test/install_test_db
+mysql-test/lib/My/SafeProcess/my_safe_process
 mysql-test/lib/init_db.sql
 mysql-test/linux_sys_vars.inc
 mysql-test/load_sysvars.inc
@@ -1253,9 +1255,13 @@ sql/*.vcproj
 sql/.gdbinit
 sql/client.c
 sql/cscope.out
+sql/Doxyfile
 sql/f.c
 sql/gen_lex_hash
+sql/gmon.out
 sql/handlerton.cc
+sql/html
+sql/latex
 sql/lex_hash.h
 sql/link_sources
 sql/max/*
@@ -1955,6 +1961,7 @@ tools/mysqlmngd
 tools/mysqltestmanager
 tools/mysys_priv.h
 unittest/examples/*.t
+unittest/examples/.deps/*.Po
 unittest/maria_control
 unittest/mysys/*.t
 unittest/mysys/mf_pagecache_consist_1k-t-big
@@ -1967,6 +1974,7 @@ unittest/mysys/mf_pagecache_consist_64kRD-t-big
 unittest/mysys/mf_pagecache_consist_64kWR-t-big
 unittest/mysys/mf_pagecache_single_64k-t-big
 unittest/mytap/t/*.t
+unittest/mytap/t/.deps/*.Po
 unittest/page_cache_test_file_1
 unittest/pagecache_debug.log
 unittest/tmp/*
@@ -2003,3 +2011,4 @@ libmysql_r/probes.h
 unittest/tmp
 libmysqld/sql_join_cache.cc
 storage/maria/maria_non_trans_log
+libmysqld/examples/mysqltest.cc

@@ -167,14 +167,11 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define HA_FILE_BASED	       (1 << 26)
 #define HA_NO_VARCHAR	       (1 << 27)
 #define HA_CAN_BIT_FIELD       (1 << 28) /* supports bit fields */
-#define HA_NEED_READ_RANGE_BUFFER (1 << 29) /* for read_multi_range */
 #define HA_ANY_INDEX_MAY_BE_UNIQUE (1 << 30)
 #define HA_NO_COPY_ON_ALTER    (LL(1) << 31)
 #define HA_HAS_RECORDS	       (LL(1) << 32) /* records() gives exact count*/
 /* Has it's own method of binlog logging */
 #define HA_HAS_OWN_BINLOGGING  (LL(1) << 33)
-#define HA_MRR_CANT_SORT       (LL(1) << 34)
-
 /*
   Engine is capable of row-format and statement-format logging,
   respectively
@@ -276,6 +273,13 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
   TODO remove the limit, use dynarrays
 */
 #define MAX_HA 15
+
+/*
+  Use this instead of 0 as the initial value for the slot number of
+  handlerton, so that we can distinguish uninitialized slot number
+  from slot 0.
+*/
+#define HA_SLOT_UNDEF ((uint)-1)
 
 /*
   Parameters for open() (in register form->filestat)
@@ -999,9 +1003,9 @@ typedef struct {
   ulonglong delete_length;
   ha_rows records;
   ulong mean_rec_length;
-  time_t create_time;
-  time_t check_time;
-  time_t update_time;
+  ulong create_time;
+  ulong check_time;
+  ulong update_time;
   ulonglong check_sum;
 } PARTITION_INFO;
 
@@ -1201,7 +1205,19 @@ typedef struct st_range_seq_if
       0 - The record shall be left in the stream
   */ 
   bool (*skip_record) (range_seq_t seq, char *range_info, uchar *rowid);
- 
+
+  /*
+    Check if the record combination matches the index condition
+    SYNOPSIS
+      skip_index_tuple()
+        seq         The value returned by RANGE_SEQ_IF::init()
+        range_info  Information about the next range 
+    
+    RETURN
+      0 - The record combination satisfies the index condition
+      1 - Otherwise
+  */ 
+  bool (*skip_index_tuple) (range_seq_t seq, char *range_info);
 } RANGE_SEQ_IF;
 
 class COST_VECT
@@ -1253,6 +1269,17 @@ public:
     avg_io_cost= (io_count * avg_io_cost + 
                   add_io_cnt * add_avg_cost) / io_count_sum;
     io_count= io_count_sum;
+  }
+
+  /*
+    To be used when we go from old single value-based cost calculations to
+    the new COST_VECT-based.
+  */
+  void convert_from_cost(double cost)
+  {
+    zero();
+    avg_io_cost= 1.0;
+    io_count= cost;
   }
 };
 
@@ -1324,9 +1351,9 @@ public:
   ha_rows records;
   ha_rows deleted;			/* Deleted records */
   ulong mean_rec_length;		/* physical reclength */
-  time_t create_time;			/* When table was created */
-  time_t check_time;
-  time_t update_time;
+  ulong create_time;			/* When table was created */
+  ulong check_time;
+  ulong update_time;
   uint block_size;			/* index block size */
   
   /*
@@ -2434,14 +2461,15 @@ public:
 
   DsMrr_impl()
     : h2(NULL) {};
-
-  handler *h; /* The "owner" handler object. It is used for scanning the index */
+  
+  /*
+    The "owner" handler object (the one that calls dsmrr_XXX functions.
+    It is used to retrieve full table rows by calling rnd_pos().
+  */
+  handler *h;
   TABLE *table; /* Always equal to h->table */
 private:
-  /*
-    Secondary handler object. It is used to retrieve full table rows by
-    calling rnd_pos().
-  */
+  /* Secondary handler object.  It is used for scanning the index */
   handler *h2;
 
   /* Buffer to store rowids, or (rowid, range_id) pairs */
@@ -2462,12 +2490,11 @@ public:
     h= h_arg; 
     table= table_arg;
   }
-  int dsmrr_init(handler *h, KEY *key, RANGE_SEQ_IF *seq_funcs, 
-                 void *seq_init_param, uint n_ranges, uint mode, 
-                 HANDLER_BUFFER *buf);
+  int dsmrr_init(handler *h, RANGE_SEQ_IF *seq_funcs, void *seq_init_param, 
+                 uint n_ranges, uint mode, HANDLER_BUFFER *buf);
   void dsmrr_close();
-  int dsmrr_fill_buffer(handler *h);
-  int dsmrr_next(handler *h, char **range_info);
+  int dsmrr_fill_buffer();
+  int dsmrr_next(char **range_info);
 
   ha_rows dsmrr_info(uint keyno, uint n_ranges, uint keys, uint *bufsz,
                      uint *flags, COST_VECT *cost);

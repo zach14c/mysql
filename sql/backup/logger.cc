@@ -33,7 +33,7 @@ namespace backup {
 int Logger::write_message(log_level::value level, int error_code,
                           const char *msg)
 {
-   char buf[ERRMSGSIZE + 30];
+   char buf[MYSQL_ERRMSG_SIZE];
    /*
      When logging to server's error log, msg will be prefixed with
      "Backup:"/"Restore:" if the operation has been initialized (i.e., after
@@ -118,8 +118,9 @@ int Logger::write_message(log_level::value level, int error_code,
 /**
   Output message registered in errmsg.txt database.
 
-  @param level       level of the message (INFO,WARNING,ERROR)
-  @param error_code  code assigned to the message in errmsg.txt
+  @param[in] level       level of the message (INFO,WARNING,ERROR)
+  @param[in] error_code  code assigned to the message in errmsg.txt
+  @param[in] args        list of arguments
 
   If the message contains placeholders, additional arguments provide
   values to be put there.
@@ -141,7 +142,7 @@ int Logger::v_report_error(log_level::value level, int error_code, va_list args)
 int Logger::v_write_message(log_level::value level, int error_code,
                             const char *format, va_list args)
 {
-  char buf[ERRMSGSIZE + 20];
+  char buf[MYSQL_ERRMSG_SIZE];
 
   my_vsnprintf(buf, sizeof(buf), format, args);
   return write_message(level, error_code, buf);
@@ -206,7 +207,7 @@ void Logger::report_stats_post(const Image_info &info)
   backup_log->size(info.data_size);
 }
 
-/*
+/**
  Indicate if reported errors should be pushed on the warning stack.
 
  If @c flag is TRUE, errors will be pushed on the warning stack, otherwise

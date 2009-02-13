@@ -130,6 +130,14 @@ test-reprepare:
 
 test:	test-ns test-pr
 
+smoke:
+	cd mysql-test ; \
+	    @PERL@ ./mysql-test-run.pl --do-test=s
+
+smoke:
+	cd mysql-test ; \
+	    @PERL@ ./mysql-test-run.pl --do-test=s
+
 test-full:	test test-nr test-ps
 
 test-force:
@@ -178,8 +186,8 @@ test-bt:
 	fi
 	-if [ -d mysql-test/suite/nist ] ; then \
 	  cd mysql-test ; MTR_BUILD_THREAD=auto \
+	      @PERL@ ./mysql-test-run.pl --comment=NIST+normal --force --suite=nist ; \
 	      @PERL@ ./mysql-test-run.pl --comment=NIST+ps --force --suite=nist --ps-protocol ; \
-	      @PERL@ ./mysql-test-run.pl --comment=nist+ps --force --suite=nist --ps-protocol ; \
 	fi
 	-if [ -e bin/mysqltest_embedded -o -e libmysqld/examples/mysqltest_embedded ] ; then \
 	  cd mysql-test ; MTR_BUILD_THREAD=auto \

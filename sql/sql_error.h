@@ -147,6 +147,12 @@ private:
 class MYSQL_ERROR: public Sql_alloc
 {
 public:
+  /*
+    Enumeration value describing the severity of the error.
+
+    Note that these enumeration values must correspond to the indices
+    of the sql_print_message_handlers array.
+  */
   enum enum_warning_level
   { WARN_LEVEL_NOTE, WARN_LEVEL_WARN, WARN_LEVEL_ERROR, WARN_LEVEL_END};
 
@@ -226,6 +232,27 @@ public:
   }
 
   /**
+    Concatenate the list of warnings.
+    It's considered tolerable to lose a warning.
+  */
+  void append_warning_info(THD *thd, Warning_info *source)
+  {
+    MYSQL_ERROR *err;
+    List_iterator_fast<MYSQL_ERROR> it(source->warn_list());
+    /*
+      Don't use ::push_warning() to avoid invocation of condition
+      handlers or escalation of warnings to errors.
+    */
+    while ((err= it++))
+      Warning_info::push_warning(thd, err->level, err->code, err->msg);
+  }
+
+  /**
+    Conditional merge of related warning information areas.
+  */
+  void merge_with_routine_info(THD *thd, Warning_info *source);
+
+  /**
     Reset between two COM_ commands. Warnings are preserved
     between commands, but statement_warn_count indicates
     the number of warnings of this particular statement only.
@@ -261,6 +288,9 @@ public:
   {
     return m_warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_ERROR];
   }
+
+  /** Id of the warning information area. */
+  ulonglong warn_id() const { return m_warn_id; }
 
   /** Do we have any errors and warnings that we can *show*? */
   bool is_empty() const { return m_warn_list.elements == 0; }

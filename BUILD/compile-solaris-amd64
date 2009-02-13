@@ -1,16 +1,18 @@
-#!/usr/bin/bash
+#!/bin/sh
 
-function _find_mysql_root () (
+_find_mysql_root ()
+{
+  (
     while [ "x$PWD" != "x/" ]; do
 	# Check if some directories are present
 	if [ -d BUILD -a -d sql -a -d mysys ]; then
 	    echo "$PWD"
-	    return 0
+            break
 	fi
 	cd ..
     done
-    return 1
 )
+}
 
 make -k clean || true
 /bin/rm -f */.deps/*.P config.cache
@@ -28,7 +30,7 @@ CFLAGS="$warning_flags $compiler_flags"
 CXXFLAGS="" 
 LDFLAGS="-O3 -g -static-libgcc"
 LIBS=-lmtmalloc
-root=$(_find_mysql_root)
+root=`_find_mysql_root`
 
 $root/configure \
     --prefix=/usr/local/mysql \

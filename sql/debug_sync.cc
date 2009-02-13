@@ -206,9 +206,11 @@
   See also worklog entry WL#4259 - Test Synchronization Facility
 */
 
-#include "mysql_priv.h"
+#include "debug_sync.h"
 
 #if defined(ENABLED_DEBUG_SYNC)
+
+#include "mysql_priv.h"
 
 /*
   Action to perform at a synchronization point.
@@ -544,7 +546,7 @@ static void debug_sync_action_string(char *result, uint size,
     {
       if ((wtxt == result) && (wtxt < wend))
         *(wtxt++)= ' ';
-      wtxt= debug_sync_bmove_len(wtxt, wend, STRING_WITH_LEN("WAIT_FOR "));
+      wtxt= debug_sync_bmove_len(wtxt, wend, STRING_WITH_LEN(" WAIT_FOR "));
       wtxt= debug_sync_bmove_len(wtxt, wend, action->wait_for.ptr(),
                                  action->wait_for.length());
 

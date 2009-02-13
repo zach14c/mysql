@@ -273,7 +273,6 @@ size_t my_charpos_mb(CHARSET_INFO *cs __attribute__((unused)),
 		     const char *pos, const char *end, size_t length)
 {
   const char *start= pos;
-  
   while (length && pos < end)
   {
     uint mb_len;

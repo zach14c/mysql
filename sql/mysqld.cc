@@ -28,6 +28,7 @@
 #include "events.h"
 #include "ddl_blocker.h"
 #include "sql_audit.h"
+#include "debug_sync.h"
 #include <waiting_threads.h>
 
 #include "../storage/myisam/ha_myisam.h"
@@ -261,6 +262,12 @@ int backup_init();
 void backup_shutdown();
 #endif
 
+#if defined(__linux__)
+#define ENABLE_TEMP_POOL 1
+#else
+#define ENABLE_TEMP_TOOL 0
+#endif
+
 /* Constants */
 
 const char *show_comp_option_name[]= {"YES", "NO", "DISABLED"};
@@ -329,7 +336,7 @@ TYPELIB sql_mode_typelib= { array_elements(sql_mode_names)-1,"",
 
 static const char *optimizer_switch_names[]=
 {
-  "no_materialization", "no_semijoin", "no_loosescan",
+  "no_materialization", "no_semijoin", "no_loosescan", "no_firstmatch",
   NullS
 };
 
@@ -339,6 +346,7 @@ static const unsigned int optimizer_switch_names_len[]=
   /*no_materialization*/          18,
   /*no_semijoin*/                 11,
   /*no_loosescan*/                12,
+  /*no_firstmatch*/               13
 };
 
 TYPELIB optimizer_switch_typelib= { array_elements(optimizer_switch_names)-1,"",
@@ -480,9 +488,11 @@ ulong ndb_extra_logging;
 #ifdef HAVE_NDB_BINLOG
 ulong ndb_report_thresh_binlog_epoch_slip;
 ulong ndb_report_thresh_binlog_mem_usage;
+my_bool ndb_log_binlog_index;
 my_bool opt_ndb_log_update_as_write;
 my_bool opt_ndb_log_updated_only;
 my_bool opt_ndb_log_orig;
+my_bool opt_ndb_log_bin;
 #endif
 
 extern const char *ndb_distribution_names[];
@@ -539,6 +549,8 @@ ulong query_buff_size, slow_launch_time, slave_open_temp_tables;
 ulong open_files_limit, max_binlog_size, max_relay_log_size;
 ulong slave_net_timeout, slave_trans_retries;
 my_bool slave_allow_batching;
+my_bool allow_slave_start= TRUE;
+LEX_CSTRING reason_slave_blocked;
 ulong slave_exec_mode_options;
 const char *slave_exec_mode_str= "STRICT";
 ulong thread_cache_size=0, thread_pool_size= 0;
@@ -571,7 +583,8 @@ ulong max_prepared_stmt_count;
 */
 ulong prepared_stmt_count=0;
 ulong thread_id=1L,current_pid;
-ulong slow_launch_threads = 0, sync_binlog_period;
+ulong slow_launch_threads = 0;
+uint sync_binlog_period= 0, sync_relaylog_period= 0;
 ulong expire_logs_days = 0;
 ulong rpl_recovery_rank=0;
 const char *log_output_str= "FILE";
@@ -689,7 +702,7 @@ pthread_mutex_t LOCK_mysql_create_db, LOCK_open, LOCK_thread_count,
 		LOCK_crypt,
 	        LOCK_global_system_variables,
                 LOCK_user_conn, LOCK_slave_list, LOCK_active_mi,
-                LOCK_connection_count;
+                LOCK_connection_count, LOCK_slave_start;
 
 /**
   The below lock protects access to two global server variables:
@@ -989,6 +1002,7 @@ static void close_connections(void)
 
     tmp->killed= THD::KILL_CONNECTION;
     thread_scheduler.post_kill_notification(tmp);
+    pthread_mutex_lock(&tmp->LOCK_delete);
     if (tmp->mysys_var)
     {
       tmp->mysys_var->abort=1;
@@ -1011,6 +1025,7 @@ static void close_connections(void)
       }
       pthread_mutex_unlock(&tmp->mysys_var->mutex);
     }
+    pthread_mutex_unlock(&tmp->LOCK_delete);
   }
   (void) pthread_mutex_unlock(&LOCK_thread_count); // For unlink from list
 
@@ -1391,6 +1406,7 @@ void clean_up(bool print_message)
   free_max_user_conn();
 #ifdef HAVE_REPLICATION
   end_slave_list();
+  end_slave_start();
 #endif
   delete binlog_filter;
   delete rpl_filter;
@@ -3654,8 +3670,13 @@ static int init_common_variables(const char *conf_file_name, int argc,
     return 1; /* purecov: tested */
 #endif /* defined(ENABLED_DEBUG_SYNC) */
 
+#if (ENABLE_TEMP_POOL)
   if (use_temp_pool && bitmap_init(&temp_pool,0,1024,1))
     return 1;
+#else
+  use_temp_pool= 0;
+#endif
+
   if (my_database_names_init())
     return 1;
 
@@ -3926,6 +3947,7 @@ static int init_server_components()
   my_uuid_init((ulong) (my_rnd(&sql_rand))*12345,12345);
 #ifdef HAVE_REPLICATION
   init_slave_list();
+  init_slave_start();
 #endif
 
   /* Setup logs */
@@ -4385,6 +4407,13 @@ static void handle_connections_methods()
     sql_print_error("TCP/IP, --shared-memory, or --named-pipe should be configured on NT OS");
     unireg_abort(1);				// Will not return
   }
+  if((hPipe != INVALID_HANDLE_VALUE || opt_enable_shared_memory) &&
+    global_system_variables.thread_handling == SCHEDULER_POOL_OF_THREADS)
+  {
+    sql_print_error("thread_handling=pool-of-threads cannot be used with "
+     "shared memory or named pipe protocols");
+    unireg_abort(1);
+  }
 #endif
 
   pthread_mutex_lock(&LOCK_thread_count);
@@ -4445,6 +4474,44 @@ void decrement_handler_count()
 
 
 #ifndef EMBEDDED_LIBRARY
+#ifndef DBUG_OFF
+/*
+  Debugging helper function to keep the locale database
+  (see sql_locale.cc) and max_month_name_length and
+  max_day_name_length variable values in consistent state.
+*/
+static void test_lc_time_sz()
+{
+  DBUG_ENTER("test_lc_time_sz");
+  for (MY_LOCALE **loc= my_locales; *loc; loc++)
+  {
+    uint max_month_len= 0;
+    uint max_day_len = 0;
+    for (const char **month= (*loc)->month_names->type_names; *month; month++)
+    {
+      set_if_bigger(max_month_len,
+                    my_numchars_mb(&my_charset_utf8_general_ci,
+                                   *month, *month + strlen(*month)));
+    }
+    for (const char **day= (*loc)->day_names->type_names; *day; day++)
+    {
+      set_if_bigger(max_day_len,
+                    my_numchars_mb(&my_charset_utf8_general_ci,
+                                   *day, *day + strlen(*day)));
+    }
+    if ((*loc)->max_month_name_length != max_month_len ||
+        (*loc)->max_day_name_length != max_day_len)
+    {
+      DBUG_PRINT("Wrong max day name(or month name) length for locale:",
+                 ("%s", (*loc)->name));
+      DBUG_ASSERT(0);
+    }
+  }
+  DBUG_VOID_RETURN;
+}
+#endif//DBUG_OFF
+
+
 #ifdef __WIN__
 int win_main(int argc, char **argv)
 #else
@@ -4537,6 +4604,10 @@ int main(int argc, char **argv)
 #ifdef HAVE_LIBWRAP
   libwrapName= my_progname+dirname_length(my_progname);
   openlog(libwrapName, LOG_PID, LOG_AUTH);
+#endif
+
+#ifndef DBUG_OFF
+  test_lc_time_sz();
 #endif
 
   /*
@@ -5724,7 +5795,7 @@ enum options_mysqld
   OPT_NDB_REPORT_THRESH_BINLOG_MEM_USAGE,
   OPT_NDB_USE_COPYING_ALTER_TABLE,
   OPT_NDB_LOG_UPDATE_AS_WRITE, OPT_NDB_LOG_UPDATED_ONLY,
-  OPT_NDB_LOG_ORIG,
+  OPT_NDB_LOG_ORIG, OPT_NDB_LOG_BIN, OPT_NDB_LOG_BINLOG_INDEX,
   OPT_SKIP_SAFEMALLOC, OPT_MUTEX_DEADLOCK_DETECTOR,
   OPT_TEMP_POOL, OPT_TX_ISOLATION, OPT_COMPLETION_TYPE,
   OPT_SKIP_STACK_TRACE, OPT_SKIP_SYMLINKS,
@@ -5852,6 +5923,7 @@ enum options_mysqld
   OPT_DEADLOCK_TIMEOUT_LONG,
   OPT_GENERAL_LOG_FILE,
   OPT_SLOW_QUERY_LOG_FILE,
+  OPT_SYNC_RELAY_LOG,
   OPT_BACKUP_HISTORY_LOG_FILE,
   OPT_BACKUP_PROGRESS_LOG_FILE
 };
@@ -6348,6 +6420,16 @@ thread is in the master's binlogs.",
    (uchar**) &opt_ndb_log_orig,
    (uchar**) &opt_ndb_log_orig,
    0, GET_BOOL, OPT_ARG, 0, 0, 0, 0, 0, 0},
+  {"ndb-log-bin", OPT_NDB_LOG_BIN,
+   "Log ndb tables in the binary log. Option only has meaning if "
+   "the binary log has been turned on for the server.",
+   (uchar**) &opt_ndb_log_bin, (uchar**) &opt_ndb_log_bin,
+   0, GET_BOOL, OPT_ARG, 1, 0, 0, 0, 0, 0},
+  {"ndb-log-binlog-index", OPT_NDB_LOG_BINLOG_INDEX,
+   "Insert mapping between epochs and binlog positions into the "
+   "ndb_binlog_index table.",
+   (uchar**) &ndb_log_binlog_index, (uchar**) &ndb_log_binlog_index,
+   0, GET_BOOL, OPT_ARG, 1, 0, 0, 0, 0, 0},
 #endif
   {"ndb-use-exact-count", OPT_NDB_USE_EXACT_COUNT,
    "Use exact records count during query planning and for fast "
@@ -6668,9 +6750,14 @@ log and this option does nothing anymore.",
    0, GET_UINT, OPT_ARG, 0, 0, UINT_MAX, 0, 0, 0},
 #endif /* defined(ENABLED_DEBUG_SYNC) */
   {"temp-pool", OPT_TEMP_POOL,
+#if (ENABLE_TEMP_POOL)
    "Using this option will cause most temporary files created to use a small set of names, rather than a unique name for each new file.",
+#else
+   "This option is ignored on this OS.",
+#endif
    (uchar**) &use_temp_pool, (uchar**) &use_temp_pool, 0, GET_BOOL, NO_ARG, 1,
    0, 0, 0, 0, 0},
+
   {"timed_mutexes", OPT_TIMED_MUTEXES,
    "Specify whether to time mutexes (only InnoDB mutexes are currently supported)",
    (uchar**) &timed_mutexes, (uchar**) &timed_mutexes, 0, GET_BOOL, NO_ARG, 0,
@@ -7143,8 +7230,13 @@ The minimum value for this variable is 4096.",
   {"sync-binlog", OPT_SYNC_BINLOG,
    "Synchronously flush binary log to disk after every #th event. "
    "Use 0 (default) to disable synchronous flushing.",
-   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_ULONG,
-   REQUIRED_ARG, 0, 0, (longlong) ULONG_MAX, 0, 1, 0},
+   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
+  {"sync-relay-log", OPT_SYNC_RELAY_LOG,
+   "Synchronously flush relay log to disk after every #th event. "
+   "Use 0 (default) to disable synchronous flushing.",
+   (uchar**) &sync_relaylog_period, (uchar**) &sync_relaylog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
   {"sync-frm", OPT_SYNC_FRM, "Sync .frm to disk on create. Enabled by default.",
    (uchar**) &opt_sync_frm, (uchar**) &opt_sync_frm, 0, GET_BOOL, NO_ARG, 1, 0,
    0, 0, 0, 0},
@@ -7224,6 +7316,15 @@ The minimum value for this variable is 4096.",
    0, 1, 0},
   {0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
+
+
+static int show_queries(THD *thd, SHOW_VAR *var, char *buff)
+{
+  var->type= SHOW_LONGLONG;
+  var->value= (char *)&thd->query_id;
+  return 0;
+}
+
 
 static int show_net_compression(THD *thd, SHOW_VAR *var, char *buff)
 {
@@ -7675,6 +7776,7 @@ SHOW_VAR status_vars[]= {
   {"Qcache_queries_in_cache",  (char*) &query_cache.queries_in_cache, SHOW_LONG_NOFLUSH},
   {"Qcache_total_blocks",      (char*) &query_cache.total_blocks, SHOW_LONG_NOFLUSH},
 #endif /*HAVE_QUERY_CACHE*/
+  {"Queries",                  (char*) &show_queries,            SHOW_FUNC},
   {"Questions",                (char*) offsetof(STATUS_VAR, questions), SHOW_LONG_STATUS},
 #ifdef HAVE_REPLICATION
   {"Rpl_status",               (char*) &show_rpl_status,          SHOW_FUNC},

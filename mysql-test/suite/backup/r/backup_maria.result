@@ -254,3 +254,4 @@ a	b
 
 connection default: cleanup
 drop database mysqltest;
+SET DEBUG_SYNC= 'RESET';

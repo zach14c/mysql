@@ -213,7 +213,10 @@ static int update_status_variables(st_ndb_status *ns, Ndb_cluster_connection *c)
                             ns->connected_port);
   }
   ns->number_of_replicas= 0;
-  ns->number_of_ready_data_nodes= c->get_no_ready();
+  {
+    int n= c->get_no_ready();
+    ns->number_of_ready_data_nodes= n > 0 ?  n : 0;
+  }
   ns->number_of_data_nodes= c->no_db_nodes();
   ns->connect_count= c->get_connect_count();
   return 0;
@@ -370,8 +373,8 @@ Thd_ndb::Thd_ndb()
   m_error= FALSE;
   m_error_code= 0;
   options= 0;
-  (void) hash_init(&open_tables, &my_charset_bin, 5, 0, 0,
-                   (hash_get_key)thd_ndb_share_get_key, 0, 0);
+  (void) my_hash_init(&open_tables, &my_charset_bin, 5, 0, 0,
+                   (my_hash_get_key)thd_ndb_share_get_key, 0, 0);
   m_unsent_bytes= 0;
   global_schema_lock_trans= NULL;
   global_schema_lock_count= 0;
@@ -387,7 +390,7 @@ Thd_ndb::~Thd_ndb()
     ndb= NULL;
   }
   changed_tables.empty();
-  hash_free(&open_tables);
+  my_hash_free(&open_tables);
   free_root(&m_batch_mem_root, MYF(0));
 }
 
@@ -2599,7 +2602,7 @@ int ha_ndbcluster::ordered_index_scan(const key_range *start_key,
   if (lm == NdbOperation::LM_Read)
     options.scan_flags|= NdbScanOperation::SF_KeyInfo;
   if (sorted)
-    options.scan_flags|= NdbScanOperation::SF_OrderBy;
+    options.scan_flags|= NdbScanOperation::SF_OrderByFull;
   if (descending)
     options.scan_flags|= NdbScanOperation::SF_Descending;
   const NdbRecord *key_rec= m_index[active_index].ndb_record_key;
@@ -4539,7 +4542,7 @@ int ha_ndbcluster::start_statement(THD *thd,
   if (!thd_ndb->trans)
   {
     DBUG_ASSERT(thd_ndb->changed_tables.is_empty() == TRUE);
-    if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
+    if (thd->in_multi_stmt_transaction())
       trans_register_ha(thd, TRUE, ndbcluster_hton);
     DBUG_PRINT("trans",("Starting transaction"));      
     thd_ndb->trans= ndb->startTransaction();
@@ -4612,14 +4615,14 @@ int ha_ndbcluster::init_handler_for_statement(THD *thd, Thd_ndb *thd_ndb)
   }
 #endif
 
-  if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
+  if (thd->in_multi_stmt_transaction())
   {
     const void *key= m_table;
     HASH_SEARCH_STATE state;
     THD_NDB_SHARE *thd_ndb_share=
-      (THD_NDB_SHARE*)hash_first(&thd_ndb->open_tables, (uchar *)&key, sizeof(key), &state);
+      (THD_NDB_SHARE*)my_hash_first(&thd_ndb->open_tables, (uchar *)&key, sizeof(key), &state);
     while (thd_ndb_share && thd_ndb_share->key != key)
-      thd_ndb_share= (THD_NDB_SHARE*)hash_next(&thd_ndb->open_tables, (uchar *)&key, sizeof(key), &state);
+      thd_ndb_share= (THD_NDB_SHARE*)my_hash_next(&thd_ndb->open_tables, (uchar *)&key, sizeof(key), &state);
     if (thd_ndb_share == 0)
     {
       thd_ndb_share= (THD_NDB_SHARE *) alloc_root(&thd->transaction.mem_root,
@@ -4697,8 +4700,7 @@ int ha_ndbcluster::external_lock(THD *thd, int lock_type)
     {
       DBUG_PRINT("info", ("Rows has changed"));
 
-      if (thd_ndb->trans &&
-          thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
+      if (thd_ndb->trans && thd->in_multi_stmt_transaction())
       {
         DBUG_PRINT("info", ("Add share to list of changed tables, %p",
                             m_share));
@@ -4722,7 +4724,7 @@ int ha_ndbcluster::external_lock(THD *thd, int lock_type)
       DBUG_PRINT("trans", ("Last external_lock"));
       PRINT_OPTION_FLAGS(thd);
 
-      if (!(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+      if (!thd->in_multi_stmt_transaction())
       {
         if (thd_ndb->trans)
         {
@@ -4834,7 +4836,7 @@ static int ndbcluster_commit(handlerton *hton, THD *thd, bool all)
     DBUG_PRINT("info", ("trans == NULL"));
     DBUG_RETURN(0);
   }
-  if (!all && (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+  if (!all && thd->in_multi_stmt_transaction())
   {
     /*
       An odditity in the handler interface is that commit on handlerton
@@ -4937,7 +4939,7 @@ static int ndbcluster_rollback(handlerton *hton, THD *thd, bool all)
     DBUG_PRINT("info", ("trans == NULL"));
     DBUG_RETURN(0);
   }
-  if (!all && (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) &&
+  if (!all && thd->in_multi_stmt_transaction() &&
       (thd_ndb->save_point_count > 0))
   {
     /*
@@ -5491,6 +5493,7 @@ int ha_ndbcluster::create(const char *name,
           strcmp(m_tabname, NDB_SCHEMA_TABLE) == 0))
     {
       DBUG_PRINT("info", ("Schema distribution table not setup"));
+      DBUG_ASSERT(ndb_schema_share);
       DBUG_RETURN(HA_ERR_NO_CONNECTION);
     }
     single_user_mode = NdbDictionary::Table::SingleUserModeReadWrite;
@@ -5753,8 +5756,8 @@ int ha_ndbcluster::create(const char *name,
     */
     {
       uint length= (uint) strlen(name);
-      if ((share= (NDB_SHARE*) hash_search(&ndbcluster_open_tables,
-                                           (uchar*) name, length)))
+      if ((share= (NDB_SHARE*) my_hash_search(&ndbcluster_open_tables,
+                                              (uchar*) name, length)))
         handle_trailing_share(thd, share);
     }
     /*
@@ -6602,7 +6605,6 @@ void ha_ndbcluster::get_auto_increment(ulonglong offset, ulonglong increment,
                 HA_NULL_IN_KEY | \
                 HA_AUTO_PART_KEY | \
                 HA_NO_PREFIX_CHAR_KEYS | \
-                HA_NEED_READ_RANGE_BUFFER | \
                 HA_CAN_GEOMETRY | \
                 HA_CAN_BIT_FIELD | \
                 HA_PRIMARY_KEY_REQUIRED_FOR_POSITION | \
@@ -7418,18 +7420,18 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
                         NdbDictionary::Object::UserTable) != 0)
     ERR_RETURN(dict->getNdbError());
 
-  if (hash_init(&ndb_tables, system_charset_info,list.count,0,0,
-                (hash_get_key)tables_get_key,0,0))
+  if (my_hash_init(&ndb_tables, system_charset_info,list.count,0,0,
+                   (my_hash_get_key)tables_get_key,0,0))
   {
     DBUG_PRINT("error", ("Failed to init HASH ndb_tables"));
     DBUG_RETURN(-1);
   }
 
-  if (hash_init(&ok_tables, system_charset_info,32,0,0,
-                (hash_get_key)tables_get_key,0,0))
+  if (my_hash_init(&ok_tables, system_charset_info,32,0,0,
+                (my_hash_get_key)tables_get_key,0,0))
   {
     DBUG_PRINT("error", ("Failed to init HASH ok_tables"));
-    hash_free(&ndb_tables);
+    my_hash_free(&ndb_tables);
     DBUG_RETURN(-1);
   }  
 
@@ -7470,7 +7472,8 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
   {
     bool file_on_disk= FALSE;
     DBUG_PRINT("info", ("%s", file_name->str));
-    if (hash_search(&ndb_tables, (uchar*) file_name->str, file_name->length))
+    if (my_hash_search(&ndb_tables, (uchar*) file_name->str,
+                       file_name->length))
     {
       build_table_filename(name, sizeof(name), db, file_name->str, reg_ext, 0);
       if (my_access(name, F_OK))
@@ -7503,10 +7506,10 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
       if (file_on_disk)
       {
 	// Ignore this ndb table 
- 	uchar *record= hash_search(&ndb_tables, (uchar*) file_name->str,
-                                   file_name->length);
+        uchar *record= my_hash_search(&ndb_tables, (uchar*) file_name->str,
+                                      file_name->length);
 	DBUG_ASSERT(record);
-	hash_delete(&ndb_tables, record);
+	my_hash_delete(&ndb_tables, record);
 	push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
 			    ER_TABLE_EXISTS_ERROR,
 			    "Local table %s.%s shadows ndb table",
@@ -7540,7 +7543,7 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
       build_table_filename(name, sizeof(name), db, "", "", 0);
     for (i= 0; i < ok_tables.records; i++)
     {
-      file_name_str= (char*)hash_element(&ok_tables, i);
+      file_name_str= (char*)my_hash_element(&ok_tables, i);
       end= end1 +
         tablename_to_filename(file_name_str, end1, sizeof(name) - (end1 - name));
       pthread_mutex_lock(&LOCK_open);
@@ -7556,8 +7559,9 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
   List<char> create_list;
   for (i= 0 ; i < ndb_tables.records ; i++)
   {
-    file_name_str= (char*) hash_element(&ndb_tables, i);
-    if (!hash_search(&ok_tables, (uchar*) file_name_str, strlen(file_name_str)))
+    file_name_str= (char*) my_hash_element(&ndb_tables, i);
+    if (!my_hash_search(&ok_tables, (uchar*) file_name_str,
+                        strlen(file_name_str)))
     {
       build_table_filename(name, sizeof(name), db, file_name_str, reg_ext, 0);
       if (my_access(name, F_OK))
@@ -7632,8 +7636,8 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
 
   pthread_mutex_unlock(&LOCK_open);
 
-  hash_free(&ok_tables);
-  hash_free(&ndb_tables);
+  my_hash_free(&ok_tables);
+  my_hash_free(&ndb_tables);
 
   // Delete schema file from files
   if (!strcmp(db, NDB_REP_DB))
@@ -7738,8 +7742,8 @@ static int ndbcluster_init(void *p)
   if (ndbcluster_connect(connect_callback))
     goto ndbcluster_init_error;
 
-  (void) hash_init(&ndbcluster_open_tables,system_charset_info,32,0,0,
-                   (hash_get_key) ndbcluster_get_key,0,0);
+  (void) my_hash_init(&ndbcluster_open_tables,system_charset_info,32,0,0,
+                      (my_hash_get_key) ndbcluster_get_key,0,0);
 #ifdef HAVE_NDB_BINLOG
   /* start the ndb injector thread */
   if (ndbcluster_binlog_start())
@@ -7752,7 +7756,7 @@ static int ndbcluster_init(void *p)
   if (pthread_create(&tmp, &connection_attrib, ndb_util_thread_func, 0))
   {
     DBUG_PRINT("error", ("Could not create ndb utility thread"));
-    hash_free(&ndbcluster_open_tables);
+    my_hash_free(&ndbcluster_open_tables);
     pthread_mutex_destroy(&ndbcluster_mutex);
     pthread_mutex_destroy(&LOCK_ndb_util_thread);
     pthread_cond_destroy(&COND_ndb_util_thread);
@@ -7770,7 +7774,7 @@ static int ndbcluster_init(void *p)
   if (!ndb_util_thread_running)
   {
     DBUG_PRINT("error", ("ndb utility thread exited prematurely"));
-    hash_free(&ndbcluster_open_tables);
+    my_hash_free(&ndbcluster_open_tables);
     pthread_mutex_destroy(&ndbcluster_mutex);
     pthread_mutex_destroy(&LOCK_ndb_util_thread);
     pthread_cond_destroy(&COND_ndb_util_thread);
@@ -7818,7 +7822,7 @@ static int ndbcluster_end(handlerton *hton, ha_panic_function type)
     while (ndbcluster_open_tables.records)
     {
       NDB_SHARE *share=
-        (NDB_SHARE*) hash_element(&ndbcluster_open_tables, 0);
+        (NDB_SHARE*) my_hash_element(&ndbcluster_open_tables, 0);
 #ifndef DBUG_OFF
       fprintf(stderr, "NDB: table share %s with use_count %d not freed\n",
               share->key, share->use_count);
@@ -7828,7 +7832,7 @@ static int ndbcluster_end(handlerton *hton, ha_panic_function type)
     pthread_mutex_unlock(&ndbcluster_mutex);
   }
 #endif
-  hash_free(&ndbcluster_open_tables);
+  my_hash_free(&ndbcluster_open_tables);
 
   ndbcluster_disconnect();
 
@@ -8151,9 +8155,9 @@ uint ndb_get_commitcount(THD *thd, char *dbname, char *tabname,
   build_table_filename(name, sizeof(name), dbname, tabname, "", 0);
   DBUG_PRINT("enter", ("name: %s", name));
   pthread_mutex_lock(&ndbcluster_mutex);
-  if (!(share=(NDB_SHARE*) hash_search(&ndbcluster_open_tables,
-                                       (uchar*) name,
-                                       strlen(name))))
+  if (!(share=(NDB_SHARE*) my_hash_search(&ndbcluster_open_tables,
+                                          (uchar*) name,
+                                          strlen(name))))
   {
     pthread_mutex_unlock(&ndbcluster_mutex);
     DBUG_PRINT("info", ("Table %s not found in ndbcluster_open_tables", name));
@@ -8278,7 +8282,7 @@ ndbcluster_cache_retrieval_allowed(THD *thd,
   DBUG_PRINT("enter", ("dbname: %s, tabname: %s",
                        dbname, tabname));
 
-  if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
+  if (thd->in_multi_stmt_transaction())
   {
     /* Don't allow qc to be used if table has been previously
        modified in transaction */
@@ -8362,7 +8366,7 @@ ha_ndbcluster::register_query_cache_table(THD *thd,
   DBUG_PRINT("enter",("dbname: %s, tabname: %s",
 		      m_dbname, m_tabname));
 
-  if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
+  if (thd->in_multi_stmt_transaction())
   {
     /* Don't allow qc to be used if table has been previously
        modified in transaction */
@@ -8448,7 +8452,7 @@ static void print_ndbcluster_open_tables()
   fprintf(DBUG_FILE, ">ndbcluster_open_tables\n");
   for (uint i= 0; i < ndbcluster_open_tables.records; i++)
     print_share("",
-                (NDB_SHARE*)hash_element(&ndbcluster_open_tables, i));
+                (NDB_SHARE*)my_hash_element(&ndbcluster_open_tables, i));
   fprintf(DBUG_FILE, "<ndbcluster_open_tables\n");
   DBUG_UNLOCK_FILE;
 }
@@ -8498,10 +8502,10 @@ int handle_trailing_share(THD *thd, NDB_SHARE *share, int have_lock_open)
   if (have_lock_open)
     safe_mutex_assert_owner(&LOCK_open);
   else
-    pthread_mutex_lock(&LOCK_open);    
+    pthread_mutex_lock(&LOCK_open);
   close_cached_tables(thd, &table_list, TRUE, FALSE);
   if (!have_lock_open)
-    pthread_mutex_unlock(&LOCK_open);    
+    pthread_mutex_unlock(&LOCK_open);
 
   pthread_mutex_lock(&ndbcluster_mutex);
   /* ndb_share reference temporary free */
@@ -8579,7 +8583,7 @@ int handle_trailing_share(THD *thd, NDB_SHARE *share, int have_lock_open)
     at the cost of a possible mem leak, by "renaming" the share
     - First remove from hash
   */
-  hash_delete(&ndbcluster_open_tables, (uchar*) share);
+  my_hash_delete(&ndbcluster_open_tables, (uchar*) share);
 
   /*
     now give it a new name, just a running number
@@ -8631,12 +8635,12 @@ int ndbcluster_rename_share(THD *thd, NDB_SHARE *share, int have_lock_open)
   uint new_length= (uint) strlen(share->new_key);
   DBUG_PRINT("ndbcluster_rename_share", ("old_key: %s  old__length: %d",
                               share->key, share->key_length));
-  if ((tmp= (NDB_SHARE*) hash_search(&ndbcluster_open_tables,
-                                     (uchar*) share->new_key, new_length)))
+  if ((tmp= (NDB_SHARE*) my_hash_search(&ndbcluster_open_tables,
+                                        (uchar*) share->new_key, new_length)))
     handle_trailing_share(thd, tmp, have_lock_open);
 
   /* remove the share from hash */
-  hash_delete(&ndbcluster_open_tables, (uchar*) share);
+  my_hash_delete(&ndbcluster_open_tables, (uchar*) share);
   dbug_print_open_tables();
 
   /* save old stuff if insert should fail */
@@ -8739,9 +8743,9 @@ NDB_SHARE *ndbcluster_get_share(const char *key, TABLE *table,
 
   if (!have_lock)
     pthread_mutex_lock(&ndbcluster_mutex);
-  if (!(share= (NDB_SHARE*) hash_search(&ndbcluster_open_tables,
-                                        (uchar*) key,
-                                        length)))
+  if (!(share= (NDB_SHARE*) my_hash_search(&ndbcluster_open_tables,
+                                           (uchar*) key,
+                                           length)))
   {
     if (!create_if_not_exists)
     {
@@ -8822,7 +8826,7 @@ void ndbcluster_real_free_share(NDB_SHARE **share)
   if (ndb_extra_logging > 9)
     sql_print_information ("ndbcluster_real_free_share: %s use_count: %u", (*share)->key, (*share)->use_count);
 
-  hash_delete(&ndbcluster_open_tables, (uchar*) *share);
+  my_hash_delete(&ndbcluster_open_tables, (uchar*) *share);
   thr_lock_delete(&(*share)->lock);
   pthread_mutex_destroy(&(*share)->mutex);
 
@@ -9275,18 +9279,18 @@ multi_range_row(uchar *p)
 }
 
 /* Get and put upper layer custom char *, use memcpy() for unaligned access. */
-static char *
-multi_range_get_custom(HANDLER_BUFFER *buffer, int range_no)
+static void
+multi_range_get_custom(HANDLER_BUFFER *buffer, int range_no, char **pcustom)
 {
   DBUG_ASSERT(range_no < MRR_MAX_RANGES);
-  return ((char **)(buffer->buffer))[range_no];
+  memcpy(pcustom, (char **)(buffer->buffer) + range_no, sizeof(*pcustom));
 }
 
 static void
 multi_range_put_custom(HANDLER_BUFFER *buffer, int range_no, char *custom)
 {
   DBUG_ASSERT(range_no < MRR_MAX_RANGES);
-  ((char **)(buffer->buffer))[range_no]= custom;
+  memcpy((char **)(buffer->buffer) + range_no, &custom, sizeof(custom));
 }
 
 /*
@@ -9346,11 +9350,9 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
   KEY* key_info= table->key_info + keyno;
   ulong reclength= table_share->reclength;
   uint entry_size= multi_range_max_entry(key_type, reclength);
-  ulong total_bufsize;
+  ulong total_bufsize= 0;
   uint save_bufsize= *bufsz;
   DBUG_ENTER("ha_ndbcluster::multi_range_read_info_const");
-
-  total_bufsize= multi_range_fixed_size(n_ranges_arg);
 
   seq_it= seq->init(seq_init_param, n_ranges, *flags);
   while (!seq->next(seq_it, &range))
@@ -9381,6 +9383,9 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                              UNIQUE_INDEX),
                             reclength);
   }
+
+  /* n_ranges_arg may not be calculated, so we use actual calculated instead */
+  total_bufsize+= multi_range_fixed_size(n_ranges);
 
   if (total_rows != HA_POS_ERROR)
   {
@@ -9693,7 +9698,7 @@ int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
         if (lm == NdbOperation::LM_Read)
           options.scan_flags|= NdbScanOperation::SF_KeyInfo;
         if (mrr_is_output_sorted)
-          options.scan_flags|= NdbScanOperation::SF_OrderBy;
+          options.scan_flags|= NdbScanOperation::SF_OrderByFull;
 
         options.parallel=parallelism;
 
@@ -9883,8 +9888,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
           m_active_cursor= NULL;
 
           /* Return the record. */
-          *range_info= multi_range_get_custom(multi_range_buffer,
-                                              expected_range_no);
+          multi_range_get_custom(multi_range_buffer,
+                                 expected_range_no, range_info);
           memcpy(table->record[0], multi_range_row(row_buf),
                  table_share->reclength);
           DBUG_RETURN(0);
@@ -9895,8 +9900,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
             int res;
             if ((res= read_multi_range_fetch_next()) != 0)
             {
-              *range_info= multi_range_get_custom(multi_range_buffer,
-                                                  expected_range_no);
+              multi_range_get_custom(multi_range_buffer,
+                                     expected_range_no, range_info);
               first_running_range++;
               m_multi_range_result_ptr=
                 multi_range_next_entry(m_multi_range_result_ptr,
@@ -9927,8 +9932,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
             */
             if (!mrr_is_output_sorted || expected_range_no == current_range_no)
             {
-              *range_info= multi_range_get_custom(multi_range_buffer,
-                                                  current_range_no);
+              multi_range_get_custom(multi_range_buffer,
+                                     current_range_no, range_info);
               /* Copy out data from the new row. */
               unpack_record(table->record[0], m_next_row);
               /*
@@ -10229,7 +10234,7 @@ pthread_handler_t ndb_util_thread_func(void *arg __attribute__((unused)))
     }
     for (i= 0, open_count= 0; i < record_count; i++)
     {
-      share= (NDB_SHARE *)hash_element(&ndbcluster_open_tables, i);
+      share= (NDB_SHARE *)my_hash_element(&ndbcluster_open_tables, i);
 #ifdef HAVE_NDB_BINLOG
       if ((share->use_count - (int) (share->op != 0) - (int) (share->op != 0))
           <= 0)
@@ -11138,20 +11143,20 @@ int ha_ndbcluster::alter_table_phase1(THD *thd,
          goto err;
        }
        /*
-	 If the user has not specified the field format
-	 make it dynamic to enable on-line add attribute
+         If the user has not specified the field format
+         make it dynamic to enable on-line add attribute
        */
        if (field->column_format() == COLUMN_FORMAT_TYPE_DEFAULT &&
            create_info->row_type == ROW_TYPE_DEFAULT &&
            col.getDynamic())
        {
-	 push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+         push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                              ER_ILLEGAL_HA_CREATE_OPTION,
-		             "Converted FIXED field to DYNAMIC "
-			     "to enable on-line ADD COLUMN",
+                             "Converted FIXED field to DYNAMIC "
+                             "to enable on-line ADD COLUMN",
                              field->field_name);
-	}
-        new_tab->addColumn(col);
+       }
+       new_tab->addColumn(col);
      }
   }
 
@@ -11231,8 +11236,11 @@ int ha_ndbcluster::alter_table_phase2(THD *thd,
 
 #ifdef HAVE_NDB_BINLOG
   if (!ndbcluster_has_global_schema_lock(get_thd_ndb(thd)))
-    DBUG_RETURN(ndbcluster_no_global_schema_lock_abort
-                (thd, "ha_ndbcluster::alter_table_phase2"));
+  {
+    error= ndbcluster_no_global_schema_lock_abort
+      (thd, "ha_ndbcluster::alter_table_phase2");
+    goto err;
+  }
 #endif
 
   if ((*alter_flags & dropping).is_set())
@@ -11252,11 +11260,11 @@ int ha_ndbcluster::alter_table_phase2(THD *thd,
  err:
   if (error)
   {
-    set_ndb_share_state(m_share, NSS_INITIAL);
     /* ndb_share reference schema free */
     DBUG_PRINT("NDB_SHARE", ("%s binlog schema free  use_count: %u",
                              m_share->key, m_share->use_count));
   }
+  set_ndb_share_state(m_share, NSS_INITIAL);
   free_share(&m_share); // Decrease ref_count
   delete alter_data;
   DBUG_RETURN(error);

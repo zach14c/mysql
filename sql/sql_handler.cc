@@ -199,15 +199,15 @@ bool mysql_ha_open(THD *thd, TABLE_LIST *tables, bool reopen)
                       tables->db, tables->table_name, tables->alias,
                       (int) reopen));
 
-  if (! hash_inited(&thd->handler_tables_hash))
+  if (! my_hash_inited(&thd->handler_tables_hash))
   {
     /*
       HASH entries are of type TABLE_LIST.
     */
-    if (hash_init(&thd->handler_tables_hash, &my_charset_latin1,
-                  HANDLER_TABLES_HASH_SIZE, 0, 0,
-                  (hash_get_key) mysql_ha_hash_get_key,
-                  (hash_free_key) mysql_ha_hash_free, 0))
+    if (my_hash_init(&thd->handler_tables_hash, &my_charset_latin1,
+                     HANDLER_TABLES_HASH_SIZE, 0, 0,
+                     (my_hash_get_key) mysql_ha_hash_get_key,
+                     (my_hash_free_key) mysql_ha_hash_free, 0))
     {
       DBUG_PRINT("exit",("ERROR"));
       DBUG_RETURN(TRUE);
@@ -215,8 +215,8 @@ bool mysql_ha_open(THD *thd, TABLE_LIST *tables, bool reopen)
   }
   else if (! reopen) /* Otherwise we have 'tables' already. */
   {
-    if (hash_search(&thd->handler_tables_hash, (uchar*) tables->alias,
-                    strlen(tables->alias) + 1))
+    if (my_hash_search(&thd->handler_tables_hash, (uchar*) tables->alias,
+                       strlen(tables->alias) + 1))
     {
       DBUG_PRINT("info",("duplicate '%s'", tables->alias));
       DBUG_PRINT("exit",("ERROR"));
@@ -328,7 +328,7 @@ err:
   if (hash_tables->table)
     mysql_ha_close_table(thd, hash_tables);
   if (!reopen)
-    hash_delete(&thd->handler_tables_hash, (uchar*) hash_tables);
+    my_hash_delete(&thd->handler_tables_hash, (uchar*) hash_tables);
   DBUG_PRINT("exit",("ERROR"));
   DBUG_RETURN(TRUE);
 }
@@ -358,12 +358,12 @@ bool mysql_ha_close(THD *thd, TABLE_LIST *tables)
   DBUG_PRINT("enter",("'%s'.'%s' as '%s'",
                       tables->db, tables->table_name, tables->alias));
 
-  if ((hash_tables= (TABLE_LIST*) hash_search(&thd->handler_tables_hash,
+  if ((hash_tables= (TABLE_LIST*) my_hash_search(&thd->handler_tables_hash,
                                               (uchar*) tables->alias,
                                               strlen(tables->alias) + 1)))
   {
     mysql_ha_close_table(thd, hash_tables);
-    hash_delete(&thd->handler_tables_hash, (uchar*) hash_tables);
+    my_hash_delete(&thd->handler_tables_hash, (uchar*) hash_tables);
   }
   else
   {
@@ -430,9 +430,9 @@ bool mysql_ha_read(THD *thd, TABLE_LIST *tables,
   it++;
 
 retry:
-  if ((hash_tables= (TABLE_LIST*) hash_search(&thd->handler_tables_hash,
-                                              (uchar*) tables->alias,
-                                              strlen(tables->alias) + 1)))
+  if ((hash_tables= (TABLE_LIST*) my_hash_search(&thd->handler_tables_hash,
+                                                 (uchar*) tables->alias,
+                                                 strlen(tables->alias) + 1)))
   {
     table= hash_tables->table;
     DBUG_PRINT("info-in-hash",("'%s'.'%s' as '%s' table: %p",
@@ -703,7 +703,7 @@ static TABLE_LIST *mysql_ha_find(THD *thd, TABLE_LIST *tables)
   /* search for all handlers with matching table names */
   for (uint i= 0; i < thd->handler_tables_hash.records; i++)
   {
-    hash_tables= (TABLE_LIST*) hash_element(&thd->handler_tables_hash, i);
+    hash_tables= (TABLE_LIST*) my_hash_element(&thd->handler_tables_hash, i);
     for (tables= first; tables; tables= tables->next_local)
     {
       if ((! *tables->db ||
@@ -746,7 +746,7 @@ void mysql_ha_rm_tables(THD *thd, TABLE_LIST *tables)
     next= hash_tables->next_local;
     if (hash_tables->table)
       mysql_ha_close_table(thd, hash_tables);
-    hash_delete(&thd->handler_tables_hash, (uchar*) hash_tables);
+    my_hash_delete(&thd->handler_tables_hash, (uchar*) hash_tables);
     hash_tables= next;
   }
 
@@ -772,7 +772,7 @@ void mysql_ha_flush(THD *thd)
 
   for (uint i= 0; i < thd->handler_tables_hash.records; i++)
   {
-    hash_tables= (TABLE_LIST*) hash_element(&thd->handler_tables_hash, i);
+    hash_tables= (TABLE_LIST*) my_hash_element(&thd->handler_tables_hash, i);
     /*
       TABLE::mdl_lock_data is 0 for temporary tables so we need extra check.
     */
@@ -806,12 +806,12 @@ void mysql_ha_cleanup(THD *thd)
 
   for (uint i= 0; i < thd->handler_tables_hash.records; i++)
   {
-    hash_tables= (TABLE_LIST*) hash_element(&thd->handler_tables_hash, i);
+    hash_tables= (TABLE_LIST*) my_hash_element(&thd->handler_tables_hash, i);
     if (hash_tables->table)
       mysql_ha_close_table(thd, hash_tables);
   }
 
-  hash_free(&thd->handler_tables_hash);
+  my_hash_free(&thd->handler_tables_hash);
 
   DBUG_VOID_RETURN;
 }

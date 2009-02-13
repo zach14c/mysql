@@ -67,7 +67,6 @@ uint add_flag_field_to_join_cache(uchar *str, uint length, CACHE_FIELD **field)
   copy->type= 0;
   copy->field= 0;
   copy->referenced_field_no= 0;
-  copy->get_rowid= NULL;
   (*field)++;
   return length;    
 }
@@ -123,7 +122,6 @@ uint add_table_data_fields_to_join_cache(JOIN_TAB *tab,
       }
       copy->field= *fld_ptr;
       copy->referenced_field_no= 0;
-      copy->get_rowid= NULL;
       copy++;
       (*field_cnt)++;
       used_fields--;
@@ -168,7 +166,7 @@ void JOIN_CACHE::calc_record_fields()
   {
     if (!tab->used_fieldlength)	    
       calc_used_field_length(join->thd, tab);
-    flag_fields+= test(tab->used_null_fields);
+    flag_fields+= test(tab->used_null_fields || tab->used_uneven_bit_fields);
     flag_fields+= test(tab->table->maybe_null);
     fields+= tab->used_fields;
     blobs+= tab->used_blobs;
@@ -230,7 +228,8 @@ int JOIN_CACHE::alloc_fields(uint external_fields)
     The match flag field is created when 'join_tab' is the first inner
     table of an outer join our a semi-join. A null bitmap field is
     created for any table whose fields are to be stored in the join
-    buffer if at least one of its fields is nullable. A null row flag
+    buffer if at least one of these fields is nullable or is a BIT field
+    whose bits are partially stored with null bits. A null row flag
     is created for any table assigned to the cache if it is an inner
     table of an outer join.
     The descriptor for flag fields are placed one after another at the
@@ -272,8 +271,7 @@ void JOIN_CACHE::create_flag_fields()
     TABLE *table= tab->table;
 
     /* Create a field for the null bitmap from table if needed */
-    /* TODO: Figure out whether we really need the second conjunct here */
-    if (test(tab->used_null_fields) && table->s->null_fields)			    
+    if (tab->used_null_fields || tab->used_uneven_bit_fields)			    
       length+= add_flag_field_to_join_cache(table->null_flags,
                                             table->s->null_bytes,
                                             &copy);
@@ -350,21 +348,13 @@ void JOIN_CACHE:: create_remaining_fields(bool all_read_fields)
                                                  &copy, &copy_ptr);
   
     /* SemiJoinDuplicateElimination: allocate space for rowid if needed */
-    if (tab->rowid_keep_flags & JOIN_TAB::KEEP_ROWID)
+    if (tab->keep_current_rowid)
     {
       copy->str= table->file->ref;
       copy->length= table->file->ref_length;
       copy->type= 0;
       copy->field= 0;
       copy->referenced_field_no= 0;
-      copy->get_rowid= NULL;
-      if (tab->rowid_keep_flags & JOIN_TAB::CALL_POSITION)
-      {
-        /* We will need to call h->position(): */
-        copy->get_rowid= tab->table;
-        /* And those after us won't have to: */
-        tab->rowid_keep_flags &=  ~((int)JOIN_TAB::CALL_POSITION);
-      }
       length+= copy->length;
       data_field_count++;
       copy++;
@@ -739,16 +729,23 @@ bool JOIN_CACHE_BKA::check_emb_key_usage()
     if (key_part->field->maybe_null())
       return FALSE;
   }
-  /* 
-    If some of the key arguments are of variable length the key
-    is not considered as embedded.
-  */
   
   copy= field_descr+flag_fields;
   copy_end= copy+local_key_arg_fields;
   for ( ; copy < copy_end; copy++)
   {
+    /* 
+      If some of the key arguments are of variable length the key
+      is not considered as embedded.
+    */
     if (copy->type != 0)
+      return FALSE;
+    /* 
+      If some of the key arguments are bit fields whose bits are partially
+      stored with null bits the key is not considered as embedded.
+    */
+    if (copy->field->type() == MYSQL_TYPE_BIT &&
+	 ((Field_bit*) (copy->field))->bit_len)
       return FALSE;
     len+= copy->length;
   }
@@ -812,6 +809,82 @@ uint JOIN_CACHE_BKA::aux_buffer_incr()
   incr+= tab->file->stats.mrr_length_per_rec * rec_per_key;
   return incr; 
 }
+
+
+/*
+  Check if the record combination matches the index condition
+
+  SYNOPSIS
+    JOIN_CACHE_BKA::skip_index_tuple()
+      rseq             Value returned by bka_range_seq_init()
+      range_info       MRR range association data
+    
+  DESCRIPTION
+    This function is invoked from MRR implementation to check if an index
+    tuple matches the index condition. It is used in the case where the index
+    condition actually depends on both columns of the used index and columns
+    from previous tables.
+    
+    Accessing columns of the previous tables requires special handling with
+    BKA. The idea of BKA is to collect record combinations in a buffer and 
+    then do a batch of ref access lookups, i.e. by the time we're doing a
+    lookup its previous-records-combination is not in prev_table->record[0]
+    but somewhere in the join buffer.
+    
+    We need to get it from there back into prev_table(s)->record[0] before we
+    can evaluate the index condition, and that's why we need this function
+    instead of regular IndexConditionPushdown.
+
+  NOTE
+    Possible optimization:
+    Before we unpack the record from a previous table
+    check if this table is used in the condition.
+    If so then unpack the record otherwise skip the unpacking.
+    This should be done by a special virtual method
+    get_partial_record_by_pos().
+
+  RETURN
+    0    The record combination satisfies the index condition
+    1    Otherwise
+*/
+
+bool JOIN_CACHE_BKA::skip_index_tuple(range_seq_t rseq, char *range_info)
+{
+  DBUG_ENTER("JOIN_CACHE_BKA::skip_index_tuple");
+  JOIN_CACHE_BKA *cache= (JOIN_CACHE_BKA *) rseq;
+  cache->get_record_by_pos((uchar*)range_info);
+  DBUG_RETURN(!join_tab->cache_idx_cond->val_int());
+}
+
+
+/*
+  Check if the record combination matches the index condition
+
+  SYNOPSIS
+    bka_skip_index_tuple()
+      rseq             Value returned by bka_range_seq_init()
+      range_info       MRR range association data
+    
+  DESCRIPTION
+    This is wrapper for JOIN_CACHE_BKA::skip_index_tuple method,
+    see comments there.
+
+  NOTE
+    This function is used as a RANGE_SEQ_IF::skip_index_tuple callback.
+ 
+  RETURN
+    0    The record combination satisfies the index condition
+    1    Otherwise
+*/
+
+static 
+bool bka_skip_index_tuple(range_seq_t rseq, char *range_info)
+{
+  DBUG_ENTER("bka_skip_index_tuple");
+  JOIN_CACHE_BKA *cache= (JOIN_CACHE_BKA *) rseq;
+  DBUG_RETURN(cache->skip_index_tuple(rseq, range_info));
+}
+
 
 /* 
   Write record fields and their required offsets into the join cache buffer
@@ -986,12 +1059,6 @@ uint JOIN_CACHE::write_record_data(uchar * link, bool *is_full)
     }
     else
     {
-      if (copy->get_rowid)
-      {
-        /* SemiJoinDuplicateElimination: get the rowid into table->ref */
-        copy->get_rowid->file->position(copy->get_rowid->record[0]);
-      }
-
       switch (copy->type) {
       case CACHE_VARSTR1:
         /* Copy the significant part of the short varstring field */ 
@@ -1670,6 +1737,9 @@ enum_nested_loop_state JOIN_CACHE_BNL::join_matching_records(bool skip_last)
   info= &join_tab->read_record;
   do
   {
+    if (join_tab->keep_current_rowid)
+      join_tab->table->file->position(join_tab->table->record[0]);
+
     if (join->thd->killed)
     {
       /* The user has aborted the execution of the query */
@@ -1916,10 +1986,16 @@ inline bool JOIN_CACHE::check_match(uchar *rec_ptr)
 
 enum_nested_loop_state JOIN_CACHE::join_null_complements(bool skip_last)
 {
+  uint cnt; 
   enum_nested_loop_state rc= NESTED_LOOP_OK;
   bool is_first_inner= join_tab == join_tab->first_unmatched;
-  bool is_last_inner= join_tab == join_tab->first_unmatched->last_inner; 
-  uint cnt= records - (is_key_access() ? 0 : test(skip_last));
+  bool is_last_inner= join_tab == join_tab->first_unmatched->last_inner;
+ 
+  /* Return at once if there are no records in the join buffer */
+  if (!records)
+    return NESTED_LOOP_OK;
+  
+  cnt= records - (is_key_access() ? 0 : test(skip_last));
 
   /* This function may be called only for inner tables of outer joins */ 
   DBUG_ASSERT(join_tab->first_inner);
@@ -1971,6 +2047,16 @@ enum_nested_loop_state JOIN_CACHE::join_null_complements(bool skip_last)
   }
 
 finish:
+  if (is_first_inner)
+  {
+    /* 
+      Restore the values of the fields of the last record put into join buffer.
+      The value of the fields of the last record in the buffer must be restored
+      since at the null complementing pass fields of the records with matches
+      are skipped and their fields are not read into the record buffers at all. 
+    */
+    get_record_by_pos(last_rec_pos);
+  }
   return rc;
 }
 
@@ -2146,7 +2232,9 @@ enum_nested_loop_state JOIN_CACHE_BKA::join_matching_records(bool skip_last)
   RANGE_SEQ_IF seq_funcs= { bka_range_seq_init, 
                             bka_range_seq_next,
                             check_only_first_match ?
-                              bka_range_seq_skip_record : 0 };
+                              bka_range_seq_skip_record : 0,
+                            join_tab->cache_idx_cond ?
+                              bka_skip_index_tuple : 0 };
 
   /* The value of skip_last must be always FALSE when this function is called */
   DBUG_ASSERT(!skip_last);
@@ -2168,6 +2256,8 @@ enum_nested_loop_state JOIN_CACHE_BKA::join_matching_records(bool skip_last)
       rc= NESTED_LOOP_KILLED; 
       goto finish;
     }
+    if (join_tab->keep_current_rowid)
+      join_tab->table->file->position(join_tab->table->record[0]);
     /* 
       If only the first match is needed and it has been already found 
       for the associated partial join record then the returned candidate
@@ -2457,9 +2547,16 @@ int JOIN_CACHE_BKA_UNIQUE::init()
 
     uint n= buff_size / (pack_length+key_entry_length+size_of_key_ofs);
 
+    /*
+      TODO: Make a better estimate for this upper bound of
+            the number of records in in the join buffer.
+    */
+    uint max_n= buff_size / (pack_length-length+
+                             key_entry_length+size_of_key_ofs);
+
     hash_entries= (uint) (n / 0.7);
     
-    if (offset_size(n*key_entry_length) <=
+    if (offset_size(max_n*key_entry_length) <=
         size_of_key_ofs)
       break;
   }
@@ -2877,6 +2974,86 @@ bool bka_unique_range_seq_skip_record(range_seq_t rseq, char *range_info,
   DBUG_RETURN(res);
 }
 
+ 
+/*
+  Check if the record combination matches the index condition
+
+  SYNOPSIS
+    JOIN_CACHE_BKA_UNIQUE::skip_index_tuple()
+      rseq             Value returned by bka_range_seq_init()
+      range_info       MRR range association data
+    
+  DESCRIPTION
+    See JOIN_CACHE_BKA::skip_index_tuple().
+    This function is the variant for use with
+    JOIN_CACHE_BKA_UNIQUE. The difference from JOIN_CACHE_BKA case is that
+    there may be multiple previous table record combinations that share the
+    same key, i.e. they map to the same MRR range.
+    As a consequence, we need to loop through all previous table record
+    combinations that match the given MRR range key range_info until we find
+    one that satisfies the index condition.
+
+  NOTE
+    Possible optimization:
+    Before we unpack the record from a previous table
+    check if this table is used in the condition.
+    If so then unpack the record otherwise skip the unpacking.
+    This should be done by a special virtual method
+    get_partial_record_by_pos().
+
+  RETURN
+    0    The record combination satisfies the index condition
+    1    Otherwise
+
+
+*/
+
+bool JOIN_CACHE_BKA_UNIQUE::skip_index_tuple(range_seq_t rseq, char *range_info)
+{
+  DBUG_ENTER("JOIN_CACHE_BKA_UNIQUE::skip_index_tuple");
+  JOIN_CACHE_BKA_UNIQUE *cache= (JOIN_CACHE_BKA_UNIQUE *) rseq;
+  uchar *last_rec_ref_ptr=  cache->get_next_rec_ref((uchar*) range_info);
+  uchar *next_rec_ref_ptr= last_rec_ref_ptr;
+  do
+  {
+    next_rec_ref_ptr= cache->get_next_rec_ref(next_rec_ref_ptr);
+    uchar *rec_ptr= next_rec_ref_ptr + cache->rec_fields_offset;
+    cache->get_record_by_pos(rec_ptr);
+    if (join_tab->cache_idx_cond->val_int())
+      DBUG_RETURN(FALSE);
+  } while(next_rec_ref_ptr != last_rec_ref_ptr);
+  DBUG_RETURN(TRUE);
+}
+
+
+/*
+  Check if the record combination matches the index condition
+
+  SYNOPSIS
+    bka_unique_skip_index_tuple()
+      rseq             Value returned by bka_range_seq_init()
+      range_info       MRR range association data
+    
+  DESCRIPTION
+    This is wrapper for JOIN_CACHE_BKA_UNIQUE::skip_index_tuple method,
+    see comments there.
+
+  NOTE
+    This function is used as a RANGE_SEQ_IF::skip_index_tuple callback.
+ 
+  RETURN
+    0    The record combination satisfies the index condition
+    1    Otherwise
+*/
+
+static 
+bool bka_unique_skip_index_tuple(range_seq_t rseq, char *range_info)
+{
+  DBUG_ENTER("bka_unique_skip_index_tuple");
+  JOIN_CACHE_BKA_UNIQUE *cache= (JOIN_CACHE_BKA_UNIQUE *) rseq;
+  DBUG_RETURN(cache->skip_index_tuple(rseq, range_info));
+}
+
 
 /*
   Using BKA_UNIQUE find matches from the next table for records from join buffer   
@@ -2919,11 +3096,12 @@ JOIN_CACHE_BKA_UNIQUE::join_matching_records(bool skip_last)
   bool no_association= test(mrr_mode &  HA_MRR_NO_ASSOCIATION);
 
   /* Set functions to iterate over keys in the join buffer */
-
   RANGE_SEQ_IF seq_funcs= { bka_unique_range_seq_init,
                             bka_unique_range_seq_next,
                             check_only_first_match && !no_association ?
-			      bka_unique_range_seq_skip_record : 0 };
+                              bka_unique_range_seq_skip_record : 0,
+                            join_tab->cache_idx_cond ?
+                              bka_unique_skip_index_tuple : 0  };
 
   /* The value of skip_last must be always FALSE when this function is called */
   DBUG_ASSERT(!skip_last);

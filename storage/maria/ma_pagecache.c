@@ -734,10 +734,10 @@ ulong init_pagecache(PAGECACHE *pagecache, size_t use_mem,
   if (! pagecache->inited)
   {
     if (pthread_mutex_init(&pagecache->cache_lock, MY_MUTEX_INIT_FAST) ||
-        hash_init(&pagecache->files_in_flush, &my_charset_bin, 32,
-                  offsetof(struct st_file_in_flush, file),
-                  sizeof(((struct st_file_in_flush *)NULL)->file),
-                  NULL, NULL, 0))
+        my_hash_init(&pagecache->files_in_flush, &my_charset_bin, 32,
+                     offsetof(struct st_file_in_flush, file),
+                     sizeof(((struct st_file_in_flush *)NULL)->file),
+                     NULL, NULL, 0))
       goto err;
     pagecache->inited= 1;
     pagecache->in_init= 0;
@@ -1134,7 +1134,7 @@ void end_pagecache(PAGECACHE *pagecache, my_bool cleanup)
 
   if (cleanup)
   {
-    hash_free(&pagecache->files_in_flush);
+    my_hash_free(&pagecache->files_in_flush);
     pthread_mutex_destroy(&pagecache->cache_lock);
     pagecache->inited= pagecache->can_be_used= 0;
     PAGECACHE_DEBUG_CLOSE;
@@ -4364,8 +4364,8 @@ static int flush_pagecache_blocks_int(PAGECACHE *pagecache,
     us_flusher.flush_queue.last_thread= NULL;
     us_flusher.first_in_switch= FALSE;
     while ((other_flusher= (struct st_file_in_flush *)
-            hash_search(&pagecache->files_in_flush, (uchar *)&file->file,
-                        sizeof(file->file))))
+            my_hash_search(&pagecache->files_in_flush, (uchar *)&file->file,
+                           sizeof(file->file))))
     {
       /*
         File is in flush already: wait, unless FLUSH_KEEP_LAZY. "Flusher"
@@ -4591,7 +4591,7 @@ restart:
     }
 #ifdef THREAD
     /* wake up others waiting to flush this file */
-    hash_delete(&pagecache->files_in_flush, (uchar *)&us_flusher);
+    my_hash_delete(&pagecache->files_in_flush, (uchar *)&us_flusher);
     if (us_flusher.flush_queue.last_thread)
       wqueue_release_queue(&us_flusher.flush_queue);
 #endif
@@ -4732,7 +4732,7 @@ my_bool pagecache_collect_changed_blocks_with_lsn(PAGECACHE *pagecache,
     struct st_file_in_flush *other_flusher;
     for (file_hash= 0;
          (other_flusher= (struct st_file_in_flush *)
-          hash_element(&pagecache->files_in_flush, file_hash)) != NULL &&
+          my_hash_element(&pagecache->files_in_flush, file_hash)) != NULL &&
            !other_flusher->first_in_switch;
          file_hash++)
     {}

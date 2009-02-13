@@ -181,15 +181,20 @@ typedef struct my_locale_st
   TYPELIB *ab_month_names;
   TYPELIB *day_names;
   TYPELIB *ab_day_names;
+  uint max_month_name_length;
+  uint max_day_name_length;
 #ifdef __cplusplus 
   my_locale_st(uint number_par,
                const char *name_par, const char *descr_par, bool is_ascii_par,
                TYPELIB *month_names_par, TYPELIB *ab_month_names_par,
-               TYPELIB *day_names_par, TYPELIB *ab_day_names_par) : 
+               TYPELIB *day_names_par, TYPELIB *ab_day_names_par,
+               uint max_month_name_length_par, uint max_day_name_length_par) : 
     number(number_par),
     name(name_par), description(descr_par), is_ascii(is_ascii_par),
     month_names(month_names_par), ab_month_names(ab_month_names_par),
-    day_names(day_names_par), ab_day_names(ab_day_names_par)
+    day_names(day_names_par), ab_day_names(ab_day_names_par),
+    max_month_name_length(max_month_name_length_par),
+    max_day_name_length(max_day_name_length_par)
   {}
 #endif
 } MY_LOCALE;
@@ -388,13 +393,18 @@ enum open_table_mode
 
 #define DISK_SEEK_PROP_COST ((double)0.1/BLOCKS_IN_AVG_SEEK)
 
-
 /**
   Number of rows in a reference table when refereed through a not unique key.
   This value is only used when we don't know anything about the key
   distribution.
 */
 #define MATCHING_ROWS_IN_OTHER_TABLE 10
+
+/*
+  Subquery materialization-related constants
+*/
+#define HEAP_TEMPTABLE_LOOKUP_COST 0.05
+#define DISK_TEMPTABLE_LOOKUP_COST 1.0
 
 /** Don't pack string keys shorter than this (if PACK_KEYS=1 isn't used). */
 #define KEY_DEFAULT_PACK_LENGTH 8
@@ -566,7 +576,7 @@ enum open_table_mode
 #define OPTIMIZER_SWITCH_NO_MATERIALIZATION 1
 #define OPTIMIZER_SWITCH_NO_SEMIJOIN 2
 #define OPTIMIZER_SWITCH_NO_LOOSE_SCAN 4
-
+#define OPTIMIZER_SWITCH_NO_FIRSTMATCH 8
 
 /*
   Replication uses 8 bytes to store SQL_MODE in the binary log. The day you
@@ -594,47 +604,10 @@ enum open_table_mode
 #define UNCACHEABLE_PREPARE    16
 /* For uncorrelated SELECT in an UNION with some correlated SELECTs */
 #define UNCACHEABLE_UNITED     32
-#define UNCACHEABLE_CHECKOPTION   64
 
 /* Used to check GROUP BY list in the MODE_ONLY_FULL_GROUP_BY mode */
 #define UNDEF_POS (-1)
-#ifdef EXTRA_DEBUG
-/**
-  Sync points allow us to force the server to reach a certain line of code
-  and block there until the client tells the server it is ok to go on.
-  The client tells the server to block with SELECT GET_LOCK()
-  and unblocks it with SELECT RELEASE_LOCK(). Used for debugging difficult
-  concurrency problems
-*/
-#define DBUG_SYNC_POINT(lock_name,lock_timeout) \
- debug_sync_point(lock_name,lock_timeout)
-void debug_sync_point(const char* lock_name, uint lock_timeout);
-#else
-#define DBUG_SYNC_POINT(lock_name,lock_timeout)
-#endif /* EXTRA_DEBUG */
-
-/* Debug Sync Facility. */
-#if defined(ENABLED_DEBUG_SYNC)
-/* Macro to be put in the code at synchronization points. */
-#define DEBUG_SYNC(_thd_, _sync_point_name_)                            \
-          do { if (unlikely(opt_debug_sync_timeout))                    \
-               debug_sync(_thd_, STRING_WITH_LEN(_sync_point_name_));   \
-             } while (0)
-/* Command line option --debug-sync-timeout. See mysqld.cc. */
-extern uint opt_debug_sync_timeout;
-/* Default WAIT_FOR timeout if command line option is given without argument. */
-#define DEBUG_SYNC_DEFAULT_WAIT_TIMEOUT 300
-/* Debug Sync prototypes. See debug_sync.cc. */
-extern int  debug_sync_init(void);
-extern void debug_sync_end(void);
-extern void debug_sync_init_thread(THD *thd);
-extern void debug_sync_end_thread(THD *thd);
-extern void debug_sync(THD *thd, const char *sync_point_name, size_t name_len);
-#else /* defined(ENABLED_DEBUG_SYNC) */
-#define DEBUG_SYNC(_thd_, _sync_point_name_)    /* disabled DEBUG_SYNC */
-#endif /* defined(ENABLED_DEBUG_SYNC) */
-
-#define BACKUP_WAIT_TIMEOUT_DEFAULT 50;
+#define BACKUP_WAIT_TIMEOUT_DEFAULT 50
 
 /* BINLOG_DUMP options */
 
@@ -925,6 +898,8 @@ struct Query_cache_query_flags
   unsigned int client_protocol_41:1;
   unsigned int protocol_type:2;
   unsigned int more_results_exists:1;
+  unsigned int in_trans:1;
+  unsigned int autocommit:1;
   unsigned int pkt_nr;
   uint character_set_client_num;
   uint character_set_results_num;
@@ -1845,6 +1820,7 @@ void TEST_filesort(SORT_FIELD *sortorder,uint s_length);
 void print_plan(JOIN* join,uint idx, double record_count, double read_time,
                 double current_read_time, const char *info);
 void print_keyuse_array(DYNAMIC_ARRAY *keyuse_array);
+void print_sjm(SJ_MATERIALIZATION_INFO *sjm);
 #define EXTRA_DEBUG_DUMP_TABLE_LISTS
 #ifdef EXTRA_DEBUG_DUMP_TABLE_LISTS
 void dump_TABLE_LIST_graph(SELECT_LEX *select_lex, TABLE_LIST* tl);
@@ -1976,6 +1952,8 @@ extern ulong slow_launch_threads, slow_launch_time;
 extern ulong table_cache_size, table_def_size;
 extern ulong max_connections,max_connect_errors, connect_timeout;
 extern my_bool slave_allow_batching;
+extern my_bool allow_slave_start;
+extern LEX_CSTRING reason_slave_blocked;
 extern ulong slave_net_timeout, slave_trans_retries;
 extern uint max_user_connections;
 extern ulong what_to_log,flush_time;
@@ -1992,7 +1970,8 @@ extern ulong specialflag;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
 extern ulong current_pid;
-extern ulong expire_logs_days, sync_binlog_period, sync_binlog_counter;
+extern ulong expire_logs_days;
+extern uint sync_binlog_period, sync_relaylog_period;
 extern ulong opt_tc_log_size, tc_log_max_pages_used, tc_log_page_size;
 extern ulong tc_log_page_waits;
 extern my_bool relay_log_purge, opt_innodb_safe_binlog, opt_innodb;
@@ -2066,7 +2045,7 @@ extern pthread_mutex_t LOCK_mysql_create_db, LOCK_open, LOCK_lock_db,
        LOCK_error_log, LOCK_delayed_insert, LOCK_uuid_short,
        LOCK_delayed_status, LOCK_delayed_create, LOCK_crypt, LOCK_timezone,
        LOCK_slave_list, LOCK_active_mi, LOCK_manager, LOCK_global_read_lock,
-       LOCK_global_system_variables, LOCK_user_conn,
+       LOCK_global_system_variables, LOCK_user_conn, LOCK_slave_start,
        LOCK_prepared_stmt_count,
        LOCK_connection_count;
 #ifdef HAVE_OPENSSL
@@ -2319,6 +2298,7 @@ uint strconvert(CHARSET_INFO *from_cs, const char *from,
                 CHARSET_INFO *to_cs, char *to, uint to_length, uint *errors);
 uint filename_to_tablename(const char *from, char *to, uint to_length);
 uint tablename_to_filename(const char *from, char *to, uint to_length);
+uint check_n_cut_mysql50_prefix(const char *from, char *to, uint to_length);
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
 uint build_table_filename(char *buff, size_t bufflen, const char *db,
