@@ -106,7 +106,7 @@ bool RecordScavenge::canBeRetired(Record* record)
 
 Record* RecordScavenge::inventoryRecord(Record* record)
 {
-	int chainLength = 0;
+	uint64 chainLength = 0;
 	Record *oldestVisibleRec = NULL;
 
 	Sync syncPrior(record->getSyncPrior(), "RecordScavenge::inventoryRecord");
