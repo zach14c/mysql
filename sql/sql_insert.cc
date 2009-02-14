@@ -1733,6 +1733,7 @@ public:
 
 class Delayed_insert :public ilink {
   uint locks_in_memory;
+  thr_lock_type delayed_lock;
 public:
   THD thd;
   TABLE *table;
@@ -1775,6 +1776,8 @@ public:
     pthread_cond_init(&cond_client,NULL);
     pthread_mutex_lock(&LOCK_thread_count);
     delayed_insert_threads++;
+    delayed_lock= global_system_variables.low_priority_updates ?
+                                          TL_WRITE_LOW_PRIORITY : TL_WRITE;
     pthread_mutex_unlock(&LOCK_thread_count);
   }
   ~Delayed_insert()
@@ -2614,7 +2617,7 @@ bool Delayed_insert::handle_inserts(void)
   table->use_all_columns();
 
   thd_proc_info(&thd, "upgrading lock");
-  if (thr_upgrade_write_delay_lock(*thd.lock->locks))
+  if (thr_upgrade_write_delay_lock(*thd.lock->locks, delayed_lock))
   {
     /*
       This can happen if thread is killed either by a shutdown

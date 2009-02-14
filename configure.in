@@ -2,17 +2,19 @@ dnl -*- ksh -*-
 dnl Process this file with autoconf to produce a configure script.
 
 # Minimum Autoconf version required.
-AC_PREREQ(2.52)
+AC_PREREQ(2.59)
 
-AC_INIT(sql/mysqld.cc)
-AC_CANONICAL_SYSTEM
-# The Docs Makefile.am parses this line!
-# remember to also update version.c in ndb.
+# Remember to also update version.c in ndb.
 # When changing major version number please also check switch statement
 # in mysqlbinlog::check_master_version().
+AC_INIT([MySQL Server], [6.0.10-alpha], [], [mysql])
+AC_CONFIG_SRCDIR([sql/mysqld.cc])
+AC_CANONICAL_TARGET
+# automake 1.9.2 has 'filename-length-max=99', but not 1.6.2
+AM_INIT_AUTOMAKE([1.6.2])
+AC_PROG_LIBTOOL
 
-AM_INIT_AUTOMAKE(mysql, 6.0.10-alpha)
-AM_CONFIG_HEADER([include/config.h:config.h.in])
+AC_CONFIG_HEADERS([include/config.h])
 
 NDB_VERSION_MAJOR=6
 NDB_VERSION_MINOR=2
@@ -64,8 +66,8 @@ sinclude(config/ac-macros/readline.m4)
 sinclude(config/ac-macros/ssl.m4)
 sinclude(config/ac-macros/libevent.m4)
 sinclude(config/ac-macros/zlib.m4)
-sinclude(config/search_for_lib.m4)
-sinclude(config/libmemcached.m4)
+sinclude(config/ac-macros/search_for_lib.m4)
+sinclude(config/ac-macros/libmemcached.m4)
 
 # Remember to add a directory sql/share/LANGUAGE
 AVAILABLE_LANGUAGES="\
@@ -134,8 +136,6 @@ AC_SUBST(SAVE_LDFLAGS)
 AC_SUBST(SAVE_CXXLDFLAGS)
 AC_SUBST(CXXLDFLAGS)
 
-#AC_ARG_PROGRAM			# Automaticly invoked by AM_INIT_AUTOMAKE
-
 AM_SANITY_CHECK
 # This is needed is SUBDIRS is set
 AC_PROG_MAKE_SET
@@ -193,8 +193,8 @@ CXXFLAGS="$CXXFLAGS $C_EXTRA_FLAGS "
 
 dnl Checks for programs.
 AC_PROG_AWK
-AC_PROG_CC
-AC_PROG_CXX
+AC_PROG_CC			dnl Sets $GCC="yes" if GNU C
+AC_PROG_CXX			dnl Sets $GXX="yes" if GNU C++
 AC_PROG_CPP
 
 # Print version of CC and CXX compiler (if they support --version)
@@ -219,14 +219,14 @@ MYSQL_CHECK_CXX_VERSION
 # Fix for sgi gcc / sgiCC which tries to emulate gcc
 if test "$CC" = "sgicc"
 then
-  ac_cv_prog_gcc="no"
+  GCC="no"
 fi
 if test "$CXX" = "sgi++"
 then
   GXX="no"
 fi
 
-if test "$ac_cv_prog_gcc" = "yes"
+if test "$GCC" = "yes"
 then
   AS="$CC -c"
   AC_SUBST(AS)
@@ -236,9 +236,6 @@ fi
 
 # Still need ranlib for readline; local static use only so no libtool.
 AC_PROG_RANLIB
-# We use libtool
-#AC_LIBTOOL_WIN32_DLL
-AC_PROG_LIBTOOL
 
 # Ensure that we have --preserve-dup-deps defines, otherwise we get link
 # problems of 'mysql' with CXX=g++
@@ -263,33 +260,33 @@ AC_CHECK_PROGS(YACC, ['bison -y -p MYSQL'])
 
 #check the return type of sprintf
 AC_MSG_CHECKING("return type of sprintf")
-AC_TRY_RUN([
-  int main()
-    {
+AC_RUN_IFELSE(
+  [AC_LANG_PROGRAM([],
+     [[
       char* s = "hello";
       char buf[6];
       if((int)sprintf(buf, s) == strlen(s))
 	return 0;
-      
       return -1;
-     }
-   ],
+     ]]
+  )],
    [AC_DEFINE(SPRINTF_RETURNS_INT, [1], [POSIX sprintf])
    AC_MSG_RESULT("int")],
-   [AC_TRY_RUN([
- int main()
-   {
+  [AC_RUN_IFELSE(
+     [AC_LANG_PROGRAM([],
+        [[
      char* s = "hello";
      char buf[6];
      if((char*)sprintf(buf,s) == buf + strlen(s))
        return 0;
      return -1;
-   }           ],
+        ]]
+     )],
                [AC_DEFINE(SPRINTF_RETURNS_PTR, [1], [Broken sprintf])
                 AC_MSG_RESULT("ptr")],
                [AC_DEFINE(SPRINTF_RETURNS_GARBAGE, [1], [Broken sprintf])
-                AC_MSG_RESULT("garbage")]
-   )],
+      AC_MSG_RESULT("garbage")],
+     [foobar=1])],	dnl Unreachable, but to avoid warning set something
    # Cross compile, assume POSIX
    [AC_DEFINE(SPRINTF_RETURNS_INT, [1], [POSIX sprintf])
     AC_MSG_RESULT("int (we assume)")]
@@ -643,7 +640,7 @@ fi
 
 AC_MSG_CHECKING(whether features provided by the user community should be included.)
 AC_ARG_ENABLE(community-features,
-    AC_HELP_STRING(
+    AS_HELP_STRING(
         [--enable-community-features], 
         [Enable additional features provided by the user community.]),
     [ ENABLE_COMMUNITY_FEATURES=$enableval ],
@@ -916,25 +913,32 @@ AC_ARG_WITH(libwrap,
     fi
 
     _libs=${LIBS}
+
     AC_CHECK_HEADER(tcpd.h,
       LIBS="-lwrap $LIBS"
       AC_MSG_CHECKING(for TCP wrappers library -lwrap)
-      AC_TRY_LINK([#include <tcpd.h>
+      AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM(
+           [[
+	     #include <tcpd.h>
 int allow_severity = 0;
 int deny_severity  = 0;
-
 struct request_info *req;
-],[hosts_access (req)],
-        AC_MSG_RESULT(yes)
-        AC_DEFINE([LIBWRAP], [1], [Define if you have -lwrap])
+           ]],
+           [[
+             hosts_access (req);
+           ]]
+        )],
+        [AC_MSG_RESULT(yes)
         AC_DEFINE([HAVE_LIBWRAP], [1], [Define if have -lwrap])
 	if test "$with_libwrap" != "yes"; then
 	    WRAPLIBS="-L${with_libwrap}/lib"
 	fi
-	WRAPLIBS="${WRAPLIBS} -lwrap",
-        AC_MSG_RESULT(no)
-        CPPFLAGS=${_cppflags} LDFLAGS=${_ldflags}),
-      CPPFLAGS=${_cppflags} LDFLAGS=${_ldflags})
+	 WRAPLIBS="${WRAPLIBS} -lwrap"],
+        [AC_MSG_RESULT(no)
+         CPPFLAGS=${_cppflags} LDFLAGS=${_ldflags}]),
+      [CPPFLAGS=${_cppflags} LDFLAGS=${_ldflags}])
+
     LDFLAGS=${_ldflags} LIBS=${_libs}
     ;;
   esac
@@ -993,13 +997,13 @@ fi
 NON_THREADED_LIBS="$LIBS"
 
 AC_CHECK_TYPES([int8, uint8, int16, uint16, int32, uint32, int64, uint64,
-                uchar, uint, ulong],[],[], [
+                uchar, uint, ulong],[],[], [[
 #include <sys/types.h>
-])
-AC_CHECK_TYPES([fp_except], [], [], [
+]])
+AC_CHECK_TYPES([fp_except], [], [], [[
 #include <sys/types.h>
 #include <ieeefp.h>
-])
+]])
 
 #
 # Some system specific hacks
@@ -1070,7 +1074,7 @@ case $SYSTEM_TYPE in
       with_named_thread="-lpthread"
     fi
     # Fixes for HPUX 11.0 compiler
-    if test "$ac_cv_prog_gcc" = "no"
+    if test "$GCC" != "yes"
     then
       CFLAGS="$CFLAGS -DHAVE_BROKEN_INLINE"
 # set working flags first in line, letting override it (i. e. for debug):
@@ -1081,7 +1085,7 @@ case $SYSTEM_TYPE in
     fi
     ;;
   *rhapsody*)
-    if test "$ac_cv_prog_gcc" = "yes"
+    if test "$GCC" = "yes"
     then
       CPPFLAGS="$CPPFLAGS -traditional-cpp "
       CFLAGS="-DHAVE_CTHREADS_WRAPPER -DDO_NOT_REMOVE_THREAD_WRAPPERS"
@@ -1093,7 +1097,7 @@ case $SYSTEM_TYPE in
     fi
     ;;
   *darwin5*)
-    if test "$ac_cv_prog_gcc" = "yes"
+    if test "$GCC" = "yes"
     then
       FLAGS="-traditional-cpp -DHAVE_DARWIN5_THREADS -D_P1003_1B_VISIBLE -DSIGNAL_WITH_VIO_CLOSE -DSIGNALS_DONT_BREAK_READ -DHAVE_BROKEN_REALPATH"
       CFLAGS="$CFLAGS $FLAGS"
@@ -1103,7 +1107,7 @@ case $SYSTEM_TYPE in
     fi
     ;;
   *darwin6*)
-    if test "$ac_cv_prog_gcc" = "yes"
+    if test "$GCC" = "yes"
     then
       FLAGS="-D_P1003_1B_VISIBLE -DSIGNAL_WITH_VIO_CLOSE -DSIGNALS_DONT_BREAK_READ -DHAVE_BROKEN_REALPATH -DDONT_DECLARE_CXA_PURE_VIRTUAL "
       CFLAGS="$CFLAGS $FLAGS"
@@ -1112,7 +1116,7 @@ case $SYSTEM_TYPE in
     fi
     ;;
   *darwin*)
-    if test "$ac_cv_prog_gcc" = "yes"
+    if test "$GCC" = "yes"
     then
       FLAGS="-D_P1003_1B_VISIBLE -DSIGNAL_WITH_VIO_CLOSE -DSIGNALS_DONT_BREAK_READ -DIGNORE_SIGHUP_SIGQUIT  -DDONT_DECLARE_CXA_PURE_VIRTUAL"
       CFLAGS="$CFLAGS $FLAGS"
@@ -1160,7 +1164,7 @@ case $SYSTEM_TYPE in
     ;;
 dnl Is this the right match for DEC OSF on alpha?
     *dec-osf*)
-      if test "$ac_cv_prog_gcc" = "yes" && test "$host_cpu" = "alpha"
+      if test "$GCC" = "yes" && test "$host_cpu" = "alpha"
       then
 	  AC_MSG_WARN([Adding defines for DEC OSF on alpha])
 	  CFLAGS="$CFLAGS -mieee"
@@ -1311,8 +1315,13 @@ then
             AC_DEFINE([HAVE_LINUXTHREADS], [1],
                   [Whether we are using Xavier Leroy's LinuxThreads])
             # Linux 2.0 sanity check
-            AC_TRY_COMPILE([#include <sched.h>], [int a = sched_get_priority_min(1);], ,
-                  AC_MSG_ERROR([Syntax error in sched.h. Change _P to __P in the /usr/include/sched.h file. See the Installation chapter in the Reference Manual]))
+            AC_COMPILE_IFELSE(
+              [AC_LANG_PROGRAM(
+                 [[#include <sched.h>]],
+                 [[int a = sched_get_priority_min(1);]]
+              )],
+	      [],
+              [AC_MSG_ERROR([Syntax error in sched.h. Change _P to __P in the /usr/include/sched.h file. See the Installation chapter in the Reference Manual])])
             # RedHat 5.0 does not work with dynamic linking of this. -static also
             # gives a speed increase in linux so it does not hurt on other systems.
             with_named_thread="-lpthread"
@@ -1330,9 +1339,12 @@ See the Installation chapter in the Reference Manual for more information.])
         AC_MSG_CHECKING("for pthread_create in -lpthread")
         ac_save_LIBS="$LIBS"
         LIBS="$LIBS -lpthread"
-        AC_TRY_LINK( [#include <pthread.h>],
-              [ (void) pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0); ],
-              AC_MSG_RESULT("yes"),
+        AC_LINK_IFELSE(
+          [AC_LANG_PROGRAM(
+             [[#include <pthread.h>]],
+             [[(void) pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0);]]
+          )],
+          [AC_MSG_RESULT("yes")],
               [ AC_MSG_RESULT("no")
                 AC_MSG_ERROR([
 This is a Linux system claiming to support threads, either Linuxthreads or NPTL, but linking a test program failed.  
@@ -1541,10 +1553,13 @@ else
   AC_MSG_RESULT("no")
   # pthread_create is in standard libraries (As in BSDI 3.0)
   AC_MSG_CHECKING("for pthread_create in -libc");
-  AC_TRY_LINK(
-  [#include <pthread.h>],
-  [ (void) pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0); ],
-  with_posix_threads=yes, with_posix_threads=no)
+  AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM(
+       [[#include <pthread.h>]],
+       [[(void) pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0);]]
+    )],
+    [with_posix_threads=yes],
+    [with_posix_threads=no])
   AC_MSG_RESULT("$with_posix_threads")
   if test "$with_posix_threads" = "no"
   then
@@ -1552,20 +1567,26 @@ else
     ac_save_LIBS="$LIBS"
     LIBS="$LIBS -lpthread"
     CLIENT_THREAD_LIBS="-lpthread"
-    AC_TRY_LINK(
-    [#include <pthread.h>],
-    [ (void) pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0); ],
-    with_posix_threads=yes, with_posix_threads=no)
+    AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM(
+         [[#include <pthread.h>]],
+         [[(void) pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0);]]
+      )],
+      [with_posix_threads=yes],
+      [with_posix_threads=no])
     AC_MSG_RESULT("$with_posix_threads")
     if test "$with_posix_threads" = "no"
     then
       LIBS=" $ac_save_LIBS -lpthreads"
       CLIENT_THREAD_LIBS="-lpthreads"
       AC_MSG_CHECKING("for pthread_create in -lpthreads")
-      AC_TRY_LINK(
-      [#include <pthread.h>],
-      [ pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0); ],
-      with_posix_threads=yes, with_posix_threads=no)
+      AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM(
+           [[#include <pthread.h>]],
+           [[pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0);]]
+        )],
+        [with_posix_threads=yes],
+        [with_posix_threads=no])
       AC_MSG_RESULT("$with_posix_threads")
       if test "$with_posix_threads" = "no"
       then
@@ -1573,10 +1594,13 @@ else
         LIBS="$ac_save_LIBS -pthread"
         CLIENT_THREAD_LIBS="-pthread"
         AC_MSG_CHECKING("for pthread_create in -pthread")
-        AC_TRY_LINK(
-        [#include <pthread.h>],
-        [ pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0); ],
-        with_posix_threads=yes, with_posix_threads=no)
+        AC_LINK_IFELSE(
+          [AC_LANG_PROGRAM(
+             [[#include <pthread.h>]],
+             [[pthread_create((pthread_t*) 0,(pthread_attr_t*) 0, 0, 0);]]
+          )],
+          [with_posix_threads=yes],
+          [with_posix_threads=no])
         AC_MSG_RESULT("$with_posix_threads")
       fi
     fi
@@ -1636,17 +1660,9 @@ case "$with_mysqld_ldflags " in
 esac
 
 
-# System characteristics
-case $SYSTEM_TYPE in
-  *netware*) ;;
-  *)
-AC_SYS_RESTARTABLE_SYSCALLS
-    ;;
-esac
-
 # Build optimized or debug version ?
 # First check for gcc and g++
-if test "$ac_cv_prog_gcc" = "yes"
+if test "$GCC" = "yes"
 then
   DEBUG_CFLAGS="-g"
   DEBUG_OPTIMIZE_CC="-O"
@@ -1734,7 +1750,7 @@ fi
 
 # If we should allow error injection tests
 AC_ARG_WITH(error-inject,
-    AC_HELP_STRING([--with-error-inject],[Enable error injection in MySQL Server]),
+    AS_HELP_STRING([--with-error-inject],[Enable error injection in MySQL Server]),
     [ with_error_inject=$withval ],
     [ with_error_inject=no ])
 
@@ -1748,7 +1764,7 @@ then
 fi
 
 AC_ARG_WITH([fast-mutexes],
-	    AC_HELP_STRING([--with-fast-mutexes], 
+	    AS_HELP_STRING([--with-fast-mutexes], 
 	    [Compile with fast mutexes (default is disabled)]),
 	    [with_fast_mutexes=$withval], [with_fast_mutexes=no])
 
@@ -1764,7 +1780,7 @@ then
 fi
 
 AC_ARG_WITH([atomic-ops],
-	    AC_HELP_STRING([--with-atomic-ops=rwlocks|smp|up],
+	    AS_HELP_STRING([--with-atomic-ops=rwlocks|smp|up],
 	    [Implement atomic operations using pthread rwlocks or atomic CPU
              instructions for multi-processor or uniprocessor
              configuration. By default gcc built-in sync functions are used,
@@ -1776,11 +1792,14 @@ case "$with_atomic_ops" in
                   [Use pthread rwlocks for atomic ops]) ;;
   "smp") ;;
   "")
-    AC_CACHE_CHECK([whether the compiler provides atomic builtins],
-                   [mysql_cv_gcc_atomic_builtins], [AC_TRY_RUN([
-      int main()
-      {
-        int foo= -10; int bar= 10;
+    AC_CACHE_CHECK(
+      [whether the compiler provides atomic builtins],
+      [mysql_cv_gcc_atomic_builtins],
+      [AC_RUN_IFELSE(
+         [AC_LANG_PROGRAM([],
+            [[
+	      int foo= -10;
+              int bar=  10;
         if (!__sync_fetch_and_add(&foo, bar) || foo)
           return -1;
         bar= __sync_lock_test_and_set(&foo, bar);
@@ -1790,8 +1809,9 @@ case "$with_atomic_ops" in
         if (bar)
           return -1;
         return 0;
-      }
-    ], [mysql_cv_gcc_atomic_builtins=yes_but_disabled],
+            ]]
+         )],
+         [mysql_cv_gcc_atomic_builtins=yes_but_disabled],
        [mysql_cv_gcc_atomic_builtins=no],
        [mysql_cv_gcc_atomic_builtins=no])])
 
@@ -1836,7 +1856,7 @@ AC_ARG_WITH(low-memory,
     [with_lowmem=no])
 if test "$with_lowmem" = "yes"
 then
-  if test "$ac_cv_prog_gcc" = "yes" 
+  if test "$GCC" = "yes" 
   then 
     LM_CFLAGS="-fno-inline"
   else
@@ -1860,7 +1880,7 @@ fi
 AC_SUBST(COMPILATION_COMMENT)
 
 AC_MSG_CHECKING("need of special linking flags")
-if test "$TARGET_LINUX" = "true" -a "$ac_cv_prog_gcc" = "yes" -a "$all_is_static" != "yes"
+if test "$TARGET_LINUX" = "true" -a "$GCC" = "yes" -a "$all_is_static" != "yes"
 then
   LDFLAGS="$LDFLAGS -rdynamic"
   AC_MSG_RESULT("-rdynamic")
@@ -1883,7 +1903,6 @@ dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_C_INLINE
 AC_TYPE_OFF_T
-AC_STRUCT_ST_RDEV
 AC_HEADER_TIME
 AC_STRUCT_TM
 MYSQL_NEEDS_MYSYS_NEW
@@ -1936,12 +1955,18 @@ MYSQL_CHECK_TIME_T
 AC_MSG_CHECKING(the need for @%:@pragma interface/implementation)
 # instead of trying to match SYSTEM_TYPE and CC_VERSION (that doesn't
 # follow any standard), we'll use well-defined preprocessor macros:
-AC_TRY_CPP([
+AC_PREPROC_IFELSE(
+  [AC_LANG_PROGRAM(
+     [[
 #if !defined(__CYGWIN__) && !defined(__INTEL_COMPILER) && defined(__GNUC__) && (__GNUC__ < 3)
 #error USE_PRAGMA_IMPLEMENTATION
 #endif
-],AC_MSG_RESULT(no) ,AC_MSG_RESULT(yes) ; CXXFLAGS="$CXXFLAGS -DUSE_PRAGMA_IMPLEMENTATION")
-
+     ]],
+     []
+  )],
+  [AC_MSG_RESULT(no)],
+  [AC_MSG_RESULT(yes)
+   CXXFLAGS="$CXXFLAGS -DUSE_PRAGMA_IMPLEMENTATION"])
 # This always gives a warning. Ignore it unless you are cross compiling
 AC_C_BIGENDIAN
 #---START: Used in for client configure
@@ -1973,8 +1998,8 @@ case $SYSTEM_TYPE in
     fi
     ;;
 esac
-AC_CHECK_TYPES([sigset_t, off_t], [], [], [#include <sys/types.h>])
-AC_CHECK_TYPES([size_t], [], [], [#include <stdio.h>])
+AC_CHECK_TYPES([sigset_t, off_t], [], [], [[#include <sys/types.h>]])
+AC_CHECK_TYPES([size_t], [], [], [[#include <stdio.h>]])
 AC_CHECK_TYPES([u_int32_t])
 
 MYSQL_PTHREAD_YIELD
@@ -1989,7 +2014,6 @@ AC_CHECK_HEADERS(malloc.h sys/cdefs.h)
 dnl Checks for library functions.
 AC_FUNC_ALLOCA
 AC_PROG_GCC_TRADITIONAL
-AC_TYPE_SIGNAL
 AC_CHECK_FUNCS(re_comp regcomp strdup)
 
 dnl Sun compilers have their own vis.h that is about something
@@ -2018,7 +2042,6 @@ paths.h semaphore.h)
 # Already-done: strcasecmp
 AC_CHECK_FUNCS(lstat putenv select setenv setlocale strcoll tcgetattr)
 
-AC_STAT_MACROS_BROKEN
 MYSQL_SIGNAL_CHECK
 MYSQL_CHECK_GETPW_FUNCS
 MYSQL_HAVE_TIOCGWINSZ
@@ -2070,11 +2093,9 @@ dnl Checks for library functions.
 
 ORG_CFLAGS="$CFLAGS"
 if test "$GCC" != "yes"; then
-  AC_SYS_COMPILER_FLAG(-nolib_inline,nolib_inline,CFLAGS,[],[])
+  AC_SYS_COMPILER_FLAG([-nolib_inline],[nolib_inline],[CFLAGS])
 fi
 
-#AC_FUNC_MMAP
-AC_TYPE_SIGNAL
 MYSQL_TYPE_QSORT
 AC_FUNC_UTIME_NULL
 AC_FUNC_VPRINTF
@@ -2087,11 +2108,9 @@ AC_CHECK_FUNCS(alarm bcmp bfill bmove bsearch bzero \
   localtime_r gethrtime gmtime_r \
   locking longjmp lrand48 madvise mallinfo memcpy memmove \
   mkstemp mlockall perror poll pread pthread_attr_create mmap mmap64 getpagesize \
-  pthread_attr_getstacksize pthread_attr_setprio pthread_attr_setschedparam \
-  pthread_attr_setstacksize pthread_condattr_create pthread_getsequence_np \
-  pthread_key_delete pthread_rwlock_rdlock pthread_setprio pthread_setschedprio \
-  pthread_setprio_np pthread_setschedparam pthread_sigmask readlink \
-  realpath rename rint rwlock_init setupterm \
+  pthread_attr_getstacksize pthread_attr_setstacksize pthread_condattr_create \
+  pthread_getsequence_np pthread_key_delete pthread_rwlock_rdlock pthread_sigmask \
+  readlink realpath rename rint rwlock_init setupterm \
   shmget shmat shmdt shmctl sigaction sigemptyset sigaddset \
   sighold sigset sigthreadmask port_create sleep thr_yield \
   snprintf socket stpcpy strcasecmp strerror strsignal strnlen strpbrk strstr \
@@ -2117,17 +2136,24 @@ AC_CHECK_FUNCS(pthread_condattr_setclock)
 # Check that isinf() is available in math.h and can be used in both C and C++ 
 # code
 AC_MSG_CHECKING(for isinf in <math.h>)
-AC_TRY_LINK([#include <math.h>], [float f = 0.0; int r = isinf(f); return r],
-  AC_MSG_RESULT(yes)
+AC_LINK_IFELSE(
+  [AC_LANG_PROGRAM(
+     [[#include <math.h>]],
+     [[float f = 0.0; int r = isinf(f); return r]]
+  )],
+  [AC_MSG_RESULT(yes)
   AC_MSG_CHECKING(whether isinf() can be used in C++ code)
-  AC_LANG_SAVE
-  AC_LANG_CPLUSPLUS
-  AC_TRY_LINK([#include <math.h>], [float f = 0.0; int r = isinf(f); return r],
-    AC_MSG_RESULT(yes)
-    AC_DEFINE(HAVE_ISINF, [1], [isinf() macro or function]),
-    AC_MSG_RESULT(no))
-  AC_LANG_RESTORE,
-  AC_MSG_RESULT(no))
+   AC_LANG_PUSH([C++])
+   AC_LINK_IFELSE(
+     [AC_LANG_PROGRAM(
+        [[#include <math.h>]],
+        [[float f = 0.0; int r = isinf(f); return r]]
+     )],
+     [AC_MSG_RESULT(yes)
+      AC_DEFINE(HAVE_ISINF, [1], [isinf() macro or function])],
+     [AC_MSG_RESULT(no)])
+   AC_LANG_POP([C++])],
+  [AC_MSG_RESULT(no)])
  
 CFLAGS="$ORG_CFLAGS"
 
@@ -2143,8 +2169,7 @@ fi]
 # Check definition of gethostbyaddr_r (glibc2 defines this with 8 arguments)
 ac_save_CXXFLAGS="$CXXFLAGS"
 AC_CACHE_CHECK([style of gethost* routines], mysql_cv_gethost_style,
-AC_LANG_SAVE
-AC_LANG_CPLUSPLUS
+AC_LANG_PUSH([C++])
 
 # Test whether madvise() is declared in C++ code -- it is not on some
 # systems, such as Solaris
@@ -2161,13 +2186,15 @@ AC_CHECK_DECLS(madvise, [], [], [#if HAVE_SYS_MMAN_H
 # We also must remove -W and -Wcheck which on icc produces warnings that
 # we don't want to catch with -Werror
 
-if test "$ac_cv_prog_gxx" = "yes" -a "$with_other_libc" = "no"
+if test "$GXX" = "yes" -a "$with_other_libc" = "no"
 then
   CXXFLAGS=`echo "$CXXFLAGS -Werror" | sed -e 's/-fbranch-probabilities//; s/-Wall//; s/-ansi//; s/-pedantic//; s/-Wcheck//'`
 fi
 
-AC_TRY_COMPILE(
-[#undef inline
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM(
+     [[
+       #undef inline
 #if !defined(SCO) && !defined(__osf__) && !defined(_REENTRANT)
 #define _REENTRANT
 #endif
@@ -2176,12 +2203,19 @@ AC_TRY_COMPILE(
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <netdb.h>],
-[int skr;
- struct hostent *foo = gethostbyaddr_r((const char *) 0,
-  0, 0, (struct hostent *) 0, (char *) NULL,  0, &skr); return (foo == 0);],
-mysql_cv_gethost_style=solaris, mysql_cv_gethost_style=other))
-AC_LANG_RESTORE
+       #include <netdb.h>
+     ]],
+     [[
+       int skr;
+       struct hostent *foo =
+	  gethostbyaddr_r((const char *) 0,
+			  0, 0, (struct hostent *) 0, (char *) NULL,  0, &skr);
+       return (foo == 0);
+     ]]
+  )],
+  [mysql_cv_gethost_style=solaris],
+  [mysql_cv_gethost_style=other]))
+AC_LANG_POP([C++])
 CXXFLAGS="$ac_save_CXXFLAGS"
 if test "$mysql_cv_gethost_style" = "solaris"
 then
@@ -2194,14 +2228,15 @@ fi
 # Check definition of gethostbyname_r (glibc2.0.100 is different from Solaris)
 ac_save_CXXFLAGS="$CXXFLAGS"
 AC_CACHE_CHECK([style of gethostbyname_r routines], mysql_cv_gethostbyname_style,
-AC_LANG_SAVE
-AC_LANG_CPLUSPLUS
-if test "$ac_cv_prog_gxx" = "yes" -a "$with_other_libc" = "no"
+AC_LANG_PUSH([C++])
+if test "$GXX" = "yes" -a "$with_other_libc" = "no"
 then
   CXXFLAGS=`echo "$CXXFLAGS -Werror" | sed -e 's/-fbranch-probabilities//; s/-Wall//; s/-ansi//; s/-pedantic//; s/-Wcheck//'`
 fi
-AC_TRY_COMPILE(
-[#undef inline
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM(
+     [[
+       #undef inline
 #if !defined(SCO) && !defined(__osf__) && !defined(_REENTRANT)
 #define _REENTRANT
 #endif
@@ -2210,13 +2245,17 @@ AC_TRY_COMPILE(
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <netdb.h>],
-[int skr;
-
+       #include <netdb.h>
+     ]],
+     [[
+       int skr;
  skr = gethostbyname_r((const char *) 0,
-  (struct hostent*) 0, (char*) 0, 0, (struct hostent **) 0, &skr);],
-mysql_cv_gethostbyname_style=glibc2, mysql_cv_gethostbyname_style=other))
-AC_LANG_RESTORE
+	(struct hostent*) 0, (char*) 0, 0, (struct hostent **) 0, &skr);
+     ]]
+  )],
+  [mysql_cv_gethostbyname_style=glibc2],
+  [mysql_cv_gethostbyname_style=other]))
+AC_LANG_POP([C++])
 CXXFLAGS="$ac_save_CXXFLAGS"
 if test "$mysql_cv_gethostbyname_style" = "glibc2"
 then
@@ -2227,14 +2266,15 @@ fi
 # Check 3rd argument of getthostbyname_r
 ac_save_CXXFLAGS="$CXXFLAGS"
 AC_CACHE_CHECK([3 argument to gethostbyname_r routines], mysql_cv_gethostbyname_arg,
-AC_LANG_SAVE
-AC_LANG_CPLUSPLUS
-if test "$ac_cv_prog_gxx" = "yes" -a "$with_other_libc" = "no"
+AC_LANG_PUSH([C++])
+if test "$GXX" = "yes" -a "$with_other_libc" = "no"
 then
   CXXFLAGS=`echo "$CXXFLAGS -Werror" | sed -e 's/-fbranch-probabilities//; s/-Wall//; s/-ansi//; s/-pedantic//; s/-Wcheck//'`
 fi
-AC_TRY_COMPILE(
-[#undef inline
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM(
+     [[
+       #undef inline
 #if !defined(SCO) && !defined(__osf__) && !defined(_REENTRANT)
 #define _REENTRANT
 #endif
@@ -2243,12 +2283,18 @@ AC_TRY_COMPILE(
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <netdb.h>],
-[int skr;
-
- skr = gethostbyname_r((const char *) 0, (struct hostent*) 0, (struct hostent_data*) 0);],
-mysql_cv_gethostbyname_arg=hostent_data, mysql_cv_gethostbyname_arg=char))
-AC_LANG_RESTORE
+       #include <netdb.h>
+     ]],
+     [[
+       int skr;
+       skr = gethostbyname_r((const char *) 0, (struct hostent*) 0, (struct hostent_data*) 0);
+     ]]
+  )],
+  [mysql_cv_gethostbyname_arg=hostent_data],
+  [mysql_cv_gethostbyname_arg=char]
+  )
+)
+AC_LANG_POP([C++])
 CXXFLAGS="$ac_save_CXXFLAGS"
 if test "$mysql_cv_gethostbyname_arg" = "hostent_data"
 then
@@ -2259,15 +2305,24 @@ fi
 
 # Check definition of pthread_getspecific
 AC_CACHE_CHECK("args to pthread_getspecific", mysql_cv_getspecific_args,
-AC_TRY_COMPILE(
-[#if !defined(SCO) && !defined(__osf__) && !defined(_REENTRANT)
+  AC_COMPILE_IFELSE(
+    [AC_LANG_PROGRAM(
+       [[
+	 #if !defined(SCO) && !defined(__osf__) && !defined(_REENTRANT)
 #define _REENTRANT
 #endif
 #define _POSIX_PTHREAD_SEMANTICS 
-#include <pthread.h> ],
-[ void *pthread_getspecific(pthread_key_t key);
-pthread_getspecific((pthread_key_t) NULL); ],
-mysql_cv_getspecific_args=POSIX, mysql_cv_getspecific_args=other))
+	 #include <pthread.h>
+       ]],
+       [[
+	 void *pthread_getspecific(pthread_key_t key);
+	 pthread_getspecific((pthread_key_t) NULL);
+       ]]
+    )],
+    [mysql_cv_getspecific_args=POSIX],
+    [mysql_cv_getspecific_args=other]
+  )
+)
   if test "$mysql_cv_getspecific_args" = "other"
   then
     AC_DEFINE([HAVE_NONPOSIX_PTHREAD_GETSPECIFIC], [1],
@@ -2276,17 +2331,25 @@ mysql_cv_getspecific_args=POSIX, mysql_cv_getspecific_args=other))
 
   # Check definition of pthread_mutex_init
   AC_CACHE_CHECK("args to pthread_mutex_init", mysql_cv_mutex_init_args,
-  AC_TRY_COMPILE(
-[#if !defined(SCO) && !defined(__osf__)
+  AC_COMPILE_IFELSE(
+    [AC_LANG_PROGRAM(
+       [[
+	 #if !defined(SCO) && !defined(__osf__)
 #define _REENTRANT
 #endif
 #define _POSIX_PTHREAD_SEMANTICS 
-#include <pthread.h> ],
-[ 
+	 #include <pthread.h>
+       ]],
+       [[
   pthread_mutexattr_t attr;
   pthread_mutex_t mp;
-  pthread_mutex_init(&mp,&attr); ],
-mysql_cv_mutex_init_args=POSIX, mysql_cv_mutex_init_args=other))
+	 pthread_mutex_init(&mp,&attr);
+       ]]
+    )],
+    [mysql_cv_mutex_init_args=POSIX],
+    [mysql_cv_mutex_init_args=other]
+  )
+)
   if test "$mysql_cv_mutex_init_args" = "other"
   then
     AC_DEFINE([HAVE_NONPOSIX_PTHREAD_MUTEX_INIT], [1],
@@ -2297,16 +2360,25 @@ mysql_cv_mutex_init_args=POSIX, mysql_cv_mutex_init_args=other))
 #---START: Used in for client configure
 # Check definition of readdir_r
 AC_CACHE_CHECK("args to readdir_r", mysql_cv_readdir_r,
-AC_TRY_LINK(
-[#if !defined(SCO) && !defined(__osf__)
+  AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM(
+       [[
+	 #if !defined(SCO) && !defined(__osf__)
 #define _REENTRANT
 #endif
 #define _POSIX_PTHREAD_SEMANTICS 
 #include <pthread.h>
-#include <dirent.h>],
-[ int readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result);
-readdir_r((DIR *) NULL, (struct dirent *) NULL, (struct dirent **) NULL); ],
-mysql_cv_readdir_r=POSIX, mysql_cv_readdir_r=other))
+	 #include <dirent.h>
+       ]],
+       [[
+	 int readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result);
+	 readdir_r((DIR *) NULL, (struct dirent *) NULL, (struct dirent **) NULL);
+       ]]
+    )],
+    [mysql_cv_readdir_r=POSIX],
+    [mysql_cv_readdir_r=other]
+  )
+)
 if test "$mysql_cv_readdir_r" = "POSIX"
 then
   AC_DEFINE([HAVE_READDIR_R], [1], [POSIX readdir_r])
@@ -2314,19 +2386,27 @@ fi
 
 # Check definition of posix sigwait()
 AC_CACHE_CHECK("style of sigwait", mysql_cv_sigwait,
-AC_TRY_LINK(
-[#if !defined(SCO) && !defined(__osf__)
+  AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM(
+       [[
+	 #if !defined(SCO) && !defined(__osf__)
 #define _REENTRANT
 #endif
 #define _POSIX_PTHREAD_SEMANTICS 
 #include <pthread.h>
-#include <signal.h>],
-[#ifndef _AIX
+	 #include <signal.h>
+       ]],
+       [[
+	 #ifndef _AIX
 sigset_t set;
 int sig;
 sigwait(&set,&sig);
-#endif],
-mysql_cv_sigwait=POSIX, mysql_cv_sigwait=other))
+	 #endif
+       ]]
+    )],
+    [mysql_cv_sigwait=POSIX],
+    [mysql_cv_sigwait=other])
+)
 if test "$mysql_cv_sigwait" = "POSIX"
 then
   AC_DEFINE([HAVE_SIGWAIT], [1], [POSIX sigwait])
@@ -2337,17 +2417,26 @@ then
 unset mysql_cv_sigwait
 # Check definition of posix sigwait()
 AC_CACHE_CHECK("style of sigwait", mysql_cv_sigwait,
-AC_TRY_LINK(
-[#if !defined(SCO) && !defined(__osf__)
+  AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM(
+       [[
+	 #if !defined(SCO) && !defined(__osf__)
 #define _REENTRANT
 #endif
 #define _POSIX_PTHREAD_SEMANTICS 
 #include <pthread.h>
-#include <signal.h>],
-[sigset_t set;
+	 #include <signal.h>
+       ]],
+       [[
+	 sigset_t set;
 int sig;
-sigwait(&set);],
-mysql_cv_sigwait=NONPOSIX, mysql_cv_sigwait=other))
+	 sigwait(&set);
+       ]]
+    )],
+    [mysql_cv_sigwait=NONPOSIX],
+    [mysql_cv_sigwait=other]
+  )
+)
 if test "$mysql_cv_sigwait" = "NONPOSIX"
 then
   AC_DEFINE([HAVE_NONPOSIX_SIGWAIT], [1], [sigwait with one argument])
@@ -2357,15 +2446,24 @@ fi
 
 # Check if pthread_attr_setscope() exists
 AC_CACHE_CHECK("for pthread_attr_setscope", mysql_cv_pthread_attr_setscope,
-AC_TRY_LINK(
-[#if !defined(SCO) && !defined(__osf__)
+  AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM(
+       [[
+	 #if !defined(SCO) && !defined(__osf__)
 #define _REENTRANT
 #endif
 #define _POSIX_PTHREAD_SEMANTICS 
-#include <pthread.h>],
-[pthread_attr_t thr_attr;
-pthread_attr_setscope(&thr_attr,0);],
-mysql_cv_pthread_attr_setscope=yes, mysql_cv_pthread_attr_setscope=no))
+	 #include <pthread.h>
+       ]],
+       [[
+	 pthread_attr_t thr_attr;
+	 pthread_attr_setscope(&thr_attr,0);
+       ]]
+    )],
+    [mysql_cv_pthread_attr_setscope=yes],
+    [mysql_cv_pthread_attr_setscope=no]
+  )
+)
 if test "$mysql_cv_pthread_attr_setscope" = "yes"
 then
   AC_DEFINE([HAVE_PTHREAD_ATTR_SETSCOPE], [1], [pthread_attr_setscope])
@@ -2373,15 +2471,23 @@ fi
 
 # Check for bad includes
 AC_MSG_CHECKING("can netinet files be included")
-AC_TRY_COMPILE(
-[#include <sys/types.h>
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM(
+     [[
+       #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in_systm.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
-#include <netinet/tcp.h>],
-[ printf("1\n"); ],
-netinet_inc=yes, netinet_inc=no)
+       #include <netinet/tcp.h>
+     ]],
+     [[
+       printf("1\n");
+     ]]
+  )],
+  [netinet_inc=yes],
+  [netinet_inc=no]
+)
 if test "$netinet_inc" = "no"
 then
   AC_DEFINE([HAVE_BROKEN_NETINET_INCLUDES], [1], [Can netinet be included])
@@ -2389,35 +2495,52 @@ fi
 AC_MSG_RESULT("$netinet_inc")
 
 AC_CACHE_CHECK([support for weak symbols], mysql_cv_weak_symbol,
-[AC_TRY_LINK([],[
-  extern void __attribute__((weak)) foo(void);
-], [mysql_cv_weak_symbol=yes], [mysql_cv_weak_symbol=no])])
-
+  AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([],[[extern void __attribute__((weak)) foo(void);]])],
+    [mysql_cv_weak_symbol=yes],
+    [mysql_cv_weak_symbol=no]
+  )
+)
 if test "x$mysql_cv_weak_symbol" = xyes; then
   AC_DEFINE(HAVE_WEAK_SYMBOL, 1,
             [Define to 1 if compiler supports weak symbol attribute.])
 fi
 
 AC_CACHE_CHECK([whether __bss_start is defined], mysql_cv_bss_start,
-[AC_TRY_LINK([],[
+  AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([],
+       [[
   extern char *__bss_start;
   return __bss_start ? 1 : 0;
-], [mysql_cv_bss_start=yes], [mysql_cv_bss_start=no])])
-
+       ]]
+    )],
+    [mysql_cv_bss_start=yes],
+    [mysql_cv_bss_start=no]
+  )
+)
 if test "x$mysql_cv_bss_start" = xyes; then
   AC_DEFINE(HAVE_BSS_START, 1,
             [Define to 1 if compiler defines __bss_start.])
 fi
 
-AC_LANG_SAVE
-AC_LANG_CPLUSPLUS
+AC_LANG_PUSH([C++])
 AC_CHECK_HEADERS(cxxabi.h)
 AC_CACHE_CHECK([for abi::__cxa_demangle], mysql_cv_cxa_demangle,
-[AC_TRY_LINK([#include <cxxabi.h>], [
+  AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM(
+      [[
+        #include <cxxabi.h>
+      ]],
+      [[
   char *foo= 0; int bar= 0;
   foo= abi::__cxa_demangle(foo, foo, 0, &bar);
-], [mysql_cv_cxa_demangle=yes], [mysql_cv_cxa_demangle=no])])
-AC_LANG_RESTORE
+      ]]
+    )],
+    [mysql_cv_cxa_demangle=yes],
+    [mysql_cv_cxa_demangle=no]
+  )
+)
+AC_LANG_POP([C++])
 
 if test "x$mysql_cv_cxa_demangle" = xyes; then
   AC_DEFINE(HAVE_ABI_CXA_DEMANGLE, 1,
@@ -2627,12 +2750,11 @@ case $SYSTEM_TYPE in
 	AC_DEFINE_UNQUOTED(USE_NEW_READLINE_INTERFACE, 1)
     else
 	# Use system readline library
-	AC_LANG_SAVE
-	AC_LANG_CPLUSPLUS
+	AC_LANG_PUSH([C++])
 	MYSQL_CHECK_LIBEDIT_INTERFACE
 	MYSQL_CHECK_NEW_RL_INTERFACE
 	MYSQL_CHECK_READLINE_DECLARES_HIST_ENTRY
-	AC_LANG_RESTORE
+	AC_LANG_POP([C++])
 	if [test "$mysql_cv_new_rl_interface" = "yes"] && [test -d "$srcdir/cmd-line-utils/readline"]
 	then
 	    # Use the new readline interface, but only if the package includes a bundled libreadline
