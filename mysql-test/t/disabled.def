@@ -9,7 +9,6 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-lowercase_table3         : Bug#32667 lowercase_table3.test reports to error log
 ctype_create         : Bug#32965 main.ctype_create fails
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 delayed_insert_limit_func             : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
