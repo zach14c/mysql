@@ -2693,7 +2693,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			if (!activeTransaction)
 				{
 				activeTransaction = dup->getTransaction();
-				activeTransaction->addRef();
+				if (activeTransaction)
+					activeTransaction->addRef();
 				}
 
 			continue;  // check next record version
