@@ -407,6 +407,7 @@ int32 Dbb::findNextRecord(Section *section, int32 startingRecord, Stream *stream
 int32 Dbb::createIndex(TransId transId, int indexVersion)
 {
 	int indexId;
+	
 	switch (indexVersion)
 		{
 		case INDEX_VERSION_0:
