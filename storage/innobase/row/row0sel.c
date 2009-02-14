@@ -2588,8 +2588,8 @@ row_sel_store_mysql_rec(
 					template */
 	const ulint*	offsets, 	/* in: array returned by
 					rec_get_offsets() */
-	ulint		start_field_no,
-	ulint		end_field_no)
+	ulint		start_field_no,	/* in: start from this field */
+	ulint		end_field_no)	/* in: end at this field */
 {
 	mysql_row_templ_t*	templ;
 	mem_heap_t*		extern_field_heap	= NULL;
@@ -3043,9 +3043,9 @@ row_sel_push_cache_row_for_mysql(
 	row_prebuilt_t*	prebuilt,	/* in: prebuilt struct */
 	rec_t*		rec,		/* in: record to push */
 	const ulint*	offsets,	/* in: rec_get_offsets() */
-	ulint		start_field_no,	/* psergey: start from this field */
-	byte*		remainder_buf)	/* if above !=0 -> where to take
-					prev fields */
+	ulint		start_field_no,	/* in: start from this field */
+	byte*		remainder_buf)	/* in: if start_field_no !=0,
+					where to take prev fields */
 {
 	byte*	buf;
 	ulint	i;
@@ -3076,29 +3076,40 @@ row_sel_push_cache_row_for_mysql(
 	ut_ad(prebuilt->fetch_cache_first == 0);
 
 	if (UNIV_UNLIKELY(!row_sel_store_mysql_rec(
-				  prebuilt->fetch_cache[
+				prebuilt->fetch_cache[
 					  prebuilt->n_fetch_cached],
-				  prebuilt, rec, offsets, start_field_no,
-                                  prebuilt->n_template))) {
+				prebuilt,
+				rec,
+				offsets,
+				start_field_no,
+				prebuilt->n_template))) {
 		ut_error;
 	}
-        if (start_field_no) {
-          for (i=0; i < start_field_no; i++) {
-            register ulint offs;
-	    mysql_row_templ_t* templ;
-            templ = prebuilt->mysql_template + i;
 
-            if (templ->mysql_null_bit_mask) {
-              offs= templ->mysql_null_byte_offset;
-              *(prebuilt->fetch_cache[prebuilt->n_fetch_cached] + offs) ^= 
-                (*(remainder_buf + offs) & templ->mysql_null_bit_mask);
-            }
-            offs= templ->mysql_col_offset;
-            memcpy(prebuilt->fetch_cache[prebuilt->n_fetch_cached] + offs,
-                   remainder_buf + offs,
-                   templ->mysql_col_len);
-          }
-        }
+	if (start_field_no) {
+
+		for (i=0; i < start_field_no; i++) {
+			register		ulint offs;
+			mysql_row_templ_t*	templ;
+
+			templ = prebuilt->mysql_template + i;
+
+			if (templ->mysql_null_bit_mask) {
+				offs = templ->mysql_null_byte_offset;
+
+				*(prebuilt->fetch_cache[
+					  prebuilt->n_fetch_cached] + offs) ^=
+				(*(remainder_buf + offs)
+				& templ->mysql_null_bit_mask);
+			}
+
+			offs = templ->mysql_col_offset;
+			memcpy(prebuilt->fetch_cache[prebuilt->n_fetch_cached]
+			       + offs,
+			       remainder_buf + offs,
+			       templ->mysql_col_len);
+		}
+	}
 
 	prebuilt->n_fetch_cached++;
 }
