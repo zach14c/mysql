@@ -1014,18 +1014,17 @@ THR_LOCK_DATA **StorageInterface::store_lock(THD *thd, THR_LOCK_DATA **to,
 			lock_type = TL_WRITE_ALLOW_WRITE;
 
 		/*
-		  In queries of type INSERT INTO t1 SELECT ... FROM t2 ...
-		  MySQL would use the lock TL_READ_NO_INSERT on t2, and that
-		  would conflict with TL_WRITE_ALLOW_WRITE, blocking all inserts
-		  to t2. Convert the lock to a normal read lock to allow
-		  concurrent inserts to t2.
+                  In queries of type INSERT INTO t1 SELECT ... FROM t2 ...
+                  MySQL would use the lock TL_READ_NO_INSERT on t2 to prevent
+                  concurrent inserts into this table. Since Falcon can handle
+                  concurrent changes using own mechanisms and this type of
+                  lock conflicts with TL_WRITE_ALLOW_WRITE we convert it to
+                  a normal read lock to allow concurrent changes.
 		*/
 
-		#ifdef XXX_TALK_TO_SERGEI
-		if (lock_type == TL_READ_NO_INSERT && !thd_in_lock_tables(thd))
-			lock_type = TL_READ;
-		#endif
-
+		if (lock_type == TL_READ_NO_INSERT &&
+                    !(thd_in_lock_tables(thd) && sql_command == SQLCOM_LOCK_TABLES))
+                       lock_type = TL_READ;
 
 		lockData.type = lock_type;
 		}
