@@ -16,7 +16,7 @@
 # Re-enable implicit templates and exceptions
 MYSQL_EXTRA_CXXFLAGS = @FALCON_CXXFLAGS@
 
-INCLUDES= -I$(srcdir)/.. @ZLIB_INCLUDES@
+AM_CPPFLAGS = -I$(srcdir)/.. @ZLIB_INCLUDES@
 
 transform_sources=	 Base64Transform.cpp BERDecode.cpp BERException.cpp \
 			 FileTransform.cpp HexTransform.cpp NullTransform.cpp \
@@ -37,10 +37,8 @@ noinst_LTLIBRARIES=	 libtransform.la
 noinst_LIBRARIES=	 libtransform.a
 noinst_HEADERS=		$(transform_headers)
 
-libtransform_la_CXXFLAGS= $(AM_CXXFLAGS) $(INCLUDES)
+# Work around for "created both with libtool and without" error.
+# See http://www.gnu.org/software/automake/manual/html_node/Libtool-Issues.html
+libtransform_la_CXXFLAGS= $(AM_CXXFLAGS)
 libtransform_la_SOURCES= $(transform_sources)
-libtransform_a_CXXFLAGS= $(AM_CXXFLAGS) $(INCLUDES)
-libtransform_a_SOURCES=	 $(transform_sources)
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
+libtransform_a_SOURCES=	   $(transform_sources)

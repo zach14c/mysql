@@ -60,10 +60,4 @@ ndb_net.h
 EXTRA_DIST = debugger editline kernel logger mgmcommon \
 portlib transporter util
 
-dist-hook:
-	-rm -rf `find $(distdir) -type d -name SCCS`
-
 windoze-dsp:
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

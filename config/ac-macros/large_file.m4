@@ -8,8 +8,9 @@ dnl Written by Paul Eggert <eggert@twinsun.com>.
 
 dnl Internal subroutine of AC_SYS_LARGEFILE.
 dnl AC_SYS_LARGEFILE_FLAGS(FLAGSNAME)
-AC_DEFUN([AC_SYS_LARGEFILE_FLAGS],
-  [AC_CACHE_CHECK([for $1 value to request large file support],
+AC_DEFUN([AC_SYS_LARGEFILE_FLAGS], [
+  AC_REQUIRE([AC_PROG_CC])	dnl Make sure $GCC is set if GNU C
+  AC_CACHE_CHECK([for $1 value to request large file support],
      ac_cv_sys_largefile_$1,
      [if ($GETCONF LFS_$1) >conftest.1 2>conftest.2 && test ! -s conftest.2
       then
@@ -39,7 +40,10 @@ changequote([, ])dnl
 	   if test "$ac_cv_sys_largefile_CFLAGS" != no; then
 	     ac_save_CC="$CC"
 	     CC="$CC $ac_cv_sys_largefile_CFLAGS"
-	     AC_TRY_LINK(, , , ac_cv_sys_largefile_CFLAGS=no)
+	     AC_LINK_IFELSE(
+               [AC_LANG_PROGRAM([],[])],
+               [],
+               [ac_cv_sys_largefile_CFLAGS=no])
 	     CC="$ac_save_CC"
 	   fi])
       fi
