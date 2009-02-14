@@ -7483,6 +7483,7 @@ ha_innobase::store_lock(
 		    && isolation_level != TRX_ISO_SERIALIZABLE
 		    && (lock_type == TL_READ || lock_type == TL_READ_NO_INSERT)
 		    && (sql_command == SQLCOM_INSERT_SELECT
+			|| sql_command == SQLCOM_REPLACE_SELECT
 			|| sql_command == SQLCOM_UPDATE
 			|| sql_command == SQLCOM_CREATE_TABLE)) {
 
@@ -7490,10 +7491,11 @@ ha_innobase::store_lock(
 			option set or this session is using READ COMMITTED
 			isolation level and isolation level of the transaction
 			is not set to serializable and MySQL is doing
-			INSERT INTO...SELECT or UPDATE ... = (SELECT ...) or
-			CREATE  ... SELECT... without FOR UPDATE or
-			IN SHARE MODE in select, then we use consistent
-			read for select. */
+			INSERT INTO...SELECT or REPLACE INTO...SELECT
+			or UPDATE ... = (SELECT ...) or CREATE  ...
+			SELECT... without FOR UPDATE or IN SHARE
+			MODE in select, then we use consistent read
+			for select. */
 
 			prebuilt->select_lock_type = LOCK_NONE;
 			prebuilt->stored_select_lock_type = LOCK_NONE;
