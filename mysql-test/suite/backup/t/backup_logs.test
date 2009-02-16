@@ -143,15 +143,6 @@ SELECT operation,num_objects, username, command FROM mysql.backup_history
      WHERE backup_id=@bup_id;
 --remove_file $MYSQLD_DATADIR/backup_logs1.bak
 
---echo
---echo From the above tables we can notice that num_objects shows '0' if only DB
---echo is included in backup image(BUG#39109)
---echo
-
-# BUG#39109: Mysql Online Backup table doesn't show correct num_object count
-# Once BUG#39109 is fixed, all the objects should be listed in the num_object
-# count of backup_history log
-
 --echo Include all objects in database(Databases, tables, procedures and
 --echo functions, views, triggers and events) and perform backup operation.
 
@@ -330,7 +321,7 @@ from mysql.backup_history WHERE backup_id=500;
 --echo From backup_history log we will notice that "drivers" column will show
 --echo Myisam, snapshot, default and no-data drivers
 --echo "error_num" will be '0' as both backup and restore was successful
---echo "num_objects" count is always 5(as there are 5 tables in database).
+--echo "num_objects" count is 11: (1 db, 4 routines, 2 views, 3 tables, 1 db)
 --echo It does not list other objects from the backup image(BUG#39109)
 
 #Show results

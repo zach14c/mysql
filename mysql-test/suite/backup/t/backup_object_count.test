@@ -1,0 +1,113 @@
+#
+# This file tests that the backup_history table shows the correct
+# object count after performing a backup
+#
+# The following object types should be counted:
+#  - Tablespaces
+#  - Databases
+#  - Tables
+#  - Views
+#  - Routines (procedures, triggers etc)
+#
+# Privileges should not be counted.
+#
+
+--source include/not_embedded.inc
+--source include/have_falcon.inc
+
+let $MYSQLD_BACKUPDIR = `select @@backupdir`;
+
+--echo #
+--echo # Test 1 - Count database, table and view
+--echo #
+
+CREATE DATABASE objectcount;
+USE objectcount;
+
+CREATE TABLE t1(id int);
+CREATE TABLE t2(id int);
+
+--echo Creating view
+CREATE VIEW v1 AS SELECT * FROM t1;
+CREATE VIEW v2 AS SELECT * FROM t2;
+
+--echo # Perform backup
+--replace_column 1 #
+BACKUP DATABASE objectcount to 'objectcount.bak';
+
+--echo
+--echo # num_objects should be 5: 1 db, 2 tables, 2 views
+SELECT num_objects FROM mysql.backup_history ORDER BY backup_id DESC LIMIT 1;
+--echo
+
+--remove_file $MYSQLD_BACKUPDIR/objectcount.bak
+
+--echo #
+--echo # Test 2 - Count routines
+--echo #
+
+CREATE TRIGGER trg BEFORE INSERT ON t1 FOR EACH ROW SET @a:=1;
+CREATE PROCEDURE foo() INSERT INTO t2 VALUES (42);
+
+DELIMITER ||;
+CREATE FUNCTION bar(a int) RETURNS INTEGER
+BEGIN
+  RETURN a;
+END;
+||
+DELIMITER ;||
+
+--echo # Perform backup
+--replace_column 1 #
+BACKUP DATABASE objectcount to 'objectcount.bak';
+
+--echo
+--echo # num_objects should be 8: 5 in test 1 + 1 trigger, 1 proc, 1 func
+SELECT num_objects FROM mysql.backup_history ORDER BY backup_id DESC LIMIT 1;
+--echo
+
+--remove_file $MYSQLD_BACKUPDIR/objectcount.bak
+
+--echo #
+--echo # Test 3 - Count tablespace
+--echo #
+
+CREATE TABLESPACE ts ADD DATAFILE 'afile' ENGINE=FALCON;
+CREATE TABLE t3 (i INT) ENGINE=FALCON TABLESPACE ts;
+
+--echo # Perform backup
+--replace_column 1 #
+BACKUP DATABASE objectcount to 'objectcount.bak';
+
+--echo
+--echo # num_objects should be 10: 8 in test 2 + 1 ts, 1 table
+SELECT num_objects FROM mysql.backup_history ORDER BY backup_id DESC LIMIT 1;
+--echo
+
+--remove_file $MYSQLD_BACKUPDIR/objectcount.bak
+
+--echo #
+--echo # Test 4 - Grants and users are *not* counted
+--echo #
+
+CREATE USER 'bup_user1'@'%';
+GRANT ALL ON objectcount.* TO 'bup_user1'@'%';
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR 'bup_user1'@'%';
+
+--echo # Perform backup
+--replace_column 1 #
+BACKUP DATABASE objectcount to 'objectcount.bak';
+
+--echo
+--echo # num_objects should be 10: 10 in test 3 + 0
+SELECT num_objects FROM mysql.backup_history ORDER BY backup_id DESC LIMIT 1;
+--echo
+
+--echo #
+--echo # Cleanup
+--echo #
+
+DROP USER bup_user1;
+DROP DATABASE objectcount;
+--remove_file $MYSQLD_BACKUPDIR/objectcount.bak

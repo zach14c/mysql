@@ -90,9 +90,13 @@ public: // public interface
   size_t     data_size;      ///< How much of table data is saved in the image.
   st_bstream_binlog_pos  master_pos; ///< To store master position info.
 
+  ulong      object_count() const;
   ulong      table_count() const;
-  uint       db_count() const;
-  uint       ts_count() const;
+  ulong      view_count() const;
+  ulong      routine_count() const;
+  ulong      priv_count() const;
+  ulong      db_count() const;
+  ulong      ts_count() const;
   ushort     snap_count() const;
 
   // Examine contents of the catalogue.
@@ -148,10 +152,17 @@ protected: // internal interface
 protected:
 
   Image_info();
-  uint m_table_count;    ///< Number of tables in the image.
+  ulong m_table_count;    ///< Number of tables in the image.
+  ulong m_view_count;     ///< Number of views in the image
+  ulong m_routine_count;  ///< Number of stored routines in the image
+  ulong m_priv_count;     ///< Number of privileges in the image
+
   MEM_ROOT  mem_root;    ///< Memory root for storage of catalogue items.
 
   class Tables; ///< Implementation of Table_list interface. 
+
+  /// Increase counter for this object type
+  void count_object(const enum_bstream_item_type type);
 
 private:
 
@@ -721,16 +732,77 @@ Image_info::Dbobj_iterator::Dbobj_iterator(const Image_info &info, const Db &db)
  
  ********************************************************************/ 
 
+/**
+   Increase counter for this type of object. This is displayed as info
+   in the backup_history table.
+
+   @param[in] type type of the object
+*/
+inline
+void Image_info::count_object(const enum_bstream_item_type type)
+{
+
+  switch (type) {
+
+    case BSTREAM_IT_TABLE: 
+      m_table_count++;
+      break;
+    case BSTREAM_IT_VIEW: 
+      m_view_count++; 
+      break;
+    case BSTREAM_IT_SPROC: 
+    case BSTREAM_IT_SFUNC: 
+    case BSTREAM_IT_EVENT: 
+    case BSTREAM_IT_TRIGGER:
+      m_routine_count++;
+      break;
+    case BSTREAM_IT_PRIVILEGE: 
+      m_priv_count++;
+      break;
+                                  // ITEMS THAT ARE NOT COUNTED
+    case BSTREAM_IT_DB:           // counted via m_dbs.count()
+    case BSTREAM_IT_TABLESPACE:   // counted via m_ts_map.count()
+    case BSTREAM_IT_CHARSET:      // not counted yet
+    case BSTREAM_IT_USER:         // not counted yet
+      break;
+    default: 
+      // Fail if an item type is is not counted or ignored above. All
+      // item types should be explicitly handled by the switch
+      DBUG_ASSERT(FALSE);  
+  }
+}
+
+/**
+   Get number of named objects (ts, db, table, view, routines) in the
+   image.
+*/
+inline
+ulong Image_info::object_count() const
+{ 
+  return (db_count() +
+	  ts_count() +
+	  table_count() +
+	  view_count() +
+	  routine_count());
+}
+
+/// Returns number of routines in the image.
+inline
+ulong Image_info::routine_count() const
+{ 
+  return m_routine_count;
+}
+
 /// Returns number of databases in the image.
 inline
-uint Image_info::db_count() const
+ulong Image_info::db_count() const
 { 
   return m_dbs.count();
 }
 
 /// Returns number of tablespaces in the image.
 inline
-uint Image_info::ts_count() const
+ulong Image_info::ts_count() const
 { 
   return m_ts_map.count();
 }
@@ -740,6 +812,20 @@ inline
 ulong Image_info::table_count() const
 { 
   return m_table_count;
+}
+
+/// Returns total number of views in the image.
+inline
+ulong Image_info::view_count() const
+{ 
+  return m_view_count;
+}
+
+/// Returns total number of privileges in the image.
+inline
+ulong Image_info::priv_count() const
+{ 
+  return m_priv_count;
 }
 
 /// Returns number of snapshots used by the image.
