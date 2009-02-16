@@ -585,8 +585,6 @@ pthread_handler_t libevent_thread_proc(void *arg)
 
     /* set up the thd<->thread links. */
     thd->thread_stack= (char*) &thd;
-    thd->mysys_var->stack_ends_here= thd->thread_stack +
-                                     STACK_DIRECTION * (long)my_thread_stack_size;
 
     if (thd->scheduler.thread_attach())
     {
