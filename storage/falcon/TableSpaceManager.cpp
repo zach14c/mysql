@@ -217,19 +217,17 @@ void TableSpaceManager::bootstrap(int sectionId)
 		
 		TableSpace *tableSpace = new TableSpace(database, name.getString(), id.getInt(), fileName.getString(), type.getInt(), NULL);
 		Log::debug("New table space %s, id %d, type %d, filename %s\n", (const char*) tableSpace->name, tableSpace->tableSpaceId, tableSpace->type, (const char*) tableSpace->filename);
-		try 
+		try
 			{
 			tableSpace->open();
+			add(tableSpace);
 			}
 		catch(SQLException &e) 
 			{
 			Log::debug("Can't open tablespace %s, id %d : %s\n",
 				(const char*) tableSpace->name, tableSpace->tableSpaceId,e.getText());
 			delete tableSpace;
-			continue;
 			}
-
-		add(tableSpace);
 		stream.clear();
 		}
 }
@@ -417,7 +415,6 @@ void TableSpaceManager::redoCreateTableSpace(int id, int nameLength, const char*
 
 		dbb->create(tableSpace->filename, database->dbb->pageSize, 0, HdrTableSpace, 
 			NO_TRANSACTION, "", true);
-		dbb->close();
 
 		}
 	catch(SQLException& exception)
