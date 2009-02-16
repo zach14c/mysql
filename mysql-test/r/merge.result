@@ -995,6 +995,17 @@ SELECT MAX(a) FROM t1;
 MAX(a)
 NULL
 DROP TABLE t1;
+CREATE TABLE t1(a INT);
+CREATE TABLE t2(a VARCHAR(10));
+CREATE TABLE m1(a INT) ENGINE=MERGE UNION=(t1, t2);
+CREATE TABLE m2(a INT) ENGINE=MERGE UNION=(t1);
+SELECT * FROM t1;
+a
+SELECT * FROM m1;
+ERROR HY000: Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
+SELECT * FROM m2;
+a
+DROP TABLE t1, t2, m1, m2;
 End of 5.0 tests
 create table t1 (c1 int, index(c1));
 create table t2 (c1 int, index(c1)) engine=merge union=(t1);

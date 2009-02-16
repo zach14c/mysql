@@ -2000,6 +2000,7 @@ extern ulong log_output_options;
 extern ulong log_backup_output_options;
 extern my_bool opt_log_queries_not_using_indexes;
 extern bool opt_disable_networking, opt_skip_show_db;
+extern bool opt_ignore_builtin_innodb;
 extern my_bool opt_character_set_client_handshake;
 extern bool volatile abort_loop, shutdown_in_progress;
 extern uint volatile thread_count, thread_running, global_read_lock;
@@ -2283,7 +2284,7 @@ int create_frm(THD *thd, const char *name, const char *db, const char *table,
 	       HA_CREATE_INFO *create_info, uint keys, KEY *key_info);
 void update_create_info_from_table(HA_CREATE_INFO *info, TABLE *form);
 int rename_file_ext(const char * from,const char * to,const char * ext);
-bool check_db_name(LEX_STRING *db);
+bool check_and_convert_db_name(LEX_STRING *db, bool preserve_lettercase);
 bool check_column_name(const char *name);
 bool check_table_name(const char *name, uint length);
 char *get_field(MEM_ROOT *mem, Field *field);

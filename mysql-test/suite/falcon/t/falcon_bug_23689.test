@@ -1,4 +1,6 @@
 --source include/have_falcon.inc
+--source include/have_utf8.inc
+
 #
 # Bug #23689: Falcon: searches fail if exotic collation and index exists
 #

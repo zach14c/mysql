@@ -107,7 +107,6 @@ void Thread::init(const char *desc)
 	activeLocks = 0;
 	locks = NULL;
 	lockPending = NULL;
-	syncWait = NULL;
 	lockType = None;
 	defaultTimeZone = NULL;
 	javaThread = NULL;
@@ -450,12 +449,6 @@ void Thread::print(int level)
 		{
 		LOG_DEBUG ("%*sPending:\n", level * 2, "");
 		sync->print(level + 1);
-		}
-
-	if (syncWait)
-		{
-		LOG_DEBUG ("%*sWaiting:\n", level * 2, "");
-		syncWait->print(level + 1);
 		}
 }
 ***/

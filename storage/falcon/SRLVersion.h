@@ -42,7 +42,8 @@ static const int srlVersion12		= 12;	// Added index version number to SRLIndexPa
 static const int srlVersion13		= 13;	// Added savepoint id to SRLUpdateRecords		February 14, 2008
 static const int srlVersion14		= 14;	// Added supernodes logging	March 7, 2008
 static const int srlVersion15		= 15;	// Added tablespace parameters to SRLCreateTableSpace	March 27, 2008
-static const int srlCurrentVersion	= srlVersion15;
+static const int srlVersion16		= 16;	// Added SRLInventoryPage January 26, 2009
+static const int srlCurrentVersion	= srlVersion16;
 
 class SRLVersion : public SerialLogRecord  
 {

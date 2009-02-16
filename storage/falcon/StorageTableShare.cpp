@@ -49,6 +49,9 @@ static const char *DB_ROOT				= ".fts";
 static const char THIS_FILE[]=__FILE__;
 #endif
 
+extern void falcon_lock_init(void *lock);
+extern void falcon_lock_deinit(void *lock);
+
 StorageIndexDesc::StorageIndexDesc()
 {
 	id = 0;
@@ -124,6 +127,8 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 	storageHandler = handler;
 	storageDatabase = NULL;
 	impure = new UCHAR[lockSize];
+	falcon_lock_init(impure);
+
 	initialized = false;
 	table = NULL;
 	format = NULL;
@@ -148,6 +153,8 @@ StorageTableShare::~StorageTableShare(void)
 {
 	delete syncObject;
 	delete syncIndexMap;
+
+	falcon_lock_deinit(impure);
 	delete [] impure;
 	
 	if (storageDatabase)
@@ -258,7 +265,9 @@ int StorageTableShare::deleteTable(StorageConnection *storageConnection)
 int StorageTableShare::truncateTable(StorageConnection *storageConnection)
 {
 	int res = storageDatabase->truncateTable(storageConnection, this);
-	
+
+	sequence = storageDatabase->findSequence(name, schemaName);
+
 	return res;
 }
 
@@ -408,8 +417,7 @@ int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIn
 		
 	// Remove index description from index mapping
 	
-	if (!ret)
-		deleteIndex(indexDesc->id);
+	deleteIndex(indexDesc->id);
 				
 	return ret;
 }

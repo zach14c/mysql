@@ -17,10 +17,9 @@ MYSQLDATAdir =          $(localstatedir)
 MYSQLSHAREdir =         $(pkgdatadir)
 MYSQLBASEdir=           $(prefix)
 MYSQLLIBdir=            $(pkglibdir)
-INCLUDES =              -I$(top_srcdir)/include -I$(top_builddir)/include \
+AM_CPPFLAGS =              -I$(top_srcdir)/include \
 			-I$(top_srcdir)/regex \
-			-I$(top_srcdir)/sql \
-                        -I$(srcdir)
+			-I$(top_srcdir)/sql
 WRAPLIBS=
 
 LDADD =
@@ -70,7 +69,7 @@ maria_dump_log_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
 			$(top_builddir)/dbug/libdbuglt.la \
 			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 maria_dump_log_SOURCES= ma_loghandler.c unittest/ma_loghandler_examples.c
-maria_dump_log_CPPFLAGS= -DMARIA_DUMP_LOG
+maria_dump_log_CPPFLAGS= $(AM_CPPFLAGS) -DMARIA_DUMP_LOG
 noinst_PROGRAMS =	ma_test1 ma_test2 ma_test3 ma_rt_test ma_sp_test
 noinst_HEADERS =	maria_def.h ma_rt_index.h ma_rt_key.h ma_rt_mbr.h \
 			ma_sp_defs.h ma_fulltext.h ma_ftdefs.h ma_ft_test1.h \
@@ -200,6 +199,3 @@ test:
 
 test-verbose:
 	HARNESS_VERBOSE=1 perl $(top_srcdir)/unittest/unit.pl run $(unittests)
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

@@ -26,6 +26,3 @@ ndbd_redo_log_reader_LDFLAGS = @ndb_bin_am_ldflags@ \
          $(top_builddir)/dbug/libdbuglt.la \
          $(top_builddir)/mysys/libmysyslt.la \
          $(top_builddir)/strings/libmystringslt.la
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

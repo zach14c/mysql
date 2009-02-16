@@ -55,7 +55,7 @@ sub collect_option {
 }
 
 use File::Basename;
-use File::Spec::Functions qw / splitdir /;
+use File::Spec::Functions qw/ splitdir /;
 use IO::File();
 use My::Config;
 use My::Platform;

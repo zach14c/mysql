@@ -819,7 +819,8 @@ protected:
   enum_nested_loop_state join_matching_records(bool skip_last);
 
   /* Prepare to search for records that match records from the join buffer */
-  enum_nested_loop_state init_join_matching_records(RANGE_SEQ_IF *seq_funcs);
+  enum_nested_loop_state init_join_matching_records(RANGE_SEQ_IF *seq_funcs,
+                                                    uint ranges);
 
   /* Finish searching for records that match records from the join buffer */
   enum_nested_loop_state end_join_matching_records(enum_nested_loop_state rc);
@@ -973,6 +974,9 @@ private:
   uchar *hash_table;
   /* Number of hash entries in the hash table */
   uint hash_entries;
+
+  /* Number of key entries in the hash table (number of distinct keys) */
+  uint key_entries;
 
   /* The position of the last key entry in the hash table */
   uchar *last_key_entry;
@@ -1592,9 +1596,12 @@ public:
     cleared only at the end of the execution of the whole query and not caching
     allocations that occur in repetition at execution time will result in 
     excessive memory usage.
+    Note: make_simple_join always creates an execution plan that accesses
+    a single table, thus it is sufficient to have a one-element array for
+    table_reexec.
   */  
   SORT_FIELD *sortorder;                        // make_unireg_sortorder()
-  TABLE **table_reexec;                         // make_simple_join()
+  TABLE *table_reexec[1];                       // make_simple_join()
   JOIN_TAB *join_tab_reexec;                    // make_simple_join()
   /* end of allocation caching storage */
 
@@ -1624,7 +1631,7 @@ public:
     exec_tmp_table1= 0;
     exec_tmp_table2= 0;
     sortorder= 0;
-    table_reexec= 0;
+    table_reexec[0]= 0;
     join_tab_reexec= 0;
     thd= thd_arg;
     sum_funcs= sum_funcs2= 0;
@@ -1719,6 +1726,8 @@ public:
     return (unit == &thd->lex->unit && (unit->fake_select_lex == 0 ||
                                         select_lex == unit->fake_select_lex));
   }
+private:
+  bool make_simple_join(JOIN *join, TABLE *tmp_table);
 };
 
 

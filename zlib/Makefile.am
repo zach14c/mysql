@@ -15,7 +15,7 @@
 
 # Process this file with automake to create Makefile.in
 
-INCLUDES=		-I$(top_builddir)/include -I$(top_srcdir)/include
+AM_CPPFLAGS=	     -I$(top_srcdir)/include
 
 LIBS= $(NON_THREADED_LIBS)
 
@@ -33,6 +33,3 @@ libz_la_SOURCES    = adler32.c compress.c crc32.c deflate.c gzio.c \
 libzlt_la_SOURCES  = $(libz_la_SOURCES)
 
 EXTRA_DIST= README FAQ INDEX ChangeLog algorithm.txt zlib.3 CMakeLists.txt
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

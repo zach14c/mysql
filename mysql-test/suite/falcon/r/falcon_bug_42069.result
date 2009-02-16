@@ -1,0 +1,33 @@
+#
+# Bug #42069: Foreign keys: hang if two connections
+#
+# The fact that Falcon was not downgrading TL_READ_NO_INSERT
+# lock led to possibility of deadlocks involving SQL-layer
+# table locks even for statements which used only Falcon
+# tables.
+SET @@storage_engine = 'Falcon';
+drop tables if exists t1, t2;
+create table t1 (s1 int primary key);
+create table t2 (s1 int primary key);
+insert into t1 values (1);
+insert into t2 values (1);
+set @@autocommit= 0;
+# Start transaction which will put row-level "lock" on t1
+begin;
+update t1 set s1= s1 + 1;
+Switching to connection 'addcon'
+# Execute statement which will wait on this row-level "lock"
+# and which by default acquires TL_READ_NO_INSERT on t2.
+insert into t1 values (1) on duplicate key update s1= 1 + (select count(*) from t2);;
+Switching to connection 'default'
+# Wait till the above statement will start executing
+# This statement should not deadlock as there should be no
+# TL_READ_NO_INSERT lock on t2.
+insert into t2 values (2);
+# Rollback transaction to avoid "Record has changed since last read"
+# error in 'addcon' connection
+rollback;
+Switching to connection 'addcon'
+Switching to connection 'default'
+set @@autocommit= 1;
+drop tables t1, t2;

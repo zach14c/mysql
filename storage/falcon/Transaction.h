@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -42,6 +42,7 @@ class Bitmap;
 class Record;
 class InfoTable;
 class Thread;
+class TransactionManager;
 
 // Transaction States
 
@@ -90,9 +91,7 @@ public:
 	void		removeRecordNoLock (RecordVersion *record);
 	void		removeRecord(RecordVersion *record);
 	void		removeRecord (RecordVersion *record, RecordVersion **ptr);
-	void		expungeTransaction (Transaction *transaction);
 	void		commitRecords();
-	void		releaseDependencies();
 	bool		visible (Transaction *transaction, TransId transId, int forWhat);
 	bool		needToLock(Record* record);
 	void		addRecord (RecordVersion *record);
@@ -108,12 +107,10 @@ public:
 	void		truncateTable(Table* table);
 	bool		hasRecords(Table* table);
 	void		writeComplete(void);
-	void		releaseDependency(void);
 	int			createSavepoint();
 	void		releaseSavepoint(int savepointId);
 	void		releaseSavepoints(void);
 	void		rollbackSavepoint (int savepointId);
-	void		scavengeRecords(int ageGroup);
 	void		add(DeferredIndex* deferredIndex);
 	void		initialize(Connection* cnct, TransId seq);
 	bool		isXidEqual(int testLength, const UCHAR* test);
@@ -127,12 +124,13 @@ public:
 	void		fullyCommitted(void);
 	void		releaseCommittedTransaction(void);
 	void		commitNoUpdates(void);
-	void		validateDependencies(bool noDependencies);
 	void		validateRecords(void);
 	void		printBlocking(int level);
 	void		releaseDeferredIndexes(void);
 	void		releaseDeferredIndexes(Table* table);
 	void		backlogRecords(void);
+	bool		committedBefore(TransId transactionId);
+
 
 	inline bool isActive()
 		{
@@ -141,8 +139,9 @@ public:
 
 	Connection		*connection;
 	Database		*database;
-	TransId			transactionId;
-	TransId			oldestActive;
+	TransactionManager	*transactionManager;
+	TransId			transactionId;  // used also as startEvent by dep.mgr.
+	TransId			commitId;       // used as commitEvent by dep.mgr.
 	TransId			blockedBy;
 	int				curSavePointId;
 	Transaction		*next;			// next in database
@@ -157,12 +156,10 @@ public:
 	Bitmap			*backloggedRecords;
 	time_t			startTime;
 	int				deferredIndexCount;
-	int				statesAllocated;
 	int				isolationLevel;
 	int				xidLength;
 	int				mySqlThreadId;
 	UCHAR			*xid;
-	TransState		*states;
 	bool			commitTriggers;
 	bool			systemTransaction;
 	bool			hasUpdates;
@@ -187,9 +184,7 @@ public:
 	RecordVersion	**chillPoint;		// points to a pointer to the first non-chilled record
 	int				scanIndexCount;
 
-	volatile int			numberStates;
 	volatile INTERLOCK_TYPE	state;
-	volatile INTERLOCK_TYPE	dependencies;
 	volatile INTERLOCK_TYPE	useCount;
 	volatile INTERLOCK_TYPE	inList;
 

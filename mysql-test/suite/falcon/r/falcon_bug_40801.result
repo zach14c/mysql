@@ -1,0 +1,98 @@
+#---- Bug 40801 ----
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t1 (a  varchar(1000));
+INSERT INTO t1 VALUES (repeat('-', 1000));
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+INSERT INTO t1 SELECT * FROM t1;
+CREATE TABLE t2 (f1 CHAR(10) PRIMARY KEY);
+INSERT INTO t2 VALUES ('-');
+UPDATE t2 SET f1 = 'A';
+UPDATE t2 SET f1 = 'B';
+UPDATE t2 SET f1 = 'C';
+UPDATE t2 SET f1 = 'D';
+# Establish connection con1 (user=root)
+BEGIN;
+SELECT * FROM t2;
+f1
+D
+SELECT * FROM t2 WHERE f1 = 'D';
+f1
+D
+# Use default client to commit an update;
+# Change the field value to 'A'
+UPDATE t2 SET f1 = 'A';
+# Establish connection con2 (user=root)
+BEGIN;
+SELECT * FROM t2;
+f1
+A
+SELECT * FROM t2 WHERE f1 = 'A';
+f1
+A
+# Use default client to commit an update; 
+# Change the field value back to 'B'
+# and then 'C' in a second savepoint, then commit.
+BEGIN;
+UPDATE t2 SET f1 = 'B';
+SAVEPOINT sp1;
+UPDATE t2 SET f1 = 'C';
+RELEASE SAVEPOINT sp1;
+COMMIT;
+# Establish connection con3 (user=root)
+BEGIN;
+SELECT * FROM t2;
+f1
+C
+SELECT * FROM t2 WHERE f1 = 'C';
+f1
+C
+# Use default client to update value back to '-'
+UPDATE t2 SET f1 = '-';
+SELECT * FROM t2;
+f1
+-
+SELECT * FROM t2 WHERE f1 = '-';
+f1
+-
+# There are now two record versions with 'A' and two with 'C'
+# This update should cause a scavenge to prune old records.
+UPDATE t1 SET a = repeat('a',1000);
+SELECT * FROM t2;
+f1
+D
+SELECT * FROM t2 WHERE f1 = 'D';
+f1
+D
+COMMIT;
+SELECT * FROM t2;
+f1
+A
+SELECT * FROM t2 WHERE f1 = 'A';
+f1
+A
+COMMIT;
+SELECT * FROM t2;
+f1
+C
+SELECT * FROM t2 WHERE f1 = 'C';
+f1
+C
+COMMIT;
+COMMIT;
+COMMIT;
+COMMIT;
+DROP TABLE t1;
+DROP TABLE t2;

@@ -3,6 +3,7 @@
 #
 
 --source include/have_falcon.inc
+--source include/have_utf8.inc
 
 #
 # Simple select test
