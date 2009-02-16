@@ -12,7 +12,7 @@ AS "user_comment",
 FROM information_schema.tables
 WHERE table_schema = 'mysql'
 ORDER BY table_schema,table_name;
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	backup_history
 TABLE_TYPE	BASE TABLE
@@ -36,7 +36,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	backup_progress
 TABLE_TYPE	BASE TABLE
@@ -60,7 +60,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	columns_priv
 TABLE_TYPE	BASE TABLE
@@ -84,7 +84,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Column privileges
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	db
 TABLE_TYPE	BASE TABLE
@@ -108,7 +108,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Database privileges
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	event
 TABLE_TYPE	BASE TABLE
@@ -132,7 +132,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Events
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	func
 TABLE_TYPE	BASE TABLE
@@ -156,7 +156,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	User defined functions
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	general_log
 TABLE_TYPE	BASE TABLE
@@ -180,7 +180,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	General log
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	help_category
 TABLE_TYPE	BASE TABLE
@@ -204,7 +204,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	help categories
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	help_keyword
 TABLE_TYPE	BASE TABLE
@@ -228,7 +228,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	help keywords
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	help_relation
 TABLE_TYPE	BASE TABLE
@@ -252,7 +252,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	keyword-topic relation
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	help_topic
 TABLE_TYPE	BASE TABLE
@@ -276,7 +276,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	help topics
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	host
 TABLE_TYPE	BASE TABLE
@@ -300,7 +300,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Host privileges;  Merged with database privileges
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	ndb_binlog_index
 TABLE_TYPE	BASE TABLE
@@ -324,7 +324,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	plugin
 TABLE_TYPE	BASE TABLE
@@ -348,7 +348,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	MySQL plugins
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	proc
 TABLE_TYPE	BASE TABLE
@@ -372,7 +372,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Stored Procedures
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	procs_priv
 TABLE_TYPE	BASE TABLE
@@ -396,7 +396,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Procedure privileges
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	servers
 TABLE_TYPE	BASE TABLE
@@ -420,7 +420,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	MySQL Foreign Servers table
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	slow_log
 TABLE_TYPE	BASE TABLE
@@ -444,7 +444,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Slow log
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	tables_priv
 TABLE_TYPE	BASE TABLE
@@ -468,7 +468,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Table privileges
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	time_zone
 TABLE_TYPE	BASE TABLE
@@ -492,7 +492,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Time zones
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	time_zone_leap_second
 TABLE_TYPE	BASE TABLE
@@ -516,7 +516,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Leap seconds information for time zones
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	time_zone_name
 TABLE_TYPE	BASE TABLE
@@ -540,7 +540,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Time zone names
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	time_zone_transition
 TABLE_TYPE	BASE TABLE
@@ -564,7 +564,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Time zone transitions
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	time_zone_transition_type
 TABLE_TYPE	BASE TABLE
@@ -588,7 +588,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	Time zone transition types
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	mysql
 TABLE_NAME	user
 TABLE_TYPE	BASE TABLE

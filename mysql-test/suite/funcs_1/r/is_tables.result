@@ -28,7 +28,7 @@ DROP FUNCTION test.f1;
 #########################################################################
 DESCRIBE          information_schema.TABLES;
 Field	Type	Null	Key	Default	Extra
-TABLE_CATALOG	varchar(512)	YES		NULL	
+TABLE_CATALOG	varchar(512)	NO			
 TABLE_SCHEMA	varchar(64)	NO			
 TABLE_NAME	varchar(64)	NO			
 TABLE_TYPE	varchar(64)	NO			
@@ -53,7 +53,7 @@ TABLESPACE_NAME	varchar(64)	YES		NULL
 SHOW CREATE TABLE information_schema.TABLES;
 Table	Create Table
 TABLES	CREATE TEMPORARY TABLE `TABLES` (
-  `TABLE_CATALOG` varchar(512) DEFAULT NULL,
+  `TABLE_CATALOG` varchar(512) NOT NULL DEFAULT '',
   `TABLE_SCHEMA` varchar(64) NOT NULL DEFAULT '',
   `TABLE_NAME` varchar(64) NOT NULL DEFAULT '',
   `TABLE_TYPE` varchar(64) NOT NULL DEFAULT '',
@@ -78,7 +78,7 @@ TABLES	CREATE TEMPORARY TABLE `TABLES` (
 ) ENGINE=MEMORY DEFAULT CHARSET=utf8
 SHOW COLUMNS FROM information_schema.TABLES;
 Field	Type	Null	Key	Default	Extra
-TABLE_CATALOG	varchar(512)	YES		NULL	
+TABLE_CATALOG	varchar(512)	NO			
 TABLE_SCHEMA	varchar(64)	NO			
 TABLE_NAME	varchar(64)	NO			
 TABLE_TYPE	varchar(64)	NO			
@@ -103,6 +103,73 @@ TABLESPACE_NAME	varchar(64)	YES		NULL
 SELECT table_catalog, table_schema, table_name
 FROM information_schema.tables WHERE table_catalog IS NOT NULL;
 table_catalog	table_schema	table_name
+	information_schema	CHARACTER_SETS
+	information_schema	COLLATIONS
+	information_schema	COLLATION_CHARACTER_SET_APPLICABILITY
+	information_schema	COLUMNS
+	information_schema	COLUMN_PRIVILEGES
+	information_schema	ENGINES
+	information_schema	EVENTS
+	information_schema	FILES
+	information_schema	GLOBAL_STATUS
+	information_schema	GLOBAL_VARIABLES
+	information_schema	KEY_COLUMN_USAGE
+	information_schema	PARAMETERS
+	information_schema	PARTITIONS
+	information_schema	PLUGINS
+	information_schema	PROCESSLIST
+	information_schema	PROFILING
+	information_schema	REFERENTIAL_CONSTRAINTS
+	information_schema	ROUTINES
+	information_schema	SCHEMATA
+	information_schema	SCHEMA_PRIVILEGES
+	information_schema	SESSION_STATUS
+	information_schema	SESSION_VARIABLES
+	information_schema	STATISTICS
+	information_schema	TABLES
+	information_schema	TABLESPACES
+	information_schema	TABLE_CONSTRAINTS
+	information_schema	TABLE_PRIVILEGES
+	information_schema	TRIGGERS
+	information_schema	USER_PRIVILEGES
+	information_schema	VIEWS
+	information_schema	FALCON_RECORD_CACHE_SUMMARY
+	information_schema	FALCON_SYSTEM_MEMORY_DETAIL
+	information_schema	FALCON_TABLESPACE_IO
+	information_schema	FALCON_SYSTEM_MEMORY_SUMMARY
+	information_schema	FALCON_VERSION
+	information_schema	FALCON_TRANSACTION_SUMMARY
+	information_schema	FALCON_SERIAL_LOG_INFO
+	information_schema	FALCON_SYNCOBJECTS
+	information_schema	FALCON_TRANSACTIONS
+	information_schema	FALCON_RECORD_CACHE_DETAIL
+	mtr	global_suppressions
+	mtr	test_suppressions
+	mysql	backup_history
+	mysql	backup_progress
+	mysql	columns_priv
+	mysql	db
+	mysql	event
+	mysql	func
+	mysql	general_log
+	mysql	help_category
+	mysql	help_keyword
+	mysql	help_relation
+	mysql	help_topic
+	mysql	host
+	mysql	ndb_binlog_index
+	mysql	plugin
+	mysql	proc
+	mysql	procs_priv
+	mysql	servers
+	mysql	slow_log
+	mysql	tables_priv
+	mysql	time_zone
+	mysql	time_zone_leap_second
+	mysql	time_zone_name
+	mysql	time_zone_transition
+	mysql	time_zone_transition_type
+	mysql	user
 ################################################################################
 # Testcase 3.2.12.2 + 3.2.12.3: INFORMATION_SCHEMA.TABLES accessible information
 ################################################################################
@@ -132,10 +199,10 @@ GRANT SELECT ON db_datadict.v3 to 'testuser3'@'localhost';
 SELECT * FROM information_schema.tables
 WHERE table_schema = 'db_datadict' ORDER BY table_name;
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	TABLE_TYPE	ENGINE	VERSION	ROW_FORMAT	TABLE_ROWS	AVG_ROW_LENGTH	DATA_LENGTH	MAX_DATA_LENGTH	INDEX_LENGTH	DATA_FREE	AUTO_INCREMENT	CREATE_TIME	UPDATE_TIME	CHECK_TIME	TABLE_COLLATION	CHECKSUM	CREATE_OPTIONS	TABLE_COMMENT	TABLESPACE_NAME
-NULL	db_datadict	tb1	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
-NULL	db_datadict	tb2	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
-NULL	db_datadict	tb3	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
-NULL	db_datadict	v3	VIEW	#ENG#	NULL	#RF#	NULL	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	NULL	#CS#	NULL	VIEW	NULL
+def	db_datadict	tb1	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
+def	db_datadict	tb2	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
+def	db_datadict	tb3	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
+def	db_datadict	v3	VIEW	#ENG#	NULL	#RF#	NULL	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	NULL	#CS#	NULL	VIEW	NULL
 SHOW TABLES FROM db_datadict;
 Tables_in_db_datadict
 tb1
@@ -146,8 +213,8 @@ v3
 SELECT * FROM information_schema.tables
 WHERE table_schema = 'db_datadict' ORDER BY table_name;
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	TABLE_TYPE	ENGINE	VERSION	ROW_FORMAT	TABLE_ROWS	AVG_ROW_LENGTH	DATA_LENGTH	MAX_DATA_LENGTH	INDEX_LENGTH	DATA_FREE	AUTO_INCREMENT	CREATE_TIME	UPDATE_TIME	CHECK_TIME	TABLE_COLLATION	CHECKSUM	CREATE_OPTIONS	TABLE_COMMENT	TABLESPACE_NAME
-NULL	db_datadict	tb1	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
-NULL	db_datadict	tb3	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
+def	db_datadict	tb1	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
+def	db_datadict	tb3	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
 SHOW TABLES FROM db_datadict;
 Tables_in_db_datadict
 tb1
@@ -156,8 +223,8 @@ tb3
 SELECT * FROM information_schema.tables
 WHERE table_schema = 'db_datadict' ORDER BY table_name;
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	TABLE_TYPE	ENGINE	VERSION	ROW_FORMAT	TABLE_ROWS	AVG_ROW_LENGTH	DATA_LENGTH	MAX_DATA_LENGTH	INDEX_LENGTH	DATA_FREE	AUTO_INCREMENT	CREATE_TIME	UPDATE_TIME	CHECK_TIME	TABLE_COLLATION	CHECKSUM	CREATE_OPTIONS	TABLE_COMMENT	TABLESPACE_NAME
-NULL	db_datadict	tb3	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
-NULL	db_datadict	v3	VIEW	#ENG#	NULL	#RF#	NULL	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	NULL	#CS#	NULL	VIEW	NULL
+def	db_datadict	tb3	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
+def	db_datadict	v3	VIEW	#ENG#	NULL	#RF#	NULL	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	NULL	#CS#	NULL	VIEW	NULL
 SHOW TABLES FROM db_datadict;
 Tables_in_db_datadict
 tb3
@@ -166,10 +233,10 @@ v3
 SELECT * FROM information_schema.tables
 WHERE table_schema = 'db_datadict' ORDER BY table_name;
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	TABLE_TYPE	ENGINE	VERSION	ROW_FORMAT	TABLE_ROWS	AVG_ROW_LENGTH	DATA_LENGTH	MAX_DATA_LENGTH	INDEX_LENGTH	DATA_FREE	AUTO_INCREMENT	CREATE_TIME	UPDATE_TIME	CHECK_TIME	TABLE_COLLATION	CHECKSUM	CREATE_OPTIONS	TABLE_COMMENT	TABLESPACE_NAME
-NULL	db_datadict	tb1	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
-NULL	db_datadict	tb2	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
-NULL	db_datadict	tb3	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
-NULL	db_datadict	v3	VIEW	#ENG#	NULL	#RF#	NULL	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	NULL	#CS#	NULL	VIEW	NULL
+def	db_datadict	tb1	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
+def	db_datadict	tb2	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
+def	db_datadict	tb3	BASE TABLE	#ENG#	10	#RF#	0	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	latin1_swedish_ci	#CS#			NULL
+def	db_datadict	v3	VIEW	#ENG#	NULL	#RF#	NULL	#ARL#	#DL#	#MDL#	#IL#	#DF#	NULL	#CRT	#UT#	#CT#	NULL	#CS#	NULL	VIEW	NULL
 SHOW TABLES FROM db_datadict;
 Tables_in_db_datadict
 tb1
@@ -195,7 +262,7 @@ DEFAULT CHARACTER SET latin1 COLLATE latin1_swedish_ci
 COMMENT = 'Initial Comment' ENGINE = <engine_type>;
 SELECT * FROM information_schema.tables
 WHERE table_name = 't1_my_table';
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	test
 TABLE_NAME	t1_my_table
 TABLE_TYPE	BASE TABLE
@@ -349,7 +416,7 @@ DROP TABLE test.t1_my_tablex;
 CREATE VIEW test.t1_my_tablex AS SELECT 1;
 SELECT * FROM information_schema.tables
 WHERE table_name = 't1_my_tablex';
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	test
 TABLE_NAME	t1_my_tablex
 TABLE_TYPE	VIEW
