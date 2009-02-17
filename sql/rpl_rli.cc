@@ -30,10 +30,12 @@ int init_strvar_from_file(char *var, int max_size, IO_CACHE *f,
 			  const char *default_val);
 
 
-Relay_log_info::Relay_log_info()
+Relay_log_info::Relay_log_info(bool is_slave_recovery)
   :Slave_reporting_capability("SQL"),
    no_storage(FALSE), replicate_same_server_id(::replicate_same_server_id),
-   info_fd(-1), cur_log_fd(-1), relay_log(&sync_relaylog_period),
+   info_fd(-1), cur_log_fd(-1), 
+   relay_log(&sync_relaylog_period), sync_counter(0),
+   is_relay_log_recovery(is_slave_recovery),
    save_temporary_tables(0),
    cur_log_old_open_count(0), group_relay_log_pos(0), event_relay_log_pos(0),
 #if HAVE_purify
@@ -248,7 +250,8 @@ Failed to open the existing relay log info file '%s' (errno %d)",
     rli->group_relay_log_pos= rli->event_relay_log_pos= relay_log_pos;
     rli->group_master_log_pos= master_log_pos;
 
-    if (init_relay_log_pos(rli,
+    if (!rli->is_relay_log_recovery &&
+        init_relay_log_pos(rli,
                            rli->group_relay_log_name,
                            rli->group_relay_log_pos,
                            0 /* no data lock*/,
@@ -263,13 +266,14 @@ Failed to open the existing relay log info file '%s' (errno %d)",
   }
 
 #ifndef DBUG_OFF
+  if (!(rli->is_relay_log_recovery))
   {
     char llbuf1[22], llbuf2[22];
     DBUG_PRINT("info", ("my_b_tell(rli->cur_log)=%s rli->event_relay_log_pos=%s",
                         llstr(my_b_tell(rli->cur_log),llbuf1),
                         llstr(rli->event_relay_log_pos,llbuf2)));
     DBUG_ASSERT(rli->event_relay_log_pos >= BIN_LOG_HEADER_SIZE);
-    DBUG_ASSERT(my_b_tell(rli->cur_log) == rli->event_relay_log_pos);
+    DBUG_ASSERT((my_b_tell(rli->cur_log) == rli->event_relay_log_pos));
   }
 #endif
 
