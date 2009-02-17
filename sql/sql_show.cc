@@ -3434,6 +3434,7 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
               (!lookup_field_vals.table_value.length ||
                lookup_field_vals.wild_table_value))
           {
+            table->field[0]->store(STRING_WITH_LEN("def"), system_charset_info);
             if (schema_table_store_record(thd, table))
               goto err;      /* Out of space in temporary table */
             continue;
