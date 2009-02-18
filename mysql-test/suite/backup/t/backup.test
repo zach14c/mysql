@@ -30,7 +30,7 @@ USE db1;
 CREATE TABLE `building` (
   `dir_code` char(4),
   `building` char(6)
-) ENGINE=MYISAM DEFAULT CHARSET=latin1;
+) DEFAULT CHARSET=latin1;
 
 #
 # Dumping data for table `building`
@@ -47,7 +47,7 @@ CREATE TABLE `directorate` (
   `dir_code` char(4),
   `dir_name` char(30),
   `dir_head_id` char(9)
-) ENGINE=MYISAM DEFAULT CHARSET=latin1;
+) DEFAULT CHARSET=latin1;
 
 #
 # Dumping data for table `directorate`
@@ -69,7 +69,7 @@ CREATE TABLE `staff` (
   `sex` char(1),
   `salary` int(11),
   `mgr_id` char(9)
-) ENGINE=MYISAM DEFAULT CHARSET=latin1;
+) DEFAULT CHARSET=latin1;
 
 #
 # Dumping data for table `staff`
@@ -106,8 +106,7 @@ connection backup;
 --echo and the result differs in PROCESSLIST state and info.
 SET DEBUG_SYNC= 'default_locking_thread_added SIGNAL bup_thread_added
                  WAIT_FOR finish';
-SET DEBUG_SYNC= 'myisam_locking_thread_added SIGNAL bup_thread_added
-                 WAIT_FOR finish';
+SET DEBUG_SYNC= concat(lower(@@storage_engine), '_locking_thread_added SIGNAL bup_thread_added WAIT_FOR finish');
 --echo backup: Send the backup command.
 send BACKUP DATABASE db1,db2 TO 'test.ba';
 
@@ -275,7 +274,7 @@ CREATE TABLE bup_default.wide (
 ) ENGINE=INNODB DEFAULT CHARSET=latin1;
 
 CREATE TABLE bup_default.t1 (a int) engine=innodb;
-CREATE TABLE bup_default.t2 (a int) engine=MYISAM;
+CREATE TABLE bup_default.t2 (a int);
 CREATE TABLE bup_default.t1_blob (a int, b text) engine=innodb;
 
 # Insert some data.

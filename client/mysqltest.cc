@@ -5917,7 +5917,6 @@ int parse_args(int argc, char **argv)
   if (debug_check_flag)
     my_end_arg= MY_CHECK_ERROR;
 
-
   if (!record)
   {
     /* Check that the result file exists */

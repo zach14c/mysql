@@ -32,7 +32,7 @@ DROP DATABASE mysql_db1;
 #
 CREATE DATABASE mysqltest;
 USE mysqltest;
-CREATE TABLE `äöüß£å` (id SERIAL) ENGINE=MyISAM;
+CREATE TABLE `äöüß£å` (id SERIAL);
 BACKUP DATABASE mysqltest TO 'bup_myisam.bak';
 backup_id
 #

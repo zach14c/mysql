@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -190,9 +191,11 @@ size_t _ma_nommap_pread(MARIA_HA *info, uchar *Buffer,
 size_t _ma_mmap_pwrite(MARIA_HA *info, const uchar *Buffer,
 		       size_t Count, my_off_t offset, myf MyFlags)
 {
+  MARIA_SHARE *share= info->s;
+  uint ret;
   DBUG_PRINT("info", ("maria_write with mmap %d\n", info->dfile.file));
-  if (info->s->lock_key_trees)
-    rw_rdlock(&info->s->mmap_lock);
+  if (share->lock_key_trees)
+    rw_rdlock(&share->mmap_lock);
 
   /*
     The following test may fail in the following cases:
@@ -201,21 +204,24 @@ size_t _ma_mmap_pwrite(MARIA_HA *info, const uchar *Buffer,
     memory mapped area.
   */
 
-  if (info->s->mmaped_length >= offset + Count)
+  if (share->mmaped_length >= offset + Count)
   {
-    memcpy(info->s->file_map + offset, Buffer, Count);
-    if (info->s->lock_key_trees)
-      rw_unlock(&info->s->mmap_lock);
-    return 0;
+    memcpy(share->file_map + offset, Buffer, Count);
+    if (share->lock_key_trees)
+      rw_unlock(&share->mmap_lock);
+    ret= 0;
   }
   else
   {
-    info->s->nonmmaped_inserts++;
-    if (info->s->lock_key_trees)
-      rw_unlock(&info->s->mmap_lock);
-    return my_pwrite(info->dfile.file, Buffer, Count, offset, MyFlags);
+    share->nonmmaped_inserts++;
+    if (share->lock_key_trees)
+      rw_unlock(&share->mmap_lock);
+    ret= my_pwrite(info->dfile.file, Buffer, Count, offset, MyFlags);
   }
-
+  if (unlikely(ma_get_physical_logging_state(share)))
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAD,
+                              share, Buffer, Count, offset);
+  return ret;
 }
 
 
@@ -224,7 +230,12 @@ size_t _ma_mmap_pwrite(MARIA_HA *info, const uchar *Buffer,
 size_t _ma_nommap_pwrite(MARIA_HA *info, const uchar *Buffer,
 			 size_t Count, my_off_t offset, myf MyFlags)
 {
-  return my_pwrite(info->dfile.file, Buffer, Count, offset, MyFlags);
+  MARIA_SHARE *share= info->s;
+  uint ret= my_pwrite(info->dfile.file, Buffer, Count, offset, MyFlags);
+  if (unlikely(ma_get_physical_logging_state(share)))
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAD,
+                              share, Buffer, Count, offset);
+  return ret;
 }
 
 
@@ -1768,7 +1779,7 @@ int _ma_read_rnd_dynamic_record(MARIA_HA *info,
       {						/* Check if changed */
 	info_read=1;
 	info->rec_cache.seek_not_done=1;
-	if (_ma_state_info_read_dsk(share->kfile.file, &share->state))
+	if (_ma_state_info_read_dsk(share->kfile.file, &share->state, 0))
 	  goto panic;
       }
       if (filepos >= info->state->data_file_length)
