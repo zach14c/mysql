@@ -44,7 +44,8 @@ static const int srlVersion14		= 14;	// Added supernodes logging	March 7, 2008
 static const int srlVersion15		= 15;	// Added tablespace parameters to SRLCreateTableSpace	March 27, 2008
 static const int srlVersion16		= 16;	// Added SRLInventoryPage January 26, 2009
 static const int srlVersion17		= 17;	// Log root page number in SRLCreateIndex
-static const int srlCurrentVersion	= srlVersion17;
+static const int srlVersion18		= 18;	// Log tablespace list in SRLTableSpaces
+static const int srlCurrentVersion	= srlVersion18;
 
 class SRLVersion : public SerialLogRecord  
 {

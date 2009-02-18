@@ -82,6 +82,9 @@ void TableSpaceManager::add(TableSpace *tableSpace)
 	idHash[slot] = tableSpace;
 	tableSpace->next = tableSpaces;
 	tableSpaces = tableSpace;
+
+	if (database->serialLog && !database->serialLog->recovering)
+		database->serialLog->logControl->tableSpaces.append(this);
 }
 
 TableSpace* TableSpaceManager::findTableSpace(const char *name)
@@ -217,17 +220,6 @@ void TableSpaceManager::bootstrap(int sectionId)
 		
 		TableSpace *tableSpace = new TableSpace(database, name.getString(), id.getInt(), fileName.getString(), type.getInt(), NULL);
 		Log::debug("New table space %s, id %d, type %d, filename %s\n", (const char*) tableSpace->name, tableSpace->tableSpaceId, tableSpace->type, (const char*) tableSpace->filename);
-		try
-			{
-			tableSpace->open();
-			add(tableSpace);
-			}
-		catch(SQLException &e) 
-			{
-			Log::debug("Can't open tablespace %s, id %d : %s\n",
-				(const char*) tableSpace->name, tableSpace->tableSpaceId,e.getText());
-			delete tableSpace;
-			}
 		stream.clear();
 		}
 }
@@ -365,7 +357,9 @@ void TableSpaceManager::expungeTableSpace(int tableSpaceId)
 			*ptr = tableSpace->next;
 			break;
 			}
-
+	
+	if (database->serialLog)
+		database->serialLog->logControl->tableSpaces.append(this);
 	sync.unlock();
 	//File already deleted, just close the file descriptor
 	tableSpace->close();
@@ -415,6 +409,7 @@ void TableSpaceManager::redoCreateTableSpace(int id, int nameLength, const char*
 
 		dbb->create(tableSpace->filename, database->dbb->pageSize, 0, HdrTableSpace, 
 			NO_TRANSACTION, "", true);
+		tableSpace->active = true;
 
 		}
 	catch(SQLException& exception)
@@ -577,4 +572,20 @@ int TableSpaceManager::createTableSpaceId()
 	Sequence *sequence = database->sequenceManager->getSequence(database->getSymbol("SYSTEM"), database->getSymbol("TABLESPACE_IDS"));
 	int id = (int) sequence->update(1, database->getSystemTransaction());
 	return id;
+}
+
+void TableSpaceManager::openTableSpaces()
+{
+	for(TableSpace *ts = tableSpaces; ts; ts = ts->next)
+		{
+		try
+			{
+			ts->open();
+			}
+		catch(SQLException &e) 
+			{
+			Log::debug("Can't open tablespace %s, id %d : %s\n",
+				(const char*) ts->name, ts->tableSpaceId,e.getText());
+			}
+		}
 }
