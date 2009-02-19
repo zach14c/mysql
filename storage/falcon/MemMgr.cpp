@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1208,4 +1208,11 @@ void MemMgr::validateBlock(MemBlock *block)
 		if (*p++ != GUARD_BYTE)
 			corrupt ("guard bytes overwritten");
 #endif
+}
+
+int MemMgr::blockSize(void *object)
+{
+	MemBlock *block = (MemBlock*) ((UCHAR*) object - OFFSET(MemBlock*, body));
+
+	return ABS(block->length);
 }

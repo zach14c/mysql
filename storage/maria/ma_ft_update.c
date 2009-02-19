@@ -342,8 +342,10 @@ uint _ma_ft_convert_to_ft2(MARIA_HA *info, MARIA_KEY *key)
   info->keyread_buff_used= info->page_changed=1;      /* info->buff is used */
   /**
     @todo RECOVERY BUG this is not logged yet. Ok as this code is never
-    called, but soon it will be.
+    called. We would need to pin pages until all REDOs are written. Probably
+    no need for an UNDO.
   */
+  DBUG_ASSERT(0);
   if ((root= _ma_new(info, DFLT_INIT_HITS, &page_link)) == HA_OFFSET_ERROR ||
       _ma_write_keypage(info, keyinfo, root, page_link->write_lock,
                         DFLT_INIT_HITS, info->buff))

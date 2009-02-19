@@ -269,7 +269,9 @@ void RecordLocatorPage::printPage(void)
 
 void RecordLocatorPage::setIndexSlot(int slot, int32 pageNumber, int line, int availableSpace)
 {
-	ASSERT(availableSpace >= 0);
+	// Check that availableSpace is positive and can be converted to short
+	// without losing bits or changing sign
+	ASSERT(availableSpace >= 0 && availableSpace < 0x8000); 
 	
 	RecordIndex *element = elements + slot;
 	//validateSpaceSlots();

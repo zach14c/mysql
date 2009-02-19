@@ -9,7 +9,6 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-lowercase_table3     : Bug#32667 lowercase_table3.test reports to error log
 ctype_create         : Bug#32965 main.ctype_create fails
 csv_alter_table      : Bug#42831 main.csv_alter_table is disabled 
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
@@ -18,5 +17,3 @@ innodb               : Bug#41299 2008-12-08 alik
 user_limits          : Bug#42384 thread_handling = pool-of-threads, wrong handling of max_questions user limit
 query_cache_28249    : Bug#41098 Query Cache returns wrong result with concurrent insert
 innodb_bug39438      : BUG#42383 2009-01-28 lsoares "This fails in embedded and on windows.  Note that this test is not run on windows and on embedded in PB for main trees currently"
-subselect3_jcl6      : BUG#42534 subselect3_jcl6 produces valgrind warnings with MTR2 (2008-02-02 spetrunia)
-join_cache           : Bug#42585 joro main.join_cache fails on powermacg5  

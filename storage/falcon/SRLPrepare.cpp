@@ -47,15 +47,12 @@ void SRLPrepare::append(TransId transId, int xidLength, const UCHAR *xid)
 	putInt(transId);
 	putInt(xidLength);
 	putData(xidLength, xid);
-	SerialLogTransaction *transaction = log->getTransaction(transId);
+	SerialLogTransaction *srlTransaction = log->getTransaction(transId);
 
 	log->flush(false, log->nextBlockNumber, &sync);
 
-	if (transaction)
-		transaction->setState(sltPrepared);
-
-	if (transaction)
-		wakeup();
+	if (srlTransaction)
+		srlTransaction->setState(sltPrepared);
 }
 
 void SRLPrepare::read()

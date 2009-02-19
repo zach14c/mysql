@@ -10,5 +10,3 @@
 #
 ##############################################################################
 
-falcon_bug_32398 : Bug#32398 2008-08-28 HF HF disabled until new fix for this bug is developed
-falcon_bug_22173 : Bug#42079 2009-01-13 joro Falcon does not reset auto_increment on transactional truncate

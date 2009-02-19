@@ -5,10 +5,10 @@ CREATE DATABASE db2;
 CREATE TABLE db1.t1 (s1 CHAR(3)) ENGINE=innodb;
 CREATE TABLE db1.t2 (s1 CHAR(3)) ENGINE=falcon;
 CREATE TABLE db1.t3 (s1 CHAR(3)) ENGINE=memory;
-CREATE TABLE db1.t4 (s1 CHAR(3)) ENGINE=myisam;
+CREATE TABLE db1.t4 (s1 CHAR(3));
 CREATE TABLE db2.t1 (s1 CHAR(3)) ENGINE=innodb;
 CREATE TABLE db2.t2 (s1 CHAR(3)) ENGINE=falcon;
-CREATE TABLE db2.t3 (s1 CHAR(3)) ENGINE=myisam;
+CREATE TABLE db2.t3 (s1 CHAR(3));
 connection B - starting transaction B
 SET autocommit=0;
 BEGIN;

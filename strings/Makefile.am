@@ -15,7 +15,7 @@
 
 # This file is public domain and comes with NO WARRANTY of any kind
 
-INCLUDES =		-I$(top_builddir)/include -I$(top_srcdir)/include
+AM_CPPFLAGS =		-I$(top_srcdir)/include
 pkglib_LTLIBRARIES =	libmystrings.la
 libmystrings_la_LDFLAGS =   -static
 libmystrings_la_SOURCES = 
@@ -77,19 +77,16 @@ conf_to_src_LDFLAGS= @NOINST_LDFLAGS@
 #strtoull.o:		@CHARSET_OBJS@
 
 
-FLAGS=$(DEFS) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) @NOINST_LDFLAGS@
+FLAGS=$(DEFS) $(AM_CPPFLAGS) $(CPPFLAGS) $(CFLAGS) @NOINST_LDFLAGS@
 
 str_test: str_test.c $(noinst_LTLIBRARIES)
-	$(LINK) $(FLAGS) -DMAIN $(INCLUDES) $(srcdir)/str_test.c $(LDADD) $(noinst_LTLIBRARIES)
+	$(LINK) $(FLAGS) -DMAIN $(AM_CPPFLAGS) $(srcdir)/str_test.c $(LDADD) $(noinst_LTLIBRARIES)
 
 uctypedump: uctypedump.c
-	$(LINK) $(INCLUDES) $(srcdir)/uctypedump.c
+	$(LINK) $(AM_CPPFLAGS) $(srcdir)/uctypedump.c
 
 test_decimal$(EXEEXT): decimal.c $(noinst_LTLIBRARIES)
 	$(CP) $(srcdir)/decimal.c ./test_decimal.c
 	$(LINK) $(FLAGS) -DMAIN  ./test_decimal.c $(LDADD) $(noinst_LTLIBRARIES)
 	$(RM) -f ./test_decimal.c
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
 

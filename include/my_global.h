@@ -653,7 +653,6 @@ C_MODE_END
 */
 #define _VARARGS(X) X
 #define _STATIC_VARARGS(X) X
-#define _PC(X)	X
 
 /* The DBUG_ON flag always takes precedence over default DBUG_OFF */
 #if defined(DBUG_ON) && defined(DBUG_OFF)
@@ -683,7 +682,7 @@ typedef int	my_socket;	/* File descriptor for sockets */
 #define INVALID_SOCKET -1
 #endif
 /* Type for fuctions that handles signals */
-#define sig_handler RETSIGTYPE
+#define sig_handler void
 C_MODE_START
 typedef void	(*sig_return)();/* Returns type from signal */
 C_MODE_END

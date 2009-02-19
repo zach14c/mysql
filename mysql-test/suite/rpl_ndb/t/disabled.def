@@ -10,6 +10,5 @@
 #
 ##############################################################################
 
-rpl_ndb_innodb2ndb       : Bug#34725 2008-02-26 hakank Currently failing.
-rpl_ndb_extraCol	: Bug#41369 2008-12-10 alik
-rpl_ndb_circular_2ch     : Bug #42396 2009-01-28 andrei test fails auto-inc insert
+rpl_ndb_extraCol	 : Bug#41369 2008-12-10 alik
+rpl_ndb_circular_2ch     : Bug#42396 2009-01-28 andrei test fails auto-inc insert

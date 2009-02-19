@@ -1,4 +1,5 @@
-INCLUDES = -I$(srcdir)/../include -I$(srcdir)/../mySTL
+
+AM_CPPFLAGS = -I$(srcdir)/../include -I$(srcdir)/../mySTL
 
 noinst_LTLIBRARIES = libtaocrypt.la
 
@@ -11,7 +12,4 @@ libtaocrypt_la_SOURCES  = aes.cpp aestables.cpp algebra.cpp arc4.cpp \
 libtaocrypt_la_CXXFLAGS = @yassl_taocrypt_extra_cxxflags@ -DYASSL_PURE_C
 
 EXTRA_DIST = $(wildcard ../include/*.hpp)
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
 

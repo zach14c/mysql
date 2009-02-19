@@ -15,22 +15,18 @@
 
 #Makefile.am example for a plugin
 
-MYSQLLIBdir=		$(pkglibdir)
+pkgplugindir=		$(pkglibdir)/plugin
 
-INCLUDES=		-I$(top_builddir)/include -I$(top_srcdir)/include
+AM_CPPFLAGS =		-I$(top_srcdir)/include
 
 EXTRA_LTLIBRARIES=	adt_null.la
-pkglib_LTLIBRARIES=	@plugin_audit_null_shared_target@
-adt_null_la_LDFLAGS=	-module -rpath $(MYSQLLIBdir)
-adt_null_la_CFLAGS=	$(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
+pkgplugin_LTLIBRARIES=	@plugin_audit_null_shared_target@
+adt_null_la_LDFLAGS=	-module -rpath $(pkgplugindir)
+adt_null_la_CPPFLAGS=	$(AM_CPPFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 adt_null_la_SOURCES=	audit_null.c
 
 EXTRA_LIBRARIES=	libadtnull.a
 noinst_LIBRARIES=	@plugin_audit_null_static_target@
-libadtnull_a_CFLAGS=	$(AM_CFLAGS)
 libadtnull_a_SOURCES=	audit_null.c
 
 EXTRA_DIST=		plug.in
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

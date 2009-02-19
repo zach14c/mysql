@@ -1,0 +1,42 @@
+--source include/have_falcon.inc
+
+#
+# Bug #42196: Issue with key look up for bit field in Falcon table after insert + stored func
+#
+--echo *** Bug #42196 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+DROP FUNCTION IF EXISTS f1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+CREATE TABLE t1 (s1 bit(3), key(s1));
+CREATE FUNCTION f1() RETURNS int RETURN 1;
+INSERT INTO t1 VALUES (2*f1());
+
+# Following tatement failed to return any rows
+SELECT s1+0 FROM t1 WHERE s1 = 2;
+
+# Following statement returns row with value '2'
+SELECT s1+0 from t1;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;
+DROP FUNCTION f1;
