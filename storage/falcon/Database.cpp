@@ -1733,10 +1733,14 @@ void Database::scavenge(bool forced)
 {
 	// Signal the cardinality task unless a forced scavenge is pending
 
-	if (!forced &&
-		++scavengeCount % CARDINALITY_FREQUENCY == 0)
+	if (!forced)
 		{
-		signalCardinality();
+		// Don't disturb recovery
+		if (serialLog && serialLog->recovering)
+			return;
+
+		if (++scavengeCount % CARDINALITY_FREQUENCY == 0)
+			signalCardinality();
 		}
 	
 	scavengeForced = 0;
