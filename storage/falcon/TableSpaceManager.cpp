@@ -219,7 +219,10 @@ void TableSpaceManager::bootstrap(int sectionId)
 
 		
 		TableSpace *tableSpace = new TableSpace(database, name.getString(), id.getInt(), fileName.getString(), type.getInt(), NULL);
-		Log::debug("New table space %s, id %d, type %d, filename %s\n", (const char*) tableSpace->name, tableSpace->tableSpaceId, tableSpace->type, (const char*) tableSpace->filename);
+		add(tableSpace);
+
+		Log::debug("TableSpaceManager::bootstrap() : table space %s, id %d, type %d, filename %s\n", 
+			(const char*) tableSpace->name, tableSpace->tableSpaceId, tableSpace->type, (const char*) tableSpace->filename);
 		stream.clear();
 		}
 }
