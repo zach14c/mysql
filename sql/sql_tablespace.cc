@@ -17,6 +17,29 @@
 
 #include "mysql_priv.h"
 
+
+static const char *str_ts_command_type[]=
+{
+  "UNKNOWN",
+  "CREATE TABLESPACE",
+  "ALTER TABLESPACE",
+  "CREATE LOGFILE GROUP",
+  "ALTER LOGFILE GROUP",
+  "DROP TABLESPACE",
+  "DROP LOGFILE GROUP",
+  "CHANGE FILE TABLESPACE",
+  "ALTER ACCESS MODE TABLESPACE"
+};
+
+
+static const char* get_str_ts_command_type(enum ts_command_type ts_cmd_type)
+{
+  if (ts_cmd_type < -1 || ts_cmd_type > 7)
+    ts_cmd_type= TS_CMD_NOT_DEFINED;
+  return str_ts_command_type[ts_cmd_type + 1];
+}
+
+
 int mysql_alter_tablespace(THD *thd, st_alter_tablespace *ts_info)
 {
   int error= HA_ADMIN_NOT_IMPLEMENTED;
@@ -47,8 +70,8 @@ int mysql_alter_tablespace(THD *thd, st_alter_tablespace *ts_info)
         case 1:
           DBUG_RETURN(1);
         case HA_ADMIN_NOT_IMPLEMENTED:
-
-          my_error(ER_CHECK_NOT_IMPLEMENTED, MYF(0), "");
+          my_error(ER_COM_UNSUPPORTED, MYF(0), hton_name(hton)->str,
+                   get_str_ts_command_type(ts_info->ts_cmd_type));
           break;
         case HA_ERR_TABLESPACE_EXIST:
           my_error(ER_TABLESPACE_EXIST, MYF(0), ts_info->tablespace_name);

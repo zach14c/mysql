@@ -21,7 +21,6 @@ DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in
 include $(top_srcdir)/storage/ndb/config/common.mk.am
 
 dist-hook:
-	-rm -rf `find $(distdir) -type d -name SCCS`
 	-rm -rf `find $(distdir)/ndbapi-examples -name '*.o'`
 	list='$(SUBDIRS)'; for subdir in $$list; do \
 	  if test "$$subdir" != "." -a "$$subdir" != "include"; then \
@@ -41,9 +40,6 @@ windoze:
 windoze-dsp:
 
 all-windoze-dsp: windoze
-	find . -name '*.dsp' | grep -v SCCS | xargs unix2dos
+	find . -name '*.dsp' | xargs unix2dos
 	$(top_srcdir)/storage/ndb/config/make-win-dsw.sh | unix2dos > ndb.dsw
-	tar cvfz ndb-win-dsp.tar.gz ndb.dsw `find . -name '*.dsp' | grep -v SCCS`
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
+	tar cvfz ndb-win-dsp.tar.gz ndb.dsw `find . -name '*.dsp'`

@@ -171,7 +171,10 @@ SerialLogRecord* SerialLogControl::getRecordManager(int which)
 			
 		case srlSavepointRollback:
 			return &savepointRollback;
-			
+		
+		case srlInventoryPage:
+			return &inventoryPage;
+
 		default:
 			ASSERT(false);
 		}

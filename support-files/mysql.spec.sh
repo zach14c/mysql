@@ -387,7 +387,12 @@ CFLAGS="$CFLAGS" \
 CXXFLAGS="$CXXFLAGS" \
 BuildMySQL "\
 		--with-debug \
-		--with-comment=\"MySQL Community Server - Debug (%{license})\"")
+%if %{MARIA_BUILD}
+		--with-comment=\"MySQL Community Server - Debug [Maria] (%{license})\" \
+%else
+		--with-comment=\"MySQL Community Server - Debug (%{license})\" \
+%endif
+")
 
 # We might want to save the config log file
 if test -n "$MYSQL_DEBUGCONFLOG_DEST"

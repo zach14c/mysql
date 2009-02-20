@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -189,6 +190,12 @@ static MARIA_HA *maria_clone_internal(MARIA_SHARE *share, const char *name,
   }
   info.state_start= info.state;                 /* Initial values */
 
+  if (unlikely(share->state.changed & STATE_BAD_OPEN_COUNT))
+  {
+    /* client may be a reader: ensure new state's flag not lost */
+    _ma_state_info_write(share, 1);
+  }
+
   pthread_mutex_unlock(&share->intern_lock);
 
   /* Allocate buffer for one record */
@@ -203,6 +210,11 @@ static MARIA_HA *maria_clone_internal(MARIA_SHARE *share, const char *name,
 #ifdef THREAD
   thr_lock_data_init(&share->lock,&m_info->lock,(void*) m_info);
 #endif
+  if (ma_log_tables_physical &&
+      my_hash_search(ma_log_tables_physical,
+                     (uchar *)share->unique_file_name.str,
+                     share->unique_file_name.length))
+    m_info->s->physical_logging= TRUE; /* set before publishing table */
   m_info->open_list.data=(void*) m_info;
   maria_open_list=list_add(maria_open_list,&m_info->open_list);
 
@@ -397,18 +409,29 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
     disk_pos= _ma_base_info_read(disk_cache + base_pos, &share->base);
     share->state.state_length=base_pos;
 
-    if (!(open_flags & HA_OPEN_FOR_REPAIR) &&
-	((share->state.changed & STATE_CRASHED) ||
-	 ((open_flags & HA_OPEN_ABORT_IF_CRASHED) &&
-	  (my_disable_locking && share->state.open_count))))
+    if (!(open_flags & HA_OPEN_FOR_REPAIR))
     {
-      DBUG_PRINT("error",("Table is marked as crashed. open_flags: %u  "
-                          "changed: %u  open_count: %u  !locking: %d",
-                          open_flags, share->state.changed,
-                          share->state.open_count, my_disable_locking));
-      my_errno=((share->state.changed & STATE_CRASHED_ON_REPAIR) ?
-		HA_ERR_CRASHED_ON_REPAIR : HA_ERR_CRASHED_ON_USAGE);
-      goto err;
+      if ((share->state.changed & STATE_CRASHED) ||
+          ((open_flags & HA_OPEN_ABORT_IF_CRASHED) &&
+           (my_disable_locking && share->state.open_count)))
+      {
+        DBUG_PRINT("error",("Table is marked as crashed. open_flags: %u  "
+                            "changed: %u  open_count: %u  !locking: %d",
+                            open_flags, share->state.changed,
+                            share->state.open_count, my_disable_locking));
+        my_errno=((share->state.changed & STATE_CRASHED_ON_REPAIR) ?
+                  HA_ERR_CRASHED_ON_REPAIR : HA_ERR_CRASHED_ON_USAGE);
+        goto err;
+      }
+      /*
+        Tell future openers that open_count was positive at first open (sign
+        of a problem). See maria_backup_engine.cc.
+      */
+      if (my_disable_locking && share->state.open_count)
+      {
+        DBUG_PRINT("info", ("STATE_BAD_OPEN_COUNT set on"));
+        share->state.changed|= STATE_BAD_OPEN_COUNT;
+      }
     }
 
     /*
@@ -532,11 +555,13 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
     strmov(share->unique_file_name.str, name_buff);
     strmov(share->index_file_name.str, index_name);
     strmov(share->data_file_name.str,  data_name);
+    /* unresolved name (no .sym or Unix symbolic link resolution) */
     strmov(share->open_file_name.str,  name);
 
     share->block_size= share->base.block_size;   /* Convenience */
     {
       HA_KEYSEG *pos=share->keyparts;
+      uint32 ftkey_nr= 1;
       for (i=0 ; i < keys ; i++)
       {
         share->keyinfo[i].share= share;
@@ -609,6 +634,7 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
             share->ft2_keyinfo.end=pos;
             setup_key_functions(& share->ft2_keyinfo);
           }
+          share->keyinfo[i].ftkey_nr= ftkey_nr++;
 	}
         setup_key_functions(share->keyinfo+i);
 	share->keyinfo[i].end=pos;
@@ -646,7 +672,7 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
 	pos->flag=0;
 	pos++;
       }
-      share->ftparsers= 0;
+      share->ftkeys= ftkey_nr;
     }
     share->data_file_type= share->state.header.data_file_type;
     share->base_length= (BASE_ROW_HEADER_SIZE +
@@ -659,6 +685,12 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
                              0) + KEYPAGE_KEYID_SIZE + KEYPAGE_FLAG_SIZE +
                             KEYPAGE_USED_SIZE);
     share->kfile.file= kfile;
+
+#ifdef THREAD
+    /* we need this rwlock early for _ma_update_state_lsns_sub() */
+    my_atomic_rwlock_init(&share->physical_logging_rwlock);
+#endif
+    errpos= 5;
 
     if (open_flags & HA_OPEN_COPY)
     {
@@ -751,7 +783,7 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
         goto err;
       data_file= info.dfile.file;
     }
-    errpos= 5;
+    errpos= 6;
 
     if (open_flags & HA_OPEN_DELAY_KEY_WRITE)
       share->options|= HA_OPTION_DELAY_KEY_WRITE;
@@ -915,12 +947,17 @@ err:
   if (save_errno == HA_ERR_OLD_FILE) /* uuid is different ? */
     save_errno= HA_ERR_CRASHED_ON_USAGE; /* the code to trigger auto-repair */
   switch (errpos) {
-  case 5:
+  case 6:
     if (data_file >= 0)
       (void)(my_close(data_file, MYF(0)));
     if (old_info)
       break;					/* Don't remove open table */
     (*share->once_end)(share);
+    /* fall through */
+  case 5:
+#ifdef THREAD
+    my_atomic_rwlock_destroy(&share->physical_logging_rwlock);
+#endif
     /* fall through */
   case 4:
     my_free((uchar*) share,MYF(0));
@@ -1173,11 +1210,13 @@ static void setup_key_functions(register MARIA_KEYDEF *keyinfo)
    Then calls _ma_state_info_write_sub().
 
    @param  share           table
-   @param  pWrite          bitmap: if 1 is set my_pwrite() is used otherwise
-                           my_write(); if 2 is set, info about keys is written
-                           (should only be needed after ALTER TABLE
-                           ENABLE/DISABLE KEYS, and REPAIR/OPTIMIZE); if 4 is
-                           set, MARIA_SHARE::intern_lock is taken.
+   @param  pWrite          bitmap: if 1 (MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET)
+                           is set my_pwrite() is used otherwise my_write();
+                           if 2 (MA_STATE_INFO_WRITE_FULL_INFO) is set, info
+                           about keys is written (should only be needed
+                           after ALTER TABLE ENABLE/DISABLE KEYS, and
+                           REPAIR/OPTIMIZE); if 4 (MA_STATE_INFO_WRITE_LOCK)
+                           is set, MARIA_SHARE::intern_lock is taken.
 
    @return Operation status
      @retval 0      OK
@@ -1190,7 +1229,7 @@ uint _ma_state_info_write(MARIA_SHARE *share, uint pWrite)
   if (share->options & HA_OPTION_READ_ONLY_DATA)
     return 0;
 
-  if (pWrite & 4)
+  if (pWrite & MA_STATE_INFO_WRITE_LOCK)
     pthread_mutex_lock(&share->intern_lock);
   else if (maria_multi_threaded)
   {
@@ -1208,8 +1247,8 @@ uint _ma_state_info_write(MARIA_SHARE *share, uint pWrite)
     DBUG_PRINT("info", ("is_of_horizon set to LSN (%lu,0x%lx)",
                         LSN_IN_PARTS(share->state.is_of_horizon)));
   }
-  res= _ma_state_info_write_sub(share->kfile.file, &share->state, pWrite);
-  if (pWrite & 4)
+  res= _ma_state_info_write_sub(share, share->kfile.file, &share->state, pWrite);
+  if (pWrite & MA_STATE_INFO_WRITE_LOCK)
     pthread_mutex_unlock(&share->intern_lock);
   share->changed= 0;
   return res;
@@ -1217,16 +1256,19 @@ uint _ma_state_info_write(MARIA_SHARE *share, uint pWrite)
 
 
 /**
-   @brief Function to save and store the header in the index file (.MYI).
+   @brief Function to save and store the header in the index file (.MAI).
 
    Shortcut to use instead of _ma_state_info_write() when appropriate.
 
+   @param  share           table's share
    @param  file            descriptor of the index file to write
    @param  state           state information to write to the file
-   @param  pWrite          bitmap: if 1 is set my_pwrite() is used otherwise
-                           my_write(); if 2 is set, info about keys is written
-                           (should only be needed after ALTER TABLE
-                           ENABLE/DISABLE KEYS, and REPAIR/OPTIMIZE).
+   @param  pWrite          bitmap: if 1 (MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET)
+                           is set my_pwrite() is used otherwise my_write();
+                           if 2 (MA_STATE_INFO_WRITE_FULL_INFO) is set, info
+                           about keys is written (should only be needed
+                           after ALTER TABLE ENABLE/DISABLE KEYS, and
+                           REPAIR/OPTIMIZE).
 
    @notes
      For transactional multiuser tables, this function is called
@@ -1240,13 +1282,19 @@ uint _ma_state_info_write(MARIA_SHARE *share, uint pWrite)
      @retval 1      Error
 */
 
-uint _ma_state_info_write_sub(File file, MARIA_STATE_INFO *state, uint pWrite)
+uint _ma_state_info_write_sub(MARIA_SHARE *share, File file,
+                              MARIA_STATE_INFO *state, uint pWrite)
 {
   uchar  buff[MARIA_STATE_INFO_SIZE + MARIA_STATE_EXTRA_SIZE];
   uchar *ptr=buff;
   uint	i, keys= (uint) state->header.keys;
   size_t res;
   DBUG_ENTER("_ma_state_info_write_sub");
+  DBUG_PRINT("enter",("records: %llu data_file_length: %llu "
+                      "key_file_length: %llu",
+                      (ulonglong)state->state.records,
+                      (ulonglong)state->state.data_file_length,
+                      (ulonglong)state->state.key_file_length));
 
   memcpy_fixed(ptr,&state->header,sizeof(state->header));
   ptr+=sizeof(state->header);
@@ -1286,7 +1334,7 @@ uint _ma_state_info_write_sub(File file, MARIA_STATE_INFO *state, uint pWrite)
     mi_sizestore(ptr,state->key_root[i]);		ptr+= 8;
   }
   mi_sizestore(ptr,state->key_del);	        	ptr+= 8;
-  if (pWrite & 2)				/* From maria_chk */
+  if (pWrite & MA_STATE_INFO_WRITE_FULL_INFO)	/* From maria_chk */
   {
     uint key_parts= mi_uint2korr(state->header.key_parts);
     mi_int4store(ptr,state->sec_index_changed); 	ptr+= 4;
@@ -1306,11 +1354,14 @@ uint _ma_state_info_write_sub(File file, MARIA_STATE_INFO *state, uint pWrite)
     }
   }
 
-  res= (pWrite & 1) ?
+  res= (pWrite & MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET) ?
     my_pwrite(file, buff, (size_t) (ptr-buff), 0L,
               MYF(MY_NABP | MY_THREADSAFE)) :
     my_write(file,  buff, (size_t) (ptr-buff),
              MYF(MY_NABP));
+  if (ma_get_physical_logging_state(share))
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAI,
+                              share, buff, (uint) (ptr-buff), 0L);
   DBUG_RETURN(res != 0);
 }
 
@@ -1381,21 +1432,53 @@ static uchar *_ma_state_info_read(uchar *ptr, MARIA_STATE_INFO *state)
    @param  state           state which will be filled
 */
 
-uint _ma_state_info_read_dsk(File file __attribute__((unused)),
-                             MARIA_STATE_INFO *state __attribute__((unused)))
-{
-#ifdef EXTERNAL_LOCKING
-  uchar	buff[MARIA_STATE_INFO_SIZE + MARIA_STATE_EXTRA_SIZE];
+/**
+  Read state info from file.
 
+  @param[in]        file        index file descriptor
+  @param[in,out]    state       state info to update from file
+  @param[in]        force       force read
+
+  @return           status
+    @retval         0           ok
+    @retval         1           error
+
+  Should not be called for transactional tables, as their state on disk is
+  rarely current and so is often misleading for a reader.
+  Does nothing in single user mode.
+
+  Normally this function does not read the state info from file if
+  'maria_single_user' is true. This means that mysqld is the only
+  program that works on the table files. No other program modifies the
+  files. Hence the in-memory state is expected to be current.
+
+  If there are other programs tampering with the files, mysqld must be
+  started with --external-locking. This makes 'myisam_single_user'
+  false. In this case this function does indeed read the state from
+  disk.
+
+  In cases like restore, we modify the table files directly,
+  bypassing the MyISAM interface. We do this inside of mysqld, so
+  --external-locking need not be specified. We support this case by the
+  'force' parameter.
+*/
+
+uint _ma_state_info_read_dsk(File file, MARIA_STATE_INFO *state,
+                             my_bool force)
+{
+  uchar	buff[MARIA_STATE_INFO_SIZE + MARIA_STATE_EXTRA_SIZE];
   /* trick to detect transactional tables */
-  DBUG_ASSERT(state->create_rename_lsn == LSN_IMPOSSIBLE);
-  if (!maria_single_user)
+  DBUG_ASSERT(force || (state->create_rename_lsn == LSN_IMPOSSIBLE));
+  if (
+#ifdef EXTERNAL_LOCKING
+      !maria_single_user ||
+#endif
+      force)
   {
     if (my_pread(file, buff, state->state_length, 0L, MYF(MY_NABP)))
       return 1;
     _ma_state_info_read(buff, state);
   }
-#endif
   return 0;
 }
 
@@ -1524,7 +1607,7 @@ uchar *_ma_keydef_read(uchar *ptr, MARIA_KEYDEF *keydef)
    keydef->underflow_block_length=keydef->block_length/3;
    keydef->version	= 0;			/* Not saved */
    keydef->parser       = &ft_default_parser;
-   keydef->ftparser_nr  = 0;
+   keydef->ftkey_nr     = 0;
    return ptr;
 }
 
@@ -1679,21 +1762,26 @@ void _ma_set_data_pagecache_callbacks(PAGECACHE_FILE *file,
 {
   file->callback_data= (uchar*) share;
   file->flush_log_callback= &maria_flush_log_for_page_none; /* Do nothing */
+  file->post_write_callback= &maria_flush_log_for_page_none;
 
   if (share->temporary)
   {
     file->read_callback=  &maria_page_crc_check_none;
-    file->write_callback= &maria_page_filler_set_none;
+    file->pre_write_callback= &maria_page_filler_set_none;
   }
   else
   {
+
     file->read_callback=  &maria_page_crc_check_data;
     if (share->options & HA_OPTION_PAGE_CHECKSUM)
-      file->write_callback= &maria_page_crc_set_normal;
+      file->pre_write_callback= &maria_page_crc_set_normal;
     else
-      file->write_callback= &maria_page_filler_set_normal;
+      file->pre_write_callback= &maria_page_filler_set_normal;
     if (share->now_transactional)
       file->flush_log_callback= maria_flush_log_for_page;
+#ifdef HAVE_MARIA_PHYSICAL_LOGGING
+    file->post_write_callback= &maria_log_data_page_flush_physical;
+#endif
   }
 }
 
@@ -1712,22 +1800,26 @@ void _ma_set_index_pagecache_callbacks(PAGECACHE_FILE *file,
   file->callback_data= (uchar*) share;
   file->flush_log_callback= &maria_flush_log_for_page_none; /* Do nothing */
   file->write_fail= maria_page_write_failure;
+  file->post_write_callback= &maria_flush_log_for_page_none;
 
   if (share->temporary)
   {
     file->read_callback=  &maria_page_crc_check_none;
-    file->write_callback= &maria_page_filler_set_none;
+    file->pre_write_callback= &maria_page_filler_set_none;
   }
   else
   {
     file->read_callback=  &maria_page_crc_check_index;
     if (share->options & HA_OPTION_PAGE_CHECKSUM)
-      file->write_callback= &maria_page_crc_set_index;
+      file->pre_write_callback= &maria_page_crc_set_index;
     else
-      file->write_callback= &maria_page_filler_set_normal;
+      file->pre_write_callback= &maria_page_filler_set_normal;
 
     if (share->now_transactional)
       file->flush_log_callback= maria_flush_log_for_page;
+#ifdef HAVE_MARIA_PHYSICAL_LOGGING
+    file->post_write_callback= &maria_log_index_page_flush_physical;
+#endif
   }
 }
 

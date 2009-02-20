@@ -33,7 +33,9 @@ fi
 for ac_arg in $cpu_set;
 do
   CFLAGS="$ac_save_CFLAGS -mcpu=$ac_arg -march=$ac_arg -DCPU=$ac_arg" 
-  AC_TRY_COMPILE([],[int i],mysql_cv_cpu=$ac_arg; break;, mysql_cv_cpu="unknown")
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],[[int i]])],
+                    [mysql_cv_cpu=$ac_arg; break;],
+                    [mysql_cv_cpu="unknown"])
 done
 
 if test "$mysql_cv_cpu" = "unknown"

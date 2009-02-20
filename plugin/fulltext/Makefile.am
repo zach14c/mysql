@@ -16,12 +16,9 @@
 #Makefile.am example for a plugin
 
 pkgplugindir=$(pkglibdir)/plugin
-INCLUDES= -I$(top_builddir)/include -I$(top_srcdir)/include
+AM_CPPFLAGS = -I$(top_srcdir)/include
 #noinst_LTLIBRARIES= mypluglib.la
 pkgplugin_LTLIBRARIES= mypluglib.la
 mypluglib_la_SOURCES= plugin_example.c
 mypluglib_la_LDFLAGS= -module -rpath $(pkgplugindir)
 mypluglib_la_CFLAGS= -DMYSQL_DYNAMIC_PLUGIN
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

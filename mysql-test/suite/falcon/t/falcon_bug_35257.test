@@ -1,0 +1,28 @@
+--source include/have_falcon.inc
+
+#
+# Bug #35257: Falcon: tablespace names are case sensitive
+#
+--echo *** Bug #35257 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE=Falcon;
+--error ER_TABLESPACE_EXIST
+CREATE TABLESPACE TS1 ADD DATAFILE 'ts2.fts' ENGINE=Falcon;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLESPACE ts1 ENGINE=Falcon;

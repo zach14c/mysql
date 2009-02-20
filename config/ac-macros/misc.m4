@@ -1,40 +1,57 @@
 # Local macros for automake & autoconf
 
 #---START: Used in for client configure
-AC_DEFUN([MYSQL_TYPE_ACCEPT],
-[ac_save_CXXFLAGS="$CXXFLAGS"
+AC_DEFUN([MYSQL_TYPE_ACCEPT], [
+  AC_REQUIRE([AC_PROG_CXX])	dnl Make sure $GXX is set if GNU C++
+  ac_save_CXXFLAGS="$CXXFLAGS"
 AC_CACHE_CHECK([base type of last arg to accept], mysql_cv_btype_last_arg_accept,
-AC_LANG_PUSH(C++)
-if test "$ac_cv_prog_gxx" = "yes"
+    AC_LANG_PUSH([C++])
+    if test "$GXX" = "yes"
 then
   # Add -Werror, remove -fbranch-probabilities (Bug #268)
   CXXFLAGS=`echo "$CXXFLAGS -Werror" | sed -e 's/-fbranch-probabilities//; s/-Wall//; s/-Wcheck//'`
 fi
 mysql_cv_btype_last_arg_accept=none
-[AC_TRY_COMPILE([#if defined(inline)
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+          [[
+	    #if defined(inline)
 #undef inline
 #endif
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-],
-[int a = accept(1, (struct sockaddr *) 0, (socklen_t *) 0); return (a != 0);],
-mysql_cv_btype_last_arg_accept=socklen_t)]
+	  ]],
+          [[
+	    int a = accept(1, (struct sockaddr *) 0, (socklen_t *) 0); return (a != 0);
+	  ]]
+       )],
+       [mysql_cv_btype_last_arg_accept=socklen_t]
+    )]
+
 if test "$mysql_cv_btype_last_arg_accept" = "none"; then
-[AC_TRY_COMPILE([#if defined(inline)
+      [AC_COMPILE_IFELSE(
+	 [AC_LANG_PROGRAM(
+	    [[
+	      #if defined(inline)
 #undef inline
 #endif
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-],
-[int a = accept(1, (struct sockaddr *) 0, (size_t *) 0); return (a != 0);],
-mysql_cv_btype_last_arg_accept=size_t)]
+	    ]],
+	    [[
+	      int a = accept(1, (struct sockaddr *) 0, (size_t *) 0); return (a != 0);
+	    ]],
+	    [mysql_cv_btype_last_arg_accept=size_t]
+	 )]
+      )]
 fi
 if test "$mysql_cv_btype_last_arg_accept" = "none"; then
 mysql_cv_btype_last_arg_accept=int
-fi)
-AC_LANG_POP(C++)
+    fi
+  )
+  AC_LANG_POP([C++])
 AC_DEFINE_UNQUOTED([SOCKET_SIZE_TYPE], [$mysql_cv_btype_last_arg_accept],
                    [The base type of the last arg to accept])
 CXXFLAGS="$ac_save_CXXFLAGS"
@@ -42,16 +59,26 @@ CXXFLAGS="$ac_save_CXXFLAGS"
 #---END:
 
 dnl Find type of qsort
-AC_DEFUN([MYSQL_TYPE_QSORT],
-[AC_CACHE_CHECK([return type of qsort], mysql_cv_type_qsort,
-[AC_TRY_COMPILE([#include <stdlib.h>
+AC_DEFUN([MYSQL_TYPE_QSORT],[
+  AC_CACHE_CHECK([return type of qsort], mysql_cv_type_qsort,
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #include <stdlib.h>
 #ifdef __cplusplus
 extern "C"
 #endif
 void qsort(void *base, size_t nel, size_t width,
  int (*compar) (const void *, const void *));
-],
-[int i;], mysql_cv_type_qsort=void, mysql_cv_type_qsort=int)])
+	  ]],
+	  [[
+	    int i;
+	  ]]
+       )],
+       [mysql_cv_type_qsort=void],
+       [mysql_cv_type_qsort=int]
+    )]
+  )
 AC_DEFINE_UNQUOTED([RETQSORTTYPE], [$mysql_cv_type_qsort],
                    [The return type of qsort (int or void).])
 if test "$mysql_cv_type_qsort" = "void"
@@ -61,46 +88,62 @@ fi
 ])
 
 #---START: Figure out whether to use 'struct rlimit' or 'struct rlimit64'
-AC_DEFUN([MYSQL_TYPE_STRUCT_RLIMIT],
-[ac_save_CXXFLAGS="$CXXFLAGS"
+AC_DEFUN([MYSQL_TYPE_STRUCT_RLIMIT], [
 AC_CACHE_CHECK([struct type to use with setrlimit], mysql_cv_btype_struct_rlimit,
-AC_LANG_PUSH(C++)
-if test "$ac_cv_prog_gxx" = "yes"
+    [
+     AC_REQUIRE([AC_PROG_CXX])	dnl Make sure $GXX is set if GNU C++
+     ac_save_CXXFLAGS="$CXXFLAGS"
+     AC_LANG_PUSH([C++])
+     if test "$GXX" = "yes"
 then
   # Add -Werror, remove -fbranch-probabilities (Bug #268)
   CXXFLAGS=`echo "$CXXFLAGS -Werror" | sed -e 's/-fbranch-probabilities//; s/-Wall//; s/-Wcheck//'`
 fi
-mysql_cv_btype_struct_rlimit=none
-[AC_TRY_COMPILE([#if defined(inline)
+     AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #if defined(inline)
 #undef inline
 #endif
 #include <stdlib.h>
 #include <sys/resource.h>
-],
-[struct rlimit64 rl; setrlimit(RLIMIT_CORE, &rl);],
-mysql_cv_btype_struct_rlimit="struct rlimit64")]
-if test "$mysql_cv_btype_struct_rlimit" = "none"; then
-mysql_cv_btype_struct_rlimit="struct rlimit"
-fi)
-AC_LANG_POP(C++)
+	  ]],
+	  [[
+	    struct rlimit64 rl; setrlimit(RLIMIT_CORE, &rl);
+	  ]]
+       )],
+       [mysql_cv_btype_struct_rlimit="struct rlimit64"],
+       [mysql_cv_btype_struct_rlimit="struct rlimit"]
+     )
+     AC_LANG_POP([C++])
+     CXXFLAGS="$ac_save_CXXFLAGS"
+    ]
+  )
 AC_DEFINE_UNQUOTED([STRUCT_RLIMIT], [$mysql_cv_btype_struct_rlimit],
                    [The struct rlimit type to use with setrlimit])
-CXXFLAGS="$ac_save_CXXFLAGS"
 ])
 #---END:
 
-AC_DEFUN([MYSQL_TIMESPEC_TS],
-[AC_CACHE_CHECK([if struct timespec has a ts_sec member], mysql_cv_timespec_ts,
-[AC_TRY_COMPILE([#include <pthread.h>
+AC_DEFUN([MYSQL_TIMESPEC_TS], [
+  AC_CACHE_CHECK([if struct timespec has a ts_sec member], mysql_cv_timespec_ts,
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #include <pthread.h>
 #ifdef __cplusplus
 extern "C"
 #endif
-],
-[struct timespec abstime;
-
+	  ]],
+	  [[
+	    struct timespec abstime;
 abstime.ts_sec = time(NULL)+1;
 abstime.ts_nsec = 0;
-], mysql_cv_timespec_ts=yes, mysql_cv_timespec_ts=no)])
+	  ]]
+       )],
+       [mysql_cv_timespec_ts=yes],
+       [mysql_cv_timespec_ts=no]
+    )]
+  )
 if test "$mysql_cv_timespec_ts" = "yes"
 then
   AC_DEFINE([HAVE_TIMESPEC_TS_SEC], [1],
@@ -108,16 +151,25 @@ then
 fi
 ])
 
-AC_DEFUN([MYSQL_TZNAME],
-[AC_CACHE_CHECK([if we have tzname variable], mysql_cv_tzname,
-[AC_TRY_COMPILE([#include <time.h>
+AC_DEFUN([MYSQL_TZNAME], [
+  AC_CACHE_CHECK([if we have tzname variable], mysql_cv_tzname,
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+          [[
+	    #include <time.h>
 #ifdef __cplusplus
 extern "C"
 #endif
-],
-[ tzset();
+	  ]],
+	  [[
+	    tzset();
   return tzname[0] != 0;
-], mysql_cv_tzname=yes, mysql_cv_tzname=no)])
+	  ]]
+       )],
+       [mysql_cv_tzname=yes],
+       [mysql_cv_tzname=no]
+    )]
+  )
 if test "$mysql_cv_tzname" = "yes"
 then
   AC_DEFINE([HAVE_TZNAME], [1], [Have the tzname variable])
@@ -129,37 +181,52 @@ AC_DEFUN([MYSQL_PTHREAD_YIELD],[
 # Some OSes like Mac OS X have that as a replacement for pthread_yield()
 AC_CHECK_FUNCS(pthread_yield_np, AC_DEFINE([HAVE_PTHREAD_YIELD_NP],[],[Define if you have pthread_yield_np]))
 AC_CACHE_CHECK([if pthread_yield takes zero arguments], ac_cv_pthread_yield_zero_arg,
-[AC_TRY_LINK([#define _GNU_SOURCE
+    [AC_LINK_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #define _GNU_SOURCE
 #include <pthread.h>
 #ifdef __cplusplus
 extern "C"
 #endif
-],
-[
+	  ]],
+	  [[
   pthread_yield();
-], ac_cv_pthread_yield_zero_arg=yes, ac_cv_pthread_yield_zero_arg=yeso)])
+	  ]]
+       )],
+       [ac_cv_pthread_yield_zero_arg=yes],
+       [ac_cv_pthread_yield_zero_arg=no]
+    )]
+  )
 if test "$ac_cv_pthread_yield_zero_arg" = "yes"
 then
   AC_DEFINE([HAVE_PTHREAD_YIELD_ZERO_ARG], [1],
             [pthread_yield that doesn't take any arguments])
 fi
 AC_CACHE_CHECK([if pthread_yield takes 1 argument], ac_cv_pthread_yield_one_arg,
-[AC_TRY_LINK([#define _GNU_SOURCE
+    [AC_LINK_IFELSE(
+       [AC_LANG_PROGRAM(
+          [[
+	    #define _GNU_SOURCE
 #include <pthread.h>
 #ifdef __cplusplus
 extern "C"
 #endif
-],
-[
+	  ]],
+	  [[
   pthread_yield(0);
-], ac_cv_pthread_yield_one_arg=yes, ac_cv_pthread_yield_one_arg=no)])
+	  ]]
+       )],
+       [ac_cv_pthread_yield_one_arg=yes],
+       [ac_cv_pthread_yield_one_arg=no]
+    )]
+  )
 if test "$ac_cv_pthread_yield_one_arg" = "yes"
 then
   AC_DEFINE([HAVE_PTHREAD_YIELD_ONE_ARG], [1],
             [pthread_yield function with one argument])
 fi
-]
-)
+])
 
 #---END:
 
@@ -201,8 +268,10 @@ ac_save_CC="$CC"
 for ac_arg in "" -qlanglvl=ansi -std1 "-Aa -D_HPUX_SOURCE" 
 do
   CC="$ac_save_CC $ac_arg"
-  AC_TRY_COMPILE(
-[#if !defined(__STDC__)
+	AC_COMPILE_IFELSE(
+	  [AC_LANG_PROGRAM(
+	     [[
+	       #if !defined(__STDC__)
 choke me
 #endif
 /* DYNIX/ptx V4.1.3 can't compile sys/stat.h with -Xc -D__EXTENSIONS__. */
@@ -210,11 +279,15 @@ choke me
 # include <sys/types.h>
 # include <sys/stat.h>
 #endif
-], [
+	     ]],
+	     [[
 int test (int i, double x);
 struct s1 {int (*f) (int a);};
-struct s2 {int (*f) (double a);};],
-[am_cv_prog_cc_stdc="$ac_arg"; break])
+	       struct s2 {int (*f) (double a);};
+	     ]]
+	  )],
+	  [am_cv_prog_cc_stdc="$ac_arg"; break]
+	)
 done
 CC="$ac_save_CC"
 ])
@@ -227,14 +300,15 @@ esac
 
 # Orginal from bash-2.0 aclocal.m4, Changed to use termcap last by monty.
  
-AC_DEFUN([MYSQL_CHECK_LIB_TERMCAP],
-[
+AC_DEFUN([MYSQL_CHECK_LIB_TERMCAP], [
+
 AC_CACHE_VAL(mysql_cv_termcap_lib,
 [AC_CHECK_LIB(ncurses, tgetent, mysql_cv_termcap_lib=libncurses,
     [AC_CHECK_LIB(curses, tgetent, mysql_cv_termcap_lib=libcurses,
 	[AC_CHECK_LIB(termcap, tgetent, mysql_cv_termcap_lib=libtermcap,
           [AC_CHECK_LIB(tinfo, tgetent, mysql_cv_termcap_lib=libtinfo,
 	    mysql_cv_termcap_lib=NOT_FOUND)])])])])
+
 AC_MSG_CHECKING(for termcap functions library)
 if test "$mysql_cv_termcap_lib" = "NOT_FOUND"; then
 AC_MSG_ERROR([No curses/termcap library found])
@@ -251,35 +325,52 @@ AC_MSG_RESULT($TERMCAP_LIB)
 ])
 
 dnl Check type of signal routines (posix, 4.2bsd, 4.1bsd or v7)
-AC_DEFUN([MYSQL_SIGNAL_CHECK],
-[AC_REQUIRE([AC_TYPE_SIGNAL])
+AC_DEFUN([MYSQL_SIGNAL_CHECK], [
 AC_MSG_CHECKING(for type of signal functions)
 AC_CACHE_VAL(mysql_cv_signal_vintage,
-[
-  AC_TRY_LINK([#include <signal.h>],[
+    [AC_LINK_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #include <signal.h>
+	  ]],
+	  [[
     sigset_t ss;
     struct sigaction sa;
     sigemptyset(&ss); sigsuspend(&ss);
     sigaction(SIGINT, &sa, (struct sigaction *) 0);
     sigprocmask(SIG_BLOCK, &ss, (sigset_t *) 0);
-  ], mysql_cv_signal_vintage=posix,
-  [
-    AC_TRY_LINK([#include <signal.h>], [
+	  ]]
+       )],
+       [mysql_cv_signal_vintage=posix],
+       [AC_LINK_IFELSE(
+	  [AC_LANG_PROGRAM(
+	     [[
+	       #include <signal.h>
+	      ]],
+	      [[
 	int mask = sigmask(SIGINT);
 	sigsetmask(mask); sigblock(mask); sigpause(mask);
-    ], mysql_cv_signal_vintage=4.2bsd,
-    [
-      AC_TRY_LINK([
+	      ]]
+          )],
+	  [mysql_cv_signal_vintage=4.2bsd],
+	  [AC_LINK_IFELSE(
+	     [AC_LANG_PROGRAM(
+		[[
 	#include <signal.h>
-	RETSIGTYPE foo() { }], [
+		  void foo() { }
+		]],
+		[[
 		int mask = sigmask(SIGINT);
 		sigset(SIGINT, foo); sigrelse(SIGINT);
 		sighold(SIGINT); sigpause(SIGINT);
-        ], mysql_cv_signal_vintage=svr3, mysql_cv_signal_vintage=v7
+		]]
+             )],
+	     [mysql_cv_signal_vintage=svr3],
+	     [mysql_cv_signal_vintage=v7]
+          )]
     )]
   )]
 )
-])
 AC_MSG_RESULT($mysql_cv_signal_vintage)
 if test "$mysql_cv_signal_vintage" = posix; then
 AC_DEFINE(HAVE_POSIX_SIGNALS, [1],
@@ -291,25 +382,48 @@ AC_DEFINE(HAVE_USG_SIGHOLD, [1], [sighold() is present and usable])
 fi
 ])
 
-AC_DEFUN([MYSQL_CHECK_GETPW_FUNCS],
-[AC_MSG_CHECKING(whether programs are able to redeclare getpw functions)
+AC_DEFUN([MYSQL_CHECK_GETPW_FUNCS], [
+  AC_MSG_CHECKING(whether programs are able to redeclare getpw functions)
 AC_CACHE_VAL(mysql_cv_can_redecl_getpw,
-[AC_TRY_COMPILE([#include <sys/types.h>
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #include <sys/types.h>
 #include <pwd.h>
-extern struct passwd *getpwent();], [struct passwd *z; z = getpwent();],
-  mysql_cv_can_redecl_getpw=yes,mysql_cv_can_redecl_getpw=no)])
+	    extern struct passwd *getpwent();
+	  ]],
+	  [[
+	    struct passwd *z; z = getpwent();
+	  ]]
+       )],
+       [mysql_cv_can_redecl_getpw=yes],
+       [mysql_cv_can_redecl_getpw=no]
+    )]
+  )
+
 AC_MSG_RESULT($mysql_cv_can_redecl_getpw)
 if test "$mysql_cv_can_redecl_getpw" = "no"; then
 AC_DEFINE(HAVE_GETPW_DECLS, [1], [getpwent() declaration present])
 fi
 ])
 
-AC_DEFUN([MYSQL_HAVE_TIOCGWINSZ],
-[AC_MSG_CHECKING(for TIOCGWINSZ in sys/ioctl.h)
+AC_DEFUN([MYSQL_HAVE_TIOCGWINSZ],[
+  AC_MSG_CHECKING(for TIOCGWINSZ in sys/ioctl.h)
 AC_CACHE_VAL(mysql_cv_tiocgwinsz_in_ioctl,
-[AC_TRY_COMPILE([#include <sys/types.h>
-#include <sys/ioctl.h>], [int x = TIOCGWINSZ;],
-  mysql_cv_tiocgwinsz_in_ioctl=yes,mysql_cv_tiocgwinsz_in_ioctl=no)])
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #include <sys/types.h>
+	    #include <sys/ioctl.h>
+	  ]],
+          [[
+	    int x = TIOCGWINSZ;
+	  ]]
+       )],
+       [mysql_cv_tiocgwinsz_in_ioctl=yes],
+       [mysql_cv_tiocgwinsz_in_ioctl=no]
+    )]
+  )
 AC_MSG_RESULT($mysql_cv_tiocgwinsz_in_ioctl)
 if test "$mysql_cv_tiocgwinsz_in_ioctl" = "yes"; then   
 AC_DEFINE([GWINSZ_IN_SYS_IOCTL], [1],
@@ -317,24 +431,45 @@ AC_DEFINE([GWINSZ_IN_SYS_IOCTL], [1],
 fi
 ])
 
-AC_DEFUN([MYSQL_HAVE_FIONREAD],
-[AC_MSG_CHECKING(for FIONREAD in sys/ioctl.h)
+AC_DEFUN([MYSQL_HAVE_FIONREAD],[
+  AC_MSG_CHECKING(for FIONREAD in sys/ioctl.h)
 AC_CACHE_VAL(mysql_cv_fionread_in_ioctl,
-[AC_TRY_COMPILE([#include <sys/types.h>
-#include <sys/ioctl.h>], [int x = FIONREAD;],
-  mysql_cv_fionread_in_ioctl=yes,mysql_cv_fionread_in_ioctl=no)])
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #include <sys/types.h>
+	    #include <sys/ioctl.h>
+	  ]],
+          [[
+	    int x = FIONREAD;
+	  ]]
+       )],
+       [mysql_cv_fionread_in_ioctl=yes],
+       [mysql_cv_fionread_in_ioctl=no]
+    )])
 AC_MSG_RESULT($mysql_cv_fionread_in_ioctl)
 if test "$mysql_cv_fionread_in_ioctl" = "yes"; then   
 AC_DEFINE([FIONREAD_IN_SYS_IOCTL], [1], [Do we have FIONREAD])
 fi
 ])
 
-AC_DEFUN([MYSQL_HAVE_TIOCSTAT],
-[AC_MSG_CHECKING(for TIOCSTAT in sys/ioctl.h)
+AC_DEFUN([MYSQL_HAVE_TIOCSTAT],[
+  AC_MSG_CHECKING(for TIOCSTAT in sys/ioctl.h)
 AC_CACHE_VAL(mysql_cv_tiocstat_in_ioctl,
-[AC_TRY_COMPILE([#include <sys/types.h>
-#include <sys/ioctl.h>], [int x = TIOCSTAT;],
-  mysql_cv_tiocstat_in_ioctl=yes,mysql_cv_tiocstat_in_ioctl=no)])
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #include <sys/types.h>
+	    #include <sys/ioctl.h>
+	  ]],
+	  [[
+	   int x = TIOCSTAT;
+	  ]]
+       )],
+       [mysql_cv_tiocstat_in_ioctl=yes],
+       [mysql_cv_tiocstat_in_ioctl=no]
+    )]
+  )
 AC_MSG_RESULT($mysql_cv_tiocstat_in_ioctl)
 if test "$mysql_cv_tiocstat_in_ioctl" = "yes"; then   
 AC_DEFINE(TIOCSTAT_IN_SYS_IOCTL, [1],
@@ -342,11 +477,13 @@ AC_DEFINE(TIOCSTAT_IN_SYS_IOCTL, [1],
 fi
 ])
 
-AC_DEFUN([MYSQL_STRUCT_DIRENT_D_INO],
-[AC_REQUIRE([AC_HEADER_DIRENT])
+AC_DEFUN([MYSQL_STRUCT_DIRENT_D_INO],[
+  AC_REQUIRE([AC_HEADER_DIRENT])
 AC_MSG_CHECKING(if struct dirent has a d_ino member)
 AC_CACHE_VAL(mysql_cv_dirent_has_dino,
-[AC_TRY_COMPILE([
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
 #include <stdio.h>
 #include <sys/types.h>
 #ifdef HAVE_UNISTD_H
@@ -366,9 +503,15 @@ AC_CACHE_VAL(mysql_cv_dirent_has_dino,
 #  include <ndir.h>
 # endif
 #endif /* HAVE_DIRENT_H */
-],[
+	  ]],
+	  [[
 struct dirent d; int z; z = d.d_ino;
-], mysql_cv_dirent_has_dino=yes, mysql_cv_dirent_has_dino=no)])
+	  ]]
+      )],
+      [mysql_cv_dirent_has_dino=yes],
+      [mysql_cv_dirent_has_dino=no]
+    )]
+  )
 AC_MSG_RESULT($mysql_cv_dirent_has_dino)
 if test "$mysql_cv_dirent_has_dino" = "yes"; then
 AC_DEFINE(STRUCT_DIRENT_HAS_D_INO, [1],
@@ -376,11 +519,13 @@ AC_DEFINE(STRUCT_DIRENT_HAS_D_INO, [1],
 fi
 ])
 
-AC_DEFUN([MYSQL_STRUCT_DIRENT_D_NAMLEN],
-[AC_REQUIRE([AC_HEADER_DIRENT])
+AC_DEFUN([MYSQL_STRUCT_DIRENT_D_NAMLEN],[
+  AC_REQUIRE([AC_HEADER_DIRENT])
 AC_MSG_CHECKING(if struct dirent has a d_namlen member)
 AC_CACHE_VAL(mysql_cv_dirent_has_dnamlen,
-[AC_TRY_COMPILE([
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
 #include <stdio.h>
 #include <sys/types.h>
 #ifdef HAVE_UNISTD_H
@@ -400,9 +545,15 @@ AC_CACHE_VAL(mysql_cv_dirent_has_dnamlen,
 #  include <ndir.h>
 # endif
 #endif /* HAVE_DIRENT_H */
-],[
+	  ]],
+	  [[
 struct dirent d; int z; z = (int)d.d_namlen;
-], mysql_cv_dirent_has_dnamlen=yes, mysql_cv_dirent_has_dnamlen=no)])
+	  ]]
+       )],
+       [mysql_cv_dirent_has_dnamlen=yes],
+       [mysql_cv_dirent_has_dnamlen=no]
+    )]
+  )
 AC_MSG_RESULT($mysql_cv_dirent_has_dnamlen)
 if test "$mysql_cv_dirent_has_dnamlen" = "yes"; then
 AC_DEFINE(STRUCT_DIRENT_HAS_D_NAMLEN, [1],
@@ -411,10 +562,13 @@ fi
 ])
 
 
-AC_DEFUN([MYSQL_TYPE_SIGHANDLER],
-[AC_MSG_CHECKING([whether signal handlers are of type void])
+AC_DEFUN([MYSQL_TYPE_SIGHANDLER],[
+  AC_MSG_CHECKING([whether signal handlers are of type void])
 AC_CACHE_VAL(mysql_cv_void_sighandler,
-[AC_TRY_COMPILE([#include <sys/types.h>
+    [AC_COMPILE_IFELSE(
+       [AC_LANG_PROGRAM(
+	  [[
+	    #include <sys/types.h>
 #include <signal.h>
 #ifdef signal
 #undef signal
@@ -422,36 +576,47 @@ AC_CACHE_VAL(mysql_cv_void_sighandler,
 #ifdef __cplusplus
 extern "C"
 #endif
-void (*signal ()) ();],
-[int i;], mysql_cv_void_sighandler=yes, mysql_cv_void_sighandler=no)])dnl
+	    void (*signal ()) ();
+	  ]],
+	  [[
+	    int i;
+	  ]]
+       )],
+       [mysql_cv_void_sighandler=yes],
+       [mysql_cv_void_sighandler=no]
+     )]
+  )
 AC_MSG_RESULT($mysql_cv_void_sighandler)
 if test "$mysql_cv_void_sighandler" = "yes"; then
 AC_DEFINE(VOID_SIGHANDLER, [1], [sighandler type is void (*signal ()) ();])
 fi
 ])
 
-AC_DEFUN([MYSQL_CXX_BOOL],
-[
+AC_DEFUN([MYSQL_CXX_BOOL],[
 AC_REQUIRE([AC_PROG_CXX])
 AC_MSG_CHECKING(if ${CXX} supports bool types)
 AC_CACHE_VAL(mysql_cv_have_bool,
 [
-AC_LANG_SAVE
-AC_LANG_CPLUSPLUS
-AC_TRY_COMPILE(,[bool b = true;],
-mysql_cv_have_bool=yes,
-mysql_cv_have_bool=no)
-AC_LANG_RESTORE
+   AC_LANG_PUSH([C++])
+   AC_COMPILE_IFELSE(
+     [AC_LANG_PROGRAM([],[[bool b = true;]])],
+     [mysql_cv_have_bool=yes],
+     [mysql_cv_have_bool=no]
+   )
+   AC_LANG_POP([C++])
 ])
 AC_MSG_RESULT($mysql_cv_have_bool)
 if test "$mysql_cv_have_bool" = yes; then
 AC_DEFINE([HAVE_BOOL], [1], [bool is not defined by all C++ compilators])
 fi
-])dnl
+])
 
-AC_DEFUN([MYSQL_STACK_DIRECTION],
- [AC_CACHE_CHECK(stack direction for C alloca, ac_cv_c_stack_direction,
- [AC_TRY_RUN([#include <stdlib.h>
+AC_DEFUN([MYSQL_STACK_DIRECTION],[
+  AC_CACHE_CHECK(stack direction for C alloca, ac_cv_c_stack_direction,
+    [AC_RUN_IFELSE(
+       [AC_LANG_PROGRAM(
+          [[
+	    #include <stdlib.h>
  int find_stack_direction ()
  {
    static char *addr = 0;
@@ -464,22 +629,29 @@ AC_DEFUN([MYSQL_STACK_DIRECTION],
    else
      return (&dummy > addr) ? 1 : -1;
  }
- int main ()
- {
+	  ]],
+	  [[
    exit (find_stack_direction() < 0);
- }], ac_cv_c_stack_direction=1, ac_cv_c_stack_direction=-1,
-   ac_cv_c_stack_direction=)])
+	  ]]
+       )],
+       [ac_cv_c_stack_direction=1],
+       [ac_cv_c_stack_direction=-1],
+       [ac_cv_c_stack_direction=]
+    )]
+  )
  AC_DEFINE_UNQUOTED(STACK_DIRECTION, $ac_cv_c_stack_direction)
-])dnl
+])
 
-AC_DEFUN([MYSQL_CHECK_LONGLONG_TO_FLOAT],
-[
+AC_DEFUN([MYSQL_CHECK_LONGLONG_TO_FLOAT],[
 AC_MSG_CHECKING(if conversion of longlong to float works)
 AC_CACHE_VAL(ac_cv_conv_longlong_to_float,
-[AC_TRY_RUN([#include <stdio.h>
+    [AC_RUN_IFELSE(
+       [AC_LANG_PROGRAM(
+          [[
+	    #include <stdio.h>
 typedef long long longlong;
-int main()
-{
+	  ]],
+	  [[
   longlong ll=1;
   float f;
   FILE *file=fopen("conftestval", "w");
@@ -487,9 +659,13 @@ int main()
   fprintf(file,"%g\n",f);
   fclose(file);
   return (0);
-}], ac_cv_conv_longlong_to_float=`cat conftestval`,
-    ac_cv_conv_longlong_to_float=0,
-    ac_cv_conv_longlong_to_float="yes")])dnl  # Cross compiling, assume can convert
+	  ]]
+       )],
+       [ac_cv_conv_longlong_to_float=`cat conftestval`],
+       [ac_cv_conv_longlong_to_float=0],
+       [ac_cv_conv_longlong_to_float="yes"]    dnl Cross compiling, assume can convert
+    )]
+  )
 if test "$ac_cv_conv_longlong_to_float" = "1" -o "$ac_cv_conv_longlong_to_float" = "yes"
 then
   ac_cv_conv_longlong_to_float=yes
@@ -592,14 +768,20 @@ dnl ---------------------------------------------------------------------------
 
 
 dnl MYSQL_NEEDS_MYSYS_NEW
-AC_DEFUN([MYSQL_NEEDS_MYSYS_NEW],
-[AC_CACHE_CHECK([needs mysys_new helpers], mysql_cv_use_mysys_new,
+AC_DEFUN([MYSQL_NEEDS_MYSYS_NEW],[
+  AC_CACHE_CHECK([needs mysys_new helpers], mysql_cv_use_mysys_new,
 [
-AC_LANG_PUSH(C++)
-AC_TRY_LINK([], [
+   AC_LANG_PUSH([C++])
+   AC_LINK_IFELSE(
+     [AC_LANG_PROGRAM([],
+        [[
 class A { public: int b; }; A *a=new A; a->b=10; delete a;
-], mysql_cv_use_mysys_new=no, mysql_cv_use_mysys_new=yes)
-AC_LANG_POP(C++)
+	]]
+     )],
+     [mysql_cv_use_mysys_new=no],
+     [mysql_cv_use_mysys_new=yes]
+   )
+   AC_LANG_POP([C++])
 ])
 if test "$mysql_cv_use_mysys_new" = "yes"
 then
@@ -669,14 +851,16 @@ dnl
 
 AC_DEFUN([MYSQL_CHECK_TIME_T],[
     AC_MSG_CHECKING(if time_t is unsigned)
-    AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
+  AC_COMPILE_IFELSE(
+    [AC_LANG_PROGRAM(
         [[
 #include <time.h>
         ]],
         [[
         int array[(((time_t)-1) > 0) ? 1 : -1];
-        ]] )
-    ], [
+       ]]
+    )],
+    [
     AC_DEFINE([TIME_T_UNSIGNED], 1, [Define to 1 if time_t is unsigned])
     AC_MSG_RESULT(yes)
     ],

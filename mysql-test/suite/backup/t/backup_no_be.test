@@ -1,6 +1,7 @@
 --source include/not_embedded.inc
 --source include/have_debug.inc
 --source include/not_embedded.inc
+--source include/have_myisam_or_maria_default.inc
 
 disable_query_log;
 call mtr.add_suppression("Backup:");
@@ -35,7 +36,7 @@ remove_file $MYSQLD_DATADIR/db1.bak;
 
 CREATE DATABASE db1;
 USE db1;
-CREATE TABLE t1 (a int) ENGINE=Myisam;
+CREATE TABLE t1 (a int);
 INSERT INTO t1 VALUES (1),(2),(3);
 
 # First check the normal behaviour when server is not modified.

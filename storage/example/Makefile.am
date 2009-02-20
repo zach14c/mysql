@@ -20,10 +20,9 @@ MYSQLSHAREdir =         $(pkgdatadir)
 MYSQLBASEdir=           $(prefix)
 MYSQLLIBdir=            $(pkglibdir)
 pkgplugindir =		$(pkglibdir)/plugin
-INCLUDES =              -I$(top_srcdir)/include -I$(top_builddir)/include \
+AM_CPPFLAGS =           -I$(top_srcdir)/include \
 			-I$(top_srcdir)/regex \
-			-I$(top_srcdir)/sql \
-                        -I$(srcdir)
+			-I$(top_srcdir)/sql
 WRAPLIBS=
 
 LDADD =
@@ -35,18 +34,13 @@ noinst_HEADERS =	ha_example.h
 EXTRA_LTLIBRARIES =	ha_example.la
 pkgplugin_LTLIBRARIES =	@plugin_example_shared_target@
 ha_example_la_LDFLAGS =	-module -rpath $(pkgplugindir)
-ha_example_la_CXXFLAGS=	$(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
-ha_example_la_CFLAGS =	$(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
+ha_example_la_CPPFLAGS=	$(AM_CPPFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_example_la_SOURCES =	ha_example.cc
 
 
 EXTRA_LIBRARIES =	libexample.a
 noinst_LIBRARIES =	@plugin_example_static_target@
-libexample_a_CXXFLAGS =	$(AM_CFLAGS)
-libexample_a_CFLAGS =	$(AM_CFLAGS)
 libexample_a_SOURCES=	ha_example.cc
 
 
 EXTRA_DIST =		CMakeLists.txt plug.in
-# Don't update the files from bitkeeper
-%::SCCS/s.%

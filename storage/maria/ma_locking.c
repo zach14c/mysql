@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -13,9 +14,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-/*
+/**
+  @file
   Locking of Maria-tables.
-  Must be first request before doing any furter calls to any Maria function.
+  Must be first request before doing any further calls to any Maria function.
   Is used to allow many process use the same non transactional Maria table
 */
 
@@ -43,6 +45,7 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
     ++share->w_locks;
     ++share->tot_locks;
     info->lock_type= lock_type;
+    info->s->in_use= list_add(info->s->in_use, &info->in_use);
     DBUG_RETURN(0);
   }
 
@@ -78,6 +81,12 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
       }
       if (info->opt_flag & (READ_CACHE_USED | WRITE_CACHE_USED))
       {
+        /*
+          Logically there should not be a WRITE_CACHE at this stage, except
+          maybe for temporary tables.
+        */
+        DBUG_ASSERT(share->temporary ||
+                    !(info->opt_flag & WRITE_CACHE_USED));
 	if (end_io_cache(&info->rec_cache))
 	{
 	  error=my_errno;
@@ -87,55 +96,21 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
       }
       if (!count)
       {
+        int local_error;
 	DBUG_PRINT("info",("changed: %u  w_locks: %u",
 			   (uint) share->changed, share->w_locks));
-	if (share->changed && !share->w_locks)
-	{
-#ifdef HAVE_MMAP
-          if ((share->mmaped_length !=
-               share->state.state.data_file_length) &&
-              (share->nonmmaped_inserts > MAX_NONMAPPED_INSERTS))
-          {
-            if (share->lock_key_trees)
-              rw_wrlock(&share->mmap_lock);
-            _ma_remap_file(info, share->state.state.data_file_length);
-            share->nonmmaped_inserts= 0;
-            if (share->lock_key_trees)
-              rw_unlock(&share->mmap_lock);
-          }
-#endif
-#ifdef EXTERNAL_LOCKING
-	  share->state.process= share->last_process=share->this_process;
-	  share->state.unique=   info->last_unique=  info->this_unique;
-	  share->state.update_count= info->last_loop= ++info->this_loop;
-#endif
-          /* transactional tables rather flush their state at Checkpoint */
-          if (!share->base.born_transactional)
-          {
-            if (_ma_state_info_write_sub(share->kfile.file, &share->state, 1))
-              error= my_errno;
-            else
-            {
-              /* A value of 0 means below means "state flushed" */
-              share->changed= 0;
-            }
-          }
-	  if (maria_flush)
-	  {
-            if (_ma_sync_table_files(info))
-	      error= my_errno;
-	  }
-	  else
-	    share->not_flushed=1;
-	  if (error)
-          {
-            maria_print_error(info->s, HA_ERR_CRASHED);
-	    maria_mark_crashed(info);
-          }
+	if (share->changed && !share->w_locks &&
+            (local_error=
+             ma_remap_file_and_write_state_for_unlock(info, FALSE)))
+        {
+          error= local_error;
+          maria_print_error(share, HA_ERR_CRASHED);
+          maria_mark_crashed(info);
 	}
       }
       info->opt_flag&= ~(READ_CACHE_USED | WRITE_CACHE_USED);
       info->lock_type= F_UNLCK;
+      info->s->in_use= list_delete(info->s->in_use, &info->in_use);
       break;
     case F_RDLCK:
       if (info->lock_type == F_WRLCK)
@@ -166,6 +141,7 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
       share->r_locks++;
       share->tot_locks++;
       info->lock_type=lock_type;
+      info->s->in_use= list_add(info->s->in_use, &info->in_use);
       break;
     case F_WRLCK:
       if (info->lock_type == F_RDLCK)
@@ -216,13 +192,14 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
       info->invalidator=share->invalidator;
       share->w_locks++;
       share->tot_locks++;
+      info->s->in_use= list_add(info->s->in_use, &info->in_use);
       break;
     default:
       DBUG_ASSERT(0);
       break;				/* Impossible */
     }
   }
-#ifdef __WIN__
+#ifdef _WIN32
   else
   {
     /*
@@ -316,15 +293,13 @@ int _ma_writeinfo(register MARIA_HA *info, uint operation)
       share->state.update_count= info->last_loop= ++info->this_loop;
 #endif
 
-      if ((error= _ma_state_info_write_sub(share->kfile.file,
-                                           &share->state, 1)))
+      if ((error= _ma_state_info_write_sub(share, share->kfile.file,
+                                           &share->state,
+                                           MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET)))
 	olderror=my_errno;
-#ifdef __WIN__
+#ifdef _WIN32
       if (maria_flush)
-      {
-	_commit(share->kfile.file);
-	_commit(info->dfile.file);
-      }
+        _ma_sync_table_files(info);
 #endif
       my_errno=olderror;
     }
@@ -388,9 +363,15 @@ int _ma_mark_file_changed(MARIA_HA *info)
 {
   uchar buff[3];
   register MARIA_SHARE *share= info->s;
+  int error= 1;
   DBUG_ENTER("_ma_mark_file_changed");
 
-  if (!(share->state.changed & STATE_CHANGED) || ! share->global_changed)
+#define _MA_ALREADY_MARKED_FILE_CHANGED                                 \
+  ((share->state.changed & STATE_CHANGED) && share->global_changed)
+  if (_MA_ALREADY_MARKED_FILE_CHANGED)
+    DBUG_RETURN(0);
+  pthread_mutex_lock(&share->intern_lock); /* recheck under mutex */
+  if (! _MA_ALREADY_MARKED_FILE_CHANGED)
   {
     share->state.changed|=(STATE_CHANGED | STATE_NOT_ANALYZED |
 			   STATE_NOT_OPTIMIZED_KEYS);
@@ -413,11 +394,15 @@ int _ma_mark_file_changed(MARIA_HA *info)
     {
       mi_int2store(buff,share->state.open_count);
       buff[2]=1;				/* Mark that it's changed */
+      /*
+        Don't need to log it to physical log, as online backup does dirty
+        copies anyway.
+      */
       if (my_pwrite(share->kfile.file, buff, sizeof(buff),
                     sizeof(share->state.header) +
                     MARIA_FILE_OPEN_COUNT_OFFSET,
                     MYF(MY_NABP)))
-        DBUG_RETURN(1);
+        goto err;
     }
     /* Set uuid of file if not yet set (zerofilled file) */
     if (share->base.born_transactional &&
@@ -429,11 +414,15 @@ int _ma_mark_file_changed(MARIA_HA *info)
            _ma_update_state_lsns_sub(share, LSN_IMPOSSIBLE,
                                      trnman_get_min_trid(),
                                      TRUE, TRUE)))
-        DBUG_RETURN(1);
+        goto err;
       share->state.changed|= STATE_NOT_MOVABLE;
     }
   }
-  DBUG_RETURN(0);
+  error= 0;
+err:
+  pthread_mutex_unlock(&share->intern_lock);
+  DBUG_RETURN(error);
+#undef _MA_ALREADY_MARKED_FILE_CHANGED
 }
 
 /*
@@ -480,6 +469,10 @@ int _ma_decrement_open_count(MARIA_HA *info)
       if (!share->temporary)
       {
         mi_int2store(buff,share->state.open_count);
+        /*
+          Don't need to log it to physical log, as online backup does dirty
+          copies anyway.
+        */
         write_error= (int) my_pwrite(share->kfile.file, buff, sizeof(buff),
                                      sizeof(share->state.header) +
                                      MARIA_FILE_OPEN_COUNT_OFFSET,
@@ -527,14 +520,81 @@ void _ma_mark_file_crashed(MARIA_SHARE *share)
 my_bool _ma_set_uuid(MARIA_HA *info, my_bool reset_uuid)
 {
   uchar buff[MY_UUID_SIZE], *uuid;
-
+  my_bool ret;
   uuid= maria_uuid;
   if (reset_uuid)
   {
     bzero(buff, sizeof(buff));
     uuid= buff;
   }
-  return (my_bool) my_pwrite(info->s->kfile.file, uuid, MY_UUID_SIZE,
-                             mi_uint2korr(info->s->state.header.base_pos),
-                             MYF(MY_NABP));
+  ret= (my_bool) my_pwrite(info->s->kfile.file, uuid, MY_UUID_SIZE,
+                           mi_uint2korr(info->s->state.header.base_pos),
+                           MYF(MY_NABP));
+  if (unlikely(ma_get_physical_logging_state(info->s)))
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAI, info->s, uuid,
+                              MY_UUID_SIZE,
+                              mi_uint2korr(info->s->state.header.base_pos));
+  return ret;
+}
+
+
+/**
+  Remaps the data file, and writes state to index file.
+
+  When we unlock a table and no other thread has announced it is going to
+  write to it (w_locks==0), we want to flush some information to disk, so
+  that in case of crash the table is not too much corrupted. Physical
+  logging, when it is turning logging of for a table, needs to do this too,
+  so that this information reaches the log.
+
+  @param  info            table
+  @param  force           if FALSE, don't flush state of transactional tables
+                          (they do it at checkpoint)
+
+  @return Operation status
+    @retval 0      ok
+    @retval !=0    error
+*/
+
+int ma_remap_file_and_write_state_for_unlock(MARIA_HA *info, my_bool force)
+{
+  MARIA_SHARE *share= info->s;
+  int error= 0;
+#ifdef HAVE_MMAP
+  if ((share->mmaped_length != share->state.state.data_file_length) &&
+      (share->nonmmaped_inserts > MAX_NONMAPPED_INSERTS))
+  {
+    if (share->lock_key_trees)
+      rw_wrlock(&share->mmap_lock);
+    _ma_remap_file(info, share->state.state.data_file_length);
+    share->nonmmaped_inserts= 0;
+    if (share->lock_key_trees)
+      rw_unlock(&share->mmap_lock);
+  }
+#endif
+#ifdef EXTERNAL_LOCKING
+  share->state.process= share->last_process=share->this_process;
+  share->state.unique=   info->last_unique=  info->this_unique;
+  share->state.update_count= info->last_loop= ++info->this_loop;
+#endif
+  if (!share->base.born_transactional || force)
+  {
+    if (_ma_state_info_write_sub(share, share->kfile.file, &share->state,
+                                 MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET))
+      error=my_errno;
+    else
+    {
+      /* A value of 0 means below means "state flushed" */
+      share->changed= 0;
+    }
+  }
+  if (maria_flush)
+  {
+    if (_ma_sync_table_files(info))
+      error= my_errno;
+  }
+  else
+    share->not_flushed=1;
+
+  return error;
 }

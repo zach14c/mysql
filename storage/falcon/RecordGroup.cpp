@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -110,9 +110,8 @@ bool RecordGroup::store(Record * record, Record *prior, int32 id, RecordSection 
 	return section->store(record, prior, id % base, NULL);
 }
 
-int RecordGroup::retireRecords(Table *table, int base, RecordScavenge *recordScavenge)
+void RecordGroup::pruneRecords(Table *table, int base, RecordScavenge *recordScavenge)
 {
-	int count = 0;
 	int recordNumber = base * RECORD_SLOTS;
 
 	for (RecordSection **ptr = records, **end = records + RECORD_SLOTS; ptr < end; ++ptr, ++recordNumber)
@@ -120,23 +119,21 @@ int RecordGroup::retireRecords(Table *table, int base, RecordScavenge *recordSca
 		RecordSection *section = *ptr;
 		
 		if (section)
-			{
-			int n = section->retireRecords(table, recordNumber, recordScavenge);
-			count += n;
-			
-			/***
-			if (n)
-				count += n;
-			else
-				{
-				delete section;
-				*ptr = NULL;
-				}
-			***/
-			}
+			section->pruneRecords(table, recordNumber, recordScavenge);
 		}
+}
 
-	return count;
+void RecordGroup::retireRecords(Table *table, int base, RecordScavenge *recordScavenge)
+{
+	int recordNumber = base * RECORD_SLOTS;
+
+	for (RecordSection **ptr = records, **end = records + RECORD_SLOTS; ptr < end; ++ptr, ++recordNumber)
+		{
+		RecordSection *section = *ptr;
+		
+		if (section)
+			section->retireRecords(table, recordNumber, recordScavenge);
+		}
 }
 
 int RecordGroup::countActiveRecords()
@@ -215,11 +212,4 @@ bool RecordGroup::retireSections(Table * table, int id)
 		}
 		
 	return inactive();
-}
-
-void RecordGroup::inventoryRecords(RecordScavenge* recordScavenge)
-{
-	for (RecordSection **section = records, **end = records + RECORD_SLOTS; section < end; ++section)
-		if (*section)
-			(*section)->inventoryRecords(recordScavenge);
 }

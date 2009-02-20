@@ -20,11 +20,10 @@ MYSQLSHAREdir=		$(pkgdatadir)
 MYSQLBASEdir=		$(prefix)
 MYSQLLIBdir=		$(pkglibdir)
 pkgplugindir=		$(pkglibdir)/plugin
-INCLUDES=		-I$(top_srcdir)/include -I$(top_builddir)/include \
+AM_CPPFLAGS =		-I$(top_srcdir)/include \
 			-I$(top_srcdir)/regex \
 			-I$(top_srcdir)/storage/innobase/include \
-			-I$(top_srcdir)/sql \
-			-I$(srcdir)
+			-I$(top_srcdir)/sql
 
 DEFS=			@DEFS@
 
@@ -155,20 +154,13 @@ libinnobase_a_SOURCES=	btr/btr0btr.c btr/btr0cur.c btr/btr0pcur.c	\
 			ut/ut0ut.c ut/ut0vec.c ut/ut0wqueue.c		\
 			handler/ha_innodb.cc
 
-libinnobase_a_CXXFLAGS=	$(AM_CFLAGS)
-libinnobase_a_CFLAGS=	$(AM_CFLAGS)
-
 EXTRA_LTLIBRARIES=	ha_innodb.la
 pkgplugin_LTLIBRARIES=	@plugin_innobase_shared_target@
 
 ha_innodb_la_LDFLAGS=	-module -rpath $(pkgplugindir)
-ha_innodb_la_CXXFLAGS=	$(AM_CFLAGS) $(INNODB_DYNAMIC_CFLAGS)
-ha_innodb_la_CFLAGS=	$(AM_CFLAGS) $(INNODB_DYNAMIC_CFLAGS)
+ha_innodb_la_CPPFLAGS=	$(AM_CPPFLAGS) $(INNODB_DYNAMIC_CFLAGS)
 ha_innodb_la_SOURCES=	$(libinnobase_a_SOURCES)
 
 EXTRA_DIST=		CMakeLists.txt plug.in \
 			pars/make_bison.sh pars/make_flex.sh \
 			pars/pars0grm.y pars/pars0lex.l
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
