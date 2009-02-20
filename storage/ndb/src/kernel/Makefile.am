@@ -23,7 +23,7 @@ ndbd_SOURCES = main.cpp SimBlockList.cpp
 
 include $(top_srcdir)/storage/ndb/config/type_kernel.mk.am
 
-INCLUDES += \
+AM_CPPFLAGS += \
 	-I$(srcdir)/blocks/cmvmi \
 	-I$(srcdir)/blocks/dbacc \
 	-I$(srcdir)/blocks/dbdict \
@@ -68,9 +68,6 @@ storage/ndbd.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ $(ndbbin_PROGRAMS)
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndbd_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

@@ -73,6 +73,7 @@ extern ulong ndb_extra_logging;
 #ifdef HAVE_NDB_BINLOG
 extern ulong ndb_report_thresh_binlog_epoch_slip;
 extern ulong ndb_report_thresh_binlog_mem_usage;
+extern my_bool ndb_log_binlog_index;
 #endif
 
 extern CHARSET_INFO *character_set_filesystem;
@@ -301,6 +302,11 @@ static sys_var_const    sys_ft_query_expansion_limit(&vars,
 static sys_var_const    sys_ft_stopword_file(&vars, "ft_stopword_file",
                                              OPT_GLOBAL, SHOW_CHAR_PTR,
                                              (uchar*) &ft_stopword_file);
+
+static sys_var_const    sys_ignore_builtin_innodb(&vars, "ignore_builtin_innodb",
+                                                  OPT_GLOBAL, SHOW_BOOL,
+                                                  (uchar*) &opt_ignore_builtin_innodb);
+
 sys_var_str             sys_init_connect(&vars, "init_connect", 0,
                                          sys_update_init_connect,
                                          sys_default_init_connect,0);
@@ -712,6 +718,8 @@ sys_ndb_report_thresh_binlog_epoch_slip(&vars, "ndb_report_thresh_binlog_epoch_s
 static sys_var_long_ptr
 sys_ndb_report_thresh_binlog_mem_usage(&vars, "ndb_report_thresh_binlog_mem_usage",
                                        &ndb_report_thresh_binlog_mem_usage);
+static sys_var_bool_ptr
+sys_ndb_log_binlog_index(&vars, "ndb_log_binlog_index", &ndb_log_binlog_index);
 #endif
 static sys_var_thd_bool
 sys_ndb_use_exact_count(&vars, "ndb_use_exact_count", &SV::ndb_use_exact_count);

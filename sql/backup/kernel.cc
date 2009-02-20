@@ -1340,10 +1340,13 @@ int Backup_restore_ctx::do_restore(bool overwrite)
   close_thread_tables(m_thd);                   // Never errors
   m_thd->stmt_da->reset_diagnostics_area();     // Never errors
 
+  DEBUG_SYNC(m_thd, "before_restore_locks_tables");
+
   err= lock_tables_for_restore();               // logs errors
   if (err)
     DBUG_RETURN(fatal_error(err));
 
+  DEBUG_SYNC(m_thd, "after_restore_locks_tables");
   /* 
    Here restore drivers are created to restore table data. Data is being
    (potentially) changed so we set m_data_changed flag.

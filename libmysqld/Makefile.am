@@ -31,7 +31,7 @@ DEFS =			-DEMBEDDED_LIBRARY -DMYSQL_SERVER \
 			@DEFS@ \
 			-DLIBDIR="\"$(MYSQLLIBdir)\"" \
 			-DPLUGINDIR="\"$(pkgplugindir)\""
-INCLUDES=		-I$(top_builddir)/include -I$(top_srcdir)/include \
+AM_CPPFLAGS =		-I$(top_srcdir)/include \
 			-I$(top_builddir)/sql -I$(top_srcdir)/sql \
 			-I$(top_srcdir)/sql/examples \
 			-I$(top_srcdir)/regex \
@@ -240,6 +240,3 @@ link_sources:
 clean-local:
 	rm -f `echo $(sqlsources) $(libmysqlsources) $(sqlstoragesources) $(storagesources) | sed "s;\.lo;.c;g"`; \
 	rm -f client_settings.h
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

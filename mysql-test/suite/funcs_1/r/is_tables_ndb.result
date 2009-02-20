@@ -17,7 +17,7 @@ AS "user_comment",
 FROM information_schema.tables
 WHERE table_schema LIKE 'test%' AND table_type = 'BASE TABLE'
 ORDER BY table_schema,table_name;
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	test1
 TABLE_NAME	t1
 TABLE_TYPE	BASE TABLE
@@ -41,7 +41,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	test1
 TABLE_NAME	t2
 TABLE_TYPE	BASE TABLE
@@ -65,7 +65,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	test2
 TABLE_NAME	t1
 TABLE_TYPE	BASE TABLE
@@ -112,7 +112,7 @@ AS "user_comment",
 FROM information_schema.tables
 WHERE table_schema LIKE 'test%' AND table_type = 'BASE TABLE'
 ORDER BY table_schema,table_name;
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	test1
 TABLE_NAME	t1
 TABLE_TYPE	BASE TABLE
@@ -136,7 +136,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	test1
 TABLE_NAME	t2
 TABLE_TYPE	BASE TABLE

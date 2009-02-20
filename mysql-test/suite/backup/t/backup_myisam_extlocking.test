@@ -2,6 +2,7 @@
 # see if --external-locking=1 causes backup to fail as expected
 
 --source include/not_embedded.inc
+--source include/have_myisam_or_maria_default.inc
 
 disable_query_log;
 call mtr.add_suppression("Backup:");
@@ -21,7 +22,7 @@ remove_file $MYSQLD_DATADIR/test.ba;
 
 CREATE DATABASE mysqltest;
 USE mysqltest;
-CREATE TABLE t1 (a int) engine=myisam;
+CREATE TABLE t1 (a int);
 
 --replace_column 1 #
 --error ER_GET_ERRMSG

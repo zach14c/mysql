@@ -7,7 +7,11 @@ AC_DEFUN([AC_SYS_COMPILER_FLAG],
   AC_CACHE_VAL(mysql_cv_option_$2,
   [
     CFLAGS="[$]OLD_CFLAGS $1"
-    AC_TRY_LINK([int main(){exit(0);}],mysql_cv_option_$2=yes,mysql_cv_option_$2=no,mysql_cv_option_$2=no)
+    AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM([], [[exit(0);]])],
+      [mysql_cv_option_$2=yes],
+      [mysql_cv_option_$2=no],
+      [mysql_cv_option_$2=no])
  ])
 
   CFLAGS="[$]OLD_CFLAGS"

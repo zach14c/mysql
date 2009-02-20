@@ -8,6 +8,7 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 --source include/have_debug.inc
+--source include/have_myisam_or_maria_default.inc
 --source include/blackhole.inc
 
 SET DEBUG_SYNC= 'RESET';
@@ -153,7 +154,7 @@ connection con1;
 # driver), Memory(Default driver) and Blackhole(no-data driver). Ensure that
 # drivers column indicates all types of drivers for backup database operation.
 
-CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
+CREATE TABLE backup_logs.t1 (a char(30));
 CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
 CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
 CREATE TABLE backup_logs.t4(id INT, name CHAR(20))ENGINE=BLACKHOLE;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 MySQL AB
+/* Copyright (C) 2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1474,11 +1474,20 @@ bool sys_var_debug_sync::check(THD *thd, set_var *var)
 
 bool sys_var_debug_sync::update(THD *thd, set_var *var)
 {
-  char empty= '\0';
-  char *val_str= var ? var->value->str_value.c_ptr() : &empty;
+  char *val_str, buff[STRING_BUFFER_USUAL_SIZE], empty= '\0';
+  String *strres, str(buff, sizeof(buff), system_charset_info);
+
   DBUG_ENTER("sys_var_debug_sync::update");
   DBUG_ASSERT(thd);
 
+  if (var)
+  {
+    if ((strres= var->value->val_str(&str)) == NULL)
+      DBUG_RETURN(TRUE);
+    val_str= strres->c_ptr();
+  }
+  else
+    val_str= &empty;
   DBUG_PRINT("debug_sync", ("set action: '%s'", val_str));
 
   DBUG_RETURN(opt_debug_sync_timeout ?

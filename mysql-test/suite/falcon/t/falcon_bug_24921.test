@@ -1,4 +1,6 @@
 --source include/have_falcon.inc
+--source include/have_utf8.inc
+
 SET @@storage_engine = Falcon;
 #
 # Bug #24921: LIKE searches fail if index on utf8 column

@@ -1,5 +1,6 @@
 --source include/have_falcon.inc
 --source include/have_partition.inc
+--source include/have_utf8.inc
 
 #
 # Bug #30480: Falcon: searches fail if LIKE and key partition

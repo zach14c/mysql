@@ -9,7 +9,7 @@
 --source include/not_embedded.inc
 --source include/have_innodb.inc
 --source include/have_falcon.inc
-
+--source include/have_myisam_or_maria_default.inc
 
 LET $BDIR=`select @@backupdir`;
 
@@ -26,11 +26,11 @@ CREATE DATABASE db2;
 CREATE TABLE db1.t1 (s1 CHAR(3)) ENGINE=innodb; # CS driver
 CREATE TABLE db1.t2 (s1 CHAR(3)) ENGINE=falcon; # CS driver
 CREATE TABLE db1.t3 (s1 CHAR(3)) ENGINE=memory; # default driver
-CREATE TABLE db1.t4 (s1 CHAR(3)) ENGINE=myisam; # native driver
+CREATE TABLE db1.t4 (s1 CHAR(3)); # native driver
 
 CREATE TABLE db2.t1 (s1 CHAR(3)) ENGINE=innodb; # trx1
 CREATE TABLE db2.t2 (s1 CHAR(3)) ENGINE=falcon; # trx2
-CREATE TABLE db2.t3 (s1 CHAR(3)) ENGINE=myisam; # non-trx
+CREATE TABLE db2.t3 (s1 CHAR(3)); # non-trx
 
 
 # Create test connections. The setup is as follows
