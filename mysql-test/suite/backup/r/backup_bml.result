@@ -2142,8 +2142,8 @@ user
 'bml_u3'@'%'
 grantee	has_privileges
 tablespace_name	file_name
-bml_ts1	bml_ts1.dat
-bml_ts2	bml_ts2.dat
+BML_TS1	bml_ts1.dat.fts
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # con1: Start DDL1 making it to stop after it has started (and 
@@ -2206,8 +2206,8 @@ user
 'bml_u3'@'%'
 grantee	has_privileges
 tablespace_name	file_name
-bml_ts1	bml_ts1.dat
-bml_ts2	bml_ts2.dat
+BML_TS1	bml_ts1.dat.fts
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # Resume DDL1 and DDL2. 
@@ -2239,8 +2239,8 @@ user
 'bml_u3'@'%'
 grantee	has_privileges
 tablespace_name	file_name
-bml_ts1	bml_ts1.dat
-bml_ts2	bml_ts2.dat
+BML_TS1	bml_ts1.dat.fts
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
@@ -2281,8 +2281,8 @@ user
 'bml_u3'@'%'
 grantee	has_privileges
 tablespace_name	file_name
-bml_ts1	bml_ts1.dat
-bml_ts2	bml_ts2.dat
+BML_TS1	bml_ts1.dat.fts
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
@@ -2311,7 +2311,7 @@ user
 'bml_u3'@'%'
 grantee	has_privileges
 tablespace_name	file_name
-bml_ts2	bml_ts2.dat
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 SET DEBUG_SYNC= 'reset';
@@ -2357,7 +2357,7 @@ user
 'bml_u3'@'%'
 grantee	has_privileges
 tablespace_name	file_name
-bml_ts2	bml_ts2.dat
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # con1: Start DDL1 making it to stop after it has started (and 
@@ -2419,7 +2419,7 @@ user
 'bml_u3'@'%'
 grantee	has_privileges
 tablespace_name	file_name
-bml_ts2	bml_ts2.dat
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # Resume DDL1 and DDL2. 
@@ -2452,7 +2452,7 @@ user
 grantee	has_privileges
 'bml_u3'@'%'	1
 tablespace_name	file_name
-bml_ts2	bml_ts2.dat
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
@@ -2494,7 +2494,7 @@ user
 grantee	has_privileges
 'bml_u3'@'%'	1
 tablespace_name	file_name
-bml_ts2	bml_ts2.dat
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
@@ -2525,7 +2525,7 @@ grantee	has_privileges
 'bml_u2'@'%'	1
 'bml_u3'@'%'	1
 tablespace_name	file_name
-bml_ts2	bml_ts2.dat
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 SET DEBUG_SYNC= 'reset';
@@ -2573,7 +2573,7 @@ grantee	has_privileges
 'bml_u2'@'%'	1
 'bml_u3'@'%'	1
 tablespace_name	file_name
-bml_ts2	bml_ts2.dat
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # con1: Start DDL1 making it to stop after it has started (and 
@@ -2637,7 +2637,7 @@ grantee	has_privileges
 'bml_u2'@'%'	1
 'bml_u3'@'%'	1
 tablespace_name	file_name
-bml_ts2	bml_ts2.dat
+BML_TS2	bml_ts2.dat.fts
 ==================
 
 # Resume DDL1 and DDL2. 
