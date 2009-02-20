@@ -22,78 +22,79 @@ let $MYSQLD_DATADIR= `select @@datadir`;
 --remove_file $MYSQLD_DATADIR/test.bak
 --enable_warnings
 
+PURGE BACKUP LOGS;
 --echo # non-existent backup archive
 --replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 --error 29
 RESTORE FROM 'test.bak';
 
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "RESTORE FROM 'test%";
-
 --echo verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 CREATE DATABASE adb;
 CREATE DATABASE bdb;
 CREATE TABLE bdb.t1(a int) ENGINE=MEMORY;
 
+PURGE BACKUP LOGS;
 --echo # invalid location
 --error ER_BAD_PATH
-BACKUP DATABASE adb TO '';
+eval BACKUP DATABASE adb TO '' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
 
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE adb TO%";
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
+
+# Backup database to invalid location
+
+PURGE BACKUP LOGS;
+--replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
+eval BACKUP DATABASE adb TO 'invalid/location' $compression;
+--replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--replace_column 2 #
+SHOW WARNINGS;
 
 --echo verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 --echo # don't overwrite existing files
 --replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 --error 1
-BACKUP DATABASE adb TO "bdb/t1.frm";
+eval BACKUP DATABASE adb TO "bdb/t1.frm" $compression;
 --replace_column 2 #
 --replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 SHOW WARNINGS;
 
 --replace_column 1 #
-BACKUP DATABASE adb TO "test.bak";
+eval BACKUP DATABASE adb TO "test.bak" $compression;
 # There should be no warnings after a successful backup
 SHOW WARNINGS;
 
+PURGE BACKUP LOGS;
 --echo # don't overwrite existing backup image
 --replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 --error 1
-BACKUP DATABASE adb TO "test.bak";
+eval BACKUP DATABASE adb TO "test.bak" $compression;
 --replace_column 2 #
 --replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 SHOW WARNINGS;
 
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE adb TO%";
-
 --echo verify backup history and progress logs for backup_state.
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
---remove_file $MYSQLD_DATADIR/test.bak     
+--remove_file $MYSQLD_DATADIR/test.bak
 
 --echo # non-existent database
 --disable_warnings
@@ -102,34 +103,34 @@ DROP DATABASE IF EXISTS bar;
 --enable_warnings
 
 -- error ER_BAD_DB_ERROR
-BACKUP DATABASE foo TO 'test.bak';
+eval BACKUP DATABASE foo TO 'test.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
 
+PURGE BACKUP LOGS;
 -- error ER_BAD_DB_ERROR
-BACKUP DATABASE test,foo,bdb,bar TO 'test.bak';
+eval BACKUP DATABASE test,foo,bdb,bar TO 'test.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
-
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE test,foo,bdb,bar TO%";
 
 --echo verify backup history and progress logs:
-SELECT backup_state,operation,backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation,backup_file, command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 #
 # Note: the following error is detected on parser level. Thus no 
 # backup_id is assigned and nothing is written to backup logs.
 #
+PURGE BACKUP LOGS;
 --echo # repeated database
 -- error ER_NONUNIQ_DB
-BACKUP DATABASE foo,test,bar,foo TO 'test.bak';
+eval BACKUP DATABASE foo,test,bar,foo TO 'test.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
+
+--echo verify backup history and progress logs for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 # Test that BACKUP/RESTORE statements are disable inside stored routines,
 # triggers and events.
@@ -191,111 +192,91 @@ DROP DATABASE bdb;
 #    Warning: Backup cannot include database 'mysql'
 
 # Scenario 1
+PURGE BACKUP LOGS;
 --echo Backup of mysql, information_schema scenario 1
 --error ER_BACKUP_CANNOT_INCLUDE_DB
-BACKUP DATABASE mysql TO 't.bak';
+eval BACKUP DATABASE mysql TO 't.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
 
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE mysql TO%";
-
 --echo verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
 
 # Scenario 2
+PURGE BACKUP LOGS;
 --echo Backup of mysql, information_schema scenario 2
 --error ER_BACKUP_CANNOT_INCLUDE_DB
-BACKUP DATABASE information_schema TO 't.bak';
+eval BACKUP DATABASE information_schema TO 't.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
 
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE information_schema TO%";
-
 --echo verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT  notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+SELECT  notes FROM mysql.backup_progress;
 
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
 
 # Scenario 3
+PURGE BACKUP LOGS;
 --echo Backup of mysql, information_schema scenario 3
 --error ER_BACKUP_CANNOT_INCLUDE_DB
-BACKUP DATABASE mysql, information_schema TO 't.bak';
+eval BACKUP DATABASE mysql, information_schema TO 't.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
 
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE mysql, information_schema TO%";
-
 --echo verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
 
 # Scenario 4
+PURGE BACKUP LOGS;
 --echo Backup of mysql, information_schema scenario 4
 --error ER_BACKUP_CANNOT_INCLUDE_DB
-BACKUP DATABASE mysql, test TO 't.bak';
+eval BACKUP DATABASE mysql, test TO 't.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
 
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE mysql, test TO%";
-
 --echo verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
 
 # Scenario 5
+PURGE BACKUP LOGS;
 --echo Backup of mysql, information_schema scenario 5
 --error ER_BACKUP_CANNOT_INCLUDE_DB
-BACKUP DATABASE information_schema, test TO 't.bak';
+eval BACKUP DATABASE information_schema, test TO 't.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
 
 # Scenario 6
+PURGE BACKUP LOGS;
 --echo Backup of mysql, information_schema scenario 6
 --error ER_BACKUP_CANNOT_INCLUDE_DB
-BACKUP DATABASE mysql, information_schema, test TO 't.bak';
+eval BACKUP DATABASE mysql, information_schema, test TO 't.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
 
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE mysql, information_schema, test TO%";
-
 --echo verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
@@ -316,7 +297,7 @@ INSERT INTO test_ob_error.t1 VALUES (1), (2), (3), (4), (5);
 # Backup the database to ensure db is ok.
 --echo Backup the database;
 --replace_column 1 #
-BACKUP DATABASE test_ob_error TO 'ob_err.bak';
+eval BACKUP DATABASE test_ob_error TO 'ob_err.bak' $compression;
 --remove_file $MYSQLD_DATADIR/ob_err.bak
 
 # Drop one of the tables and try a backup.
@@ -325,7 +306,7 @@ DROP TABLE mysql.backup_history;
 # Try to backup the database (should be error).
 --echo Backup the database;
 --error ER_BACKUP_PROGRESS_TABLES
-BACKUP DATABASE test_ob_error TO 'ob_err.bak';
+eval BACKUP DATABASE test_ob_error TO 'ob_err.bak' $compression;
 --error 0,1
 --remove_file $MYSQLD_DATADIR/ob_err.bak
 --replace_column 2 #
@@ -342,7 +323,7 @@ DROP TABLE mysql.backup_progress;
 # Try to backup the database (should be error).
 --echo Backup the database;
 --error ER_BACKUP_PROGRESS_TABLES
-BACKUP DATABASE test_ob_error TO 'ob_err.bak';
+eval BACKUP DATABASE test_ob_error TO 'ob_err.bak' $compression;
 
 --error 0,1
 --remove_file $MYSQLD_DATADIR/ob_err.bak
@@ -373,6 +354,7 @@ DROP DATABASE IF EXISTS db1;
 
 CREATE DATABASE db1;
 
+PURGE BACKUP LOGS;
 connection con2;
 
 --echo start backup but stop just before adding metadata to backup image
@@ -405,6 +387,10 @@ SET DEBUG_SYNC= 'reset';
 
 connection con1;
 
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
+
 --disable_warnings
 DROP DATABASE IF EXISTS db1;
 
@@ -423,26 +409,18 @@ SET DEBUG_SYNC= 'reset';
 
 --echo Setting debug point that will make backup fail when adding the
 --echo trigger metadata
-
+PURGE BACKUP LOGS;
 SET SESSION DEBUG='+d,backup_fail_add_trigger';
 --error ER_BACKUP_GET_META_TRIGGER
-BACKUP DATABASE db1 TO 'bup_db1.bak';
-SET SESSION DEBUG='-d';
-
---echo Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE db1 TO%";
+eval BACKUP DATABASE db1 TO 'bup_db1.bak' $compression;
 
 --echo verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-     WHERE backup_id=@bup_id;
-SELECT notes FROM mysql.backup_progress
-     WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE db1;
 
-SET SESSION DEBUG='';
 --echo
 --echo Done testing for Bug#38624
 
@@ -462,7 +440,7 @@ INSERT INTO table1 VALUES ('Inserted before');
 --echo
 --echo Backup database
 --replace_column 1 #
-BACKUP DATABASE db1 TO 'overwrite.bak';
+eval BACKUP DATABASE db1 TO 'overwrite.bak' $compression;
 
 --echo
 --echo Insert more data and display
@@ -492,6 +470,7 @@ RESTORE FROM 'overwrite.bak';
 --echo
 --echo Show that inserted value 2 is not there
 SELECT * FROM table1;
+--remove_file $MYSQLD_DATADIR/overwrite.bak
 
 --echo #
 --echo # Test error handling by backup code when injecting commit blocker error.
@@ -499,28 +478,32 @@ SELECT * FROM table1;
 
 SET SESSION DEBUG='+d,backup_grl_fail';
 --error ER_BACKUP_SYNCHRONIZE
-BACKUP DATABASE db1 TO 'overwrite1.bak';
+eval BACKUP DATABASE db1 TO 'overwrite1.bak' $compression;
 SET SESSION DEBUG='-d';
 
 --echo
-
+PURGE BACKUP LOGS;
 SET SESSION DEBUG='+d,backup_grl_block_commit_fail';
 --error ER_BACKUP_SYNCHRONIZE
-BACKUP DATABASE db1 TO 'overwrite1.bak';
+eval BACKUP DATABASE db1 TO 'overwrite1.bak' $compression;
 SET SESSION DEBUG='-d';
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 --echo #
 --echo # Test that BACKUP and RESTORE clears warning stack
 --echo #
 
 --replace_column 1 #
-BACKUP DATABASE db1 TO 'test.bak';
+eval BACKUP DATABASE db1 TO 'test.bak' $compression;
 
 --echo # Generate warning - test.bak cannot be overwritten
 --replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 --error 1
-BACKUP DATABASE db1 TO 'test.bak';
+eval BACKUP DATABASE db1 TO 'test.bak' $compression;
 --replace_column 2 #
 --replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
 --replace_regex /Errcode: [0-9]+/Errcode: #/
@@ -529,21 +512,26 @@ SHOW WARNINGS;
 
 --echo # Test that there are no warnings after successful BACKUP
 --replace_column 1 #
-BACKUP DATABASE db1 TO 'newtest.bak';
+eval BACKUP DATABASE db1 TO 'newtest.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
 --echo
 
+PURGE BACKUP LOGS;
 --echo # Generate warning - test.bak cannot be overwritten
 --replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 --error 1
-BACKUP DATABASE db1 TO 'test.bak';
+eval BACKUP DATABASE db1 TO 'test.bak' $compression;
 --replace_column 2 #
 --replace_result $MYSQLD_DATADIR MYSQLD_DATADIR/
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 SHOW WARNINGS;
 --echo
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+SELECT notes FROM mysql.backup_progress;
 
 --echo # Test that there are no warnings after successful RESTORE
 --replace_column 1 #
@@ -572,12 +560,12 @@ INSERT INTO table2 values (1),(2);
 DELIMITER ||;
 CREATE TRIGGER db1.trg AFTER INSERT ON db1.table2 FOR EACH ROW
 BEGIN
-  INSERT INTO db1.table1(v) VALUES ('Test trigger fired');   
+  INSERT INTO db1.table1(v) VALUES ('Test trigger fired');
 END;||
 DELIMITER ;||
 
 --replace_column 1 #
-BACKUP DATABASE db1 TO 'errorinject.bak';
+eval BACKUP DATABASE db1 TO 'errorinject.bak' $compression;
 
 DROP DATABASE db1;
 
@@ -594,7 +582,7 @@ SET SESSION DEBUG='-d';
 
 --echo #
 --echo # Error injection in RESTORE: Get next chunk;
---echo # Called from prepare_for_restore, after read_header 
+--echo # Called from prepare_for_restore, after read_header
 --echo #
 SET SESSION DEBUG='+d,restore_prepare_next_chunk_1';
 --error ER_BACKUP_NEXT_CHUNK
@@ -611,7 +599,7 @@ SET SESSION DEBUG='-d';
 
 --echo #
 --echo # Error injection in RESTORE: Get next chunk;
---echo # Called from prepare_for_restore, after read_catalog 
+--echo # Called from prepare_for_restore, after read_catalog
 --echo #
 SET SESSION DEBUG='+d,restore_prepare_next_chunk_2';
 --error ER_BACKUP_NEXT_CHUNK
@@ -631,7 +619,7 @@ DROP DATABASE db1;
 
 --echo #
 --echo # Error injection in RESTORE: Get next chunk;
---echo # Called from do_restore 
+--echo # Called from do_restore
 --echo #
 SET SESSION DEBUG='+d,restore_stream_next_chunk';
 --error ER_BACKUP_NEXT_CHUNK
@@ -697,6 +685,7 @@ SET SESSION DEBUG='-d';
 
 DROP DATABASE db1;
 
---remove_file $MYSQLD_DATADIR/overwrite.bak
 --remove_file $MYSQLD_DATADIR/errorinject.bak
+
+
 

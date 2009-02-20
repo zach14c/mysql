@@ -19,7 +19,7 @@ CREATE DATABASE bdb;
 CREATE TABLE bdb.t1(a int) ENGINE=MEMORY;
 PURGE BACKUP LOGS;
 # invalid location
-BACKUP DATABASE adb TO '' ;
+BACKUP DATABASE adb TO '' WITH COMPRESSION;
 ERROR HY000: Malformed file path ''
 SHOW WARNINGS;
 Level	Code	Message
@@ -28,7 +28,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup		BACKUP DATABASE adb TO ''
+error	backup		BACKUP DATABASE adb TO '' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -36,7 +36,7 @@ running
 Malformed file path ''
 error
 PURGE BACKUP LOGS;
-BACKUP DATABASE adb TO 'invalid/location' ;
+BACKUP DATABASE adb TO 'invalid/location' WITH COMPRESSION;
 ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/invalid/location' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
@@ -46,7 +46,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	location	BACKUP DATABASE adb TO 'invalid/location'
+error	backup	location	BACKUP DATABASE adb TO 'invalid/location' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -54,21 +54,21 @@ running
 Can't write to backup location 'invalid/location'
 error
 # don't overwrite existing files
-BACKUP DATABASE adb TO "bdb/t1.frm" ;
+BACKUP DATABASE adb TO "bdb/t1.frm" WITH COMPRESSION;
 ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/bdb/t1.frm' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Can't create/write to file 'MYSQLD_DATADIR/bdb/t1.frm' (Errcode: #)
 Error	#	Can't write to backup location 'bdb/t1.frm'
 Warning	#	Operation aborted
-BACKUP DATABASE adb TO "test.bak" ;
+BACKUP DATABASE adb TO "test.bak" WITH COMPRESSION;
 backup_id
 #
 SHOW WARNINGS;
 Level	Code	Message
 PURGE BACKUP LOGS;
 # don't overwrite existing backup image
-BACKUP DATABASE adb TO "test.bak" ;
+BACKUP DATABASE adb TO "test.bak" WITH COMPRESSION;
 ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
@@ -78,7 +78,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs for backup_state.
 SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	test.bak	BACKUP DATABASE adb TO "test.bak"
+error	backup	test.bak	BACKUP DATABASE adb TO "test.bak" WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -88,14 +88,14 @@ error
 # non-existent database
 DROP DATABASE IF EXISTS foo;
 DROP DATABASE IF EXISTS bar;
-BACKUP DATABASE foo TO 'test.bak' ;
+BACKUP DATABASE foo TO 'test.bak' WITH COMPRESSION;
 ERROR 42000: Unknown database 'foo'
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Unknown database 'foo'
 Warning	#	Operation aborted
 PURGE BACKUP LOGS;
-BACKUP DATABASE test,foo,bdb,bar TO 'test.bak' ;
+BACKUP DATABASE test,foo,bdb,bar TO 'test.bak' WITH COMPRESSION;
 ERROR 42000: Unknown database 'foo,bar'
 SHOW WARNINGS;
 Level	Code	Message
@@ -104,7 +104,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation,backup_file, command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	test.bak	BACKUP DATABASE test,foo,bdb,bar TO 'test.bak'
+error	backup	test.bak	BACKUP DATABASE test,foo,bdb,bar TO 'test.bak' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -113,7 +113,7 @@ Unknown database 'foo,bar'
 error
 PURGE BACKUP LOGS;
 # repeated database
-BACKUP DATABASE foo,test,bar,foo TO 'test.bak' ;
+BACKUP DATABASE foo,test,bar,foo TO 'test.bak' WITH COMPRESSION;
 ERROR 42000: Not unique database: 'foo'
 SHOW WARNINGS;
 Level	Code	Message
@@ -149,7 +149,7 @@ DROP DATABASE adb;
 DROP DATABASE bdb;
 PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 1
-BACKUP DATABASE mysql TO 't.bak' ;
+BACKUP DATABASE mysql TO 't.bak' WITH COMPRESSION;
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
@@ -158,7 +158,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	t.bak	BACKUP DATABASE mysql TO 't.bak'
+error	backup	t.bak	BACKUP DATABASE mysql TO 't.bak' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -167,7 +167,7 @@ Database 'mysql' cannot be included in a backup
 error
 PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 2
-BACKUP DATABASE information_schema TO 't.bak' ;
+BACKUP DATABASE information_schema TO 't.bak' WITH COMPRESSION;
 ERROR HY000: Database 'information_schema' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
@@ -176,7 +176,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	t.bak	BACKUP DATABASE information_schema TO 't.bak'
+error	backup	t.bak	BACKUP DATABASE information_schema TO 't.bak' WITH COMPRESSION
 SELECT  notes FROM mysql.backup_progress;
 notes
 starting
@@ -185,7 +185,7 @@ Database 'information_schema' cannot be included in a backup
 error
 PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 3
-BACKUP DATABASE mysql, information_schema TO 't.bak' ;
+BACKUP DATABASE mysql, information_schema TO 't.bak' WITH COMPRESSION;
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
@@ -194,7 +194,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	t.bak	BACKUP DATABASE mysql, information_schema TO 't.bak'
+error	backup	t.bak	BACKUP DATABASE mysql, information_schema TO 't.bak' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -203,7 +203,7 @@ Database 'mysql' cannot be included in a backup
 error
 PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 4
-BACKUP DATABASE mysql, test TO 't.bak' ;
+BACKUP DATABASE mysql, test TO 't.bak' WITH COMPRESSION;
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
@@ -212,7 +212,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	t.bak	BACKUP DATABASE mysql, test TO 't.bak'
+error	backup	t.bak	BACKUP DATABASE mysql, test TO 't.bak' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -221,7 +221,7 @@ Database 'mysql' cannot be included in a backup
 error
 PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 5
-BACKUP DATABASE information_schema, test TO 't.bak' ;
+BACKUP DATABASE information_schema, test TO 't.bak' WITH COMPRESSION;
 ERROR HY000: Database 'information_schema' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
@@ -230,7 +230,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	t.bak	BACKUP DATABASE information_schema, test TO 't.bak'
+error	backup	t.bak	BACKUP DATABASE information_schema, test TO 't.bak' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -239,7 +239,7 @@ Database 'information_schema' cannot be included in a backup
 error
 PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 6
-BACKUP DATABASE mysql, information_schema, test TO 't.bak' ;
+BACKUP DATABASE mysql, information_schema, test TO 't.bak' WITH COMPRESSION;
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
@@ -248,7 +248,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	t.bak	BACKUP DATABASE mysql, information_schema, test TO 't.bak'
+error	backup	t.bak	BACKUP DATABASE mysql, information_schema, test TO 't.bak' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -262,12 +262,12 @@ CREATE DATABASE test_ob_error;
 CREATE TABLE test_ob_error.t1 (col_a int);
 INSERT INTO test_ob_error.t1 VALUES (1), (2), (3), (4), (5);
 Backup the database;
-BACKUP DATABASE test_ob_error TO 'ob_err.bak' ;
+BACKUP DATABASE test_ob_error TO 'ob_err.bak' WITH COMPRESSION;
 backup_id
 #
 DROP TABLE mysql.backup_history;
 Backup the database;
-BACKUP DATABASE test_ob_error TO 'ob_err.bak' ;
+BACKUP DATABASE test_ob_error TO 'ob_err.bak' WITH COMPRESSION;
 ERROR HY000: Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair.
 SHOW WARNINGS;
 Level	Code	Message
@@ -278,7 +278,7 @@ CREATE TABLE mysql.backup_history LIKE test.ob_copy;
 DROP TABLE test.ob_copy;
 DROP TABLE mysql.backup_progress;
 Backup the database;
-BACKUP DATABASE test_ob_error TO 'ob_err.bak' ;
+BACKUP DATABASE test_ob_error TO 'ob_err.bak' WITH COMPRESSION;
 ERROR HY000: Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair.
 SHOW WARNINGS;
 Level	Code	Message
@@ -332,12 +332,12 @@ Setting debug point that will make backup fail when adding the
 trigger metadata
 PURGE BACKUP LOGS;
 SET SESSION DEBUG='+d,backup_fail_add_trigger';
-BACKUP DATABASE db1 TO 'bup_db1.bak' ;
+BACKUP DATABASE db1 TO 'bup_db1.bak' WITH COMPRESSION;
 ERROR HY000: Failed to obtain meta-data for trigger `db1`.`trg`
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	bup_db1.bak	BACKUP DATABASE db1 TO 'bup_db1.bak'
+error	backup	bup_db1.bak	BACKUP DATABASE db1 TO 'bup_db1.bak' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -359,7 +359,7 @@ CREATE TABLE table1 (text VARCHAR(20));
 INSERT INTO table1 VALUES ('Inserted before');
 
 Backup database
-BACKUP DATABASE db1 TO 'overwrite.bak' ;
+BACKUP DATABASE db1 TO 'overwrite.bak' WITH COMPRESSION;
 backup_id
 #
 
@@ -398,19 +398,19 @@ Inserted before
 # Test error handling by backup code when injecting commit blocker error.
 #
 SET SESSION DEBUG='+d,backup_grl_fail';
-BACKUP DATABASE db1 TO 'overwrite1.bak' ;
+BACKUP DATABASE db1 TO 'overwrite1.bak' WITH COMPRESSION;
 ERROR HY000: Backup failed to synchronize table images.
 SET SESSION DEBUG='-d';
 
 PURGE BACKUP LOGS;
 SET SESSION DEBUG='+d,backup_grl_block_commit_fail';
-BACKUP DATABASE db1 TO 'overwrite1.bak' ;
+BACKUP DATABASE db1 TO 'overwrite1.bak' WITH COMPRESSION;
 ERROR HY000: Backup failed to synchronize table images.
 SET SESSION DEBUG='-d';
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	overwrite1.bak	BACKUP DATABASE db1 TO 'overwrite1.bak'
+error	backup	overwrite1.bak	BACKUP DATABASE db1 TO 'overwrite1.bak' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -420,11 +420,11 @@ error
 #
 # Test that BACKUP and RESTORE clears warning stack
 #
-BACKUP DATABASE db1 TO 'test.bak' ;
+BACKUP DATABASE db1 TO 'test.bak' WITH COMPRESSION;
 backup_id
 #
 # Generate warning - test.bak cannot be overwritten
-BACKUP DATABASE db1 TO 'test.bak' ;
+BACKUP DATABASE db1 TO 'test.bak' WITH COMPRESSION;
 ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
@@ -433,7 +433,7 @@ Error	#	Can't write to backup location 'test.bak'
 Warning	#	Operation aborted
 
 # Test that there are no warnings after successful BACKUP
-BACKUP DATABASE db1 TO 'newtest.bak' ;
+BACKUP DATABASE db1 TO 'newtest.bak' WITH COMPRESSION;
 backup_id
 #
 SHOW WARNINGS;
@@ -441,7 +441,7 @@ Level	Code	Message
 
 PURGE BACKUP LOGS;
 # Generate warning - test.bak cannot be overwritten
-BACKUP DATABASE db1 TO 'test.bak' ;
+BACKUP DATABASE db1 TO 'test.bak' WITH COMPRESSION;
 ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
@@ -452,7 +452,7 @@ Warning	#	Operation aborted
 verify backup history and progress logs:
 SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
-error	backup	test.bak	BACKUP DATABASE db1 TO 'test.bak'
+error	backup	test.bak	BACKUP DATABASE db1 TO 'test.bak' WITH COMPRESSION
 SELECT notes FROM mysql.backup_progress;
 notes
 starting
@@ -476,7 +476,7 @@ CREATE TRIGGER db1.trg AFTER INSERT ON db1.table2 FOR EACH ROW
 BEGIN
 INSERT INTO db1.table1(v) VALUES ('Test trigger fired');
 END;||
-BACKUP DATABASE db1 TO 'errorinject.bak' ;
+BACKUP DATABASE db1 TO 'errorinject.bak' WITH COMPRESSION;
 backup_id
 #
 DROP DATABASE db1;

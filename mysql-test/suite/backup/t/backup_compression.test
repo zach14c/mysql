@@ -1,25 +1,277 @@
 --source include/not_embedded.inc
 --source include/have_compress.inc
+--source include/have_innodb.inc
+--source include/have_falcon.inc
+
+let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 
 CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE DATABASE db3;
 
-CREATE TABLE db1.t1(a INT);
-replace_column 1 #;
+CREATE TABLE db1.t1(a INT) ENGINE= MYISAM;
+CREATE TABLE db1.t2(a CHAR(20)) ENGINE= INNODB;
+CREATE TABLE db2.t1(b INT) ENGINE= FALCON;
+CREATE TABLE db2.t2(b CHAR(20)) ENGINE= MEMORY;
+CREATE TABLE db3.t1(c INT) ENGINE= BLACKHOLE;
+
+INSERT INTO db1.t1 VALUES(10),(20),(30),(40);
+INSERT INTO db1.t2 VALUES('TEST1'),('TEST2'),('TEST3'),('TEST4');
+INSERT INTO db2.t1 VALUES(10),(20),(30),(40);
+INSERT INTO db2.t2 VALUES('TEST1'),('TEST2'),('TEST3'),('TEST4');
+INSERT INTO db3.t1 VALUES(10),(20),(30),(40);
+
+# Execute backup database operation and verify compression syntax.
+# Ensure that backup history logs properly indicate the backup performed with
+# compression.
+--echo Perform backup with compression
+
+PURGE BACKUP LOGS;
+--replace_column 1 #
 BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION;
 
-CREATE TABLE db1.t2(a INT);
-replace_column 1 #;
-BACKUP DATABASE db1 TO 'db2.bak.gz' WITH COMPRESSION COMPRESSION_ALGORITHM=gzip;
+--echo verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
 
-replace_column 1 #;
-RESTORE FROM 'db1.bak.gz' OVERWRITE;
-SHOW TABLES FROM db1;
+--echo 
+--echo Verify total bytes of compressed and uncompressed data
+--echo
+--echo Select total_bytes of compressed data in @total_bytes_comp
+SELECT total_bytes into @total_bytes_comp FROM mysql.backup_history;
 
-replace_column 1 #;
-RESTORE FROM 'db2.bak.gz' OVERWRITE;
-SHOW TABLES FROM db1;
+PURGE BACKUP LOGS;
+--echo Perform backup without compression
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'db1_no_compression.bak';
+
+--echo
+--echo Select total_bytes of uncompressed data in @total_bytes_no_comp
+SELECT total_bytes into @total_bytes_no_comp FROM mysql.backup_history;
+
+--echo Verify the result
+SELECT @total_bytes_comp < @total_bytes_no_comp;
+
+--echo The result 0 indicates that total bytes of compressed and uncompressed
+--echo data is same(bug#41898). Once this bug is fixed, result should be 1.
+--echo The size of compressed backup image should be less than uncomressed 
+--echo image. 
+--echo
+--echo Drop database and execute restore operation
 
 DROP DATABASE db1;
-let $MYSQLD_DATADIR= `select @@datadir`;
-remove_file $MYSQLD_DATADIR/db1.bak.gz;
-remove_file $MYSQLD_DATADIR/db2.bak.gz;
+PURGE BACKUP LOGS;
+replace_column 1 #;
+RESTORE FROM 'db1.bak.gz';
+
+--echo verify backup history logs:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+SHOW TABLES FROM db1;
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+--remove_file $MYSQLD_BACKUPDIR/db1.bak.gz
+--remove_file $MYSQLD_BACKUPDIR/db1_no_compression.bak
+
+--echo 
+--echo Now perform backup by specifying the compression algorithm.
+--echo
+
+PURGE BACKUP LOGS;
+replace_column 1 #;
+BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION 
+COMPRESSION_ALGORITHM=gzip;
+
+--echo verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+PURGE BACKUP LOGS;
+--echo Perform restore
+replace_column 1 #;
+RESTORE FROM 'db1.bak.gz' OVERWRITE;
+
+--echo verify backup history log:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+SHOW TABLES FROM db1;
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+--remove_file $MYSQLD_BACKUPDIR/db1.bak.gz
+
+--echo 
+--echo Perform backup using invalid syntax.
+--echo
+
+replace_column 1 #;
+--error ER_PARSE_ERROR
+BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION
+COMPRESSION_ALGORITHM;
+--replace_column 2 #
+SHOW WARNINGS;
+
+# The errorneous operations will not be logged in the backup history logs.
+# Therefore we don't verify history log when backup fails.
+--error 0,1
+--remove_file $MYSQLD_BACKUPDIR/db1.bak.gz
+
+--replace_column 1 #
+--error ER_PARSE_ERROR
+BACKUP DATABASE db1 TO 'db1.bak.gz' COMPRESSION_ALGORITHM=gzip;
+--replace_column 2 #
+SHOW WARNINGS;
+
+--error 0,1
+--remove_file $MYSQLD_BACKUPDIR/db1.bak.gz
+
+--echo
+--echo Execute backup with compression using invalid compression algorithm.
+--echo
+
+--replace_column 1 #
+--error ER_WRONG_ARGUMENTS
+BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION 
+COMPRESSION_ALGORITHM=invalid;
+
+--replace_column 2 #
+SHOW WARNINGS;
+
+# The errorneous operations will not be logged in the backup history and
+# progress logs.
+
+--error 0,1
+--remove_file $MYSQLD_BACKUPDIR/db1.bak.gz
+
+--echo
+--echo Perform backup of all the databases using compression algorithm
+--echo
+
+PURGE BACKUP LOGS;
+--replace_column 1 #
+BACKUP DATABASE db1, db2, db3 TO 'db123.bak.gz' WITH COMPRESSION 
+COMPRESSION_ALGORITHM=gzip;
+
+--echo verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+PURGE BACKUP LOGS;
+--replace_column 1 #
+RESTORE FROM 'db123.bak.gz' OVERWRITE;
+
+--echo verify backup history log:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history;
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+SHOW TABLES FROM db3;
+--remove_file $MYSQLD_BACKUPDIR/db123.bak.gz
+
+--echo
+--echo Rename of gzip file without .gz extension, then perform restore.
+--echo
+
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION
+COMPRESSION_ALGORITHM=gzip;
+
+--echo Rename gzip file db1.bak.gz to db1_copy.bak and perform restore
+--copy_file $MYSQLD_DATADIR/db1.bak.gz $MYSQLD_DATADIR/db1_copy.bak
+
+--echo Verify that db1_copy.bak file exists using file_exists command
+file_exists $MYSQLD_DATADIR/db1_copy.bak;
+--remove_file $MYSQLD_BACKUPDIR/db1.bak.gz
+
+--echo Perform restore from renamed gzip file
+PURGE BACKUP LOGS;
+--replace_column 1 #
+RESTORE FROM 'db1_copy.bak' OVERWRITE;
+
+--echo verify backup history log:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+SHOW TABLES FROM db1;
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+--remove_file $MYSQLD_DATADIR/db1_copy.bak
+
+# Create objects in database and perform backup operation with compression.
+# Ensure that while restoring a compressed image, data contents and objects
+# are intact.
+--echo Creating objects
+--echo ** create view **
+CREATE VIEW db1.v1 AS SELECT * FROM db1.t1;
+CREATE VIEW db2.vv AS SELECT * FROM db1.v1;
+
+--echo ** create triggers **
+delimiter ||;
+CREATE TRIGGER db1.trg AFTER INSERT ON db1.t2 FOR EACH ROW
+BEGIN
+ INSERT INTO db2.t2 VALUES('Trigger insertion');
+END;||
+
+--echo ** create procedures **
+CREATE PROCEDURE db2.p1()
+BEGIN
+  SELECT * FROM db1.t2;
+END;
+||
+
+--echo ** create functions **
+CREATE FUNCTION db2.f1() RETURNS INTEGER
+BEGIN
+RETURN (SELECT COUNT(*) FROM db1.t1);
+END;
+||
+delimiter ;||
+
+--echo ** create event **
+CREATE EVENT db3.e1 ON SCHEDULE EVERY 1 YEAR DO
+ DELETE FROM db3.t1 WHERE c=1000;
+
+--echo
+--echo Do backup of database
+
+PURGE BACKUP LOGS;
+--replace_column 1 #
+BACKUP DATABASE db1, db2, db3 TO 'db123.bak.gz' WITH COMPRESSION;
+
+--echo verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+--echo Drop the database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+
+PURGE BACKUP LOGS;
+--replace_column 1 #
+RESTORE FROM 'db123.bak.gz' OVERWRITE;
+
+--echo verify backup history log for backup state:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+SHOW FULL TABLES FROM db1;
+SHOW FULL TABLES FROM db2;
+SHOW TABLES FROM db3;
+
+--echo Excercise objects
+
+--echo Firing trigger trg
+
+INSERT INTO db1.t2 VALUES('TEST5');
+
+SELECT * FROM db1.t2;
+SELECT * FROM db2.t2;
+
+--echo Call procedures and functions
+CALL db2.p1();
+SELECT db2.f1();
+
+SELECT * FROM db1.v1;
+SELECT * FROM db2.vv;
+
+--echo Test cleanup: Drop databases and remove backup files
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+--remove_file $MYSQLD_BACKUPDIR/db123.bak.gz
+

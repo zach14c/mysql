@@ -1,0 +1,139 @@
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE DATABASE db3;
+CREATE TABLE db1.t1(a INT) ENGINE= MYISAM;
+CREATE TABLE db1.t2(a CHAR(20)) ENGINE= INNODB;
+CREATE TABLE db2.t1(b INT) ENGINE= FALCON;
+CREATE TABLE db2.t2(b CHAR(20)) ENGINE= MEMORY;
+CREATE TABLE db3.t1(c INT) ENGINE= BLACKHOLE;
+INSERT INTO db1.t1 VALUES(10),(20),(30),(40);
+INSERT INTO db1.t2 VALUES('TEST1'),('TEST2'),('TEST3'),('TEST4');
+INSERT INTO db2.t1 VALUES(10),(20),(30),(40);
+INSERT INTO db2.t2 VALUES('TEST1'),('TEST2'),('TEST3'),('TEST4');
+INSERT INTO db3.t1 VALUES(10),(20),(30),(40);
+
+Unzip a gzip file and perform restore.
+
+PURGE BACKUP LOGS;
+BACKUP DATABASE db1, db2, db3 TO 'db123.bak.gz' WITH COMPRESSION;
+backup_id
+#
+verify backup history for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	backup	db123.bak.gz	BACKUP DATABASE db1, db2, db3 TO 'db123.bak.gz' WITH COMPRESSION
+Unzip db123.bak.gz and perform restore of unzipped file.
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+PURGE BACKUP LOGS;
+Restore of unzipped file(db123.bak)
+RESTORE FROM 'db123.bak';
+backup_id
+#
+verify backup history log:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	restore	db123.bak	RESTORE FROM 'db123.bak'
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SELECT * FROM db1.t1;
+a
+10
+20
+30
+40
+SELECT * FROM db1.t2;
+a
+TEST1
+TEST2
+TEST3
+TEST4
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SELECT * FROM db2.t1;
+b
+10
+20
+30
+40
+SELECT * FROM db2.t2;
+b
+TEST1
+TEST2
+TEST3
+TEST4
+SHOW TABLES FROM db3;
+Tables_in_db3
+t1
+SELECT * FROM db3.t1;
+c
+
+Restore of any manually gzipped image
+
+PURGE BACKUP LOGS;
+BACKUP DATABASE db1, db2, db3 TO 'db123.bak';
+backup_id
+#
+verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	backup	db123.bak	BACKUP DATABASE db1, db2, db3 TO 'db123.bak'
+Zip the db123.bak file and perform restore of zipped file.
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+PURGE BACKUP LOGS;
+Restore of zipped file
+RESTORE FROM 'db123.bak.gz';
+backup_id
+#
+verify backup history logs:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	restore	db123.bak.gz	RESTORE FROM 'db123.bak.gz'
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SELECT * FROM db1.t1;
+a
+10
+20
+30
+40
+SELECT * FROM db1.t2;
+a
+TEST1
+TEST2
+TEST3
+TEST4
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SELECT * FROM db2.t1;
+b
+10
+20
+30
+40
+SELECT * FROM db2.t2;
+b
+TEST1
+TEST2
+TEST3
+TEST4
+SHOW TABLES FROM db3;
+Tables_in_db3
+t1
+SELECT * FROM db3.t1;
+c
+Test cleanup: Drop databases and remove backup files
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
