@@ -299,6 +299,16 @@ int falcon_strnxfrm (void *cs,
 	                              (uchar *) src, srclen, 0);
 }
 
+int falcon_strnxfrm_space_pad (void *cs,
+                     const char *dst, uint dstlen, int nweights,
+                     const char *src, uint srclen)
+{
+	CHARSET_INFO *charset = (CHARSET_INFO*) cs;
+
+	return (int)charset->coll->strnxfrm(charset, (uchar *) dst, dstlen, nweights,
+	                              (uchar *) src, srclen, MY_STRXFRM_PAD_WITH_SPACE);
+}
+
 char falcon_get_pad_char (void *cs)
 {
 	return (char) ((CHARSET_INFO*) cs)->pad_char;

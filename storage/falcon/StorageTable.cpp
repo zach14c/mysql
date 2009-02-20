@@ -291,7 +291,7 @@ int StorageTable::setIndexBound(const unsigned char* key, int keyLength, int whi
 	if (which & LowerBound)
 		{
 		lowerBound = &lowerKey;
-		ret = storageDatabase->makeKey(currentIndex, key, keyLength, lowerBound);
+		ret = storageDatabase->makeKey(currentIndex, key, keyLength, lowerBound, false);
 		
 		if (ret)
 			return ret;
@@ -302,7 +302,14 @@ int StorageTable::setIndexBound(const unsigned char* key, int keyLength, int whi
 	else if (which & UpperBound)
 		{
 		upperBound = &upperKey;
-		ret = storageDatabase->makeKey(currentIndex, key, keyLength, upperBound);
+
+		// Because this is an upper bound search key, we pass 
+		// 'true' as the final argument to makeKey. This way a 
+		// pad byte (if needed) will be appended to the key to 
+		// ensure that values below the pad character sort correctly.
+		// See bug#23692 for a more detailed explanation
+
+		ret = storageDatabase->makeKey(currentIndex, key, keyLength, upperBound, true);
 
 		if (ret)
 			return ret;
