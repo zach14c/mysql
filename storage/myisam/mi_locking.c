@@ -238,7 +238,7 @@ int mi_lock_database(MI_INFO *info, int lock_type)
      */
     if( info->owned_by_merge && (info->s)->kfile < 0 )
     {
-      error = HA_ERR_NO_SUCH_TABLE;
+      my_errno= error= HA_ERR_NO_SUCH_TABLE;
     }
   }
 #endif

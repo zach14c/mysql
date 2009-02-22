@@ -1,0 +1,139 @@
+DROP DATABASE IF EXISTS mysqltest;
+# CREATE generates no entry in the logical log.
+CREATE DATABASE mysqltest;
+USE mysqltest;
+CREATE TABLE t1 (c1 INT, c2 VARCHAR(100)) ENGINE=MyISAM;
+# Generate log entries.
+INSERT INTO t1 VALUES(1,'life'), (2,'file');
+INSERT INTO t1 SELECT c1*5, CONCAT("A ",c2) FROM t1;
+UPDATE t1 SET c2="A knife" WHERE c1=5;
+DELETE FROM t1 WHERE c1=10;
+SELECT * FROM t1;
+c1	c2
+1	life
+2	file
+5	A knife
+# Wipe it out (TRUNCATE generates no entry in the logical log).
+TRUNCATE TABLE t1;
+# Close the table (as we are going to change it outsid of the server).
+FLUSH TABLE t1;
+# Examine log.
+Commands                         Used count    Errors Recover errors
+open                       16         0              0
+write                       4         0              0
+update                      1         0              0
+delete                      1         0              0
+close                       8         0              0
+extra                       #         0              0
+lock                       48         0              0
+Total               #         0                0
+# Reopen the table and verify that it did not change.
+SELECT * FROM t1;
+c1	c2
+# Close the table (as we are going to change it outsid of the server).
+FLUSH TABLE t1;
+# Apply log to empty table.
+Trying to update MyISAM files according to log 'DATADIR/myisam.log'
+Tables updated successfully
+
+Commands                         Used count    Errors Recover errors
+open                       17         0              0
+write                       4         0              0
+update                      1         0              0
+delete                      1         0              0
+close                       9         0              0
+extra                       #         0              0
+lock                       50         0              0
+Total               #         0                0
+# Reopen the table and verify that content is back.
+SELECT * FROM t1;
+c1	c2
+1	life
+2	file
+5	A knife
+CHECK TABLE t1 EXTENDED;
+Table	Op	Msg_type	Msg_text
+mysqltest.t1	check	status	OK
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+# Command line option without argument
+option "F" used without or with wrong argument
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+# Inject error at mi_examine_log_files0
+Trying to update MyISAM files according to log 'DATADIR/myisam.log'
+ERROR_INJECT("mi_examine_log_files0")
+Got error 0, expected 0 on command open at 0
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+# Inject error at mi_examine_log_files1
+Trying to update MyISAM files according to log 'DATADIR/myisam.log'
+ERROR_INJECT("mi_examine_log_files1")
+Tables updated successfully
+
+Commands                         Used count    Errors Recover errors
+open                       18         0              0
+write                       4         0              0
+update                      1         0              0
+delete                      1         0              0
+close                      10         0              0
+extra                       #         0              0
+lock                       54         0              0
+Total               #         0                0
+Had to do # re-open because of too few possibly open files
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+# Inject error at mi_examine_log_command
+Trying to update MyISAM files according to log 'DATADIR/myisam.log'
+ERROR_INJECT("mi_examine_log_command")
+Unknown command 11 in logfile at position 0
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+# Inject error at mi_examine_log_close_extra
+Trying to update MyISAM files according to log 'DATADIR/myisam.log'
+ERROR_INJECT("mi_examine_log_files1")
+ERROR_INJECT("mi_examine_log_close_extra")
+Got error -1, expected 0 on command lock at 259
+
+Commands                         Used count    Errors Recover errors
+open                        3         0              0
+extra                       #         0              0
+Total               #         0                0
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+# Inject error at mi_examine_log_lock_result
+Trying to update MyISAM files according to log 'DATADIR/myisam.log'
+ERROR_INJECT("mi_examine_log_lock_result")
+Got error -1, expected 2147483647 on command lock at 259
+
+Commands                         Used count    Errors Recover errors
+open                        3         0              0
+extra                       #         0              0
+lock                        1         0              0
+Total               #         0                0
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+# Inject error at close_some_file_none
+Trying to update MyISAM files according to log 'DATADIR/myisam.log'
+ERROR_INJECT("mi_examine_log_files1")
+ERROR_INJECT("close_some_file_none")
+Got error -1, expected 0 on command open at 87
+
+Commands                         Used count    Errors Recover errors
+open                        1         0              0
+extra                       #         0              0
+Total               #         0                0
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+# Inject error at reopen_closed_file_name
+Trying to update MyISAM files according to log 'DATADIR/myisam.log'
+ERROR_INJECT("mi_examine_log_files1")
+ERROR_INJECT("reopen_closed_file_name")
+Got error 2, expected 0 on command re-open at 259
+
+Commands                         Used count    Errors Recover errors
+open                        3         0              0
+extra                       #         0              0
+Total               #         0                0
+USE test;
+DROP DATABASE mysqltest;
