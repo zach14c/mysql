@@ -2012,3 +2012,4 @@ unittest/tmp
 libmysqld/sql_join_cache.cc
 storage/maria/maria_non_trans_log
 libmysqld/examples/mysqltest.cc
+libmysqld/bml.cc
