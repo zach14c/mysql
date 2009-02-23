@@ -1,14 +1,14 @@
 # Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
-# 
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; version 2 of the License.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; see the file COPYING. If not, write to the
 # Free Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston
@@ -36,14 +36,16 @@
 %{?_with_yassl:%define YASSL_BUILD 1}
 %{!?_with_yassl:%define YASSL_BUILD 0}
 
-# use "rpmbuild --with falcon" or "rpm --define '_with_falcon 1'" (for RPM 3.x)
-# to build with falcon support (off by default)
+# use "rpmbuild --without falcon" or "rpm --define '_without_falcon 1'" (for
+# RPM 3.x) to build without falcon support (on by default on supported archs)
 #
-# Note: No default --with-falcon, as generic RPM is compiled with gcc 3.x.
-# Falcon requires gcc 4.x that requires libstdc++.6 that is not on most
-# "older" Linux systems.
-%{?_with_falcon:%define FALCON_BUILD 1}
-%{!?_with_falcon:%define FALCON_BUILD 0}
+# Note that falcon requires gcc 4.x that in turn requires libstdc++.6 which is
+# not available on most "older" Linux systems.
+%{?_without_falcon:%define FALCON_BUILD 0}
+%{!?_without_falcon:%define FALCON_BUILD 1}
+%ifnarch i386 x86_64
+%define FALCON_BUILD 0
+%endif
 
 # use "rpmbuild --with cluster" or "rpm --define '_with_cluster 1'" (for RPM 3.x)
 # to build with cluster support (off by default)
@@ -157,7 +159,7 @@ Obsoletes: mysql-client
 Provides: mysql-client
 
 %description client
-This package contains the standard MySQL clients and administration tools. 
+This package contains the standard MySQL clients and administration tools.
 
 %{see_base}
 
@@ -167,8 +169,8 @@ Summary:	MySQL - ndbcluster storage engine
 Group:		Applications/Databases
 
 %description ndb-storage
-This package contains the ndbcluster storage engine. 
-It is necessary to have this package installed on all 
+This package contains the ndbcluster storage engine.
+It is necessary to have this package installed on all
 computers that should store ndbcluster table data.
 
 %{see_base}
@@ -179,7 +181,7 @@ Group:		Applications/Databases
 
 %description ndb-management
 This package contains ndbcluster storage engine management.
-It is necessary to have this package installed on at least 
+It is necessary to have this package installed on at least
 one computer in the cluster.
 
 %{see_base}
@@ -282,10 +284,10 @@ sh -c  "PATH=\"${MYSQL_BUILD_PATH:-$PATH}\" \
 	    --enable-assembler \
 	    --enable-local-infile \
 	    --with-fast-mutexes \
-            --with-mysqld-user=%{mysqld_user} \
-            --with-unix-socket-path=/var/lib/mysql/mysql.sock \
+	    --with-mysqld-user=%{mysqld_user} \
+	    --with-unix-socket-path=/var/lib/mysql/mysql.sock \
 	    --with-pic \
-            --prefix=/ \
+	    --prefix=/ \
 %if %{CLUSTER_BUILD}
 	    --with-extra-charsets=all \
 %else
@@ -294,15 +296,15 @@ sh -c  "PATH=\"${MYSQL_BUILD_PATH:-$PATH}\" \
 %if %{YASSL_BUILD}
 	    --with-ssl \
 %endif
-            --exec-prefix=%{_exec_prefix} \
-            --libexecdir=%{_sbindir} \
-            --libdir=%{_libdir} \
-            --sysconfdir=%{_sysconfdir} \
-            --datadir=%{_datadir} \
-            --localstatedir=%{mysqldatadir} \
-            --infodir=%{_infodir} \
-            --includedir=%{_includedir} \
-            --mandir=%{_mandir} \
+	    --exec-prefix=%{_exec_prefix} \
+	    --libexecdir=%{_sbindir} \
+	    --libdir=%{_libdir} \
+	    --sysconfdir=%{_sysconfdir} \
+	    --datadir=%{_datadir} \
+	    --localstatedir=%{mysqldatadir} \
+	    --infodir=%{_infodir} \
+	    --includedir=%{_includedir} \
+	    --mandir=%{_mandir} \
 	    --enable-thread-safe-client \
 	    --with-readline \
 	    --with-innodb \
@@ -387,11 +389,7 @@ CFLAGS="$CFLAGS" \
 CXXFLAGS="$CXXFLAGS" \
 BuildMySQL "\
 		--with-debug \
-%if %{MARIA_BUILD}
-		--with-comment=\"MySQL Community Server - Debug [Maria] (%{license})\" \
-%else
 		--with-comment=\"MySQL Community Server - Debug (%{license})\" \
-%endif
 ")
 
 # We might want to save the config log file
@@ -452,7 +450,7 @@ install -d $RBR%{_mandir}
 install -d $RBR%{_sbindir}
 
 
-# Install all binaries 
+# Install all binaries
 (cd $MBD && make install DESTDIR=$RBR benchdir_root=%{_datadir})
 # Old packages put shared libs in %{_libdir}/ (not %{_libdir}/mysql), so do
 # the same here.
@@ -587,7 +585,7 @@ fi
 # Create a MySQL user and group. Do not report any problems if it already
 # exists.
 groupadd -r %{mysqld_group} 2> /dev/null || true
-useradd -M -r -d $mysql_datadir -s /bin/bash -c "MySQL server" -g %{mysqld_group} %{mysqld_user} 2> /dev/null || true 
+useradd -M -r -d $mysql_datadir -s /bin/bash -c "MySQL server" -g %{mysqld_group} %{mysqld_user} 2> /dev/null || true
 # The user may already exist, make sure it has the proper group nevertheless (BUG#12823)
 usermod -g %{mysqld_group} %{mysqld_user} 2> /dev/null || true
 
@@ -617,7 +615,7 @@ sleep 2
 #systems, we recommend MySQL Enterprise, which contains enterprise-ready
 #software, intelligent advisory services, and full production support with
 #scheduled service packs and more.  Visit www.mysql.com/enterprise for more
-#information." 
+#information."
 
 %if %{CLUSTER_BUILD}
 %post ndb-storage
@@ -658,7 +656,7 @@ fi
 %files server
 %defattr(-,root,root,0755)
 
-%doc mysql-release-%{mysql_version}/COPYING mysql-release-%{mysql_version}/README 
+%doc mysql-release-%{mysql_version}/COPYING mysql-release-%{mysql_version}/README
 %doc mysql-release-%{mysql_version}/support-files/my-*.cnf
 %if %{CLUSTER_BUILD}
 %doc mysql-release-%{mysql_version}/support-files/ndb-*.ini
@@ -675,9 +673,14 @@ fi
 %doc %attr(644, root, man) %{_mandir}/man8/mysqld.8*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqld_multi.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqld_safe.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_convert_table_format.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_fix_extensions.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql_fix_privilege_tables.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql_install_db.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_secure_installation.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_setpermission.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql_upgrade.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_waitpid.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqlhotcopy.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqlman.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql.server.1*
@@ -687,10 +690,17 @@ fi
 %doc %attr(644, root, man) %{_mandir}/man1/mysqlbug.1*
 %doc %attr(644, root, man) %{_mandir}/man1/perror.1*
 %doc %attr(644, root, man) %{_mandir}/man1/replace.1*
+%doc %attr(644, root, man) %{_mandir}/man1/resolve_stack_dump.1*
+%doc %attr(644, root, man) %{_mandir}/man1/resolveip.1*
 
 %ghost %config(noreplace,missingok) %{_sysconfdir}/my.cnf
 
 %attr(755, root, root) %{_bindir}/innochecksum
+%attr(755, root, root) %{_bindir}/maria_chk
+%attr(755, root, root) %{_bindir}/maria_dump_log
+%attr(755, root, root) %{_bindir}/maria_ftdump
+%attr(755, root, root) %{_bindir}/maria_pack
+%attr(755, root, root) %{_bindir}/maria_read_log
 %attr(755, root, root) %{_bindir}/my_print_defaults
 %attr(755, root, root) %{_bindir}/myisam_ftdump
 %attr(755, root, root) %{_bindir}/myisamchk
@@ -719,6 +729,8 @@ fi
 %attr(755, root, root) %{_sbindir}/mysqld
 %attr(755, root, root) %{_sbindir}/mysqld-debug
 %attr(755, root, root) %{_sbindir}/rcmysql
+
+%attr(755, root, root) %{_libdir}/mysql/plugin/*.so*
 
 %attr(644, root, root) %config(noreplace,missingok) %{_sysconfdir}/logrotate.d/mysql
 %attr(755, root, root) %{_sysconfdir}/init.d/mysql
@@ -821,7 +833,9 @@ fi
 %{_includedir}/mysql/*
 %{_datadir}/aclocal/mysql.m4
 %{_libdir}/mysql/libdbug.a
+%{_libdir}/mysql/libdbug.la
 %{_libdir}/mysql/libheap.a
+%{_libdir}/mysql/libmaria.a
 %if %{have_libgcc}
 %{_libdir}/mysql/libmygcc.a
 %endif
@@ -832,7 +846,9 @@ fi
 %{_libdir}/mysql/libmysqlclient_r.a
 %{_libdir}/mysql/libmysqlclient_r.la
 %{_libdir}/mysql/libmystrings.a
+%{_libdir}/mysql/libmystrings.la
 %{_libdir}/mysql/libmysys.a
+%{_libdir}/mysql/libmysys.la
 %if %{CLUSTER_BUILD}
 %{_libdir}/mysql/libndbclient.a
 %{_libdir}/mysql/libndbclient.la
@@ -840,6 +856,14 @@ fi
 %{_libdir}/mysql/libvio.a
 %{_libdir}/mysql/libz.a
 %{_libdir}/mysql/libz.la
+%{_libdir}/mysql/plugin/adt_null.a
+%{_libdir}/mysql/plugin/adt_null.la
+%{_libdir}/mysql/plugin/ha_example.a
+%{_libdir}/mysql/plugin/ha_example.la
+%{_libdir}/mysql/plugin/libdaemon_example.a
+%{_libdir}/mysql/plugin/libdaemon_example.la
+%{_libdir}/mysql/plugin/mypluglib.a
+%{_libdir}/mysql/plugin/mypluglib.la
 
 %files shared
 %defattr(-, root, root, 0755)
@@ -862,39 +886,47 @@ fi
 %doc %attr(644, root, man) %{_mandir}/man1/mysqltest_embedded.1*
 
 %files embedded
-%defattr(-, root, root, 0755) 
+%defattr(-, root, root, 0755)
 %attr(644, root, root) %{_libdir}/mysql/libmysqld.a
 
 # The spec file changelog only includes changes made to the spec file
 # itself - note that they must be ordered by date (important when
 # merging BK trees)
 %changelog
+* Mon Feb 23 2009 Jonathan Perkin <jperkin@sun.com>
+
+- Add audit_null plugin devel files.
+
+* Sat Jan 10 2009 Jonathan Perkin <jperkin@sun.com>
+
+- Add a bunch of missing files, most notably the maria utilities.
+
+* Fri Jan 09 2009 Jonathan Perkin <jperkin@sun.com>
+
+- Revert previous falcon changes, it is not yet supported on IA64,
+  and we want to build by default on supported platforms.
+
 * Fri Nov 07 2008 Joerg Bruehe <joerg@mysql.com>
 
 - Correct yesterday's fix, so that it also works for the last flag,
   and fix a wrong quoting: un-quoted quote marks must not be escaped.
-  
-* Thu Nov 06 2008 Kent Boortz <kent.boortz@sun.com>
-
-- Removed "mysql_upgrade_shell"
-- Removed some copy/paste between debug and normal build
 
 * Thu Nov 06 2008 Joerg Bruehe <joerg@mysql.com>
 
 - Modify CFLAGS and CXXFLAGS such that a debug build is not optimized.
   This should cover both gcc and icc flags.  Fixes bug#40546.
-  
+
 * Mon Nov 03 2008 Kent Boortz <kent.boortz@sun.com>
 
-  - Added option --with-falcon
-  - Removed option --with-maria, enabled by default
-  - Use same way of defining what engines/plugins to use
-  - Remove some copy/paste between debug and normal build
+- Added option --with-falcon
+- Removed option --with-maria, enabled by default
+- Use same way of defining what engines/plugins to use
+- Remove some copy/paste between debug and normal build
 
 * Sat Nov 01 2008 Kent Boortz <kent.boortz@sun.com>
 
-  - Removed "mysql_upgrade_shell"
-  - Enabled falcon storage engine for IA64
+- Removed "mysql_upgrade_shell"
+- Enabled falcon storage engine for IA64
 
 * Fri Aug 29 2008 Kent Boortz <kent@mysql.com>
 
@@ -938,7 +970,7 @@ fi
 
 * Wed May 02 2007 Joerg Bruehe <joerg@mysql.com>
 
-- "ndb_size.tmpl" is not needed any more, 
+- "ndb_size.tmpl" is not needed any more,
   "man1/mysql_install_db.1" lacked the trailing '*'.
 
 * Sat Apr 07 2007 Kent Boortz <kent@mysql.com>
@@ -977,12 +1009,12 @@ fi
 
 * Thu Nov 30 2006 Joerg Bruehe <joerg@mysql.com>
 
-- Call "make install" using "benchdir_root=%{_datadir}", 
+- Call "make install" using "benchdir_root=%{_datadir}",
   because that is affecting the regression test suite as well.
 
 * Thu Nov 16 2006 Joerg Bruehe <joerg@mysql.com>
 
-- Explicitly note that the "MySQL-shared" RPMs (as built by MySQL AB) 
+- Explicitly note that the "MySQL-shared" RPMs (as built by MySQL AB)
   replace "mysql-shared" (as distributed by SuSE) to allow easy upgrading
   (bug#22081).
 
@@ -1052,6 +1084,7 @@ fi
 * Tue Apr 11 2006 Jim Winstead <jimw@mysql.com>
 
 - Remove old mysqltestmanager and related programs
+
 * Sat Apr 01 2006 Kent Boortz <kent@mysql.com>
 
 - Set $LDFLAGS from $MYSQL_BUILD_LDFLAGS
@@ -1098,8 +1131,8 @@ fi
 
 * Mon Dec 05 2005 Joerg Bruehe <joerg@mysql.com>
 
-- Avoid using the "bundled" zlib on "shared" builds: 
-  As it is not installed (on the build system), this gives dependency 
+- Avoid using the "bundled" zlib on "shared" builds:
+  As it is not installed (on the build system), this gives dependency
   problems with "libtool" causing the build to fail.
   (Change was done on Nov 11, but left uncommented.)
 
@@ -1289,7 +1322,7 @@ fi
 
 * Thu Feb 12 2004 Lenz Grimmer <lenz@mysql.com>
 
-- when using gcc, _always_ use CXX=gcc 
+- when using gcc, _always_ use CXX=gcc
 - replaced Copyright with License field (Copyright is obsolete)
 
 * Tue Feb 03 2004 Lenz Grimmer <lenz@mysql.com>
@@ -1379,7 +1412,7 @@ fi
 
 * Wed Nov 27 2002 Lenz Grimmer <lenz@mysql.com>
 
-- moved init script from /etc/rc.d/init.d to /etc/init.d (the majority of 
+- moved init script from /etc/rc.d/init.d to /etc/init.d (the majority of
   Linux distributions now support this scheme as proposed by the LSB either
   directly or via a compatibility symlink)
 - Use new "restart" init script action instead of starting and stopping
@@ -1394,7 +1427,7 @@ fi
   (mixing 3.23 and 4.0 packages)
 
 * Fri Aug 09 2002 Lenz Grimmer <lenz@mysql.com>
- 
+
 - Turn off OpenSSL in MySQL-Max for now until it works properly again
 - enable RAID for the Max binary instead
 - added compatibility link: safe_mysqld -> mysqld_safe to ease the

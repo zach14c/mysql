@@ -85,29 +85,30 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
     )
   ])
 
-  # -lstdc++ really shouldn't be here, and is only required while we continue
-  # to use gcc to link C++ code for the static linking hack.  Once we stop
-  # doing that it should be removed from here, and the CXXLDFLAG setting below
-  # will do the right thing for g++.
   AC_CACHE_CHECK([compiler flag to enable exceptions],
                  falcon_cv_cxx_enable_exceptions,[
-    m4_foreach([cxxflag], [[-fexceptions -lstdc++], [-features=except]],[
+    m4_foreach([cxxflag], [[-fexceptions], [-features=except]],[
       CXXFLAGS="$ac_save_CXXFLAGS cxxflag"
-      AC_LINK_IFELSE([AC_LANG_PROGRAM()],
+      AC_RUN_IFELSE(
+        [AC_LANG_PROGRAM([],[[
+          try {
+            throw 1;
+          }
+          catch (int) {
+            return 0;
+          }
+          return -1;
+        ]])],
         falcon_cv_cxx_enable_exceptions="cxxflag"
       )
     ])
   ])
 
-  AC_CACHE_CHECK([linker flag to enable STL],
-                 falcon_cv_cxx_enable_stl,[
-    m4_foreach([cxxflag], [-lstdc++],[
-      CXXFLAGS="$ac_save_CXXFLAGS cxxflag"
-      AC_LINK_IFELSE([AC_LANG_PROGRAM()],
-        falcon_cv_cxx_enable_stl="cxxflag"
-      )
-    ])
-  ])
+  if test -z "$falcon_cv_cxx_enable_exceptions"; then
+    echo "Falcon must be compiled with support for C++ exceptions enabled."
+    echo "Please adjust your compiler flags or disable support for Falcon (--without-plugin-falcon)."
+    exit 1
+  fi
 
   AC_CACHE_CHECK([compiler flag to silence offsetof warnings],
                  falcon_cv_cxx_no_invalid_offsetof,[
@@ -118,7 +119,6 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   ])
 
   # Falcon uses exceptions and STL.
-  CXXLDFLAGS="$CXXLDFLAGS $falcon_cv_cxx_enable_stl"
   FALCON_CXXFLAGS="$falcon_cv_cxx_no_invalid_offsetof $falcon_cv_cxx_enable_implicit_templates $falcon_cv_cxx_enable_exceptions"
   case "$with_debug" in
     yes)  FALCON_CXXFLAGS="$FALCON_CXXFLAGS -D_DEBUG" ;;
@@ -126,32 +126,6 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   esac
 
   AC_SUBST([FALCON_CXXFLAGS])
-
-  # Check that C++ exceptions works in an executable by actually running a
-  # compiled program and throwing and catching an exception
-  CXXFLAGS=$FALCON_CXXFLAGS
-  AC_CACHE_CHECK([if compiler and compiler options support C++ exceptions for Falcon],
-	            falcon_cv_supported_by_compiler,[
-    AC_RUN_IFELSE(
-      [AC_LANG_PROGRAM([],[[
-      try {
-        throw 1;
-      }
-      catch (int) {
-        return 0;
-      }
-      return -1;
-      ]])],
-      [falcon_cv_supported_by_compiler="yes"],
-      [falcon_cv_supported_by_compiler="no"],
-      [falcon_cv_supported_by_compiler="yes"]) dnl For cross compiling, assume it works
-  ])
-
-  if test "$falcon_cv_supported_by_compiler" != "yes"; then
-    echo "Falcon must be compiled with support for C++ exceptions enabled."
-    echo "Please adjust your compiler flags or disable support for Falcon (--without-plugin-falcon)."
-    exit 1
-  fi
 
   CXXFLAGS=$ac_save_CXXFLAGS
   AC_LANG_POP([C++])
@@ -161,7 +135,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   # as "inline templates" in a separate file
   FALCON_SPARC_ASSEMBLY=""
   case $host in
-    sparc-sun-solaris2.9)
+    sparc-sun-solaris2.?)
       case $CXX_VERSION in
         *Sun*C++*)
           FALCON_SPARC_ASSEMBLY="CompareAndSwapSparc.il"
