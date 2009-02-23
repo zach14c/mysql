@@ -178,7 +178,7 @@ Sequence* SequenceManager::getSequence(const char *schema, const char *name)
 	return sequence;
 }
 
-void SequenceManager::renameSequence(Sequence* sequence, const char* newName)
+void SequenceManager::renameSequence(Sequence* sequence, const char *newSchema, const char* newName)
 {
 	Sync sync (&syncObject, "SequenceManager::renameSequence");
 	sync.lock (Exclusive);
@@ -194,14 +194,16 @@ void SequenceManager::renameSequence(Sequence* sequence, const char* newName)
 	sync.unlock();		
 
 	PreparedStatement *statement = database->prepareStatement (
-		"update system.sequences set sequenceName=? where schema=? and sequenceName=?");
-	statement->setString (1, newName);
-	statement->setString (2, sequence->schemaName);
-	statement->setString (3, sequence->name);
+		"update system.sequences set schema=? , sequenceName=? where schema=? and sequenceName=?");
+	statement->setString (1, newSchema);
+	statement->setString (2, newName);
+	statement->setString (3, sequence->schemaName);
+	statement->setString (4, sequence->name);
 	statement->executeUpdate();
 	statement->close();
 
 	sync.lock (Exclusive);
+	sequence->schemaName = database->getSymbol(newSchema);
 	sequence->name = database->getSymbol(newName);
 	slot = HASH (sequence->name, SEQUENCE_HASH_SIZE);
 	ASSERT (slot >= 0 && slot < SEQUENCE_HASH_SIZE);

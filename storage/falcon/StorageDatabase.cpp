@@ -733,7 +733,7 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 	try
 		{
 		Database *database = connection->database;
-		Sequence *sequence = connection->findSequence(schemaName, table->name);
+		Sequence *sequence = connection->findSequence(table->schemaName, table->name);
 
 		Sync syncDDL(&database->syncSysDDL, "StorageDatabase::renameTable(1)");
 		syncDDL.lock(Exclusive);
@@ -744,7 +744,7 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 		table->rename(schemaName, tableName);
 
 		if (sequence)
-			sequence->rename(tableName);
+			sequence->rename(schemaName, tableName);
 
 		syncTables.unlock();
 		syncDDL.unlock();
