@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2008 MySQL AB
+/* Copyright (C) 2000-2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -617,18 +617,23 @@ static my_bool pagecache_fwrite(PAGECACHE *pagecache,
   /* Todo: Integrate this with write_callback so we have only one callback */
   if ((*filedesc->flush_log_callback)(buffer, pageno, filedesc->callback_data))
     DBUG_RETURN(1);
-  DBUG_PRINT("info", ("write_callback: 0x%lx  data: 0x%lx",
-                      (ulong) filedesc->write_callback,
+  DBUG_PRINT("info", ("pre_write_callback: 0x%lx  data: 0x%lx",
+                      (ulong) filedesc->pre_write_callback,
                       (ulong) filedesc->callback_data));
-  if ((*filedesc->write_callback)(buffer, pageno, filedesc->callback_data))
+  if ((*filedesc->pre_write_callback)(buffer, pageno, filedesc->callback_data))
   {
-    DBUG_PRINT("error", ("write callback problem"));
+    DBUG_PRINT("error", ("pre_write callback problem"));
     DBUG_RETURN(1);
   }
   if (my_pwrite(filedesc->file, buffer, pagecache->block_size,
                 ((my_off_t) pageno << pagecache->shift), flags))
   {
     (*filedesc->write_fail)(filedesc->callback_data);
+    DBUG_RETURN(1);
+  }
+  if ((*filedesc->post_write_callback)(buffer, pageno, filedesc->callback_data))
+  {
+    DBUG_PRINT("error", ("post_write callback problem"));
     DBUG_RETURN(1);
   }
   DBUG_RETURN(0);
@@ -2974,7 +2979,11 @@ void pagecache_unlock_by_link(PAGECACHE *pagecache,
     }
     if (lsn != LSN_IMPOSSIBLE)
       check_and_set_lsn(pagecache, lsn, block);
-    block->status&= ~PCBLOCK_ERROR;
+    /*
+      Reset error flag. Mark also that page is active; This may not have
+      been the case if there was an error reading the page
+    */
+    block->status= (block->status & ~PCBLOCK_ERROR) | PCBLOCK_READ;
   }
 
   /* if we lock for write we must link the block to changed blocks */
@@ -4223,11 +4232,11 @@ static int flush_cached_blocks(PAGECACHE *pagecache,
        @todo IO If page is contiguous with next page to flush, group flushes
        in one single my_pwrite().
     */
-    /*
+    /**
       It is important to use block->hash_link->file below and not 'file', as
-      the first one is right and the second may have different content (and
-      this matters for callbacks, bitmap pages and data pages have different
-      ones).
+      the first one is right and the second may have different out-of-date
+      content (see StaleFilePointersInFlush in ma_checkpoint.c).
+      @todo change argument of functions to be File.
     */
     error= pagecache_fwrite(pagecache, &block->hash_link->file,
                             block->buffer,

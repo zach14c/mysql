@@ -14,3 +14,4 @@ backup_triggers_and_events    : Bug#37762 2008-07-01 rafal Test fails on remove_
 backup_no_data                : Bug#41008 2008-12-08 alik union.test does not cleanup
 backup_ddl_blocker            : Bug#41008 2008-12-08 alik union.test does not cleanup
 backup_views                  : Bug#41360 2008-12-10 ingo Test fails after merge of main and backup trees
+backup_maria_other_instance   : Bug#42924 2009-02-17 serg

@@ -1810,7 +1810,7 @@ static void test_wl4435()
 
       MYSQL_RES *rs_metadata= mysql_stmt_result_metadata(stmt);
 
-      num_fields= mysql_num_fields(rs_metadata);
+      num_fields= mysql_stmt_field_count(stmt);
       fields= mysql_fetch_fields(rs_metadata);
 
       rs_bind= (MYSQL_BIND *) malloc(sizeof (MYSQL_BIND) * num_fields);
@@ -1926,7 +1926,7 @@ static void test_wl4435()
       if (rc > 0)
       {
         printf("Error: %s (errno: %d)\n",
-               mysql_error(mysql), mysql_errno(mysql));
+               mysql_stmt_error(stmt), mysql_stmt_errno(stmt));
         DIE(rc > 0);
       }
 
