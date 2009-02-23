@@ -403,7 +403,7 @@ static const char *changedTables [] = {
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-Database::Database(const char *dbName, Configuration *config, Threads *parent)
+Database::Database(const char *dbName, Configuration *config, Threads *parent) : syncCardinality("Database::syncCardinality"), syncMemory("Database::syncMemory")
 {
 	panicShutdown = false;
 	name = dbName;

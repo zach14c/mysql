@@ -68,7 +68,7 @@ static const char THIS_FILE[]=__FILE__;
 //////////////////////////////////////////////////////////////////////
 
 
-Dbb::Dbb(Database *dbase)
+Dbb::Dbb(Database *dbase) : sectionsMutex("Dbb::sectionMutex")
 {
 	database = dbase;
 	cache = NULL;
@@ -92,7 +92,7 @@ Dbb::Dbb(Database *dbase)
 }
 
 
-Dbb::Dbb(Dbb *dbb, int tblSpaceId)
+Dbb::Dbb(Dbb *dbb, int tblSpaceId) : sectionsMutex("Dbb::sectionMutex")
 {
 	database = dbb->database;
 	tableSpaceId = tblSpaceId;

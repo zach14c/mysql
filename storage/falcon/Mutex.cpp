@@ -34,7 +34,7 @@
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-Mutex::Mutex()
+Mutex::Mutex(const char* desc)
 {
 #ifdef _WIN32
 	//mutex = CreateMutex (NULL, false, NULL);
@@ -51,6 +51,7 @@ Mutex::Mutex()
 #endif
 
 	holder = NULL;
+	description = desc;
 }
 
 Mutex::~Mutex()
@@ -86,7 +87,7 @@ void Mutex::lock()
 
 	if (ret != 0)
 		{
-		fprintf(stderr, "[Falcon] Error: Mutex::lock: pthread_mutex_lock returned errno %d\n", ret);
+		fprintf(stderr, "[Falcon] Error: Mutex::lock: %s: pthread_mutex_lock returned errno %d\n", description, ret);
 		fflush(stderr);
 		}
 	ASSERT(ret == 0);
