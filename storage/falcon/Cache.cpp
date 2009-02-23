@@ -1042,7 +1042,7 @@ void Cache::shutdownThreads(void)
 {
 	for (int n = 0; n < numberIoThreads; ++n)
 		{
-		ioThreads[n]->shutdown();
+		database->threads->shutdown(ioThreads[n]);
 		ioThreads[n] = 0;
 		}
 	
