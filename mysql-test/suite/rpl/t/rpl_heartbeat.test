@@ -166,13 +166,14 @@ while (`select $slave_value = 0`)
   let $slave_value= query_get_value("SHOW STATUS like 'Slave_received_heartbeats'", Value, 1);
 }
 --echo A heartbeat has been received by the slave
+
 # cleanup
+connection slave;
+drop table t1;
+stop slave;
 
 connection master;
 drop table t1;
-
-#connection slave;
-sync_slave_with_master;
 
 
 --echo End of tests
