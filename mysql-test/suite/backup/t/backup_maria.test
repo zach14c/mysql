@@ -4,6 +4,7 @@
 
 --source include/not_embedded.inc
 --source include/have_debug_sync.inc
+--source include/have_maria.inc
 
 let $MYSQLD_DATADIR= `select @@datadir`;
 
