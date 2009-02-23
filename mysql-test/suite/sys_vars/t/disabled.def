@@ -9,12 +9,12 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-rpl_recovery_rank_basic_64  : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_cache_size_basic_32   : Bug#36747: Allocating a large query cache is not deterministic
-query_cache_size_basic_64   : Bug#36747: Allocating a large query cache is not deterministic
-query_alloc_block_size_basic_64:  Bug #37708 query_alloc_block_size_basic_64 fails in pushbuild
-max_heap_table_size_basic_32 : Bug#36877 main.max_heap_table_size_basic_32 fails on some systems
-#query_cache_wlock_invalidate_func : Bug#37962 2008-12-08 Test contains sleeps/race conditions
-#thread_cache_size_func            : Bug#40575 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
-log_output_basic                  : Bug#40988 log_output_basic.test succeeded though syntactically false.
+rpl_recovery_rank_basic_64          : Bug#42838: sys_vars.rpl_recovery_rank_basic_64 is disabled
+query_alloc_block_size_basic_64     : Bug#42839: sys_vars.query_alloc_block_size_basic_64 is disabled
+query_cache_size_basic_32           : Bug#36747: Allocating a large query cache is not deterministic
+query_cache_size_basic_64           : Bug#36747: Allocating a large query cache is not deterministic
+max_heap_table_size_basic_32        : Bug#36877: main.max_heap_table_size_basic_32 fails on some systems
+#query_cache_wlock_invalidate_func  : Bug#37962: 2008-12-08 Test contains sleeps/race conditions
+#thread_cache_size_func             : Bug#40575: 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
+log_output_basic                    : Bug#40988: log_output_basic.test succeeded though syntactically false.
 

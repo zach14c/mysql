@@ -13,7 +13,7 @@ FROM information_schema.tables
 WHERE table_schema = 'information_schema'
 AND table_name LIKE 'falcon_%'
 ORDER BY table_schema,table_name;
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_RECORD_CACHE_DETAIL
 TABLE_TYPE	SYSTEM VIEW
@@ -37,7 +37,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_RECORD_CACHE_SUMMARY
 TABLE_TYPE	SYSTEM VIEW
@@ -61,7 +61,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SERIAL_LOG_INFO
 TABLE_TYPE	SYSTEM VIEW
@@ -85,7 +85,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SYNCOBJECTS
 TABLE_TYPE	SYSTEM VIEW
@@ -109,7 +109,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SYSTEM_MEMORY_DETAIL
 TABLE_TYPE	SYSTEM VIEW
@@ -133,7 +133,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SYSTEM_MEMORY_SUMMARY
 TABLE_TYPE	SYSTEM VIEW
@@ -157,7 +157,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_TABLESPACE_IO
 TABLE_TYPE	SYSTEM VIEW
@@ -181,7 +181,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_TRANSACTIONS
 TABLE_TYPE	SYSTEM VIEW
@@ -205,7 +205,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_TRANSACTION_SUMMARY
 TABLE_TYPE	SYSTEM VIEW
@@ -229,7 +229,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_VERSION
 TABLE_TYPE	SYSTEM VIEW
@@ -270,7 +270,7 @@ FROM information_schema.tables
 WHERE table_schema = 'information_schema'
 AND table_name LIKE 'falcon_%'
 ORDER BY table_schema,table_name;
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_RECORD_CACHE_DETAIL
 TABLE_TYPE	SYSTEM VIEW
@@ -294,7 +294,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_RECORD_CACHE_SUMMARY
 TABLE_TYPE	SYSTEM VIEW
@@ -318,7 +318,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SERIAL_LOG_INFO
 TABLE_TYPE	SYSTEM VIEW
@@ -342,7 +342,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SYNCOBJECTS
 TABLE_TYPE	SYSTEM VIEW
@@ -366,7 +366,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SYSTEM_MEMORY_DETAIL
 TABLE_TYPE	SYSTEM VIEW
@@ -390,7 +390,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SYSTEM_MEMORY_SUMMARY
 TABLE_TYPE	SYSTEM VIEW
@@ -414,7 +414,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_TABLESPACE_IO
 TABLE_TYPE	SYSTEM VIEW
@@ -438,7 +438,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_TRANSACTIONS
 TABLE_TYPE	SYSTEM VIEW
@@ -462,7 +462,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_TRANSACTION_SUMMARY
 TABLE_TYPE	SYSTEM VIEW
@@ -486,7 +486,7 @@ TABLE_COMMENT	#TC#
 TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
+TABLE_CATALOG	def
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_VERSION
 TABLE_TYPE	SYSTEM VIEW

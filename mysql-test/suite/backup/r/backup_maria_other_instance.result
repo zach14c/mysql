@@ -1,0 +1,32 @@
+drop database if exists mysqltest;
+create database mysqltest;
+use mysqltest;
+create table t1(a int, unique(a)) engine=maria;
+insert into t1 values(1);
+insert into t1 values(2);
+BACKUP DATABASE mysqltest TO 'test.ba';
+backup_id
+#
+* shut down mysqld, removed logs, restarted it
+RESTORE FROM 'test.ba' OVERWRITE;
+backup_id
+#
+select * from t1;
+a
+1
+2
+Warnings:
+Error	1194	t1' is marked as crashed and should be repaired
+check table t1 extended;
+Table	Op	Msg_type	Msg_text
+mysqltest.t1	check	status	OK
+flush table t1;
+Status:              checked,analyzed,zerofilled,movable
+create_rename_lsn has magic value
+insert into t1 values(3);
+check table t1 extended;
+Table	Op	Msg_type	Msg_text
+mysqltest.t1	check	status	OK
+flush table t1;
+create_rename_lsn has non-magic value
+drop database mysqltest;

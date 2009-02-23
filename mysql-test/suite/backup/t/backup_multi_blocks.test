@@ -11,7 +11,7 @@ DROP DATABASE IF EXISTS mysqltest;
 CREATE DATABASE mysqltest;
 USE mysqltest;
 
-CREATE TABLE t1 (a LONGTEXT) ENGINE=MYISAM;
+CREATE TABLE t1 (a LONGTEXT);
 
 --echo Inserting data ...
 USE mysqltest;

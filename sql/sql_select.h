@@ -819,7 +819,8 @@ protected:
   enum_nested_loop_state join_matching_records(bool skip_last);
 
   /* Prepare to search for records that match records from the join buffer */
-  enum_nested_loop_state init_join_matching_records(RANGE_SEQ_IF *seq_funcs);
+  enum_nested_loop_state init_join_matching_records(RANGE_SEQ_IF *seq_funcs,
+                                                    uint ranges);
 
   /* Finish searching for records that match records from the join buffer */
   enum_nested_loop_state end_join_matching_records(enum_nested_loop_state rc);
@@ -973,6 +974,9 @@ private:
   uchar *hash_table;
   /* Number of hash entries in the hash table */
   uint hash_entries;
+
+  /* Number of key entries in the hash table (number of distinct keys) */
+  uint key_entries;
 
   /* The position of the last key entry in the hash table */
   uchar *last_key_entry;

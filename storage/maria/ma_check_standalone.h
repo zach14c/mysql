@@ -28,6 +28,7 @@
   dependencies on mysqld.o, which make linking fail.
   The solution is to declare a dummy _mi_report_crashed() in the present
   header file, and include it in Maria standalone programs.
+  Same for _ma_report_crashed().
 
   Some standalone Maria programs, but less numerous than above, use objects
   from ma_check.o like maria_repair(). This brings in linking dependencies of
@@ -49,6 +50,16 @@ void _mi_report_crashed(MI_INFO *file __attribute__((unused)),
 {
 }
 
+#ifndef _maria_h
+struct st_maria_handler;
+typedef struct st_maria_handler MARIA_HA;
+#endif
+void _ma_report_crashed(MARIA_HA *file __attribute__((unused)),
+                        const char *message __attribute__((unused)),
+                        const char *sfile __attribute__((unused)),
+                        uint sline __attribute__((unused)))
+{
+}
 
 #if defined(MA_CHECK_STANDALONE) && (MA_CHECK_STANDALONE == 1)
 

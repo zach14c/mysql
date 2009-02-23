@@ -1,4 +1,4 @@
-/* Copyright (C) 2006-2003 MySQL AB
+/* Copyright (C) 2006-2003 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1226,7 +1226,8 @@ static int maria_chk(HA_CHECK *param, char *filename)
       error= maria_zerofill(param, info, filename);
     if (!error)
       share->state.changed&= ~(STATE_CHANGED | STATE_CRASHED |
-                               STATE_CRASHED_ON_REPAIR);
+                               STATE_CRASHED_ON_REPAIR |
+                               STATE_BAD_OPEN_COUNT);
     else
       maria_mark_crashed(info);
   }
@@ -1279,7 +1280,8 @@ static int maria_chk(HA_CHECK *param, char *filename)
           (param->testflag & T_UPDATE_STATE))
         info->update|=HA_STATE_CHANGED | HA_STATE_ROW_CHANGED;
       share->state.changed&= ~(STATE_CHANGED | STATE_CRASHED |
-                               STATE_CRASHED_ON_REPAIR);
+                               STATE_CRASHED_ON_REPAIR |
+                               STATE_BAD_OPEN_COUNT);
     }
     else if (!maria_is_crashed(info) &&
              (param->testflag & T_UPDATE_STATE))

@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,8 +15,9 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 
-/*
-  Static variables for MARIA library. All definied here for easy making of
+/**
+  @file
+  Static variables for MARIA library. All defined here for easy making of
   a shared library
 */
 
@@ -31,13 +33,17 @@ uchar	maria_pack_file_magic[]=
 { (uchar) 254, (uchar) 254, (uchar) 10, '\001', };
 /* Unique number for this maria instance */
 uchar   maria_uuid[MY_UUID_SIZE];
+IO_CACHE maria_physical_log; /**< Physical log (used by online backup) */
 uint	maria_quick_table_bits=9;
 ulong	maria_block_size= MARIA_KEY_BLOCK_LENGTH;
 my_bool maria_flush= 0, maria_single_user= 0;
 my_bool maria_delay_key_write= 0, maria_page_checksums= 1;
 my_bool maria_inited= FALSE;
 my_bool maria_in_ha_maria= FALSE; /* If used from ha_maria or not */
+/** For insert/delete in the list of Maria open tables */
 pthread_mutex_t THR_LOCK_maria;
+/** For writing to the Maria logs */
+pthread_mutex_t THR_LOCK_maria_log;
 #if defined(THREAD) && !defined(DONT_USE_RW_LOCKS)
 ulong maria_concurrent_insert= 2;
 #else
@@ -105,3 +111,34 @@ static int always_valid(const char *filename __attribute__((unused)))
 }
 
 int (*maria_test_invalid_symlink)(const char *filename)= always_valid;
+
+/** Hash of all tables for which we want physical logging */
+const HASH *ma_log_tables_physical;
+/**
+  If page changes to the index file should be logged to the physical log.
+
+  @note Changes to the header of the index file of a table in physical
+  logging are always logged because the header is not redundant with the data
+  file.
+*/
+my_bool ma_log_index_pages_physical;
+
+/**
+  All Maria-specific error messages which may be sent to the user.
+  They will be localized (translated) as part of
+  http://forge.mysql.com/worklog/task.php?id=2940
+  "MySQL plugin interface: error reporting".
+  Same order as enum myisam_errors.
+*/
+const char *maria_error_messages[] =
+{
+  "online backup impossible with --external-locking",
+  "backup archive format has too recent version (%u) (current: %u)"
+};
+
+static inline void maria_error_messages_dummy_validator()
+{
+  compile_time_assert((sizeof(maria_error_messages) /
+                       sizeof(maria_error_messages[0])) ==
+                      (-MARIA_ERR_LAST-1));
+}

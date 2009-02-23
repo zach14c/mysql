@@ -1,4 +1,4 @@
-# Copyright (C) 2007 MySQL AB
+# Copyright (C) 2007 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -42,6 +42,8 @@ SET(MARIA_SOURCES ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c
             ma_pagecache.c ma_pagecaches.c 
             ma_checkpoint.c ma_recovery.c ma_commit.c ma_pagecrc.c
             ha_maria.h maria_def.h ma_recovery_util.c
+            ma_non_trans_log.c ma_examine_non_trans_log.c
+            maria_backup_engine.cc
 )
 
 IF(NOT SOURCE_SUBLIBS)
@@ -54,6 +56,9 @@ TARGET_LINK_LIBRARIES(maria_ftdump maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_chk maria_chk.c)
 TARGET_LINK_LIBRARIES(maria_chk maria myisam mysys dbug strings zlib)
+
+ADD_EXECUTABLE(maria_non_trans_log maria_non_trans_log.c)
+TARGET_LINK_LIBRARIES(maria_non_trans_log maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_read_log maria_read_log.c)
 TARGET_LINK_LIBRARIES(maria_read_log maria myisam mysys dbug strings zlib)
@@ -84,6 +89,7 @@ IF(EMBED_MANIFESTS)
   MYSQL_EMBED_MANIFEST("maria_ftdump" "asInvoker")
   MYSQL_EMBED_MANIFEST("maria_chk" "asInvoker")
   MYSQL_EMBED_MANIFEST("maria_read_log" "asInvoker")
+  MYSQL_EMBED_MANIFEST("maria_non_trans_log" "asInvoker")
   MYSQL_EMBED_MANIFEST("maria_pack" "asInvoker")
 ENDIF(EMBED_MANIFESTS)
 
