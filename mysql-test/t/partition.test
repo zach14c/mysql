@@ -19,7 +19,6 @@ drop table if exists t1, t2;
 #
 # Bug#36001: Partitions: spelling and using some error messages
 #
-
 --error ER_FOREIGN_KEY_ON_PARTITIONED
 CREATE TABLE t1 (a INT, FOREIGN KEY (a) REFERENCES t0 (a))
 ENGINE=MyISAM
