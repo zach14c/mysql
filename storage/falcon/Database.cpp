@@ -782,6 +782,9 @@ void Database::openDatabase(const char * filename)
 		END_FOR;
 		}
 
+	Sync syncDDL(&syncSysDDL, "Database::openDatabase");
+	syncDDL.lock(Shared);
+	
 	PreparedStatement *statement = prepareStatement ("select tableid from tables");
 	ResultSet *resultSet = statement->executeQuery();
 
@@ -795,6 +798,8 @@ void Database::openDatabase(const char * filename)
 
 	resultSet->close();
 	statement->close();
+	syncDDL.unlock();
+	
 	upgradeSystemTables();
 	Trigger::initialize (this);
 	serialLog->checkpoint(true);

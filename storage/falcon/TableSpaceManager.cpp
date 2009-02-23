@@ -476,6 +476,9 @@ JString TableSpaceManager::tableSpaceType(JString name)
 
 void TableSpaceManager::getTableSpaceInfo(InfoTable* infoTable)
 {
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::getTableSpaceInfo");
+	syncDDL.lock(Shared);
+
 	PStatement statement = database->systemConnection->prepareStatement(
 		"select tablespace, comment from system.tablespaces");
 	RSet resultSet = statement->executeQuery();
@@ -520,6 +523,9 @@ JString TableSpaceManager::tableSpaceFileType(JString name)
 
 void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 {
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::getTableSpaceFilesInfo");
+	syncDDL.lock(Shared);
+	
 	PStatement statement = database->systemConnection->prepareStatement(
 		"select tablespace, filename from system.tablespaces");
 	RSet resultSet = statement->executeQuery();
