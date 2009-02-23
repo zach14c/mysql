@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -56,6 +57,8 @@ int maria_close(register MARIA_HA *info)
   }
   if (info->opt_flag & (READ_CACHE_USED | WRITE_CACHE_USED))
   {
+    /* Logically there should not be a WRITE_CACHE at this stage */
+    DBUG_ASSERT(!(info->opt_flag & WRITE_CACHE_USED));
     if (end_io_cache(&info->rec_cache))
       error=my_errno;
     info->opt_flag&= ~(READ_CACHE_USED | WRITE_CACHE_USED);
@@ -81,7 +84,11 @@ int maria_close(register MARIA_HA *info)
                                  (share->temporary ?
                                   FLUSH_IGNORE_CHANGED :
                                   FLUSH_RELEASE)))
+      {
         error= my_errno;
+        maria_print_error(share, HA_ERR_CRASHED);
+        maria_mark_crashed(info);		/* Mark that table must be checked */
+      }
 #ifdef HAVE_MMAP
       if (share->file_map)
         _ma_unmap_file(info);
@@ -100,9 +107,12 @@ int maria_close(register MARIA_HA *info)
           State must be written to file as it was not done at table's
           unlocking.
         */
-        if (_ma_state_info_write(share, 1))
+        if (_ma_state_info_write(share, MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET))
           error= my_errno;
       }
+      if (share->MA_LOG_OPEN_stored_in_physical_log)
+        _maria_log_command(&maria_physical_log, MA_LOG_CLOSE, share,
+                           NULL, 0, error);
       /*
         File must be synced as it is going out of the maria_open_list and so
         becoming unknown to future Checkpoints.
@@ -114,6 +124,7 @@ int maria_close(register MARIA_HA *info)
     }
 #ifdef THREAD
     thr_lock_delete(&share->lock);
+    my_atomic_rwlock_destroy(&share->physical_logging_rwlock);
     (void) pthread_mutex_destroy(&share->key_del_lock);
     {
       int i,keys;
@@ -154,7 +165,7 @@ int maria_close(register MARIA_HA *info)
       MARIA_STATE_HISTORY_CLOSED *history;
       /*
         Here we ignore the unlikely case that we don't have memory to
-        store the case. In the worst case what happens is that any transaction
+        store the state. In the worst case what happens is that any transaction
         that tries to access this table will get a wrong status information.
       */
       if ((history= (MARIA_STATE_HISTORY_CLOSED *)
@@ -165,6 +176,8 @@ int maria_close(register MARIA_HA *info)
         if (my_hash_insert(&maria_stored_state, (uchar*) history))
           my_free(history, MYF(0));
       }
+      /* Marker for concurrent checkpoint */
+      share->state_history= 0;
     }
   }
   pthread_mutex_unlock(&THR_LOCK_maria);

@@ -799,7 +799,7 @@ IndexWalker* StorageDatabase::indexPosition(Index* index, StorageKey* lower, Sto
 								storageConnection->connection->getTransaction());
 }
 
-int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int keyLength, StorageKey* storageKey)
+int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int keyLength, StorageKey* storageKey, bool highKey)
 {
 	int segmentNumber = 0;
 	Value vals [MAX_KEY_SEGMENTS];
@@ -827,7 +827,7 @@ int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int 
 			p += len;
 			}
 
-		index->makeKey(segmentNumber, values, &storageKey->indexKey);
+		index->makeKey(segmentNumber, values, &storageKey->indexKey, highKey);
 		storageKey->numberSegments = segmentNumber;
 		
 		return 0;

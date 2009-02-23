@@ -50,7 +50,7 @@ int MySQLCollation::compare (Value *value1, Value *value2)
 	return falcon_strnncoll(charset, string1, len1, string2, len2, false);
 }
 
-int MySQLCollation::makeKey (Value *value, IndexKey *key, int partialKey, int maxKeyLength)
+int MySQLCollation::makeKey (Value *value, IndexKey *key, int partialKey, int maxKeyLength, bool highKey)
 {
 	if (partialKey > maxKeyLength )
 		partialKey = maxKeyLength;
@@ -69,7 +69,24 @@ int MySQLCollation::makeKey (Value *value, IndexKey *key, int partialKey, int ma
 	if (!isBinary)
 		srcLen = computeKeyLength(srcLen, temp, padChar, minSortChar);
 
-	int len = falcon_strnxfrm(charset, (char*) key->key, MAX_PHYSICAL_KEY_LENGTH, partialKey ? partialKey / falcon_get_mbmaxlen(charset) : maxKeyLength, temp, srcLen);
+
+	int len = 0;
+
+	// If this is a highKey, append the pad char if the final 
+	// character is >= the pad char. There is no efficient way 
+	// of finding and checking the final character for every 
+	// character set, but it should be correct to pad the rest 
+	// of the key with the pad character anyway. This is done 
+	// when creating an upper bound search key to make it position
+	// after all values with trailing characters lower than the 
+	// pad character.
+
+	if (highKey)
+		len = falcon_strnxfrm_space_pad(charset, (char*) key->key, MAX_PHYSICAL_KEY_LENGTH, 
+										partialKey ? partialKey / falcon_get_mbmaxlen(charset) : maxKeyLength, temp, srcLen);
+	else
+		len = falcon_strnxfrm(charset, (char*) key->key, MAX_PHYSICAL_KEY_LENGTH, 
+							  partialKey ? partialKey / falcon_get_mbmaxlen(charset) : maxKeyLength, temp, srcLen);
 	key->keyLength = len;
 	
 	return len;

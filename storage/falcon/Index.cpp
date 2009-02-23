@@ -289,7 +289,7 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 }
 
 
-void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey)
+void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey, bool highKey)
 {
 	if (damaged)
 		damageCheck();
@@ -309,26 +309,40 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey)
 
 			if (field->collation)
 				{
-				field->collation->makeKey(value, indexKey, partialLength, database->getMaxKeyLength());
-				
-				return;
+				field->collation->makeKey(value, indexKey, partialLength, database->getMaxKeyLength(), highKey);
 				}
+			else
+				{
+				UCHAR *key = indexKey->key;
 
-			UCHAR *key = indexKey->key;
-			int l = value->getString(sizeof(indexKey->key), (char*) indexKey->key);
-			
-			if (partialLength && partialLength < l)
-				l = partialLength;
+				int l = value->getString(sizeof(indexKey->key), (char*) indexKey->key);
+				
+				if (partialLength && partialLength < l)
+					l = partialLength;
+				
+				UCHAR *q = key + l;
+				
+				while (q > key && q[-1] == ' ')
+					--q;
+				
+				indexKey->keyLength = (int) (q - key);
 
-			UCHAR *q = key + l;
+				// If this is a highKey, append 0x20 (pad char) if the final byte 
+				// >= 0x20. This is done when creating an upper bound
+				// search key to make it position after all values with
+				// trailing characters between 0x00 and the pad character
 
-			while (q > key && q[-1] == ' ')
-				--q;
+				uint &klen = indexKey->keyLength;
+				
+				if (highKey && (klen > 0 && klen < MAX_PHYSICAL_KEY_LENGTH) 
+					&& indexKey->key[klen - 1] >= 0x20)
+					{
+					indexKey->key[klen++] = 0x20;
+					}
 
-			indexKey->keyLength = (int) (q - key);
-
-			return ;
+				}
 			}
+			break;
 
 		case Timestamp:
 		case Date:
@@ -344,7 +358,7 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey)
 		}
 }
 
-void Index::makeKey(int count, Value **values, IndexKey *indexKey)
+void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 {
 	if (damaged)
 		damageCheck();
@@ -360,7 +374,7 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey)
 
 	if (numberFields == 1)
 		{
-		makeKey(fields[0], values[0], 0, indexKey);
+		makeKey(fields[0], values[0], 0, indexKey, highKey);
 		
 		return;
 		}
@@ -375,7 +389,7 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey)
 
 		
 		IndexKey tempKey(this);
-		makeKey(field, values[n], n, &tempKey);
+		makeKey(field, values[n], n, &tempKey, false);
 		int length = tempKey.keyLength;
 		UCHAR *t = tempKey.key;
 
@@ -636,7 +650,7 @@ void Index::makeKey(Record * record, IndexKey *key)
 		record->getValue (field->id, value);
 		}
 		
-	makeKey (numberFields, values, key);
+	makeKey (numberFields, values, key, false);
 }
 
 void Index::garbageCollect(Record * leaving, Record * staying, Transaction *transaction, bool quiet)

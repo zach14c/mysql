@@ -43,7 +43,7 @@ void ValueSet::addValue(Value *value)
 	//UCHAR key[MAX_KEY_LENGTH];
 	//int len = index->makeKey(field, value, key);
 	IndexKey indexKey(index);
-	index->makeKey(field, value, 0, &indexKey);
+	index->makeKey(field, value, 0, &indexKey, false);
 }
 
 bool ValueSet::hasValue(Value *value)
@@ -51,7 +51,7 @@ bool ValueSet::hasValue(Value *value)
 	//UCHAR key[MAX_KEY_LENGTH];
 	//int len = index->makeKey(field, value, key);
 	IndexKey indexKey(index);
-	index->makeKey(field, value, 0, &indexKey);
+	index->makeKey(field, value, 0, &indexKey, false);
 
 	return true;
 }

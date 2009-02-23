@@ -6739,7 +6739,7 @@ int get_part_iter_for_interval_via_mapping(partition_info *part_info,
 
 
 /* See get_part_iter_for_interval_via_walking for definition of what this is */
-#define MAX_RANGE_TO_WALK 10
+#define MAX_RANGE_TO_WALK 32
 
 
 /*
@@ -6774,16 +6774,6 @@ int get_part_iter_for_interval_via_mapping(partition_info *part_info,
       "c1 <=? t.field <=? c2", where c1 and c2 are finite. 
     Intervals with +inf/-inf, and [NULL, c1] interval can be processed but
     that is more tricky and I don't have time to do it right now.
-
-    Additionally we have these requirements:
-    * number of values in the interval must be less then number of
-      [sub]partitions, and 
-    * Number of values in the interval must be less then MAX_RANGE_TO_WALK.
-    
-    The rationale behind these requirements is that if they are not met
-    we're likely to hit most of the partitions and traversing the interval
-    will only add overhead. So it's better return "all partitions used" in
-    that case.
 
   RETURN
     0 - No matching partitions, iterator not initialized
@@ -6880,7 +6870,23 @@ int get_part_iter_for_interval_via_walking(partition_info *part_info,
   b += test(!(flags & NEAR_MAX));
   ulonglong n_values= b - a;
   
-  if (n_values > total_parts || n_values > MAX_RANGE_TO_WALK)
+  /*
+    Will it pay off to enumerate all values in the [a..b] range and evaluate
+    the partitioning function for every value? It depends on 
+     1. whether we'll be able to infer that some partitions are not used 
+     2. if time savings from not scanning these partitions will be greater
+        than time spent in enumeration.
+    We will assume that the cost of accessing one extra partition is greater
+    than the cost of evaluating the partitioning function O(#partitions).
+    This means we should jump at any chance to eliminate a partition, which
+    gives us this logic:
+
+    Do the enumeration if
+     - the number of values to enumerate is comparable to the number of
+       partitions, or
+     - there are not many values to enumerate.
+  */
+  if ((n_values > 2*total_parts) && n_values > MAX_RANGE_TO_WALK)
   {
     DBUG_RETURN(-1);
   }

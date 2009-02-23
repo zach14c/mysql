@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -84,12 +84,15 @@ typedef struct st_pagecache_file
   my_bool (*read_callback)(uchar *page, pgcache_page_no_t offset,
                            uchar *data);
   /** Cannot be NULL */
-  my_bool (*write_callback)(uchar *page, pgcache_page_no_t offset,
-                            uchar *data);
+  my_bool (*pre_write_callback)(uchar *page, pgcache_page_no_t offset,
+                                uchar *data);
   void (*write_fail)(uchar *data);
   /** Cannot be NULL */
   my_bool (*flush_log_callback)(uchar *page, pgcache_page_no_t offset,
                                 uchar *data);
+  /** Cannot be NULL */
+  my_bool (*post_write_callback)(uchar *page, pgcache_page_no_t offset,
+                                 uchar *data);
   uchar *callback_data;
 } PAGECACHE_FILE;
 
@@ -264,10 +267,11 @@ extern void pagecache_unpin_by_link(PAGECACHE *pagecache,
 /* PCFLUSH_ERROR and PCFLUSH_PINNED. */
 #define PCFLUSH_PINNED_AND_ERROR (PCFLUSH_ERROR|PCFLUSH_PINNED)
 
-#define pagecache_file_init(F,RC,WC,WF,GLC,D) \
+#define pagecache_file_init(F,RC,PREWC,WF,GLC,POSTWC,D) \
   do{ \
-    (F).read_callback= (RC); (F).write_callback= (WC); \
+    (F).read_callback= (RC); (F).pre_write_callback= (PREWC);   \
     (F).write_fail= (WF); \
+    (F).post_write_callback= (POSTWC);                             \
     (F).flush_log_callback= (GLC); (F).callback_data= (uchar*)(D); \
   } while(0)
 
