@@ -177,9 +177,9 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
       handlerton *hton= se_hton(se);
       saved_factory= hton->get_backup_engine;
       if (hton == myisam_hton
-#ifdef WITH_MARIA_STORAGE_ENGINE
-          || hton == maria_hton
-#endif
+//#ifdef WITH_MARIA_STORAGE_ENGINE
+//          || hton == maria_hton
+//#endif
           ) 
         hton->get_backup_engine= dummy_backup_engine_factory;
     });

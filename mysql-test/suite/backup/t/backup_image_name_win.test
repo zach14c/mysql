@@ -1,0 +1,44 @@
+#
+# This test is designed to ensure the backup image file can
+# contain certain special characters that are permissible
+# by the host operating system.
+#
+# Notes 
+#   * Test added for regressions testing for BUG#35595
+#   * Additional test cases will be added by BUG#40475
+#   * This test is for the Windows platform
+#
+
+--source include/windows.inc
+
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
+
+--echo #
+--echo # Create a database and some data.
+--echo #
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+--enable_warnings
+
+CREATE DATABASE db1;
+CREATE TABLE db1.t1 (a char(10), b char(10));
+INSERT INTO db1.t1 VALUES ('N41','1300'),
+                          ('N01','1453'), 
+                          ('M00','1000'),
+                          ('N41','1301'),
+                          ('N41','1305');
+
+--echo #
+--echo # Attempt a backup to an image file named '*'.
+--echo #
+
+# On Windows, this will generate an error from the OS.
+--error 1, ER_BACKUP_WRITE_LOC
+BACKUP DATABASE * TO '*';
+
+--echo #
+--echo # Cleanup
+--echo #
+
+DROP DATABASE db1;

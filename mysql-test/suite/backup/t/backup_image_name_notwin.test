@@ -1,0 +1,55 @@
+#
+# This test is designed to ensure the backup image file can
+# contain certain special characters that are permissible
+# by the host operating system.
+#
+# Notes 
+#   * Test added for regressions testing for BUG#35595
+#   * Additional test cases will be added by BUG#40475
+#   * This test is for the platforms other than Windows
+#
+
+--source include/not_windows.inc
+
+mkdir $MYSQLTEST_VARDIR/tmp/backup;
+
+--echo Reset backupdir 
+SET @@global.backupdir = '../../tmp/backup';
+
+--echo #
+--echo # Create a database and some data.
+--echo #
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+--enable_warnings
+
+CREATE DATABASE db1;
+CREATE TABLE db1.t1 (a char(10), b char(10));
+INSERT INTO db1.t1 VALUES ('N41','1300'),
+                          ('N01','1453'), 
+                          ('M00','1000'),
+                          ('N41','1301'),
+                          ('N41','1305');
+
+--echo #
+--echo # Attempt a backup to an image file named '*'.
+--echo #
+
+--replace_column 1 #
+BACKUP DATABASE * TO '*';
+
+--echo #
+--echo # Cleanup
+--echo #
+
+DROP DATABASE db1;
+
+--echo Reset backupdir 
+SET @@global.backupdir = @@global.datadir;
+
+remove_file $MYSQLTEST_VARDIR/tmp/backup/*;
+
+--error 0,1
+rmdir $MYSQLTEST_VARDIR/tmp/backup;
+
