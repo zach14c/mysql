@@ -23,4 +23,8 @@ SET GLOBAL BINLOG_FORMAT='STATEMENT';
 SET BINLOG_FORMAT='STATEMENT';
 --source suite/backup_engines/include/backup_ptr_objects.inc
 
+# The saved format depends on the test mode.
+--disable_query_log
 eval SET GLOBAL BINLOG_FORMAT='$saved_format';
+--enable_query_log
+
