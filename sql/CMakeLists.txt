@@ -14,6 +14,12 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 INCLUDE("${PROJECT_SOURCE_DIR}/win/mysql_manifest.cmake")
 
+IF(MSVC)
+    #Innodb plugin needs linker-generated map file to locate server exports
+    #see bug#42001
+    SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /MAP /MAPINFO:EXPORTS")
+ENDIF(MSVC)
+
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include 
                     ${CMAKE_SOURCE_DIR}/extra/yassl/include 
                     ${CMAKE_SOURCE_DIR}/sql 

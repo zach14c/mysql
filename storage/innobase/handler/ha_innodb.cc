@@ -3468,7 +3468,6 @@ skip_field:
           prebuilt->idx_cond_func= NULL;
           prebuilt->n_index_fields= n_requested_fields;
         }
-       // file->in_range_read= FALSE;
 
 	if (index != clust_index && prebuilt->need_to_access_clustered) {
 		/* Change rec_field_no's to correspond to the clustered index
@@ -3656,7 +3655,8 @@ ha_innobase::write_row(
 			/* out: error code */
 	uchar*	record)	/* in: a row in MySQL format */
 {
-	int		error = 0;
+	ulint		error = 0;
+        int             error_result= 0;
 	ibool		auto_inc_used= FALSE;
 	ulint		sql_command;
 	trx_t*		trx = thd_to_trx(user_thd);
@@ -3772,6 +3772,7 @@ no_commit:
 			}
 
 			/* MySQL errors are passed straight back. */
+			error_result = (int) error;
 			goto func_exit;
 		}
 
@@ -3866,7 +3867,7 @@ set_max_autoinc:
 				err = innobase_set_max_autoinc(auto_inc);
 
 				if (err != DB_SUCCESS) {
-					error = (int) err;
+					error = err;
 				}
 			}
 			break;
@@ -3876,12 +3877,12 @@ set_max_autoinc:
 	innodb_srv_conc_exit_innodb(prebuilt->trx);
 
 report_error:
-	error = convert_error_code_to_mysql(error, user_thd);
+	error_result = convert_error_code_to_mysql((int) error, user_thd);
 
 func_exit:
 	innobase_active_small();
 
-	DBUG_RETURN(error);
+	DBUG_RETURN(error_result);
 }
 
 /**************************************************************************
@@ -6064,7 +6065,7 @@ ha_innobase::info(
 		nor the CHECK TABLE time, nor the UPDATE or INSERT time. */
 
 		if (os_file_get_status(path,&stat_info)) {
-			stats.create_time = stat_info.ctime;
+			stats.create_time = (ulong) stat_info.ctime;
 		}
 	}
 
@@ -6675,7 +6676,6 @@ ha_innobase::extra(
                         /* Reset index condition pushdown state */
                         pushed_idx_cond= FALSE;
                         pushed_idx_cond_keyno= MAX_KEY;
-                        //in_range_read= FALSE;
                         prebuilt->idx_cond_func= NULL;
 			break;
 		case HA_EXTRA_NO_KEYREAD:
@@ -8497,13 +8497,12 @@ mysql_declare_plugin_end;
 int ha_innobase::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                           uint n_ranges, uint mode, HANDLER_BUFFER *buf)
 {
-  return ds_mrr.dsmrr_init(this, &table->key_info[active_index], 
-                           seq, seq_init_param, n_ranges, mode, buf);
+  return ds_mrr.dsmrr_init(this, seq, seq_init_param, n_ranges, mode, buf);
 }
 
 int ha_innobase::multi_range_read_next(char **range_info)
 {
-  return ds_mrr.dsmrr_next(this, range_info);
+  return ds_mrr.dsmrr_next(range_info);
 }
 
 ha_rows ha_innobase::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
@@ -8539,7 +8538,7 @@ C_MODE_START
 static my_bool index_cond_func_innodb(void *arg)
 {
   ha_innobase *h= (ha_innobase*)arg;
-  if (h->end_range) //was: h->in_range_read
+  if (h->end_range)
   {
     if (h->compare_key2(h->end_range) > 0)
       return 2; /* caller should return HA_ERR_END_OF_FILE already */
@@ -8569,11 +8568,7 @@ int ha_innobase::read_range_first(const key_range *start_key,
                                 bool sorted /* ignored */)
 {
   int res;
-  //if (!eq_range_arg)
-    //in_range_read= TRUE;
   res= handler::read_range_first(start_key, end_key, eq_range_arg, sorted);
-  //if (res)
-  //  in_range_read= FALSE;
   return res;
 }
 
@@ -8581,8 +8576,6 @@ int ha_innobase::read_range_first(const key_range *start_key,
 int ha_innobase::read_range_next()
 {
   int res= handler::read_range_next();
-  //if (res)
-  //  in_range_read= FALSE;
   return res;
 }
 

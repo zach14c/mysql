@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -40,6 +40,11 @@
 #define VERSION_CURRENT					COMBINED_VERSION(ODS_VERSION, ODS_MINOR_VERSION)					
 #define VERSION_SERIAL_LOG				COMBINED_VERSION(ODS_VERSION2, ODS_MINOR_VERSION1)
 
+// Reserved tablespaces
+
+static const int TABLESPACE_ID_BACKLOG		= -1;
+static const int TABLESPACE_ID_RESERVED		= -2;
+
 static const int FALC0N_TRACE_TRANSACTIONS	= 1;
 static const int FALC0N_SYNC_TEST			= 2;
 static const int FALC0N_SYNC_OBJECTS		= 4;
@@ -47,6 +52,21 @@ static const int FALC0N_FREEZE				= 8;
 static const int FALC0N_REPORT_WRITES		= 16;
 static const int FALC0N_SYNC_HANDLER		= 32;
 static const int FALC0N_TEST_BITMAP			= 64;
+
+// This constant defines how many times a thread will sleep(10) while 
+// waiting for record cache memory to be freed up by the scavenger thread
+// before it gives up and returns OUT_OF_RECORD_MEMORY_ERROR.
+
+static const int OUT_OF_RECORD_MEMORY_RETRIES = 10;
+
+// Milliseconds per iteration to wait for the Scavenger
+
+static const int SCAVENGE_WAIT_MS			  = 20;
+
+// Scavenger cycles per call to updateCardinalities()
+
+static const int CARDINALITY_FREQUENCY		  = 20;
+
 
 #define TABLE_HASH_SIZE		101
 
@@ -116,8 +136,6 @@ public:
 
 	void			shutdownNow();
 	void			dropDatabase();
-	void			rollback (Transaction *transaction);
-	void			commit (Transaction *transaction);
 	void			start();
 	void			deleteRepositoryBlob(const char *schema, const char *repositoryName, int volume, int64 blobId, Transaction *transaction);
 	void			deleteRepository (Repository *repository);
@@ -127,9 +145,10 @@ public:
 	Repository*		findRepository(const char *schema, const char *name);
 	const char*		fetchTemplate (JString applicationName, JString templateName, TemplateContext *context);
 	void			licenseCheck();
-	void			cleanupRecords (RecordScavenge *recordScavenge);
 	void			serverOperation (int op, Parameters *parameters);
-	void			retireRecords(bool forced);
+	void			scavengeRecords(bool forced = false);
+	void			pruneRecords(RecordScavenge* recordScavenge);
+	void			retireRecords(RecordScavenge* recordScavenge);
 	int				getMemorySize (const char *string);
 	JString			analyze(int mask);
 	void			upgradeSystemTables();
@@ -148,7 +167,13 @@ public:
 	int				createSequence(int64 initialValue);
 	void			ticker();
 	static void		ticker (void *database);
-	void			scavenge();
+	static void		cardinalityThreadMain(void * database);
+	void			cardinalityThreadMain(void);
+	void			cardinalityThreadWakeup(void);
+	static void		scavengerThreadMain(void * database);
+	void			scavengerThreadMain(void);
+	void			scavengerThreadWakeup(void);
+	void			scavenge(bool forced = false);
 	void			validate (int optionMask);
 	Role*			findRole(const char *schemaName, const char * roleName);
 	User*			findUser (const char *account);
@@ -220,7 +245,9 @@ public:
 	void			setRecordMemoryMax(uint64 value);
 	void			setRecordScavengeThreshold(int value);
 	void			setRecordScavengeFloor(int value);
-	void			forceRecordScavenge(void);
+	void			checkRecordScavenge(void);
+	void			signalCardinality(void);
+	void			signalScavenger(bool force = false);
 	void			debugTrace(void);
 	void			pageCacheFlushed(int64 flushArg);
 	JString			setLogRoot(const char *defaultPath, bool create);
@@ -228,6 +255,7 @@ public:
 	void			clearIOError(void);
 	void			flushWait(void);
 	void			setLowMemory(void);
+	void			clearLowMemory(void);
 
 
 	Dbb					*dbb;
@@ -270,12 +298,16 @@ public:
 	SyncObject			syncConnectionStatements;
 	SyncObject			syncScavenge;
 	SyncObject			syncSysDDL;
+	Mutex				syncCardinality;
+	Mutex				syncMemory;
 	PriorityScheduler	*ioScheduler;
 	Threads				*threads;
 	Scheduler			*scheduler;
 	Scheduler			*internalScheduler;
 	Scavenger			*scavenger;
+#ifndef STORAGE_ENGINE
 	Scavenger			*garbageCollector;
+#endif
 	TemplateManager		*templateManager;
 	ImageManager		*imageManager;
 	SessionManager		*sessionManager;
@@ -290,6 +322,13 @@ public:
 	SyncHandler			*syncHandler;
 	SearchWords			*searchWords;
 	Thread				*tickerThread;
+	Thread				*cardinalityThread;
+	Thread				*scavengerThread;
+	volatile INTERLOCK_TYPE	cardinalityThreadSleeping;
+	volatile INTERLOCK_TYPE	cardinalityThreadSignaled;
+	volatile INTERLOCK_TYPE	scavengerThreadSleeping;
+	volatile INTERLOCK_TYPE	scavengerThreadSignaled;
+	volatile INTERLOCK_TYPE	scavengeForced;
 	PageWriter			*pageWriter;
 	PreparedStatement	*updateCardinality;
 	MemMgr				*recordDataPool;
@@ -310,8 +349,12 @@ public:
 	volatile INTERLOCK_TYPE	currentGeneration;
 	uint64				recordMemoryMax;
 	uint64				recordScavengeThreshold;
+	uint64				recordScavengeMaxGroupSize;
 	uint64				recordScavengeFloor;
-	int64				lastRecordMemory;
+	uint64				recordPoolAllocCount;
+	uint64				lastGenerationMemory;
+	uint64				lastActiveMemoryChecked;
+	uint64				scavengeCount;
 	time_t				creationTime;
 	volatile time_t		lastScavenge;
 };

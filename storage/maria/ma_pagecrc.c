@@ -1,4 +1,4 @@
-/* Copyright (C) 2007-2008 MySQL AB
+/* Copyright (C) 2007-2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -375,4 +375,53 @@ my_bool maria_flush_log_for_page_none(uchar *page __attribute__((unused)),
                                       uchar *data_ptr __attribute__((unused)))
 {
   return 0;
+}
+
+
+/**
+  Logs when the page cache flushes an index page to the file, to the physical
+  log.
+
+  Argument cannot be a MARIA_HA* (the MARIA_HA which put the page in the key
+  cache may have been freed long ago when the page is finally flushed), it is
+  MARIA_SHARE* which is sure to be valid.
+
+  @param page            The page data to set
+  @param page_no         The page number (<offset>/<page length>)
+  @param data_ptr        Write callback data pointer (pointer to MARIA_SHARE)
+
+  @return Operation status, always 0
+    @retval 0      ok. Yes, even if log write fails we return ok, don't want
+                   to make the table writer believe its table is now
+                   corrupted.
+*/
+
+my_bool maria_log_index_page_flush_physical(uchar *page,
+                                            pgcache_page_no_t page_no,
+                                            uchar *data_ptr)
+{
+  MARIA_SHARE *share= (MARIA_SHARE *)data_ptr;
+  DBUG_ENTER("maria_log_index_page_flush_physical");
+  if (unlikely(ma_log_index_pages_physical &&
+               ma_get_physical_logging_state(share)))
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAI, share, page,
+                              maria_block_size, page_no * maria_block_size);
+  DBUG_RETURN(0);
+}
+
+
+/**
+  Same as maria_log_index_page_flush_physical() but for data page.
+*/
+
+my_bool maria_log_data_page_flush_physical(uchar *page,
+                                           pgcache_page_no_t page_no,
+                                           uchar *data_ptr)
+{
+  MARIA_SHARE *share= (MARIA_SHARE *)data_ptr;
+  DBUG_ENTER("maria_log_data_page_flush_physical");
+  if (unlikely(ma_get_physical_logging_state(share)))
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAD, share, page,
+                              maria_block_size, page_no * maria_block_size);
+  DBUG_RETURN(0);
 }

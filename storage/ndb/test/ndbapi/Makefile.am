@@ -131,17 +131,14 @@ INCLUDES_LOC = -I$(top_srcdir)/storage/ndb/include/kernel
 include $(top_srcdir)/storage/ndb/config/common.mk.am
 include $(top_srcdir)/storage/ndb/config/type_ndbapitest.mk.am
 
-##testDict_INCLUDES = $(INCLUDES) -I$(top_srcdir)/ndb/include/kernel
-##testIndex_INCLUDES = $(INCLUDES) -I$(top_srcdir)/ndb/include/kernel
-##testSystemRestart_INCLUDES = $(INCLUDES) -I$(top_srcdir)/ndb/include/kernel
-##testTransactions_INCLUDES = $(INCLUDES) -I$(top_srcdir)/ndb/include/kernel
-NdbRepStress_INCLUDES = $(INCLUDES) -I$(top_srcdir)/ndb/test/include -I$(top_srcdir)/include
+##testDict_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/ndb/include/kernel
+##testIndex_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/ndb/include/kernel
+##testSystemRestart_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/ndb/include/kernel
+##testTransactions_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/ndb/include/kernel
+NdbRepStress_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/ndb/test/include -I$(top_srcdir)/include
 testBackup_LDADD = $(LDADD) bank/libbank.a
 testSRBank_LDADD = bank/libbank.a $(LDADD) 
 NdbRepStress_LDADD = $(LDADD) $(top_builddir)/libmysql_r/libmysqlclient_r.la
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
 
 
 
@@ -156,7 +153,7 @@ flexBench.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ flexBench
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(flexBench_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -168,7 +165,7 @@ testBasic.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ testBasic
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(testBasic_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -180,7 +177,7 @@ testOIBasic.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ testOIBasic
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(testOIBasic_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -192,7 +189,7 @@ testBlobs.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ testBlobs
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(testBlobs_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -204,7 +201,7 @@ testScan.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ testScan
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(testScan_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 

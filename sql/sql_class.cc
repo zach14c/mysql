@@ -1,4 +1,4 @@
-/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright (C) 2000-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1240,6 +1240,8 @@ bool THD::store_globals()
   */
   mysys_var->id= thread_id;
   real_id= pthread_self();                      // For debugging
+  mysys_var->stack_ends_here= thread_stack +    // for consistency, see libevent_thread_proc
+                              STACK_DIRECTION * (long)my_thread_stack_size;
 
   /*
     We have to call thr_lock_info_init() again here as THD may have been
@@ -3786,16 +3788,14 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
   if (lex->is_stmt_unsafe() &&
       variables.binlog_format == BINLOG_FORMAT_STMT)
   {
-    DBUG_ASSERT(this->query != NULL);
     push_warning(this, MYSQL_ERROR::WARN_LEVEL_WARN,
                  ER_BINLOG_UNSAFE_STATEMENT,
                  ER(ER_BINLOG_UNSAFE_STATEMENT));
     if (!(binlog_flags & BINLOG_FLAG_UNSAFE_STMT_PRINTED))
     {
-      char warn_buf[MYSQL_ERRMSG_SIZE];
-      my_snprintf(warn_buf, MYSQL_ERRMSG_SIZE, "%s Statement: %s",
-                  ER(ER_BINLOG_UNSAFE_STATEMENT), this->query);
-      sql_print_warning(warn_buf);
+      sql_print_warning("%s Statement: %.*s",
+                        ER(ER_BINLOG_UNSAFE_STATEMENT),
+                        MYSQL_ERRMSG_SIZE, query_arg);
       binlog_flags|= BINLOG_FLAG_UNSAFE_STMT_PRINTED;
     }
   }

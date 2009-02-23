@@ -13,8 +13,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-AM_CPPFLAGS        = -I$(srcdir) -I$(top_builddir)/include \
-		     -I$(top_srcdir)/unittest/mytap -I$(top_srcdir)/include
+AM_CPPFLAGS        = -I$(top_srcdir)/unittest/mytap -I$(top_srcdir)/include
 
 AM_LDFLAGS         = -L$(top_builddir)/unittest/mytap
 
@@ -23,6 +22,3 @@ LDADD              = -lmytap
 noinst_PROGRAMS    = simple-t skip-t todo-t skip_all-t no_plan-t core-t
 
 EXTRA_DIST         = CMakeLists.txt 
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

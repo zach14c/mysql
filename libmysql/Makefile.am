@@ -23,7 +23,7 @@
 target =	libmysqlclient.la
 target_defs =	-DUNDEF_THREADS_HACK -DDONT_USE_RAID @LIB_EXTRA_CCFLAGS@
 LIBS =		@CLIENT_LIBS@
-INCLUDES =	-I$(top_builddir)/include -I$(top_srcdir)/include \
+AM_CPPFLAGS =	-I$(top_srcdir)/include \
 		$(openssl_includes) @ZLIB_INCLUDES@
 
 include $(srcdir)/Makefile.shared
@@ -104,6 +104,3 @@ do-lib-dist:
 	echo '	$$(AR) r $$@ $$?'  >>$$dir/Makefile; \
 	gtar cvzf $$dir.tar.gz $$dir; \
 	cd $$dir; gmake
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

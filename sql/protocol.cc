@@ -814,6 +814,11 @@ bool Protocol::send_result_set_row(List<Item> *row_items)
       my_message(ER_OUT_OF_RESOURCES, ER(ER_OUT_OF_RESOURCES), MYF(0));
       DBUG_RETURN(TRUE);
     }
+    /*
+      Reset str_buffer to its original state, as it may have been altered in
+      Item::send().
+    */
+    str_buffer.set(buffer, sizeof(buffer), &my_charset_bin);
   }
 
   DBUG_RETURN(FALSE);

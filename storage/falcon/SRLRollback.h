@@ -33,7 +33,7 @@ public:
 	virtual void print();
 	virtual void pass1();
 	virtual void read();
-	void append(TransId transId, bool updateTransaction);
+	void append(Transaction *transaction);
 	SRLRollback();
 	virtual ~SRLRollback();
 

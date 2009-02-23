@@ -1,4 +1,5 @@
 --source include/have_falcon.inc
+--source include/have_utf8.inc
 
 #
 # Bug #39708: Falcon: non-descriptive error message when creating a big key

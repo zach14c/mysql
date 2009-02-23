@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright (C) 2000-2006 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -496,7 +496,8 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
   /* There are only 16 bits for the total header length. */
   if (info_length > 65535)
   {
-    my_printf_error(0, "MyISAM table '%s' has too many columns and/or "
+    my_printf_error(HA_WRONG_CREATE_OPTION,
+                    "MyISAM table '%s' has too many columns and/or "
                     "indexes and/or unique constraints.",
                     MYF(0), name + dirname_length(name));
     my_errno= HA_WRONG_CREATE_OPTION;
@@ -855,6 +856,10 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
 
 err:
   pthread_mutex_unlock(&THR_LOCK_myisam);
+#ifdef THREAD
+  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
+#endif
+
 err_no_lock:
 
   save_errno=my_errno;
@@ -876,9 +881,6 @@ err_no_lock:
                                        MY_UNPACK_FILENAME | MY_APPEND_EXT),
 			     MYF(0));
   }
-#ifdef THREAD
-  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
-#endif
   my_free((char*) rec_per_key_part, MYF(0));
   DBUG_RETURN(my_errno=save_errno);		/* return the fatal errno */
 }

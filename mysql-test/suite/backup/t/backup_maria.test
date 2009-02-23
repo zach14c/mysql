@@ -1,0 +1,243 @@
+# A simple test for Maria's online backup.
+# More advanced tests can be run like this:
+# perl mysql-test-run.pl --suite=backup,backup_engines --mysqld=--default-storage-engine=maria
+
+--source include/not_embedded.inc
+--source include/have_debug_sync.inc
+
+let $MYSQLD_DATADIR= `select @@datadir`;
+
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest;
+--error 0,1
+remove_file $MYSQLD_DATADIR/test.ba;
+--enable_warnings
+
+CREATE DATABASE mysqltest;
+USE mysqltest;
+CREATE TABLE t1 (a int, b varchar(100), c blob, index(a), index(b),
+index(c(10))) transactional=1 engine=maria;
+insert into t1 values(1,"abc","def");
+insert into t1 values(100,"UJL-JK","PPMLsn!");
+
+# test other table formats
+CREATE TABLE t2 like t1;
+alter table t2 transactional=0 row_format=page;
+insert into t2 select * from t1;
+
+CREATE TABLE t3 like t1;
+alter table t3 transactional=0 row_format=dynamic;
+insert into t3 select * from t1;
+
+CREATE TABLE t4 like t1;
+alter table t4 page_checksum=0;
+insert into t4 select * from t1;
+
+CHECKSUM TABLE t1;
+CHECKSUM TABLE t2;
+CHECKSUM TABLE t3;
+CHECKSUM TABLE t4;
+
+# First a backup when nobody is using the tables
+
+--replace_column 1 #
+BACKUP DATABASE mysqltest TO 'test.ba';
+DROP DATABASE mysqltest;
+--replace_column 1 #
+RESTORE FROM 'test.ba';
+
+select count(*) from t1;
+CHECKSUM TABLE t1;
+CHECKSUM TABLE t2;
+CHECKSUM TABLE t3;
+CHECKSUM TABLE t4;
+remove_file $MYSQLD_DATADIR/test.ba;
+
+# Then test that backup is "at end"
+
+    #
+    # Create a worker connection, using mysqltest as its default database.
+    #
+    --echo
+    --echo connection backup: Start backup
+    connect (backup,localhost,root,,mysqltest);
+
+    # Activate the sync point for BACKUP. Before starting the prepare phase,
+    # BACKUP reaches the sync point "before_backup_data_prepare", which will
+    # emit the signal "bup_sync" and then wait for the signal "bup_finish"
+    # to be emitted by another connection.
+    SET DEBUG_SYNC= 'before_backup_data_prepare SIGNAL bup_sync
+                     WAIT_FOR bup_finish';
+    send BACKUP DATABASE mysqltest TO 'test.ba';
+
+--echo
+--echo connection default: Wait for BACKUP to reach its sync point
+connection default;
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+--echo Modify tables
+update t1 set c=repeat("SUN", 4000); # a multi-page blob
+insert into t1 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t1 select * from t1;
+insert into t1 select * from t1;
+delete from t1 where a=200;
+CHECKSUM TABLE t1;
+select count(*) from t1;
+update t2 set c=repeat("SUN", 4000); # a multi-page blob
+insert into t2 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t2 select * from t2;
+insert into t2 select * from t2;
+delete from t2 where a=200;
+CHECKSUM TABLE t2;
+select count(*) from t2;
+update t3 set c=repeat("SUN", 4000); # a multi-page blob
+insert into t3 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t3 select * from t3;
+insert into t3 select * from t3;
+delete from t3 where a=200;
+CHECKSUM TABLE t3;
+select count(*) from t3;
+update t4 set c=repeat("SUN", 4000); # a multi-page blob
+insert into t4 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t4 select * from t4;
+insert into t4 select * from t4;
+delete from t4 where a=200;
+CHECKSUM TABLE t4;
+select count(*) from t4;
+
+--echo Signal BACKUP to finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+    --echo
+    --echo connection backup: Fetch result
+    connection backup;
+    --replace_column 1 #
+    reap;
+    DROP DATABASE mysqltest;
+
+    --replace_column 1 #
+    RESTORE FROM 'test.ba';
+    CHECKSUM TABLE t1;
+    CHECK TABLE t1 EXTENDED;
+    CHECKSUM TABLE t2;
+    CHECK TABLE t2 EXTENDED;
+    CHECKSUM TABLE t3;
+    CHECK TABLE t3 EXTENDED;
+    CHECKSUM TABLE t4;
+    CHECK TABLE t4 EXTENDED;
+
+connection default;
+remove_file $MYSQLD_DATADIR/test.ba;
+
+# Once more, with deletion of all rows
+
+    --echo
+    --echo connection backup: Start backup
+    connection backup;
+
+    SET DEBUG_SYNC= 'before_backup_data_prepare SIGNAL bup_sync
+                     WAIT_FOR bup_finish';
+    send BACKUP DATABASE mysqltest TO 'test.ba';
+
+--echo
+--echo connection default: Wait for BACKUP to reach its sync point
+connection default;
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+--echo Modify tables
+delete from t1;
+insert into t1 values(2000,"UJLlk5454j-JK","PferZZZfPMLsn!");
+update t1 set c=repeat("NUS", 4000); # a multi-page blob
+insert into t1 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t1 select * from t1;
+insert into t1 select * from t1;
+delete from t1 where a=200;
+CHECKSUM TABLE t1;
+select count(*) from t1;
+delete from t2;
+insert into t2 values(2000,"UJLlk5454j-JK","PferZZZfPMLsn!");
+update t2 set c=repeat("NUS", 4000); # a multi-page blob
+insert into t2 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t2 select * from t2;
+insert into t2 select * from t2;
+delete from t2 where a=200;
+CHECKSUM TABLE t2;
+select count(*) from t2;
+delete from t3;
+insert into t3 values(2000,"UJLlk5454j-JK","PferZZZfPMLsn!");
+update t3 set c=repeat("NUS", 4000); # a multi-page blob
+insert into t3 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t3 select * from t3;
+insert into t3 select * from t3;
+delete from t3 where a=200;
+CHECKSUM TABLE t3;
+select count(*) from t3;
+delete from t4;
+insert into t4 values(2000,"UJLlk5454j-JK","PferZZZfPMLsn!");
+update t4 set c=repeat("NUS", 4000); # a multi-page blob
+insert into t4 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t4 select * from t4;
+insert into t4 select * from t4;
+delete from t4 where a=200;
+CHECKSUM TABLE t4;
+select count(*) from t4;
+
+
+--echo Signal BACKUP to finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+    --echo
+    --echo connection backup: Fetch result
+    connection backup;
+    --replace_column 1 #
+    reap;
+    DROP DATABASE mysqltest;
+
+    --replace_column 1 #
+    RESTORE FROM 'test.ba';
+    CHECKSUM TABLE t1;
+    CHECK TABLE t1 EXTENDED;
+    CHECKSUM TABLE t2;
+    CHECK TABLE t2 EXTENDED;
+    CHECKSUM TABLE t3;
+    CHECK TABLE t3 EXTENDED;
+    CHECKSUM TABLE t4;
+    CHECK TABLE t4 EXTENDED;
+
+connection default;
+drop database mysqltest;
+remove_file $MYSQLD_DATADIR/test.ba;
+
+# test for BUG#42519 "Maria: RESTORE leads to corrupted table and assertion":
+
+create database mysqltest;
+CREATE TABLE mysqltest.t1 (a int, b varchar(100), unique(a)) engine=maria;
+
+--replace_column 1 #
+BACKUP DATABASE mysqltest TO 'test.ba';
+DROP DATABASE mysqltest;
+
+connection backup;
+SET DEBUG_SYNC= 'before_restore_locks_tables SIGNAL wait_for_restore WAIT_FOR finish';
+send RESTORE FROM 'test.ba';
+
+connection default;
+SET DEBUG_SYNC= 'now WAIT_FOR wait_for_restore';
+insert into mysqltest.t1 values(1,"def");
+SET DEBUG_SYNC= 'now SIGNAL finish';
+
+connection backup;
+--replace_column 1 #
+reap;
+
+connection default;
+select * from mysqltest.t1;
+check table mysqltest.t1;
+select * from mysqltest.t1;
+
+--echo
+--echo connection default: cleanup
+connection default;
+drop database mysqltest;
+remove_file $MYSQLD_DATADIR/test.ba;
+SET DEBUG_SYNC= 'RESET';

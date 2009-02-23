@@ -33,7 +33,7 @@ public:
 	virtual void	read(void);
 	virtual void	pass2(void);
 	void			append(Transaction *transaction, RecordVersion *records, bool chillRecords = false);
-	void			chill(Transaction *transaction, RecordVersion *record, uint dataLength);
+	bool			chill(Transaction *transaction, RecordVersion *record, uint dataLength);
 	int				thaw(RecordVersion *record, bool *thawed);
 	
 	const UCHAR		*data;
