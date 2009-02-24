@@ -44,7 +44,7 @@ Warnings:
 Warning	1678	The currect value for master_heartbeat_period exceeds the new value of `slave_net_timeout' sec. A sensible value for the period should be less than the timeout.
 reset slave;
 drop table if exists t1;
-set @@global.slave_net_timeout= 10;
+set @@global.slave_net_timeout= 20;
 change master to master_host='127.0.0.1',master_port=MASTER_PORT, master_user='root', master_heartbeat_period= 0.5;
 show status like 'Slave_heartbeat_period';;
 Variable_name	Slave_heartbeat_period
