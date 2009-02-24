@@ -8434,7 +8434,10 @@ mysqld_get_one_option(int optid,
     {
       log_backup_output_str= argument;
       log_backup_output_options=
-        find_bit_type_or_exit(argument, &log_output_typelib, opt->name);
+        find_bit_type_or_exit(argument, &log_output_typelib, opt->name,
+                              &error);
+      if (error)
+        return 1;
   }
     break;
   }
