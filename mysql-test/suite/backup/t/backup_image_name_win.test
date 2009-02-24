@@ -9,6 +9,7 @@
 #   * This test is for the Windows platform
 #
 
+--source include/not_embedded.inc
 --source include/windows.inc
 
 let $MYSQLD_BACKUPDIR= `select @@backupdir`;

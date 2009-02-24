@@ -9,6 +9,7 @@
 #   * This test is for the platforms other than Windows
 #
 
+--source include/not_embedded.inc
 --source include/not_windows.inc
 
 mkdir $MYSQLTEST_VARDIR/tmp/backup;
