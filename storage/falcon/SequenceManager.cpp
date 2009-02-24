@@ -73,6 +73,9 @@ void SequenceManager::initialize()
 		for (const char **p = ddl; *p; ++p)
 			database->execute (*p);
 
+	Sync syncDDL(&database->syncSysDDL, "SequenceManager::initialize");
+	syncDDL.lock(Shared);
+	
 	PreparedStatement *statement = database->prepareStatement (
 		"select schema, sequenceName, id from system.sequences");
 	ResultSet *resultSet = statement->executeQuery();
