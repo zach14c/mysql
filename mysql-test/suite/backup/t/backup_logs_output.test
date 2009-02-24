@@ -20,6 +20,7 @@ connect (con1,localhost,root,,,,);
 connection con1;
 
 let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR=`select @@backupdir`;
 
 --echo Clear the logs.
 SET @@global.backup_history_log = 'ON';
@@ -91,7 +92,7 @@ FLUSH BACKUP LOGS;
 --file_exists $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is TABLE---'
 
@@ -121,7 +122,7 @@ FLUSH BACKUP LOGS;
 --file_exists $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is TABLE---'
 --echo '---and the progress log is turned off                   ---'
@@ -156,7 +157,7 @@ FLUSH BACKUP LOGS;
 --file_exists $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is TABLE---'
 --echo '---and the history log is turned off                 ---'
@@ -197,7 +198,7 @@ SELECT count(*) FROM mysql.backup_progress;
 --file_exists $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is FILE---'
 
@@ -232,7 +233,7 @@ PURGE BACKUP LOGS;
 #--exec grep -q "complete" $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is TABLE, FILE---'
 
@@ -264,7 +265,7 @@ FLUSH BACKUP LOGS;
 #--exec grep -q "complete" $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 #
 # BUG#40218 Default setting incorrect
@@ -308,5 +309,5 @@ eval SET @@global.backup_progress_log_file= "$MYSQLTEST_VARDIR/tmp/progress.txt"
 SET @@global.log_backup_output = 'TABLE';
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 

@@ -10,7 +10,7 @@
 
 call mtr.add_suppression("Restore: Tablespace .* needed by tables being restored, but the current tablespace definition differs");
 
-let $MYSQLD_DATADIR=`select @@datadir`;
+let $MYSQLD_BACKUPDIR=`select @@backupdir`;
 
 --disable_warnings
 #
@@ -23,7 +23,7 @@ DROP TABLE IF EXISTS backup_ts.not_ts;
 DROP TABLE IF EXISTS backup_ts.has_ts;
 DROP DATABASE IF EXISTS backup_ts;
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup_ts.bak;
+--remove_file $MYSQLD_BACKUPDIR/backup_ts.bak;
 --enable_warnings
 
 CREATE DATABASE backup_ts;
@@ -95,5 +95,5 @@ DROP DATABASE IF EXISTS backup_ts;
 DROP TABLESPACE bup_ts ENGINE=FALCON;
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup_ts.bak
+--remove_file $MYSQLD_BACKUPDIR/backup_ts.bak
 
