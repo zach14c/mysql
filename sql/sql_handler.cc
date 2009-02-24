@@ -160,6 +160,9 @@ static void mysql_ha_close_table(THD *thd, TABLE_LIST *tables)
     table->query_id= thd->query_id;
     table->open_by_handler= 0;
   }
+
+  /* Mark table as closed, ready for re-open if necessary. */
+  tables->table= NULL;
 }
 
 /*
@@ -177,8 +180,7 @@ static void mysql_ha_close_table(THD *thd, TABLE_LIST *tables)
     'reopen' is set when a handler table is to be re-opened. In this case,
     'tables' is the pointer to the hashed TABLE_LIST object which has been
     saved on the original open.
-    'reopen' is also used to suppress the sending of an 'ok' message or
-    error messages.
+    'reopen' is also used to suppress the sending of an 'ok' message.
 
   RETURN
     FALSE OK
@@ -308,8 +310,7 @@ bool mysql_ha_open(THD *thd, TABLE_LIST *tables, bool reopen)
   /* There can be only one table in '*tables'. */
   if (! (hash_tables->table->file->ha_table_flags() & HA_CAN_SQL_HANDLER))
   {
-    if (! reopen)
-      my_error(ER_ILLEGAL_HA, MYF(0), tables->alias);
+    my_error(ER_ILLEGAL_HA, MYF(0), tables->alias);
     goto err;
   }
 
@@ -500,8 +501,7 @@ retry:
 
   if (need_reopen)
   {
-    mysql_ha_close_table(thd, tables);
-    hash_tables->table= NULL;
+    mysql_ha_close_table(thd, hash_tables);
     /*
       The lock might have been aborted, we need to manually reset
       thd->some_tables_deleted because handler's tables are closed
@@ -780,11 +780,7 @@ void mysql_ha_flush(THD *thd)
         (hash_tables->table->mdl_lock_data &&
          mdl_has_pending_conflicting_lock(hash_tables->table->mdl_lock_data) ||
          hash_tables->table->needs_reopen()))
-    {
       mysql_ha_close_table(thd, hash_tables);
-      /* Mark table as closed, ready for re-open. */
-      hash_tables->table= NULL;
-    }
   }
 
   DBUG_VOID_RETURN;

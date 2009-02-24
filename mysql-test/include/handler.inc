@@ -697,3 +697,34 @@ unlock tables;
 drop table t1;
 --error ER_UNKNOWN_TABLE
 handler t1 read a next;
+
+#
+# Bug#41110: crash with handler command when used concurrently with alter table
+# Bug#41112: crash in mysql_ha_close_table/get_lock_data with alter table
+#
+
+connect(con1,localhost,root,,);
+
+connection default;
+--disable_warnings
+drop table if exists t1;
+--enable_warnings
+create table t1 (a int);
+insert into t1 values (1);
+handler t1 open;
+connection con1;
+send alter table t1 engine=memory;
+connection con2;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "Waiting for table" and info = "alter table t1 engine=memory";
+--source include/wait_condition.inc
+connection default;
+--error ER_ILLEGAL_HA
+handler t1 read a next;
+handler t1 close;
+connection con1;
+--reap
+drop table t1;
+connection default;
+disconnect con1;
