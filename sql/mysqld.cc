@@ -180,10 +180,6 @@ typedef fp_except fp_except_t;
 #endif
 #endif /* __FreeBSD__ && HAVE_IEEEFP_H */
 
-#ifdef HAVE_FENV_H
-#include <fenv.h>
-#endif
-
 #ifdef HAVE_FPU_CONTROL_H
 #include <fpu_control.h>
 #endif
