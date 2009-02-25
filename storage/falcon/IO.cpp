@@ -601,7 +601,14 @@ int IO::pread(int64 offset, int length, UCHAR* buffer)
 	overlapped.OffsetHigh = pos.HighPart;
 
 	if (!ReadFile(hFile, buffer, length, (DWORD *) &ret, &overlapped))
-		ret = -1;
+		{
+		// Handle ERROR_HANDLE_EOF (read behind end of file) as non-error
+		// for compatibility with Posix pread implementation.
+		if(GetLastError() == ERROR_HANDLE_EOF)
+			ret = 0;  // 0 bytes read
+		else
+			ret = -1;
+		}
 #else
 	Sync sync (&syncObject, "IO::pread");
 	sync.lock (Exclusive);
