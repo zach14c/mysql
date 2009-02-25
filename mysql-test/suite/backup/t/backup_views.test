@@ -23,9 +23,9 @@ enable_query_log;
 ##############################################################
 
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_objectview.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview.bak;
 
 #Create Database and object view for this test.
 
@@ -382,7 +382,7 @@ DROP TABLE bup_db2.t2;
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 
-remove_file $MYSQLD_DATADIR/bup_objectview.bak;
-remove_file $MYSQLD_DATADIR/bup_objectview1.bak;
-remove_file $MYSQLD_DATADIR/bup_objectview2.bak;
-remove_file $MYSQLD_DATADIR/bup_objectview3.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview1.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview2.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview3.bak;

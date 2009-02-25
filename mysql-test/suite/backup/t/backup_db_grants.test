@@ -9,7 +9,7 @@ disable_query_log;
 call mtr.add_suppression("Backup:");
 call mtr.add_suppression("Restore:");
 enable_query_log;
-let MYSQLD_DATADIR= `select @@datadir`;
+let MYSQLD_BACKUPDIR= `select @@backupdir`;
 
 --disable_warnings
 DROP DATABASE IF EXISTS bup_db_grants;
@@ -116,7 +116,7 @@ SHOW GRANTS FOR 'no_user'@'%';
 #
 #--echo Now demonstrate what happens when grants are altered in backup image.
 #
-#--exec perl -pi.bak -e "s/ON bup/ON boo/" $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak 
+#--exec perl -pi.bak -e "s/ON bup/ON boo/" $MYSQLD_BACKUPDIR/bup_db_grants.bak 
 #--echo Run Restore
 #--error ER_BACKUP_GRANT_WRONG_DB
 #RESTORE FROM 'bup_db_grants.bak';
@@ -136,9 +136,9 @@ DROP USER 'no_user'@'%';
 
 FLUSH PRIVILEGES;
 
---remove_file $MYSQLD_DATADIR/bup_db_grants.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_db_grants.bak
 
-#--remove_file $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak.bak
+#--remove_file $MYSQLD_BACKUPDIR/bup_db_grants.bak.bak
 
 --echo Now test for encoded user names with an x40 in the middle.
 
@@ -203,4 +203,4 @@ DROP DATABASE bup_db_grants;
 DROP DATABASE db2;
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_db_grants.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_db_grants.bak

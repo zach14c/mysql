@@ -92,14 +92,14 @@ BACKUP DATABASE bup_backupdir TO '../not/there/bup_backupdir5.bak';
 
 --echo *Actual BACKUP DATABASE command not printed due to non-deterministic path.
 --echo *Performing: 
---echo *BACKUP DATABASE bup_backupdir TO '\$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak';
+--echo *BACKUP DATABASE bup_backupdir TO '\$MYSQLTEST_VARDIR/not/there/either/bup_backupdir6.bak';
 # Do not print the SQL command to result file because dir is not deterministic across hosts
 --disable_query_log
 # Replace actual dir in error message because $MYSQLTEST_VARDIR is not deterministic
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 --error 1
---eval BACKUP DATABASE bup_backupdir TO '$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak';
+--eval BACKUP DATABASE bup_backupdir TO '$MYSQLTEST_VARDIR/not/there/either/bup_backupdir6.bak';
 --enable_query_log
 
 --echo
