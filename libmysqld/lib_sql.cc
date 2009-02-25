@@ -139,7 +139,7 @@ emb_advanced_command(MYSQL *mysql, enum enum_server_command command,
   return result;
 }
 
-static void emb_flush_use_result(MYSQL *mysql)
+static void emb_flush_use_result(MYSQL *mysql, my_bool)
 {
   THD *thd= (THD*) mysql->thd;
   if (thd->cur_data)
