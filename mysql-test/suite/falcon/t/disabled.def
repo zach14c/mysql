@@ -11,4 +11,3 @@
 ##############################################################################
 
 falcon_unicode-big    : Bug#43182 2009-02-25 hakank Disabled until licensing details of UnicodeData.txt are cleared
-falcon_blob_space-big : Bug#43182 2009-02-25 hakank Disabled until licensing details of UnicodeData.txt are cleared

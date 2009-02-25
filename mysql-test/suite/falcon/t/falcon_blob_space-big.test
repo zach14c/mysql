@@ -65,8 +65,8 @@ CREATE TABLE t1 (
 --echo
 INSERT INTO t1 (myblob) VALUES (repeat('a', 1*1024*1024));
 
-## Alternatively, load from a file...
-#eval INSERT INTO t1 (myblob) VALUES (LOAD_FILE('$MYSQL_TEST_DIR/include/UnicodeData.txt'));
+## Alternatively, load from a quite big file.
+#eval INSERT INTO t1 (myblob) VALUES (LOAD_FILE('$MYSQL_TEST_DIR/include/a_quite_big_file.txt'));
 
 #
 # Check that the data load went ok. 
