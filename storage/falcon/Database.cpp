@@ -1799,7 +1799,7 @@ void Database::scavenge(bool forced)
 	if (serialLog)
 		{
 		serialLog->reportStatistics();
-		if (!serialLog->recovering)
+		if (tableSpaceManager && !serialLog->recovering)
 			tableSpaceManager->reportStatistics();
 		}	
 		

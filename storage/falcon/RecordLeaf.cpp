@@ -140,8 +140,6 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 
 			if (oldestVisible)
 				{
-				ASSERT(oldestVisible->state != recLock);
-
 				Record *prior = oldestVisible->clearPriorVersion();
 
 				for (Record *prune = prior; prune; prune = prune->getPriorVersion())

@@ -126,7 +126,7 @@ install_test_files:
 
 dist-hook:
 	$(MAKE)	INSTALL_TO_DIR="$(distdir)" install_test_files
-	$(INSTALL_DATA) $(srcdir)/include/*.txt $(distdir)/include
+	-$(INSTALL_DATA) $(srcdir)/include/*.txt $(distdir)/include
 
 install-data-local:
 	$(MAKE)	INSTALL_TO_DIR="$(DESTDIR)$(testdir)" install_test_files
