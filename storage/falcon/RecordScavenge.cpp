@@ -172,17 +172,20 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 				else
 					{
 					// Do not prune records that have other pointers to them.
+					// These pointers may be temporary. By setting oldestVisibleRec 
+					// to NULL, the oldestVisibleRec will move further down the 
+					// chain this cycle.
 
 					if (recVer->useCount != 1)
-						oldestVisibleRec = rec;   // Rreset this pointer.
+						oldestVisibleRec = NULL;   // Reset this pointer.
 					else
 						scavengeType = CAN_BE_PRUNED;
 					}
 				}
 			else if (committedBeforeAnyActiveTrans)
 				{
-				ASSERT(rec->state != recLock);
-				oldestVisibleRec = rec;
+				if (rec->state != recLock)
+					oldestVisibleRec = rec;
 				}
 			}
 
