@@ -1956,40 +1956,19 @@ void Table::retireRecords(RecordScavenge *recordScavenge)
 bool Table::insertIntoTree(Record * record, Record *prior, int recordNumber)
 {
 	ageGroup = database->currentGeneration;
-	Sync sync(&syncObject, "Table::insert");
 
-	if (record)
-		{
-#ifdef CHECK_RECORD_ACTIVITY
-		record->active = true;
-#endif
-		sync.lock(Shared);
-		
-		if (!recordBitmap->setSafe(recordNumber))
-			{
-			sync.unlock();
-			sync.lock(Exclusive);
-			recordBitmap->set(recordNumber);
-			}
-		}
-	else
-		{
+	Sync sync(&syncObject, "Table::insert");
+	if (!record || !records)
 		sync.lock(Exclusive);
+	else
+		sync.lock(Shared);
+
+	if (!record)
 		recordBitmap->clear(recordNumber);
-		}
 
 	if (!records)
-		{
-		if (sync.state != Exclusive)
-			{
-			sync.unlock();
-			sync.lock(Exclusive);
-			}
-			
-		if (!records)
-			records = NEW RecordLeaf;
-		}
-	
+		records = NEW RecordLeaf;
+
 	// Bump the record use count on the assumption that the 
 	// store will succeed.  Release it later if it fails.
 	
@@ -2005,13 +1984,31 @@ bool Table::insertIntoTree(Record * record, Record *prior, int recordNumber)
 #endif
 			prior->release();
 			}
-		
+
+		if (record)
+			{
+#ifdef CHECK_RECORD_ACTIVITY
+			prior->active = true;
+#endif
+
+			if (!recordBitmap->setSafe(recordNumber))
+				{
+				sync.unlock();
+				sync.lock(Exclusive);
+				recordBitmap->set(recordNumber);
+				}
+			}
+
 		return true;
 		}
-	
+
+	// The store() failed.
+
 	if (record)
 		record->release();
-	
+	else 
+		recordBitmap->set(recordNumber);  // Reset the bit
+
 	return false;
 }
 
