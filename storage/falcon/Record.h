@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,9 +27,8 @@
 #define ALLOCATE_RECORD(n)		(char*) MemMgrRecordAllocate (n, __FILE__, __LINE__)
 #define DELETE_RECORD(record)	MemMgrRecordDelete (record);
 
-//#define CHECK_RECORD_ACTIVITY
-
 #include "SynchronizationObject.h"
+#include "SyncObject.h"
 
 enum RecordEncoding {
 	noEncoding = 0,
@@ -54,6 +53,38 @@ static const int recInserting = 8;		// record is being physically inserted
 static const int recDeleting = 9;		// record is being physically deleted
 static const int recPruning	 = 10;		// record is being pruned
 static const int recEndChain = 11;		// end of chain for garbage collection
+
+
+//#define CHECK_RECORD_ACTIVITY
+#ifdef CHECK_RECORD_ACTIVITY
+	#define SET_THIS_RECORD_ACTIVE(_tf_)   {active = _tf_;}
+	#define SET_RECORD_ACTIVE(_rec_, _tf_)   {(_rec_)->active = _tf_;}
+#else
+	#define SET_THIS_RECORD_ACTIVE(_tf_)   {}
+	#define SET_RECORD_ACTIVE(_rec_, _tf_)   {}
+#endif
+
+
+//#define COLLECT_RECORD_HISTORY
+#if defined COLLECT_RECORD_HISTORY
+	#define REC_HISTORY          __FILE__, __LINE__
+	#define RECORD_HISTORY(_rec_)   {if (_rec_) (_rec_)->addHistory(0, __FILE__, __LINE__);}
+	#define MAX_RECORD_HISTORY 100
+	#define RECORD_HISTORY_FILE_LEN 16
+
+	struct record_history
+	{
+		unsigned long	threadId;
+		unsigned long counter;
+		long		useCount;
+		short		delta;
+		short		line;
+		char		file[RECORD_HISTORY_FILE_LEN];
+	};
+#else
+	#define REC_HISTORY
+	#define RECORD_HISTORY(_rec_)  {}
+#endif
 
 class Format;
 class Table;
@@ -160,6 +191,18 @@ public:
 #ifdef CHECK_RECORD_ACTIVITY
 	UCHAR		active;					// this is for debugging only
 #endif
+
+#ifdef COLLECT_RECORD_HISTORY
+	void	ShowHistory(void);
+	void	addHistory(int delta, const char *file, int line);
+	void	addRef(const char *file, int line);
+	void	release(const char *file, int line);
+
+	SyncObject	syncHistory;
+	uint historyCount;
+	struct record_history		history[MAX_RECORD_HISTORY];
+#endif
+
 };
 
 #endif // !defined(AFX_RECORD_H__02AD6A50_A433_11D2_AB5B_0000C01D2301__INCLUDED_)

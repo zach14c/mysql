@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -70,7 +70,7 @@ Record* RecordLeaf::fetch(int32 id)
 	Record *record = records[id];
 
 	if (record)
-		record->addRef();
+		record->addRef(REC_HISTORY);
 
 	return record;
 }
@@ -155,11 +155,9 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 
 				if (prior)
 					{
-#ifdef CHECK_RECORD_ACTIVITY
-					prior->active = false;
-#endif
+					SET_RECORD_ACTIVE(prior, false);
 					table->garbageCollect(prior, record, NULL, false);
-					prior->release();
+					prior->release(REC_HISTORY);
 					}
 				}
 			}
@@ -200,7 +198,7 @@ void RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordSc
 		if (record && recordScavenge->canBeRetired(record))
 			{
 			if (record->retire(recordScavenge))
-				*ptr = NULL;
+				*ptr = NULL;		// This is like Table::insertIntoTree(NULL, ...)
 			else
 				count++;
 			}

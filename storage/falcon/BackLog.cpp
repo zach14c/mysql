@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 MySQL AB
+/* Copyright © 2008 MySQL AB, 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -98,7 +98,7 @@ void BackLog::rollbackRecords(Bitmap* records, Transaction *transaction)
 		
 		if (record->transactionId != transaction->transactionId)
 			{
-			record->release();
+			record->release(REC_HISTORY);
 			
 			continue;
 			}
@@ -107,7 +107,7 @@ void BackLog::rollbackRecords(Bitmap* records, Transaction *transaction)
 		
 		if (!table->insertIntoTree(record, NULL, record->recordNumber))
 			{
-			record->release();
+			record->release(REC_HISTORY);
 			int32 recordNumber = record->recordNumber;
 			Record *rec = table->fetch(recordNumber);
 			
@@ -116,17 +116,15 @@ void BackLog::rollbackRecords(Bitmap* records, Transaction *transaction)
 				if (rec->getTransactionId() == transaction->transactionId)
 					record->rollback(transaction);
 				else
-					record->release();
+					record->release(REC_HISTORY);
 				}
 				
 			continue;
 			}
 			
 		record->rollback(transaction);
-#ifdef CHECK_RECORD_ACTIVITY
-		record->active = false;
-#endif
-		record->release();
+		SET_RECORD_ACTIVE(record, false);
+		record->release(REC_HISTORY);
 		}
 }
 

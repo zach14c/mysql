@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -282,6 +282,7 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 			candidate = table->fetchNext(recordNumber);
 			if (!candidate)
 				return StorageErrorRecordNotFound;
+			RECORD_HISTORY(candidate);
 
 			record = (lockForUpdate)
 			               ? table->fetchForUpdate(transaction, candidate, false)
@@ -290,7 +291,7 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 			if (!record)
 				{
 				if (!lockForUpdate)
-					candidate->release();
+					candidate->release(REC_HISTORY);
 					
 				recordNumber = candidate->recordNumber + 1;
 				continue;
@@ -298,8 +299,8 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 			
 			if (!lockForUpdate && candidate != record)
 				{
-				record->addRef();
-				candidate->release();
+				record->addRef(REC_HISTORY);
+				candidate->release(REC_HISTORY);
 				}
 			
 			recordNumber = record->recordNumber;
@@ -311,10 +312,10 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 	catch (SQLException& exception)
 		{
 		if (record && record != candidate)
-			record->release();
+			record->release(REC_HISTORY);
 
 		if (candidate && !lockForUpdate)
-			candidate->release();
+			candidate->release(REC_HISTORY);
 			
 		int sqlcode = storageConnection->setErrorText(&exception);
 		
@@ -346,9 +347,9 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 	try
 		{
 		candidate = table->fetch(recordNumber);
-		
 		if (!candidate)
 			return StorageErrorRecordNotFound;
+		RECORD_HISTORY(candidate);
 
 		Record *record = (lockForUpdate)
 		               ? table->fetchForUpdate(transaction, candidate, false)
@@ -357,15 +358,15 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 		if (!record)
 			{
 			if (!lockForUpdate)
-				candidate->release();
+				candidate->release(REC_HISTORY);
 			
 			return StorageErrorRecordNotFound;
 			}
 		
 		if (!lockForUpdate && record != candidate)
 			{
-			record->addRef();
-			candidate->release();
+			record->addRef(REC_HISTORY);
+			candidate->release(REC_HISTORY);
 			}
 		
 		storageTable->setRecord(record, lockForUpdate);
@@ -375,7 +376,7 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 	catch (SQLException& exception)
 		{
 		if (candidate && !lockForUpdate)
-			candidate->release();
+			candidate->release(REC_HISTORY);
 			
 		int sqlcode = storageConnection->setErrorText(&exception);
 		
@@ -421,6 +422,7 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 				return StorageErrorRecordNotFound;
 	
 			candidate = table->fetch(recordNumber);
+			RECORD_HISTORY(candidate);
 			++recordNumber;
 			
 			if (candidate)
@@ -435,8 +437,8 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 
 					if (!lockForUpdate && candidate != record)
 						{
-						record->addRef();
-						candidate->release();
+						record->addRef(REC_HISTORY);
+						candidate->release(REC_HISTORY);
 						}
 					
 					storageTable->setRecord(record, lockForUpdate);
@@ -445,14 +447,14 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 					}
 				
 				if (!lockForUpdate)
-					candidate->release();
+					candidate->release(REC_HISTORY);
 				}
 			}
 		}
 	catch (SQLException& exception)
 		{
 		if (candidate && !lockForUpdate)
-			candidate->release();
+			candidate->release(REC_HISTORY);
 
 		storageConnection->setErrorText(&exception);
 		int errorCode = exception.getSqlcode();
@@ -608,10 +610,10 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 	try
 		{
 		candidate = table->fetch(recordNumber);
-		
 		if (!candidate)
 			return StorageErrorRecordNotFound;
-		
+		RECORD_HISTORY(candidate);
+
 		if (candidate->state == recLock)
 			record = candidate->getPriorVersion();
 		else if (candidate->getTransaction() == transaction)
@@ -621,12 +623,12 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 
 		if (record != candidate)
 			{
-			record->addRef();
-			candidate->release();
+			record->addRef(REC_HISTORY);
+			candidate->release(REC_HISTORY);
 			}
 		
 		table->deleteRecord(transaction, record);
-		record->release();
+		record->release(REC_HISTORY);
 		
 		return 0;
 		}
@@ -636,9 +638,9 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 		int sqlCode = exception.getSqlcode();
 
 		if (record)
-			record->release();
+			record->release(REC_HISTORY);
 		else if (candidate)
-			candidate->release();
+			candidate->release(REC_HISTORY);
 
 		switch (sqlCode)
 			{

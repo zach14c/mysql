@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -211,9 +211,8 @@ bool RecordVersion::retire(RecordScavenge *recordScavenge)
 		{
 		recordScavenge->recordsRetired++;
 		recordScavenge->spaceRetired += getMemUsage();
-#ifdef CHECK_RECORD_ACTIVITY
-		active = false;
-#endif
+		SET_THIS_RECORD_ACTIVE(false);
+
 		if (state == recDeleted)
 			expungeRecord();  // Allow this record number to be reused
 
@@ -244,9 +243,8 @@ void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestAct
 		  rec = rec->getPriorVersion())
 		{
 		ptr = rec;
-#ifdef CHECK_RECORD_ACTIVITY
-		rec->active = false;
-#endif
+		SET_RECORD_ACTIVE(rec, false);
+
 		Transaction *trans = rec->getTransaction();
 
 		if (trans)

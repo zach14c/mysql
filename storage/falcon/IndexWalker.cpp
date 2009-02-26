@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 MySQL AB
+/* Copyright © 2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -139,9 +139,9 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 	// Fetch record.  If it doesn't exist, that's ok.
 
 	Record *candidate = table->fetch(recordId);
-
 	if (!candidate)
 		return NULL;
+	RECORD_HISTORY(candidate);
 
 	// Get the correct version.  If this is select for update, get a lock record
 
@@ -152,7 +152,7 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 	if (!record)
 		{
 		if (!lockForUpdate)
-			candidate->release();
+			candidate->release(REC_HISTORY);
 		
 		return NULL;
 		}
@@ -161,8 +161,8 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 	
 	if (!lockForUpdate && candidate != record)
 		{
-		record->addRef();
-		candidate->release();
+		record->addRef(REC_HISTORY);
+		candidate->release(REC_HISTORY);
 		}
 	
 	// Compute record key and compare against index key.  If there' different, punt
@@ -173,7 +173,7 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 	if (recordKey.keyLength != keyLength ||
 		memcmp(recordKey.key, key, keyLength) != 0)
 		{
-		record->release();
+		record->release(REC_HISTORY);
 		
 		return NULL;
 		}
