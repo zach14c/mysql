@@ -122,7 +122,7 @@ void Si_session_context::reset_si_ctx(THD *thd)
 {
   DBUG_ENTER("Si_session_context::reset_si_ctx");
 
-  thd->variables.sql_mode= 0;
+  thd->variables.sql_mode= MODE_NO_AUTO_CREATE_USER;
 
   thd->variables.character_set_client= system_charset_info;
   thd->variables.character_set_results= &my_charset_bin;

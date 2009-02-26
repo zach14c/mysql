@@ -422,6 +422,7 @@ THD::THD()
   */
    BML_exception(FALSE),
    backup_wait_timeout(BACKUP_WAIT_TIMEOUT_DEFAULT),
+   backup_in_progress(0),
 #if defined(ENABLED_DEBUG_SYNC)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */
