@@ -475,6 +475,8 @@ void free_table_share(TABLE_SHARE *share)
   if (share->tmp_table == NO_TMP_TABLE)
     pthread_mutex_destroy(&share->LOCK_ha_data);
   my_hash_free(&share->name_hash);
+  if (share->ha_data_destroy)
+    share->ha_data_destroy(share->ha_data);
 
   plugin_unlock(NULL, share->db_plugin);
   share->db_plugin= NULL;
