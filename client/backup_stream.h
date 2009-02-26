@@ -278,8 +278,8 @@ char *backup_blob_string(struct st_blob *blob);
 
 #else /* !defined(DBUG_OFF) */
 
-#define BBL(_b_) ((ulong) (blob->end - blob->begin))
-#define BBS(_b_) ((char*) blob->begin)
+#define BBL(_b_) ((ulong) ((_b_)->end - (_b_)->begin))
+#define BBS(_b_) ((char*) (_b_)->begin)
 
 #endif /* !defined(DBUG_OFF) */
 
