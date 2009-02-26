@@ -208,6 +208,7 @@ AND msg LIKE '%event fired%'
 AND timediff(ts,@start) < 2;
 
 --echo Cleaning up.
+SET DEBUG_SYNC = 'RESET';
 DROP EVENT test.ev;
 DROP TRIGGER test.trg;
 DROP TABLE test.logt;
