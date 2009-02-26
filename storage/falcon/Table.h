@@ -272,7 +272,7 @@ public:
 	bool			markedForDelete;
 	bool			alterIsActive;
 	bool			deleting;					// dropping or truncating.
-	int32			highWater;
+	int32			recordBitmapHighWater;
 	int32			ageGroup;
 	uint32			debugThawedRecords;
 	uint64			debugThawedBytes;

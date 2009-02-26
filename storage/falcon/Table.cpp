@@ -519,9 +519,9 @@ Record* Table::fetchNext(int32 start)
 			if (eof)
 				return NULL;
 			
-			recordNumber = highWater;
+			recordNumber = recordBitmapHighWater;
 			}
-		else if (eof || bitNumber < highWater)
+		else if (eof || bitNumber < recordBitmapHighWater)
 			{
 			// Record should exist somewhere
 			
@@ -569,12 +569,29 @@ Record* Table::fetchNext(int32 start)
 				sync.unlock();
 				ASSERT(n < 2);
 				}
+
+			// Table::databaseFetch returned NULL.  That bit should no longer be set
+			// But Table::syncObject is not currently locked.  
+			// While you are reading this, another thread may be adding this record 
+			// and setting the bit.  So get an exclusive lock and double check that it
+			// is not in the tree.
 			
-			// Record has gotten lost; no serious cause for concern
-			
-			sync.lock(Shared);
+			sync.lock(Exclusive);
+			if ((record = records->fetch(bitNumber)))
+				{
+				// Woops, there it is!
+
+				record->poke();
+				return record;
+				}
+
+			// The record did not re-appear.  Clear the bit and try the next bit.
+
+			recordBitmap->clear(bitNumber);
 			recordNumber = bitNumber + 1;
-			
+			sync.unlock();
+			sync.lock(Shared);
+
 			continue;
 			}
 
@@ -594,7 +611,7 @@ Record* Table::fetchNext(int32 start)
 			continue;
 			}
 
-		highWater = recNumber + 1;
+		recordBitmapHighWater = recNumber + 1;
 
 		// If we've got that record in memory, use it instead
 		
@@ -863,7 +880,7 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	deleting = false;
 	foreignKeys = NULL;
 	records = NULL;
-	highWater = 0;
+	recordBitmapHighWater = 0;
 	eof = false;
 	markedForDelete = false;
 	primaryKey = NULL;
@@ -1963,9 +1980,6 @@ bool Table::insertIntoTree(Record * record, Record *prior, int recordNumber)
 	else
 		sync.lock(Shared);
 
-	if (!record)
-		recordBitmap->clear(recordNumber);
-
 	if (!records)
 		records = NEW RecordLeaf;
 
@@ -2006,8 +2020,6 @@ bool Table::insertIntoTree(Record * record, Record *prior, int recordNumber)
 
 	if (record)
 		record->release();
-	else 
-		recordBitmap->set(recordNumber);  // Reset the bit
 
 	return false;
 }
@@ -3809,10 +3821,13 @@ int32 Table::backlogRecord(RecordVersion* record)
 		backlogId = database->backLog->save(record);
 		backloggedRecords->set(record->recordNumber, backlogId);
 		}
-	
+
+	// InsertIntoTree does not clear bits in recordBitmap.
+	// We want the bit to remain set so this record can be found
+	// in fetchNext().
+
 	ASSERT(insertIntoTree(NULL, record, record->recordNumber));
-	recordBitmap->set(record->recordNumber);
-	
+
 	return backlogId;
 }
 
