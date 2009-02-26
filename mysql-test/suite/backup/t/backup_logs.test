@@ -467,6 +467,50 @@ BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 --echo The backup id for this command should be 505.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 
+--echo
+--echo Attempt to set the backup log paths to a really long string.
+--echo
+
+SET global max_allowed_packet=1024*100;
+
+--echo
+--echo Now attempt to set the backup_progress_log_file to 512 characters.
+--echo
+SET @@global.backup_progress_log_file = repeat('a',512);
+
+--echo
+--echo Now attempt to set the backup_progress_log_file to 513 characters.
+--echo
+--error ER_PATH_LENGTH
+SET @@global.backup_progress_log_file = repeat('a',513);
+
+--echo
+--echo Now attempt to set the backup_progress_log_file to a really long string.
+--echo
+--error ER_PATH_LENGTH
+SET @@global.backup_progress_log_file = repeat('a',99*1024);
+SET @@global.backup_progress_log_file = DEFAULT;
+
+--echo
+--echo Now attempt to set the backup_history_log_file to 512 characters.
+--echo
+SET @@global.backup_history_log_file = repeat('a',512);
+
+--echo
+--echo Now attempt to set the backup_history_log_file to 513 characters.
+--echo
+--error ER_PATH_LENGTH
+SET @@global.backup_history_log_file = repeat('a',513);
+
+--echo
+--echo Now attempt to set the backup_history_log_file to a really long string.
+--echo
+--error ER_PATH_LENGTH
+SET @@global.backup_history_log_file = repeat('a',99*1024);
+SET @@global.backup_history_log_file = DEFAULT;
+
+SET global max_allowed_packet=DEFAULT;
+
 #
 # Cleanup.
 #

@@ -50,11 +50,32 @@ Try a backup to an invalid hard path.
 *BACKUP DATABASE bup_backupdir TO '$MYSQLTEST_VARDIR/not/there/either/bup_backupdir6.bak';
 ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/not/there/either/bup_backupdir6.bak' (Errcode: #)
 
+Attempt to set the backupdir to a really long string.
+set global max_allowed_packet=1024*100;
+
+Now attempt to set the backupdir to 512 characters.
+
+SET @@global.backupdir = repeat('a',####);
+Warnings:
+Warning	####	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: 
+
+Now attempt to set the backupdir to 513 characters.
+
+SET @@global.backupdir = repeat('a',513);
+ERROR HY000: The path specified for backupdir is too long.
+
+Now attempt to set the backupdir to a really long string.
+
+SET @@global.backupdir = repeat('a',99*1024);
+ERROR HY000: The path specified for backupdir is too long.
+
 Attempt to set the backupdir to something invalid.
+
 SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';
 Warnings:
-Warning	1733	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
-Warning	1733	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	####	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	####	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+set global max_allowed_packet=DEFAULT;
 Cleanup
 Reset backupdir 
 SET @@global.backupdir = @@global.datadir;

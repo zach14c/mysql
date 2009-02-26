@@ -103,8 +103,37 @@ BACKUP DATABASE bup_backupdir TO '../not/there/bup_backupdir5.bak';
 --enable_query_log
 
 --echo
+--echo Attempt to set the backupdir to a really long string.
+
+set global max_allowed_packet=1024*100;
+
+--echo
+--echo Now attempt to set the backupdir to 512 characters.
+--echo
+# Mask out the error value on the warning.
+--replace_regex /[0000-9999]+/####/
+SET @@global.backupdir = repeat('a',512);
+
+--echo
+--echo Now attempt to set the backupdir to 513 characters.
+--echo
+--error ER_PATH_LENGTH
+SET @@global.backupdir = repeat('a',513);
+
+--echo
+--echo Now attempt to set the backupdir to a really long string.
+--echo
+--error ER_PATH_LENGTH
+SET @@global.backupdir = repeat('a',99*1024);
+
+--echo
 --echo Attempt to set the backupdir to something invalid.
+--echo
+# Mask out the error value on the warning.
+--replace_regex /[0000-9999]+/####/
 SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';
+
+set global max_allowed_packet=DEFAULT;
 
 --echo Cleanup
 
