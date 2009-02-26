@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -146,6 +146,8 @@ public:
 	const char*		fetchTemplate (JString applicationName, JString templateName, TemplateContext *context);
 	void			licenseCheck();
 	void			serverOperation (int op, Parameters *parameters);
+	void			scavenge(bool forced = false);
+	void			scavengeCompiledStatements(void);
 	void			scavengeRecords(bool forced = false);
 	void			pruneRecords(RecordScavenge* recordScavenge);
 	void			retireRecords(RecordScavenge* recordScavenge);
@@ -173,7 +175,6 @@ public:
 	static void		scavengerThreadMain(void * database);
 	void			scavengerThreadMain(void);
 	void			scavengerThreadWakeup(void);
-	void			scavenge(bool forced = false);
 	void			validate (int optionMask);
 	Role*			findRole(const char *schemaName, const char * roleName);
 	User*			findUser (const char *account);

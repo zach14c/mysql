@@ -1,4 +1,4 @@
-/* Copyright (C) 2006, 2007 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1024,17 +1024,20 @@ THR_LOCK_DATA **StorageInterface::store_lock(THD *thd, THR_LOCK_DATA **to,
 			lock_type = TL_WRITE_ALLOW_WRITE;
 
 		/*
-                  In queries of type INSERT INTO t1 SELECT ... FROM t2 ...
-                  MySQL would use the lock TL_READ_NO_INSERT on t2 to prevent
-                  concurrent inserts into this table. Since Falcon can handle
-                  concurrent changes using own mechanisms and this type of
-                  lock conflicts with TL_WRITE_ALLOW_WRITE we convert it to
-                  a normal read lock to allow concurrent changes.
+		In queries of type INSERT INTO t1 SELECT ... FROM t2 ...
+		MySQL would use the lock TL_READ_NO_INSERT on t2 to prevent
+		concurrent inserts into this table. Since Falcon can handle
+		concurrent changes using its own mechanisms and this type of
+		lock conflicts with TL_WRITE_ALLOW_WRITE we convert it to
+		a normal read lock to allow concurrent changes.
 		*/
 
-		if (lock_type == TL_READ_NO_INSERT &&
-                    !(thd_in_lock_tables(thd) && sql_command == SQLCOM_LOCK_TABLES))
-                       lock_type = TL_READ;
+		if (   lock_type == TL_READ_NO_INSERT
+		    && !(thd_in_lock_tables(thd)
+		    && sql_command == SQLCOM_LOCK_TABLES))
+			{
+			lock_type = TL_READ;
+			}
 
 		lockData.type = lock_type;
 		}

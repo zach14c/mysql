@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1750,25 +1750,9 @@ void Database::scavenge(bool forced)
 	
 	scavengeForced = 0;
 
-	// Start by scavenging compiled statements.  If they're moldy and not in use,
-	// off with their heads!
+	// Start by scavenging compiled statements.
 
-	Sync syncStmt(&syncStatements, "Database::scavenge");
-	syncStmt.lock (Exclusive);
-	
-	time_t threshold = timestamp - STATEMENT_RETIREMENT_AGE;
-	lastScavenge = timestamp;
-
-	for (CompiledStatement *statement, **ptr = &compiledStatements; (statement = *ptr);)
-		if (statement->useCount > 1 || statement->lastUse > threshold)
-			ptr = &statement->next;
-		else
-			{
-			*ptr = statement->next;
-			statement->release();
-			}
-	
-	syncStmt.unlock();
+	scavengeCompiledStatements();
 
 	// purgeTransactions will release records that are  attached to old 
 	// transactions, thus freeing up old invisible records to be pruned 
@@ -1809,6 +1793,24 @@ void Database::scavenge(bool forced)
 	
 	if (backLog)
 		backLog->reportStatistics();
+}
+
+void Database::scavengeCompiledStatements(void)
+{
+	Sync syncStmt(&syncStatements, "Database::scavenge");
+	syncStmt.lock (Exclusive);
+	
+	time_t threshold = timestamp - STATEMENT_RETIREMENT_AGE;
+	lastScavenge = timestamp;
+
+	for (CompiledStatement *statement, **ptr = &compiledStatements; (statement = *ptr);)
+		if (statement->useCount > 1 || statement->lastUse > threshold)
+			ptr = &statement->next;
+		else
+			{
+			*ptr = statement->next;
+			statement->release();
+			}
 }
 
 void Database::scavengeRecords(bool forced)

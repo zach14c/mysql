@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -245,6 +245,7 @@ void Transaction::commit()
 	syncRec.lock(Shared);
 	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
 	{
+		RECORD_HISTORY(record);
 		Table * table = record->format->table;
 
 		if (!record->isSuperceded() && record->state != recLock)
@@ -381,6 +382,7 @@ void Transaction::rollback()
 	while (firstRecord)
 		{
 		record = firstRecord;
+		RECORD_HISTORY(record);
 		firstRecord = record->nextInTrans;
 		record->prevInTrans = NULL;
 		record->nextInTrans = stack;
@@ -401,7 +403,7 @@ void Transaction::rollback()
 			record->rollback(this);
 		
 		record->transaction = rollbackTransaction;
-		record->release();
+		record->release(REC_HISTORY);
 		}
 	firstRecord = NULL;
 	syncRec.unlock();
@@ -611,7 +613,7 @@ void Transaction::addRecord(RecordVersion * record)
 			record->state = saveState;
 		}
 
-	record->addRef();
+	record->addRef(REC_HISTORY);
 	
 	Sync syncRec(&syncRecords,"Transaction::addRecord");
 	syncRec.lock(Exclusive);
@@ -685,7 +687,7 @@ void Transaction::removeRecordNoLock(RecordVersion *record)
 	if (record->state == recDeleted && deletedRecords > 0)
 		--deletedRecords;
 	
-	record->release();
+	record->release(REC_HISTORY);
 }
 
 /***
@@ -792,7 +794,7 @@ void Transaction::commitRecords()
 				record->nextInTrans = NULL;
 				record->prevInTrans = NULL;
 				record->commit();
-				record->release();
+				record->release(REC_HISTORY);
 				committedRecords++;
 				}
 			
@@ -891,10 +893,13 @@ void Transaction::dropTable(Table* table)
 	Sync syncRec(&syncRecords,"Transaction::dropTable(2)");
 	syncRec.lock(Exclusive);
 	for (RecordVersion **ptr = &firstRecord, *rec; (rec = *ptr);)
+		{
+		RECORD_HISTORY(rec);
 		if (rec->format->table == table)
 			removeRecord(rec);
 		else
 			ptr = &rec->nextInTrans;
+		}
 }
 
 void Transaction::truncateTable(Table* table)
@@ -903,10 +908,13 @@ void Transaction::truncateTable(Table* table)
 	Sync syncRec(&syncRecords,"Transaction::truncateTable(2)");
 	syncRec.lock(Exclusive);
 	for (RecordVersion **ptr = &firstRecord, *rec; (rec = *ptr);)
+		{
+		RECORD_HISTORY(rec);
 		if (rec->format->table == table)
 			removeRecord(rec);
 		else
 			ptr = &rec->nextInTrans;
+		}
 }
 
 bool Transaction::hasRecords(Table* table)
@@ -1253,11 +1261,9 @@ void Transaction::rollbackSavepoint(int savePointId)
 			stack = rec->nextInTrans;
 			rec->nextInTrans = NULL;
 			rec->rollback(this);
-#ifdef CHECK_RECORD_ACTIVITY
-			rec->active = false;
-#endif
+			SET_RECORD_ACTIVE(rec, false);
 			rec->transaction = NULL;
-			rec->release();
+			rec->release(REC_HISTORY);
 			}
 		syncRec.unlock();
 
@@ -1311,7 +1317,7 @@ void Transaction::releaseRecordLocks(void)
 			{
 			record->format->table->unlockRecord(record, 0);
 
-			// Don't do  removeRecord(record); now.  Other threads might be 
+			// Don't do removeRecord(record) now.  Other threads might be 
 			// pointing to it and need the transaction pointer to determine 
 			// its relative state
 			}
@@ -1495,7 +1501,7 @@ void Transaction::backlogRecords(void)
 
 		if (!record->hasRecord(false))
 			{
-			Sync syncSP(&syncSavepoints, "Transaction::rollback");
+			Sync syncSP(&syncSavepoints, "Transaction::backlogRecords");
 			syncSP.lock(Shared);
 
 			if (savePoints)

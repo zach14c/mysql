@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1242,7 +1242,7 @@ void IndexPage::logIndexPage(Bdb *bdb, TransId transId)
 		BDB_HISTORY(bdb);
 		IndexPage *parentPage = (IndexPage*) parentBdb->buffer;
 		ASSERT(parentPage->level == indexPage->level + 1);
-		parentBdb->release();
+		parentBdb->release(REL_HISTORY);
 		}
 	***/
 	
