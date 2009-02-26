@@ -244,10 +244,9 @@ void _maria_log_command(IO_CACHE *log, enum maria_log_commands command,
                          const uchar *buffert, uint length, int result)
 {
   uchar header[14];
-  int old_errno, headerlen;
   ulong pid=(ulong) GETPID();
   File file= share->kfile.file;
-  old_errno=my_errno;
+  int old_errno=my_errno, headerlen;
   DBUG_ENTER("_maria_log_command");
   DBUG_PRINT("enter", ("command: %u share->open_file_name.str '%s'",
                        command, share->open_file_name.str));
