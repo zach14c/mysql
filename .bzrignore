@@ -314,6 +314,10 @@ client/mysql_upgrade
 client/mysqladmin
 client/mysqladmin.c
 client/mysqladmin.cpp
+client/mysqlbackup
+client/stream_v1.h
+client/stream_v1_services.h
+mysql-test/mysqlbackup-test.bak
 client/mysqlbinlog
 client/mysqlbinlog.cpp
 client/mysqlcheck

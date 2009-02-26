@@ -41,6 +41,7 @@ CLEANFILES =			$(BUILT_SOURCES)
 
 bin_PROGRAMS =			mysql \
 				mysqladmin \
+				mysqlbackup \
 				mysqlbinlog \
 				mysqlcheck \
 				mysqldump \
@@ -56,6 +57,12 @@ mysql_LDADD =			@readline_link@ @TERMCAP_LIB@ \
 				@ZLIB_LIBS@ \
 				$(LDADD) $(CXXLDFLAGS)
 mysqladmin_SOURCES =		mysqladmin.cc
+
+mysqlbackup_SOURCES =		mysqlbackup.cc \
+				backup_stream.c \
+				$(top_srcdir)/sql/backup/stream_v1.c \
+				$(top_srcdir)/sql/backup/stream_v1_transport.c
+mysqlbackup_LDADD =		$(LDADD) $(CXXLDFLAGS)
 
 mysqlbinlog_SOURCES =		mysqlbinlog.cc \
 				$(top_srcdir)/mysys/mf_tempdir.c \
@@ -110,6 +117,7 @@ sql_src=log_event.h mysql_priv.h rpl_constants.h \
 	rpl_record_old.h rpl_record_old.cc \
 	transaction.h
 strings_src=decimal.c dtoa.c
+backup_src=stream_v1.h stream_v1_services.h
 
 link_sources:
 	for f in $(sql_src) ; do \
@@ -119,6 +127,10 @@ link_sources:
 	for f in $(strings_src) ; do \
 	  rm -f $(srcdir)/$$f; \
 	  @LN_CP_F@ $(top_srcdir)/strings/$$f $$f; \
+	done; \
+	for f in $(backup_src) ; do \
+	  rm -f $(srcdir)/$$f; \
+	  @LN_CP_F@ $(top_srcdir)/sql/backup/$$f $$f; \
 	done; \
 	rm -f $(srcdir)/my_user.c; \
 	@LN_CP_F@ $(top_srcdir)/sql-common/my_user.c my_user.c;
