@@ -326,8 +326,8 @@ Server charset:      'utf8'
 
 Catalog details:
 
-  Tablespace 'mysqltest_ts1'
-  Tablespace 'mysqltest_ts2'
+  Tablespace 'MYSQLTEST_TS1'
+  Tablespace 'MYSQLTEST_TS2'
   Database  'mysqltest1'
     Table     'mysqltest1'.'t1'
     Table     'mysqltest1'.'t2'
@@ -421,8 +421,8 @@ Catalog details:
 
   Charset   'utf8'
   Charset   'utf8'
-  Tablespace 'mysqltest_ts1'
-  Tablespace 'mysqltest_ts2'
+  Tablespace 'MYSQLTEST_TS1'
+  Tablespace 'MYSQLTEST_TS2'
   Database  'mysqltest1'
   Database  'mysqltest2'
   Database  'mysqltest3'
@@ -514,10 +514,10 @@ Server charset:      'utf8'
 
 Meta data:
 
-  Tablespace 'mysqltest_ts1' statement: '119 CREATE TABLESPACE `mysqltest_ts1` ADD DATAFILE 'mysqltest_ts1.dat' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS1' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS1` ADD DATAFILE 'mysqltest_ts1.dat.fts' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
 '
 
-  Tablespace 'mysqltest_ts2' statement: '119 CREATE TABLESPACE `mysqltest_ts2` ADD DATAFILE 'mysqltest_ts2.dat' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS2' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS2` ADD DATAFILE 'mysqltest_ts2.dat.fts' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
 '
 
   Database 'mysqltest1' statement: '69 CREATE DATABASE `mysqltest1` /*!40100 DEFAULT CHARACTER SET latin1 */
@@ -1058,10 +1058,10 @@ Server charset:      'utf8'
 
 Meta data:
 
-  Tablespace 'mysqltest_ts1' statement: '119 CREATE TABLESPACE `mysqltest_ts1` ADD DATAFILE 'mysqltest_ts1.dat' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS1' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS1` ADD DATAFILE 'mysqltest_ts1.dat.fts' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
 '
 
-  Tablespace 'mysqltest_ts2' statement: '119 CREATE TABLESPACE `mysqltest_ts2` ADD DATAFILE 'mysqltest_ts2.dat' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS2' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS2` ADD DATAFILE 'mysqltest_ts2.dat.fts' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
 '
 
   Database 'mysqltest1' statement: '69 CREATE DATABASE `mysqltest1` /*!40100 DEFAULT CHARACTER SET latin1 */
@@ -1618,9 +1618,9 @@ Backup image chrset: 'utf8'
 
 Meta data:
 
-  Tablespace 'mysqltest_ts1' extra data length: 0
+  Tablespace 'MYSQLTEST_TS1' extra data length: 0
 
-  Tablespace 'mysqltest_ts2' extra data length: 0
+  Tablespace 'MYSQLTEST_TS2' extra data length: 0
 
   Database 'mysqltest1' extra data length: 0
 
@@ -2052,8 +2052,8 @@ Catalog summary:
 
 Catalog details:
 
-  Tablespace 'mysqltest_ts1'
-  Tablespace 'mysqltest_ts2'
+  Tablespace 'MYSQLTEST_TS1'
+  Tablespace 'MYSQLTEST_TS2'
   Database  'mysqltest1'
     Table     'mysqltest1'.'t1'
     Table     'mysqltest1'.'t2'
@@ -2132,10 +2132,10 @@ Catalog details:
 
 Meta data:
 
-  Tablespace 'mysqltest_ts1' statement: '119 CREATE TABLESPACE `mysqltest_ts1` ADD DATAFILE 'mysqltest_ts1.dat' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS1' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS1` ADD DATAFILE 'mysqltest_ts1.dat.fts' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
 '
 
-  Tablespace 'mysqltest_ts2' statement: '119 CREATE TABLESPACE `mysqltest_ts2` ADD DATAFILE 'mysqltest_ts2.dat' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS2' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS2` ADD DATAFILE 'mysqltest_ts2.dat.fts' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
 '
 
   Database 'mysqltest1' statement: '69 CREATE DATABASE `mysqltest1` /*!40100 DEFAULT CHARACTER SET latin1 */
@@ -2703,8 +2703,8 @@ Catalog summary:
 
 Catalog details:
 
-  Tablespace 'mysqltest_ts1'
-  Tablespace 'mysqltest_ts2'
+  Tablespace 'MYSQLTEST_TS1'
+  Tablespace 'MYSQLTEST_TS2'
   Database  'mysqltest1'
     Table     'mysqltest1'.'t1'
     Table     'mysqltest1'.'t2'
@@ -2783,13 +2783,13 @@ Catalog details:
 
 Meta data:
 
-  Tablespace 'mysqltest_ts1' statement: '119 CREATE TABLESPACE `mysqltest_ts1` ADD DATAFILE 'mysqltest_ts1.dat' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS1' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS1` ADD DATAFILE 'mysqltest_ts1.dat.fts' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
 '
-  Tablespace 'mysqltest_ts1' extra data length: 0
+  Tablespace 'MYSQLTEST_TS1' extra data length: 0
 
-  Tablespace 'mysqltest_ts2' statement: '119 CREATE TABLESPACE `mysqltest_ts2` ADD DATAFILE 'mysqltest_ts2.dat' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS2' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS2` ADD DATAFILE 'mysqltest_ts2.dat.fts' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
 '
-  Tablespace 'mysqltest_ts2' extra data length: 0
+  Tablespace 'MYSQLTEST_TS2' extra data length: 0
 
   Database 'mysqltest1' statement: '69 CREATE DATABASE `mysqltest1` /*!40100 DEFAULT CHARACTER SET latin1 */
 '
@@ -4209,7 +4209,7 @@ Server byte order: #
 Server charset:      'utf8'
 
 Searching for 'mysqltest_ts2'
-  Tablespace 'mysqltest_ts2'
+  Tablespace 'MYSQLTEST_TS2'
 #========^^^^^^^^========
 
 # Search for an object in databases:
@@ -4366,8 +4366,8 @@ Catalog summary:
 
 Catalog details:
 
-  Tablespace 'mysqltest_ts1'
-  Tablespace 'mysqltest_ts2'
+  Tablespace 'MYSQLTEST_TS1'
+  Tablespace 'MYSQLTEST_TS2'
   Database  'mysqltest1'
     Table     'mysqltest1'.'t1'
     Table     'mysqltest1'.'t2'
@@ -4446,13 +4446,13 @@ Catalog details:
 
 Meta data:
 
-  Tablespace 'mysqltest_ts1' statement: '119 CREATE TABLESPACE `mysqltest_ts1` ADD DATAFILE 'mysqltest_ts1.dat' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS1' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS1` ADD DATAFILE 'mysqltest_ts1.dat.fts' COMMENT = 'test tablespace backup 1' ENGINE = Falcon
 '
-  Tablespace 'mysqltest_ts1' extra data length: 0
+  Tablespace 'MYSQLTEST_TS1' extra data length: 0
 
-  Tablespace 'mysqltest_ts2' statement: '119 CREATE TABLESPACE `mysqltest_ts2` ADD DATAFILE 'mysqltest_ts2.dat' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
+  Tablespace 'MYSQLTEST_TS2' statement: '123 CREATE TABLESPACE `MYSQLTEST_TS2` ADD DATAFILE 'mysqltest_ts2.dat.fts' COMMENT = 'test tablespace backup 2' ENGINE = Falcon
 '
-  Tablespace 'mysqltest_ts2' extra data length: 0
+  Tablespace 'MYSQLTEST_TS2' extra data length: 0
 
   Database 'mysqltest1' statement: '69 CREATE DATABASE `mysqltest1` /*!40100 DEFAULT CHARACTER SET latin1 */
 '
