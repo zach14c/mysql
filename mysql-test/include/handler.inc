@@ -705,6 +705,7 @@ handler t1 read a next;
 #
 
 connect(con1,localhost,root,,);
+connect(con2,localhost,root,,);
 
 connection default;
 --disable_warnings
@@ -728,5 +729,5 @@ connection con1;
 --reap
 drop table t1;
 disconnect con1;
+disconnect con2;
 connection default;
-disconnect con1;
