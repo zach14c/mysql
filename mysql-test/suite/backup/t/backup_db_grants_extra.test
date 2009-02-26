@@ -401,10 +401,8 @@ BACKUP DATABASE db1, db2 TO 'db12b.bak';
 DROP DATABASE db1;
 DROP DATABASE db2;
 
---echo Restore will fail because of bug#41578
 --replace_column 1 #
 --replace_regex /<empty> [00-99]+/<empty> #/
---error ER_BACKUP_CANT_RESTORE_PRIV
 RESTORE FROM 'db12b.bak';
 --replace_column 2 #
 --replace_regex /<empty> [00-99]+/<empty> #/
@@ -441,10 +439,8 @@ BACKUP DATABASE db1, db2 TO 'db12c.bak';
 DROP DATABASE db1;
 DROP DATABASE db2;
 
---echo Restore will fail because of bug#41578
 --replace_column 1 #
 --replace_regex /<empty> [00-99]+/<empty> #/
---error ER_BACKUP_CANT_RESTORE_PRIV
 RESTORE FROM 'db12c.bak';
 --replace_column 2 #
 --replace_regex /<empty> [00-99]+/<empty> #/
@@ -500,7 +496,6 @@ DROP DATABASE db2;
 
 --replace_column 1 #
 --replace_regex /<empty> [00-99]+/<empty> #/
---error ER_BACKUP_CANT_RESTORE_PRIV
 RESTORE FROM 'db12b.bak';
 --replace_column 2 #
 --replace_regex /<empty> [00-99]+/<empty> #/
@@ -540,7 +535,6 @@ DROP DATABASE db2;
 
 --replace_column 1 #
 --replace_regex /<empty> [00-99]+/<empty> #/
---error ER_BACKUP_CANT_RESTORE_PRIV
 RESTORE FROM 'db12c.bak';
 --replace_column 2 #
 --replace_regex /<empty> [00-99]+/<empty> #/
