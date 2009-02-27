@@ -75,6 +75,8 @@ EXTRA_DIST =	README \
 
 # List of directories containing test + result files and the
 # related test data files that should be copied
+# If you want to add a new suite, please check DEFAULT_SUITES in
+# mysql-test-run.pl.
 TEST_DIRS = t r include std_data std_data/parts \
 	std_data/ndb_backup50 std_data/ndb_backup51 \
         std_data/ndb_backup51_dd \
