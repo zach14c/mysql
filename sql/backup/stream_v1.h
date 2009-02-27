@@ -17,7 +17,7 @@
  *
  *********************************************************************/
 
-/// Definition for backup stream byte type.
+/** Definition for backup stream byte type. */
 typedef unsigned char bstream_byte;
 
 /**
@@ -35,7 +35,7 @@ struct st_blob
   bstream_byte *end;   /**< one byte after the last byte of the blob */
 };
 
-/// Definition for backup stream blob structure.
+/** Definition for backup stream blob structure. */
 typedef struct st_blob bstream_blob;
 
 /**
@@ -54,7 +54,7 @@ struct st_bstream_time
   unsigned int        year;  /**< years since 1900 */
 };
 
-/// Definition for backup stream time structure.
+/** Definition for backup stream time structure. */
 typedef struct st_bstream_time bstream_time_t;
 
 /**
@@ -69,8 +69,8 @@ struct st_bstream_binlog_pos
   unsigned long int pos;    /**< position (offset) within the file */
 };
 
-/// Definition for backup stream structure.
-/// @note The struct st_backup_stream is defined below.
+/** Definition for backup stream structure. */
+/** @note The struct st_backup_stream is defined below. */
 typedef struct st_backup_stream backup_stream;
 
 /** Codes returned by backup stream functions */
@@ -301,11 +301,11 @@ struct st_bstream_titem_info
   inside enum_bstream_item_type but defined separately.
 */
 
-/// Definition of backup stream global item index.
+/** Definition of backup stream global item index. */
 #define BSTREAM_IT_GLOBAL    BSTREAM_IT_LAST
-/// Definition of backup stream per database item index.
+/** Definition of backup stream per database item index. */
 #define BSTREAM_IT_PERDB     (BSTREAM_IT_LAST+1)
-/// Definition of backup stream per table item index.
+/** Definition of backup stream per table item index. */
 #define BSTREAM_IT_PERTABLE  (BSTREAM_IT_LAST+2)
 
 
