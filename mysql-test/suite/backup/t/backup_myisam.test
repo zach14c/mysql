@@ -53,7 +53,7 @@ DROP DATABASE mysql_db1;
 --echo #
 CREATE DATABASE mysqltest;
 USE mysqltest;
-CREATE TABLE `äöüß£å` (id SERIAL) ENGINE=MyISAM;
+CREATE TABLE `äöüß£å` (id SERIAL);
 --replace_column 1 #
 BACKUP DATABASE mysqltest TO 'bup_myisam.bak';
 DROP TABLE `äöüß£å`;

@@ -122,7 +122,7 @@ public:
 
 			if (!nextVector)
 				{
-				if (level == 1)
+				if (lvl == 1)
 					{
 					nextVector = (void**) new T [width];
 					memset(nextVector, 0, sizeof(T) * width);

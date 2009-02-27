@@ -131,13 +131,12 @@ Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_par
 t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
 #-------- ONLINE: ALTER ADD/DROP PRIMARY KEY --------#
 ALTER ONLINE TABLE t1 DROP PRIMARY KEY;
-ERROR 42000: This version of MySQL doesn't yet support 'ALTER ONLINE TABLE t1 DROP PRIMARY KEY'
-ALTER TABLE t1 DROP PRIMARY KEY;
-ALTER ONLINE TABLE t1 ADD PRIMARY KEY (c);
-ERROR 42000: This version of MySQL doesn't yet support 'ALTER ONLINE TABLE t1 ADD PRIMARY KEY (c)'
 SHOW INDEXES FROM t1;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
-ALTER TABLE t1 ADD PRIMARY KEY (a);
+ALTER ONLINE TABLE t1 ADD PRIMARY KEY (a);
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
 #-------- Test: UNIQUE --------#
 ALTER ONLINE TABLE t2 ADD UNIQUE INDEX ix_unique_c (c);
 EXPLAIN SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;

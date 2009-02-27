@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright (C) 2000-2006 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -232,7 +232,7 @@ err:
   my_errno=save_errno;
 err2:
   save_errno=my_errno;
-  myisam_log_record_logical(MI_LOG_WRITE, info, record, filepos, my_errno);
+  myisam_log_record_logical(MI_LOG_WRITE, info, record, filepos, save_errno);
   (void) _mi_writeinfo(info,WRITEINFO_UPDATE_KEYFILE);
   allow_break();			/* Allow SIGHUP & SIGINT */
   DBUG_RETURN(my_errno=save_errno);

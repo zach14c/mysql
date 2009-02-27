@@ -13,7 +13,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-INCLUDES =		-I$(top_builddir)/include -I$(top_srcdir)/include \
+AM_CPPFLAGS =		-I$(top_srcdir)/include \
 			-I$(top_srcdir)/sql
 LDADD =			@CLIENT_EXTRA_LDFLAGS@ \
                         $(top_builddir)/mysys/libmysyslt.la \
@@ -28,6 +28,10 @@ EXTRA_PROGRAMS =	comp_err
 DISTCLEANFILES =	$(BUILT_SOURCES) $(EXTRA_PROGRAMS)
 SUBDIRS =		@yassl_dir@ @libevent_dir@
 DIST_SUBDIRS =		yassl libevent
+
+# Compile "stand alone", only zlib from this build if bundled
+comp_err_CPPFLAGS =	$(ZLIB_INCLUDES)
+comp_err_LDADD =	$(ZLIB_LIBS)
 
 # This will build mysqld_error.h, mysqld_ername.h and sql_state.h
 # NOTE Built files should depend on their sources to avoid
@@ -57,6 +61,3 @@ EXTRA_DIST =		CMakeLists.txt
 
 perror.o: perror.c 
 	$(COMPILE) @ndbcluster_includes@ $(LM_CFLAGS) -c $<
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

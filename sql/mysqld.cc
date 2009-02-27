@@ -1,4 +1,4 @@
-/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright (C) 2000-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -434,7 +434,7 @@ static pthread_cond_t COND_thread_cache, COND_flush_thread_cache;
 /* Global variables */
 
 extern DDL_blocker_class *DDL_blocker;
-bool opt_update_log, opt_bin_log;
+bool opt_update_log, opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log;
 my_bool opt_backup_history_log;
 my_bool opt_backup_progress_log;
@@ -793,6 +793,8 @@ bool mysqld_embedded=0;
 #else
 bool mysqld_embedded=1;
 #endif
+
+static my_bool plugins_are_initialized= FALSE;
 
 #ifndef DBUG_OFF
 static const char* default_dbug_option;
@@ -1298,10 +1300,10 @@ extern "C" void unireg_abort(int exit_code)
 {
   DBUG_ENTER("unireg_abort");
 
+  if (opt_help)
+    usage();
   if (exit_code)
     sql_print_error("Aborting\n");
-  else if (opt_help)
-    usage();
   clean_up(!opt_help && (exit_code || !opt_bootstrap)); /* purecov: inspected */
   DBUG_PRINT("quit",("done with cleanup in unireg_abort"));
   mysqld_exit(exit_code);
@@ -3937,8 +3939,6 @@ static int init_server_components()
   if (table_def_init() | hostname_cache_init())
     unireg_abort(1);
 
-  wt_init();
-
   query_cache_result_size_limit(query_cache_limit);
   query_cache_set_min_res_unit(query_cache_min_res_unit);
   query_cache_init();
@@ -3951,6 +3951,7 @@ static int init_server_components()
   init_slave_list();
   init_slave_start();
 #endif
+  wt_init();
 
   /* Setup logs */
 
@@ -4133,12 +4134,15 @@ server.");
   if (ha_init_errors())
     DBUG_RETURN(1);
 
-  if (plugin_init(&defaults_argc, defaults_argv,
-                  (opt_noacl ? PLUGIN_INIT_SKIP_PLUGIN_TABLE : 0) |
-                  (opt_help ? PLUGIN_INIT_SKIP_INITIALIZATION : 0)))
-  {
-    sql_print_error("Failed to initialize plugins.");
-    unireg_abort(1);
+  { 
+    if (plugin_init(&defaults_argc, defaults_argv,
+		    (opt_noacl ? PLUGIN_INIT_SKIP_PLUGIN_TABLE : 0) |
+		    (opt_help ? PLUGIN_INIT_SKIP_INITIALIZATION : 0)))
+    {
+      sql_print_error("Failed to initialize plugins.");
+      unireg_abort(1);
+    }
+    plugins_are_initialized= TRUE;  /* Don't separate from init function */
   }
 
 #ifndef EMBEDDED_LIBRARY
@@ -5930,7 +5934,8 @@ enum options_mysqld
   OPT_SYNC_RELAY_LOG_INFO,
   OPT_SYNC_MASTER_INFO,
   OPT_BACKUP_HISTORY_LOG_FILE,
-  OPT_BACKUP_PROGRESS_LOG_FILE
+  OPT_BACKUP_PROGRESS_LOG_FILE,
+  OPT_IGNORE_BUILTIN_INNODB
 };
 
 
@@ -6165,6 +6170,9 @@ Disable with --skip-large-pages.",
    (uchar**) &opt_large_pages, (uchar**) &opt_large_pages, 0, GET_BOOL, NO_ARG, 0, 0, 0,
    0, 0, 0},
 #endif
+  {"ignore-builtin-innodb", OPT_IGNORE_BUILTIN_INNODB ,
+   "Disable initialization of builtin InnoDB plugin",
+   0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"init-connect", OPT_INIT_CONNECT, "Command(s) that are executed for each new connection",
    (uchar**) &opt_init_connect, (uchar**) &opt_init_connect, 0, GET_STR_ALLOC,
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
@@ -7888,7 +7896,7 @@ static void usage(void)
     default_collation_name= (char*) default_charset_info->name;
   print_version();
   puts("\
-Copyright (C) 2000 MySQL AB, by Monty and others\n\
+Copyright (C) 2000-2008 MySQL AB, Monty and others, 2008-2009 Sun Microsystems, Inc.\n\
 This software comes with ABSOLUTELY NO WARRANTY. This is free software,\n\
 and you are welcome to modify and redistribute it under the GPL license\n\n\
 Starts the MySQL database server\n");
@@ -7917,6 +7925,13 @@ Starts the MySQL database server\n");
 
   /* Print out all the options including plugin supplied options */
   my_print_help_inc_plugins(my_long_options, sizeof(my_long_options)/sizeof(my_option));
+
+  if (! plugins_are_initialized)
+  {
+    puts("\n\
+Plugins have parameters that are not reflected in this list\n\
+because execution stopped before plugins were initialized.");
+  }
 
   puts("\n\
 To see what values a running MySQL server is using, type\n\
@@ -7957,6 +7972,7 @@ static int mysql_init_variables(void)
   log_backup_output_options= find_bit_type(log_backup_output_str, &log_output_typelib);
   opt_bin_log= 0;
   opt_disable_networking= opt_skip_show_db=0;
+  opt_ignore_builtin_innodb= 0;
   opt_logname= opt_update_logname= opt_binlog_index_name= opt_slow_logname= 0;
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
@@ -8278,6 +8294,9 @@ mysqld_get_one_option(int optid,
     break;
   case (int) OPT_BIG_TABLES:
     thd_startup_options|=OPTION_BIG_TABLES;
+    break;
+  case (int) OPT_IGNORE_BUILTIN_INNODB:
+    opt_ignore_builtin_innodb= 1;
     break;
   case (int) OPT_ISAM_LOG:
     opt_myisam_logical_log=1;

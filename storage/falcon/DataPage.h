@@ -61,4 +61,7 @@ public:
 	LineIndex	lineIndex [1];
 };
 
+/* Maximal length of data that can be stored in a page */
+#define DATA_PAGE_MAX_AVAILABLE_SPACE(pageSize) (pageSize - sizeof(DataPage))
+
 #endif // !defined(AFX_DATAPAGE_H__6A019C29_A340_11D2_AB5A_0000C01D2301__INCLUDED_)

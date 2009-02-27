@@ -1,4 +1,5 @@
-/* Copyright (C) 2007 MySQL AB & Sanja Belkin
+/* Copyright (C) 2007 MySQL AB & Sanja Belkin,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -685,6 +686,10 @@ static LOG_DESC INIT_LOGREC_IMPORTED_TABLE=
 {LOGRECTYPE_VARIABLE_LENGTH, 0, 0, NULL, NULL, NULL, 0,
  "imported_table", LOGREC_IS_GROUP_ITSELF, NULL, NULL};
 
+static LOG_DESC INIT_LOGREC_DEBUG_INFO=
+{LOGRECTYPE_VARIABLE_LENGTH, 0, 0, NULL, NULL, NULL, 0,
+ "info", LOGREC_IS_GROUP_ITSELF, NULL, NULL};
+
 const myf log_write_flags= MY_WME | MY_NABP | MY_WAIT_IF_FULL;
 
 void translog_table_init()
@@ -774,6 +779,9 @@ void translog_table_init()
     INIT_LOGREC_REDO_BITMAP_NEW_PAGE;
   log_record_type_descriptor[LOGREC_IMPORTED_TABLE]=
     INIT_LOGREC_IMPORTED_TABLE;
+  log_record_type_descriptor[LOGREC_DEBUG_INFO]=
+    INIT_LOGREC_DEBUG_INFO;
+
   for (i= LOGREC_FIRST_FREE; i < LOGREC_NUMBER_OF_TYPES; i++)
     log_record_type_descriptor[i].rclass= LOGRECTYPE_NOT_ALLOWED;
 #ifndef DBUG_OFF
@@ -1512,7 +1520,9 @@ static void translog_file_init(TRANSLOG_FILE *file, uint32 number,
   pagecache_file_init(file->handler, &translog_page_validator,
                       &translog_dummy_callback,
                       &translog_dummy_write_failure,
-                      maria_flush_log_for_page_none, file);
+                      maria_flush_log_for_page_none,
+                      &translog_dummy_callback,
+                      file);
   file->number= number;
   file->was_recovered= 0;
   file->is_sync= is_sync;
@@ -7418,6 +7428,10 @@ static void translog_force_current_buffer_to_finish()
   log_descriptor.bc.buffer->offset= new_buff_beginning;
   log_descriptor.bc.write_counter= write_counter;
   log_descriptor.bc.previous_offset= previous_offset;
+  new_buffer->prev_last_lsn= BUFFER_MAX_LSN(old_buffer);
+  DBUG_PRINT("info", ("prev_last_lsn set to (%lu,0x%lx)  buffer: 0x%lx",
+                      LSN_IN_PARTS(new_buffer->prev_last_lsn),
+                      (ulong) new_buffer));
 
   /*
     Advances this log pointer, increases writers and let other threads to
@@ -8299,6 +8313,46 @@ void translog_set_file_size(uint32 size)
   DBUG_VOID_RETURN;
 }
 
+
+/**
+   Write debug information to log if we EXTRA_DEBUG is enabled
+*/
+
+my_bool translog_log_debug_info(TRN *trn __attribute__((unused)),
+                                enum translog_debug_info_type type
+                                __attribute__((unused)),
+                                uchar *info __attribute__((unused)),
+                                size_t length __attribute__((unused)))
+{
+#ifdef EXTRA_DEBUG
+  LEX_CUSTRING log_array[TRANSLOG_INTERNAL_PARTS + 2];
+  uchar debug_type;
+  LSN lsn;
+
+  if (!trn)
+  {
+    /*
+      We can't log the current transaction because we don't have
+      an active transaction. Use a temporary transaction object instead
+    */
+    trn= &dummy_transaction_object;
+  }
+  debug_type= (uchar) type;
+  log_array[TRANSLOG_INTERNAL_PARTS + 0].str= &debug_type;
+  log_array[TRANSLOG_INTERNAL_PARTS + 0].length= 1;
+  log_array[TRANSLOG_INTERNAL_PARTS + 1].str= info;
+  log_array[TRANSLOG_INTERNAL_PARTS + 1].length= length;
+  return translog_write_record(&lsn, LOGREC_DEBUG_INFO,
+                               trn, NULL,
+                               (translog_size_t) (1+ length),
+                               sizeof(log_array)/sizeof(log_array[0]),
+                               log_array, NULL, NULL);
+#else
+  return 0;
+#endif
+}
+
+
 #ifdef MARIA_DUMP_LOG
 #include <my_getopt.h>
 extern void translog_example_table_init();
@@ -8655,7 +8709,7 @@ static void dump_datapage(uchar *buffer)
     }
     tfile.number= file;
     tfile.handler.file= handler;
-    pagecache_file_init(tfile.handler, NULL, NULL, NULL, NULL, NULL);
+    pagecache_file_init(tfile.handler, NULL, NULL, NULL, NULL, NULL, NULL);
     tfile.was_recovered= 0;
     tfile.is_sync= 1;
     if (translog_check_sector_protection(buffer, &tfile))

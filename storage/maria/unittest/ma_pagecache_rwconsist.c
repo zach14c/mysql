@@ -1,4 +1,4 @@
-/* Copyright (C) 2006-2008 MySQL AB
+/* Copyright (C) 2006-2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -238,7 +238,8 @@ int main(int argc __attribute__((unused)),
     exit(1);
   }
   pagecache_file_init(file1, &dummy_callback, &dummy_callback,
-                      &dummy_fail_callback, &dummy_callback, NULL);
+                      &dummy_fail_callback, &dummy_callback, &dummy_callback,
+                      NULL);
   DBUG_PRINT("info", ("file1: %d", file1.file));
   if (my_chmod(file1_name, S_IRWXU | S_IRWXG | S_IRWXO, MYF(MY_WME)))
     exit(1);

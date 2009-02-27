@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -420,7 +420,10 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	recordMemoryMax = configuration->recordMemoryMax;
 	recordScavengeFloor = configuration->recordScavengeFloor;
 	recordScavengeThreshold = configuration->recordScavengeThreshold;
-	lastRecordMemory = 0;
+	recordScavengeMaxGroupSize = recordMemoryMax / AGE_GROUPS_IN_CACHE;
+	recordPoolAllocCount = 0;
+	lastGenerationMemory = 0;
+	lastActiveMemoryChecked = 0;
 	utf8 = false;
 	stepNumber = 0;
 	shuttingDown = false;
@@ -452,7 +455,9 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	scheduler = NULL;
 	internalScheduler = NULL;
 	scavenger = NULL;
+#ifndef STORAGE_ENGINE
 	garbageCollector = NULL;
+#endif
 	sequenceManager = NULL;
 	repositoryManager = NULL;
 	sessionManager = NULL;
@@ -460,6 +465,14 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	tableSpaceManager = NULL;
 	timestamp = time (NULL);
 	tickerThread = NULL;
+	cardinalityThread = NULL;
+	cardinalityThreadSleeping = 0;
+	cardinalityThreadSignaled = 0;
+	scavengerThread = NULL;
+	scavengerThreadSleeping = 0;
+	scavengerThreadSignaled = 0;
+	scavengeForced = 0;
+	scavengeCount = 0;
 	serialLog = NULL;
 	pageWriter = NULL;
 	zombieTables = NULL;
@@ -480,8 +493,8 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	syncResultSets.setName("Database::syncResultSets");
 	syncConnectionStatements.setName("Database::syncConnectionStatements");
 	syncScavenge.setName("Database::syncScavenge");
-	IO::deleteFile(BACKLOG_FILE);
 	syncSysDDL.setName("Database::syncSysDDL");
+	IO::deleteFile(BACKLOG_FILE);
 }
 
 
@@ -513,7 +526,9 @@ void Database::start()
 	scheduler = new Scheduler(this);
 	internalScheduler = new Scheduler(this);
 	scavenger = new Scavenger(this, scvRecords, configuration->scavengeSchedule);
+#ifndef STORAGE_ENGINE
 	garbageCollector = new Scavenger(this, scvJava, configuration->gcSchedule);
+#endif
 	sequenceManager = new SequenceManager(this);
 	repositoryManager = new RepositoryManager(this);
 	transactionManager = new TransactionManager(this);
@@ -521,8 +536,12 @@ void Database::start()
 	filterSetManager = new FilterSetManager(this);
 	timestamp = time(NULL);
 	tickerThread = threads->start("Database::Database", &Database::ticker, this);
+	cardinalityThread = threads->start("Database::cardinalityThreadMain", &Database::cardinalityThreadMain, this);
+	scavengerThread = threads->start("Database::scavengerThreadMain", &Database::scavengerThreadMain, this);
 	internalScheduler->addEvent(scavenger);
+#ifndef STORAGE_ENGINE
 	internalScheduler->addEvent(garbageCollector);
+#endif
 	internalScheduler->addEvent(serialLog);
 	pageWriter->start();
 	cache->setPageWriter(pageWriter);
@@ -574,9 +593,10 @@ Database::~Database()
 	if (scavenger)
 		scavenger->release();
 
+#ifndef STORAGE_ENGINE
 	if (garbageCollector)
 		garbageCollector->release();
-
+#endif
 	if (threads)
 		{
 		threads->shutdownAll();
@@ -758,7 +778,9 @@ void Database::openDatabase(const char * filename)
 		table->setDataSection (sectionId++);
 		table->setBlobSection (sectionId++);
 		
-		FOR_INDEXES (index, table)
+		// Iterate all indexes, set indexIDs
+		
+		FOR_ALL_INDEXES (index, table)
 			index->setIndex (indexId++);
 		END_FOR;
 		}
@@ -1472,8 +1494,7 @@ void Database::truncateTable(Table *table, Sequence *sequence, Transaction *tran
 	syncDDLLock.lock(Exclusive);
 	
 	// Lock syncScavenge before locking syncTables, or table->syncObject.
-	// The scavenger locks syncScavenge  and then syncTables
-	// If we run out of record memory, forceRecordScavenge will eventually call table->syncObject.
+	// The scavenger locks syncScavenge, then syncTables, then table->syncObject
 
 	Sync syncScavengeLock(&syncScavenge, "Database::truncateTable(scavenge)");
 	syncScavengeLock.lock(Exclusive);
@@ -1711,9 +1732,17 @@ void Database::validate(int optionMask)
 	Log::debug ("Database::validate: validation complete\n");
 }
 
-void Database::scavenge()
+void Database::scavenge(bool forced)
 {
-	updateCardinalities();
+	// Signal the cardinality task unless a forced scavenge is pending
+
+	if (!forced &&
+		++scavengeCount % CARDINALITY_FREQUENCY == 0)
+		{
+		signalCardinality();
+		}
+	
+	scavengeForced = 0;
 
 	// Start by scavenging compiled statements.  If they're moldy and not in use,
 	// off with their heads!
@@ -1735,9 +1764,16 @@ void Database::scavenge()
 	
 	syncStmt.unlock();
 
-	// Next, scavenge tables
+	// purgeTransactions will release records that are  attached to old 
+	// transactions, thus freeing up old invisible records to be pruned 
+	// and actually released.  It is not likely that the scavenger will 
+	// retire these freshly released base records, but disconnecting 
+	// pruneable records from their transactions is definitely needed.
 
-	retireRecords(false);				// age group based scavenger
+	transactionManager->purgeTransactions();
+
+	// Scavenge the record cache
+	scavengeRecords(forced);
 
 	// Scavenge expired licenses
 	
@@ -1765,109 +1801,110 @@ void Database::scavenge()
 		backLog->reportStatistics();
 }
 
-
-void Database::retireRecords(bool forced)
+void Database::scavengeRecords(bool forced)
 {
-	int cycle = scavengeCycle;
-	
-	Sync syncScavenger(&syncScavenge, "Database::retireRecords(1)");
+	Sync syncScavenger(&syncScavenge, "Database::scavengeRecords(Scavenge)");
 	syncScavenger.lock(Exclusive);
 
-	if (forced && scavengeCycle > cycle)
-		return;
-	
-	// Commit pending system transactions before proceeding
-	
-	if (!forced && systemConnection->transaction)
-		commitSystemTransaction();
+	// Create an object to track this record scavenge cycle. Scavenge up to and
+	// including the current generation.
 
-	if (forced)
-		Log::log("Forced record scavenge cycle\n");
+	RecordScavenge recordScavenge(this, currentGeneration, forced);
 	
-	transactionManager->purgeTransactions();
-	TransId oldestActiveTransaction = transactionManager->findOldestActive();
-	uint64 total = recordDataPool->activeMemory;
-	RecordScavenge recordScavenge(this, oldestActiveTransaction, forced);
-	
-	// If we passed the upper limit, scavenge.  If we didn't pick up
-	// a significant amount of memory since the last cycle, don't bother
-	// bumping the age group.
+	// Take inventory of the record cache and prune invisible record versions
 
-	if (forced || total >  recordScavengeThreshold)
-		{
-		//LogStream stream;
-		//recordDataPool->analyze(0, &stream, NULL, NULL);
-		
-		Sync syncTbl(&syncTables, "Database::retireRecords(2)");
-		syncTbl.lock(Shared);
-		
-		Table *table;
-		time_t scavengeStart = deltaTime;
-		
-		if (!forced)
-			for (table = tableList; table; table = table->next)
-				table->inventoryRecords(&recordScavenge);
-		
-		recordScavenge.computeThreshold(recordScavengeFloor);
-		recordScavenge.printRecordMemory();	
-		int count = 0;
-		int skipped = 0;
-		
-		for (table = tableList; table; table = table->next)
-			{
-			try
-				{
-				int n = table->retireRecords(&recordScavenge);
-				
-				if (n >= 0)
-					count += n;
-				else
-					++skipped;
-				}
-			catch (SQLException &exception)
-				{
-				//syncTbl.unlock();
-				Log::debug ("Exception during scavenge of table %s.%s: %s\n",
-						table->schemaName, table->name, exception.getText());
-				}
-			}
+	pruneRecords(&recordScavenge);
+	recordScavenge.prunedActiveMemory = recordDataPool->activeMemory;
+	recordScavenge.pruneStop = deltaTime;
+	syncScavenger.unlock();  // take a breath!
 
-		syncTbl.unlock();
-		
-		
-		// Check for low memory 
-		
-		if (recordScavenge.spaceRemaining > recordScavengeFloor)
-			setLowMemory();
-		/***
-		else
-			lowMemory = false;
-		***/
-			
-		Log::log(LogScavenge, "%d: Scavenged %d records, " I64FORMAT " bytes in %d seconds\n", 
-					deltaTime, recordScavenge.recordsReclaimed, recordScavenge.spaceReclaimed, deltaTime - scavengeStart);
-			
-		total = recordScavenge.spaceRemaining;
-		}
-	else if ((total - lastRecordMemory) < recordScavengeThreshold / AGE_GROUPS)
-		{
-		recordScavenge.scavengeGeneration = UNDEFINED;
-		cleanupRecords (&recordScavenge);
+	// Retire visible records with no dependencies in the oldest age groups
 
-		++scavengeCycle;
-				
-		return;
-		}
+	syncScavenger.lock(Exclusive);
+	retireRecords(&recordScavenge);
+	recordScavenge.retiredActiveMemory = recordDataPool->activeMemory;
+	recordScavenge.retireStop = deltaTime;
+
+	// Enable backlogging if memory is low
+
+	if (recordScavenge.retiredActiveMemory > recordScavengeFloor)
+		setLowMemory();
 	else
-		{
-		recordScavenge.scavengeGeneration = UNDEFINED;
-		cleanupRecords (&recordScavenge);
-		}
+		clearLowMemory();
 
-	++scavengeCycle;
-	
-	lastRecordMemory = recordDataPool->activeMemory;
-	INTERLOCKED_INCREMENT (currentGeneration);
+	recordScavenge.print();
+	// Log::log(analyze(analyzeRecordLeafs));
+
+	// syncmemory is used to protect lastActiveMemoryChecked 
+	// and lastGenerationMemory.  In addition, it is used to 
+	// serialize signaling of the scavenger thread by allowing 
+	// only one thread at a time to check and change 
+	// scavengerThreadSignaled.  It is a Mutex instead of a 
+	// SyncObject because it is only locked exclusively, no 
+	// shared locks.  It does not need any of the other 
+	// features of SyncObject.  And a Mutex is faster.
+
+	Sync syncMem(&syncMemory, "Database::checkRecordScavenge");
+	syncMem.lock(Exclusive);
+
+	lastActiveMemoryChecked = lastGenerationMemory = recordDataPool->activeMemory;
+}
+
+// Take inventory of the record cache and prune invisible record versions
+
+void Database::pruneRecords(RecordScavenge *recordScavenge)
+{
+	//Log::log(analyze(analyzeRecordLeafs));
+	//LogStream stream;
+	//recordDataPool->analyze(0, &stream, NULL, NULL);
+
+	Sync syncTbl(&syncTables, "Database::pruneRecords(tables)");
+	syncTbl.lock(Shared);
+
+	for (Table *table = tableList; table; table = table->next)
+		{
+		try
+			{
+			table->pruneRecords(recordScavenge);
+			}
+		catch (SQLException &exception)
+			{
+			Log::debug ("Exception during pruning of table %s.%s: %s\n",
+					table->schemaName, table->name, exception.getText());
+			}
+		}
+}
+
+void Database::retireRecords(RecordScavenge *recordScavenge)
+{
+	// Scavenge if we passed the upper limit or if a forced scavenge
+	// was requested.
+
+	if (recordDataPool->activeMemory < recordScavengeThreshold
+		&& !recordScavenge->forced)
+		return;
+
+	//LogStream stream;
+	//recordDataPool->analyze(0, &stream, NULL, NULL);
+
+	Sync syncTbl(&syncTables, "Database::retireRecords(2)");
+	syncTbl.lock(Shared);
+
+	uint64 spaceToRetire = recordDataPool->activeMemory - recordScavengeFloor;
+	recordScavenge->computeThreshold(spaceToRetire);
+
+	for (Table *table = tableList; table; table = table->next)
+		{
+		try
+			{
+			table->retireRecords(recordScavenge);
+			}
+		catch (SQLException &exception)
+			{
+			Log::debug ("Exception during scavenge of table %s.%s: %s\n",
+				table->schemaName, table->name, exception.getText());
+			}
+		}
 }
 
 void Database::ticker(void * database)
@@ -1890,6 +1927,37 @@ void Database::ticker()
 			debugTrace();
 #endif
 		}
+}
+
+void Database::scavengerThreadMain(void * database)
+{
+	((Database*) database)->scavengerThreadMain();
+}
+
+void Database::scavengerThreadMain(void)
+{
+	Thread *thread = Thread::getThread("Database::scavengerThreadMain");
+
+	thread->sleep(1000);
+
+	while (!thread->shutdownInProgress)
+		{
+		scavenge((scavengeForced > 0));
+		
+		if (recordDataPool->activeMemory < recordScavengeThreshold)
+			{
+			INTERLOCKED_INCREMENT(scavengerThreadSleeping);
+			thread->sleep();
+			scavengerThreadSignaled = 0;
+			INTERLOCKED_DECREMENT(scavengerThreadSleeping);
+			}
+		}
+}
+
+void Database::scavengerThreadWakeup(void)
+{
+	if (scavengerThread)
+		scavengerThread->wake();
 }
 
 int Database::createSequence(int64 initialValue)
@@ -2169,25 +2237,6 @@ int Database::getMemorySize(const char *string)
 }
 
 
-void Database::cleanupRecords(RecordScavenge *recordScavenge)
-{
-	Sync sync (&syncTables, "Database::cleanupRecords");
-	sync.lock (Shared);
-
-	for (Table *table = tableList; table; table = table->next)
-		{
-		try
-			{
-			table->cleanupRecords(recordScavenge);
-			}
-		catch (SQLException &exception)
-			{
-			Log::debug ("Exception during cleanupRecords of table %s.%s: %s\n",
-					table->schemaName, table->name, exception.getText());
-			}
-		}
-}
-
 void Database::licenseCheck()
 {
 #ifdef LICENSE
@@ -2249,16 +2298,6 @@ void Database::deleteRepositoryBlob(const char *schema, const char *repositoryNa
 {
 	Repository *repository = getRepository (getSymbol (schema), getSymbol (repositoryName));
 	repository->deleteBlob (volume, blobId, transaction);	
-}
-
-void Database::commit(Transaction *transaction)
-{
-	dbb->commit(transaction);
-}
-
-void Database::rollback(Transaction *transaction)
-{
-	dbb->rollback(transaction->transactionId, transaction->hasUpdates);
 }
 
 void Database::renameTable(Table* table, const char* newSchema, const char* newName)
@@ -2392,6 +2431,45 @@ void Database::getTableSpaceFilesInfo(InfoTable* infoTable)
 	tableSpaceManager->getTableSpaceFilesInfo(infoTable);
 }
 
+void Database::cardinalityThreadMain(void * database)
+{
+	((Database*) database)->cardinalityThreadMain();
+}
+
+void Database::cardinalityThreadMain(void)
+{
+	Thread *thread = Thread::getThread("Database::cardinalityThreadMain");
+
+	thread->sleep(1000);
+
+	while (!thread->shutdownInProgress)
+		{
+		updateCardinalities();
+		INTERLOCKED_INCREMENT(cardinalityThreadSleeping);
+		thread->sleep();
+		cardinalityThreadSignaled = 0;
+		INTERLOCKED_DECREMENT(cardinalityThreadSleeping);
+		}
+}
+
+void Database::signalCardinality(void)
+{
+	Sync syncCard(&syncCardinality, "Database::signalCardinality");
+	syncCard.lock(Exclusive);
+
+	if (cardinalityThreadSleeping && !cardinalityThreadSignaled)
+		{
+		INTERLOCKED_INCREMENT(cardinalityThreadSignaled);
+		cardinalityThreadWakeup();
+		}
+}
+
+void Database::cardinalityThreadWakeup(void)
+{
+	if (cardinalityThread)
+		cardinalityThread->wake();
+}
+
 void Database::updateCardinalities(void)
 {
 	Sync syncDDL(&syncSysDDL, "Database::updateCardinalities(1)");
@@ -2400,11 +2478,16 @@ void Database::updateCardinalities(void)
 	Sync syncTbl(&syncTables, "Database::updateCardinalities(2)");
 	syncTbl.lock(Shared);
 	
+	Log::log("Update cardinalities\n");
 	bool hit = false;
 	
 	try
 		{
-		for (Table *table = tableList; table; table = table->next)
+		
+		// Establish the record cardinality for each table. Abandon the effort
+		// if a forced scavenge operation is pending.
+		
+		for (Table *table = tableList; (table && scavengeForced == 0); table = table->next)
 			{
 			uint64 cardinality = table->cardinality;
 			
@@ -2506,9 +2589,62 @@ void Database::setRecordScavengeFloor(int value)
 		}
 }
 
-void Database::forceRecordScavenge(void)
+void Database::checkRecordScavenge(void)
 {
-	retireRecords(true);
+	// Signal a load-based scavenge if we are over the threshold
+
+	if (scavengerThreadSleeping && !scavengerThreadSignaled)
+		{
+		Sync syncMem(&syncMemory, "Database::checkRecordScavenge");
+		syncMem.lock(Exclusive);
+
+		if (   !scavengerThreadSignaled 
+			&& (recordDataPool->activeMemory > lastActiveMemoryChecked))
+			{
+			// Start a new age generation regularly.  Note that since activeMemory
+			// can go down due to a recent scavenge, it is possible for
+			// lastGenerationMemory to be > recordDataPool->activeMemory
+
+			if (  (int64) (recordDataPool->activeMemory - lastGenerationMemory)
+			    > (int64) recordScavengeMaxGroupSize)
+				{
+				// Let the scavenger run to prune records.  
+				// It will also retire records if recordScavengeThreshold has been reached.
+
+				INTERLOCKED_INCREMENT (currentGeneration);
+				lastGenerationMemory = recordDataPool->activeMemory;
+
+				INTERLOCKED_INCREMENT(scavengerThreadSignaled);
+				scavengerThreadWakeup();
+				}
+
+			else if (recordDataPool->activeMemory >= recordScavengeThreshold)
+				{
+				INTERLOCKED_INCREMENT(scavengerThreadSignaled);
+				scavengerThreadWakeup();
+				}
+
+			lastActiveMemoryChecked = recordDataPool->activeMemory;
+			}
+		}
+}
+
+// Signal the scavenger thread
+
+void Database::signalScavenger(bool force)
+{
+	Sync syncMem(&syncMemory, "Database::signalScavenger");
+	syncMem.lock(Exclusive);
+
+	if (scavengerThreadSleeping && !scavengerThreadSignaled)
+		{
+		INTERLOCKED_INCREMENT(scavengerThreadSignaled);
+		
+		if (force)
+			INTERLOCKED_INCREMENT(scavengeForced);
+		
+		scavengerThreadWakeup();
+		}
 }
 
 void Database::debugTrace(void)
@@ -2621,4 +2757,9 @@ void Database::setLowMemory(void)
 		}
 
 	lowMemory = true;
+}
+
+void Database::clearLowMemory(void)
+{
+	lowMemory = false;
 }

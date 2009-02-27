@@ -1733,6 +1733,7 @@ public:
 
 class Delayed_insert :public ilink {
   uint locks_in_memory;
+  thr_lock_type delayed_lock;
 public:
   THD thd;
   TABLE *table;
@@ -1775,6 +1776,8 @@ public:
     pthread_cond_init(&cond_client,NULL);
     pthread_mutex_lock(&LOCK_thread_count);
     delayed_insert_threads++;
+    delayed_lock= global_system_variables.low_priority_updates ?
+                                          TL_WRITE_LOW_PRIORITY : TL_WRITE;
     pthread_mutex_unlock(&LOCK_thread_count);
   }
   ~Delayed_insert()
@@ -2614,7 +2617,7 @@ bool Delayed_insert::handle_inserts(void)
   table->use_all_columns();
 
   thd_proc_info(&thd, "upgrading lock");
-  if (thr_upgrade_write_delay_lock(*thd.lock->locks))
+  if (thr_upgrade_write_delay_lock(*thd.lock->locks, delayed_lock))
   {
     /*
       This can happen if thread is killed either by a shutdown
@@ -3562,6 +3565,12 @@ static TABLE *create_table_from_items(THD *thd, HA_CREATE_INFO *create_info,
                                     MYSQL_LOCK_IGNORE_FLUSH, &not_used)) ||
         hooks->postlock(&table, 1))
   {
+    /* purecov: begin tested */
+    /*
+      This can happen in innodb when you get a deadlock when using same table
+      in insert and select
+    */
+    my_error(ER_CANT_LOCK, MYF(0), my_errno);
     if (*lock)
     {
       mysql_unlock_tables(thd, *lock);
@@ -3571,6 +3580,7 @@ static TABLE *create_table_from_items(THD *thd, HA_CREATE_INFO *create_info,
     if (!create_info->table_existed)
       drop_open_table(thd, table, create_table->db, create_table->table_name);
     DBUG_RETURN(0);
+    /* purecov: end */
   }
   DBUG_RETURN(table);
 }

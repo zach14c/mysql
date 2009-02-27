@@ -226,11 +226,6 @@ void SerialLogRecord::startRecord()
 	log->startRecord();
 }
 
-void SerialLogRecord::wakeup()
-{
-	log->wakeup();
-}
-
 void SerialLogRecord::putStream(Stream *stream)
 {
 	putInt(stream->totalLength);

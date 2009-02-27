@@ -2,7 +2,7 @@ DROP DATABASE IF EXISTS mysqltest;
 Creating database and tables ...
 CREATE DATABASE mysqltest;
 USE mysqltest;
-CREATE TABLE t1 (a LONGTEXT) ENGINE=MYISAM;
+CREATE TABLE t1 (a LONGTEXT);
 Inserting data ...
 USE mysqltest;
 INSERT INTO t1 VALUES ("text");
