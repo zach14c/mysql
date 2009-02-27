@@ -896,23 +896,26 @@ innobase_mysql_tmpfile(void)
 		my_close(). */
 
 #ifdef _WIN32
-		/* Note that on Windows, the integer returned by mysql_tmpfile 
-		has no relation to C runtime file descriptor. Here, we need 
-		to call my_get_osfhandle to get the HANDLE and then convert it 
+		/* Note that on Windows, the integer returned by mysql_tmpfile
+		has no relation to C runtime file descriptor. Here, we need
+		to call my_get_osfhandle to get the HANDLE and then convert it
 		to C runtime filedescriptor. */
-		{
-			HANDLE hFile = my_get_osfhandle(fd);
-			HANDLE hDup;
-			BOOL bOK = 
-				DuplicateHandle(GetCurrentProcess(), hFile, GetCurrentProcess(),
-								&hDup, 0, FALSE, DUPLICATE_SAME_ACCESS);
-			if(bOK) {
-				fd2 = _open_osfhandle((intptr_t)hDup,0);
-			}
-			else {
-				my_osmaperr(GetLastError());
-				fd2 = -1;
-			}	
+		HANDLE	osf_handle = my_get_osfhandle(fd);
+		HANDLE	dup_handle;
+		BOOL	ret = DuplicateHandle(GetCurrentProcess(),
+					      osf_handle,
+					      GetCurrentProcess(),
+					      &dup_handle,
+					      0,
+					      FALSE,
+					      DUPLICATE_SAME_ACCESS);
+
+		if (ret != 0) {
+			fd2 = _open_osfhandle((intptr_t) dup_handle, 0);
+		}
+		else {
+			my_osmaperr(GetLastError());
+			fd2 = -1;
 		}
 #else
 		fd2 = dup(fd);
@@ -1790,8 +1793,8 @@ innobase_init(
 		goto error;
 	}
 
-        (void) my_hash_init(&innobase_open_tables,system_charset_info, 32, 0, 0,
-                            (my_hash_get_key) innobase_get_key, 0, 0);
+	(void) my_hash_init(&innobase_open_tables, system_charset_info, 32, 0, 0,
+					(my_hash_get_key) innobase_get_key, 0, 0);
 	pthread_mutex_init(&innobase_share_mutex, MY_MUTEX_INIT_FAST);
 	pthread_mutex_init(&prepare_commit_mutex, MY_MUTEX_INIT_FAST);
 	pthread_mutex_init(&commit_threads_m, MY_MUTEX_INIT_FAST);
@@ -3909,7 +3912,7 @@ calc_row_difference(
 	upd_t*		uvect,		/* in/out: update vector */
 	uchar*		old_row,	/* in: old row in MySQL format */
 	uchar*		new_row,	/* in: new row in MySQL format */
-	TABLE*          table,		/* in: table in MySQL data
+	TABLE*		table,		/* in: table in MySQL data
 					dictionary */
 	uchar*		upd_buff,	/* in: buffer to use */
 	ulint		buff_len,	/* in: buffer length */
@@ -6187,7 +6190,7 @@ ha_innobase::info(
 		}
 
 		stats.check_time = 0;
-	        stats.mrr_length_per_rec= ref_length +  8; // 8 = max(sizeof(void *));
+		stats.mrr_length_per_rec= ref_length +  8; // 8 = max(sizeof(void *));
 
 		if (stats.records == 0) {
 			stats.mean_rec_length = 0;
@@ -6749,17 +6752,17 @@ int ha_innobase::reset()
 
 	reset_template(prebuilt);
 
-	/* TODO: This should really be reset in reset_template() but for now
-	it's safer to do it explicitly here. */
-
-	/* This is a statement level counter. */
-	prebuilt->autoinc_last_value = 0;
-
 	/* Reset index condition pushdown state */
 	pushed_idx_cond_keyno= MAX_KEY;
 	pushed_idx_cond= NULL;
 	ds_mrr.dsmrr_close();
 	prebuilt->idx_cond_func= NULL;
+
+	/* TODO: This should really be reset in reset_template() but for now
+	it's safer to do it explicitly here. */
+
+	/* This is a statement level counter. */
+	prebuilt->autoinc_last_value = 0;
 
 	return(0);
 }
