@@ -78,3 +78,4 @@ num_objects
 #
 DROP USER bup_user1;
 DROP DATABASE objectcount;
+DROP TABLESPACE ts ENGINE=FALCON;

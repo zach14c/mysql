@@ -110,4 +110,5 @@ SELECT num_objects FROM mysql.backup_history ORDER BY backup_id DESC LIMIT 1;
 
 DROP USER bup_user1;
 DROP DATABASE objectcount;
+DROP TABLESPACE ts ENGINE=FALCON;
 --remove_file $MYSQLD_BACKUPDIR/objectcount.bak
