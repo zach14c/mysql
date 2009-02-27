@@ -2059,34 +2059,10 @@ int bcat_create_item(st_bstream_image_header *catalogue,
 
   if (item->type == BSTREAM_IT_TABLESPACE)
   {
-    Obj *ts= obs::find_tablespace(thd, sobj->get_name());
-
-    if (ts)
-    {
-      /*
-        A tablespace with the same name exists. We have to check if other
-        attributes are the same as they were.
-      */
-
-      if (obs::compare_tablespace_attributes(ts, sobj))
-      {
-        /* The tablespace is the same. There is nothing more to do. */
-        DBUG_PRINT("restore",(" skipping tablespace which exists"));
-        return BSTREAM_OK;
-      }
-
-      /*
-        A tablespace with the same name exists, but it has been changed
-        since backup.  We can't re-create the original tablespace used by
-        tables being restored. We report this and cancel restore process.
-      */
-
-      DBUG_PRINT("restore",
-                 (" tablespace has changed on the server - aborting"));
-      log.report_error(ER_BACKUP_TS_CHANGE, desc);
-      delete ts;
-      return BSTREAM_ERROR;
-    }
+    if (obs::find_tablespace(thd, sobj->get_name()))
+      // A tablespace with the same name exists. Nothing more to do.
+      DBUG_PRINT("restore",(" skipping tablespace which exists"));
+      return BSTREAM_OK;
   }
 
   // Create the object.
