@@ -98,10 +98,10 @@ enum enum_bstream_ret_codes {
 */
 struct st_server_version
 {
-  unsigned short int  major;   ///< major level
-  unsigned short int  minor;   ///< minor level
-  unsigned short int  release; ///< release level
-  bstream_blob        extra;   ///< extra data about the server
+  unsigned short int  major;   /**< major level */
+  unsigned short int  minor;   /**< minor level */
+  unsigned short int  release; /**< release level */
+  bstream_blob        extra;   /**< extra data about the server */
 };
 
 /**
@@ -250,7 +250,7 @@ struct st_bstream_item_info
 */
 struct st_bstream_ts_info
 {
-  struct st_bstream_item_info  base;  ///< The base of the info class.
+  struct st_bstream_item_info  base;  /**< The base of the info class. */
 };
 
 /**
@@ -260,7 +260,7 @@ struct st_bstream_ts_info
 */
 struct st_bstream_db_info
 {
-  struct st_bstream_item_info  base;  ///< The base of the info class.
+  struct st_bstream_item_info  base;  /**< The base of the info class. */
 };
 
 
@@ -407,11 +407,11 @@ int bstream_next_chunk(backup_stream*);
  */
 struct st_abstract_stream
 {
-  /// Pointer to write method.
+  /** Pointer to write method. */
   int (*write)(void*, bstream_blob*, bstream_blob); 
-  /// Pointer to read method.
+  /** Pointer to read method. */
   int (*read)(void*, bstream_blob*, bstream_blob);
-  /// Pointer to forward method.
+  /** Pointer to forward method. */
   int (*forward)(void*, unsigned long int*);
 };
 
@@ -421,10 +421,10 @@ struct st_abstract_stream
 */
 struct st_bstream_buffer
 {
-  bstream_byte  *begin;   ///< pointer to start of stream buffer
-  bstream_byte  *pos;     ///< current position in buffer
-  bstream_byte  *header;  ///< pointer to header
-  bstream_byte  *end;     ///< pointer to end of stream buffer
+  bstream_byte  *begin;   /**< pointer to start of stream buffer */
+  bstream_byte  *pos;     /**< current position in buffer */
+  bstream_byte  *header;  /**< pointer to header */
+  bstream_byte  *end;     /**< pointer to end of stream buffer */
 };
 
 /**
@@ -432,21 +432,21 @@ struct st_bstream_buffer
 */
 struct st_backup_stream
 {
-  struct st_abstract_stream stream; ///< stream metadata
-  unsigned long int block_size;     ///< block size
-  short int init_block_count;       ///< initial block count
-  /// Enumeration for state of the stream
-  enum { CLOSED,         ///< stream has been closed 
-         FIRST_BLOCK,    ///< reading/writing the first block of a stream 
-         NORMAL,         ///< normal operation 
-         LAST_FRAGMENT,  ///< reading last fragment of a chunk 
-         EOS,            ///< end of stream detected 
-         ERROR } state;  ///< state of the stream
-  /// Enumeration for mode of stream (read, write).
-  enum { READING, WRITING } mode; ///< current mode.
-  struct st_bstream_buffer buf; ///< stream buffer
-  bstream_blob mem;             ///< pointer to location in buffer
-  bstream_blob data_buf;        ///< pointer to data buffer
+  struct st_abstract_stream stream; /**< stream metadata */
+  unsigned long int block_size;     /**< block size */
+  short int init_block_count;       /**< initial block count */
+  /** Enumeration for state of the stream */
+  enum { CLOSED,         /**< stream has been closed */
+         FIRST_BLOCK,    /**< reading/writing the first block of a stream */
+         NORMAL,         /**< normal operation */
+         LAST_FRAGMENT,  /**< reading last fragment of a chunk */
+         EOS,            /**< end of stream detected */
+         ERROR } state;  /**< state of the stream */
+  /** Enumeration for mode of stream (read, write). */
+  enum { READING, WRITING } mode; /**< current mode. */
+  struct st_bstream_buffer buf; /**< stream buffer */
+  bstream_blob mem;             /**< pointer to location in buffer */
+  bstream_blob data_buf;        /**< pointer to data buffer */
 };
 
 int bstream_open_wr(backup_stream*, unsigned long int, unsigned long int);
