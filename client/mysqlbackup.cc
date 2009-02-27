@@ -1179,6 +1179,8 @@ search_objects(struct st_backup_catalog *bup_catalog,
 
   if (search_database_name)
     search_database_name_len= strlen(search_database_name);
+  else
+    search_database_name_len= 0; /* Avoid compiler warning: uninitialized */
   search_object_name_len= strlen(search_object_name);
 
   if (opt_mysqlbackup_image_order)

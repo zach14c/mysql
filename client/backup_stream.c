@@ -863,7 +863,13 @@ bcat_add_item(struct st_bstream_image_header *hdr,
       bup_global->glb_typename= "Tablespace";
       array= &bup_catalog->cat_tablespaces;
       break;
-    default: break; /* purecov: deadcode */
+    default:
+      /* purecov: begin deadcode */
+      DBUG_ASSERT(0);
+      array= NULL; /* Avoid compiler warning: array may be used uninitialized */
+      brc= BSTREAM_ERROR;
+      goto end;
+      /* purecov: end */
     }
 
     /* Check consistency of array position. */
@@ -1553,7 +1559,13 @@ bcat_create_item(struct st_bstream_image_header *hdr,
       typnam= "Tablespace";
       array= &bup_catalog->cat_tablespaces;
       break;
-    default: break; /* purecov: deadcode */
+    default:
+      /* purecov: begin deadcode */
+      DBUG_ASSERT(0);
+      typnam= NULL; /* Avoid compiler warning: may be used uninitialized */
+      array= NULL;  /* Avoid compiler warning: may be used uninitialized */
+      goto end;
+      /* purecov: end */
     }
 
     bup_global= backup_locate_global(typnam, array, item->pos);
