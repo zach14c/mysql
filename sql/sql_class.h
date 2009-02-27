@@ -1803,6 +1803,12 @@ public:
   */
   my_bool BML_exception; // Allow some DDL if there is an exception
   ulong backup_wait_timeout;
+  /*
+    If online backup/restore in progress, set to SQLCOM_BACKUP or
+    SQLCOM_RESTORE, otherwise 0. This modifies the behavior of some
+    statements, e.g. GRANT.
+  */
+  int backup_in_progress;
 
   Locked_tables_list locked_tables_list;
 

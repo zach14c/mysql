@@ -465,14 +465,11 @@ backup_id
 drop database and perform restore
 DROP DATABASE db1;
 DROP DATABASE db2;
-Restore will fail because of bug#41578
 RESTORE FROM 'db12b.bak';
-ERROR HY000: Could not execute grant '`db1`.`<empty> #`'.
+backup_id
+#
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Unknown column 'b' in 't1'
-Error	#	Could not execute grant '`db1`.`<empty> #`'.
-Warning	#	Operation aborted - data might be corrupted
 RESTORE FROM 'db12a.bak' OVERWRITE;
 backup_id
 #
@@ -518,14 +515,11 @@ backup_id
 drop database and perform restore
 DROP DATABASE db1;
 DROP DATABASE db2;
-Restore will fail because of bug#41578
 RESTORE FROM 'db12c.bak';
-ERROR HY000: Could not execute grant '`db2`.`<empty> #`'.
+backup_id
+#
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Table 'db2.t2' doesn't exist
-Error	#	Could not execute grant '`db2`.`<empty> #`'.
-Warning	#	Operation aborted - data might be corrupted
 RESTORE FROM 'db12a.bak' OVERWRITE;
 backup_id
 #
@@ -607,12 +601,10 @@ drop database and perform restore
 DROP DATABASE db1;
 DROP DATABASE db2;
 RESTORE FROM 'db12b.bak';
-ERROR HY000: Could not execute grant '`db2`.`<empty> #`'.
+backup_id
+#
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Table 'db2.t1' doesn't exist
-Error	#	Could not execute grant '`db2`.`<empty> #`'.
-Warning	#	Operation aborted - data might be corrupted
 RESTORE FROM 'db12a.bak' OVERWRITE;
 backup_id
 #
@@ -663,12 +655,10 @@ drop database and perform restore
 DROP DATABASE db1;
 DROP DATABASE db2;
 RESTORE FROM 'db12c.bak';
-ERROR HY000: Could not execute grant '`db1`.`<empty> #`'.
+backup_id
+#
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Unknown column 'a1' in 't2'
-Error	#	Could not execute grant '`db1`.`<empty> #`'.
-Warning	#	Operation aborted - data might be corrupted
 RESTORE FROM 'db12a.bak' OVERWRITE;
 backup_id
 #

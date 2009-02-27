@@ -1854,6 +1854,7 @@ sub environment_setup {
   $ENV{'MYSQL_SLAP'}=               mysqlslap_arguments();
   $ENV{'MYSQL_IMPORT'}=             client_arguments("mysqlimport");
   $ENV{'MYSQL_SHOW'}=               client_arguments("mysqlshow");
+  $ENV{'MYSQL_BACKUP'}=             client_arguments("mysqlbackup");
   $ENV{'MYSQL_BINLOG'}=             mysqlbinlog_arguments();
   $ENV{'MYSQL'}=                    client_arguments("mysql");
   $ENV{'MYSQL_UPGRADE'}=            client_arguments("mysql_upgrade");

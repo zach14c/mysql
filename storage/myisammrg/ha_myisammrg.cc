@@ -479,17 +479,16 @@ static MI_INFO *myisammrg_attach_children_callback(void *callback_param)
   TABLE         *parent= ha_myrg->table_ptr();
   TABLE         *child;
   TABLE_LIST    *child_l;
-  MI_INFO       *myisam;
+  MI_INFO       *myisam= NULL;
   DBUG_ENTER("myisammrg_attach_children_callback");
-
-  my_errno= 0;
 
   /* Get child list item. */
   child_l= ha_myrg->next_child_attach;
   if (!child_l)
   {
     DBUG_PRINT("myrg", ("No more children to attach"));
-    DBUG_RETURN(NULL);
+    my_errno= 0; /* Ok, no more child tables. */
+    goto end;
   }
   child= child_l->table;
   /*
@@ -532,7 +531,7 @@ static MI_INFO *myisammrg_attach_children_callback(void *callback_param)
     DBUG_PRINT("error", ("temporary table mismatch parent: %d  child: %d",
                          parent->s->tmp_table, child->s->tmp_table));
     my_errno= HA_ERR_WRONG_MRG_TABLE_DEF;
-    goto err;
+    goto end;
   }
 
   /* Extract the MyISAM table structure pointer from the handler object. */
@@ -547,8 +546,8 @@ static MI_INFO *myisammrg_attach_children_callback(void *callback_param)
   DBUG_PRINT("myrg", ("MyISAM handle: %p  my_errno: %d",
                       myisam, my_errno));
 
- err:
-  DBUG_RETURN(my_errno ? NULL : myisam);
+ end:
+  DBUG_RETURN(myisam);
 }
 
 

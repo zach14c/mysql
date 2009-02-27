@@ -188,6 +188,18 @@ extern char *my_strndup(const char *from, size_t length,
 #define ORIG_CALLER_INFO    /* nothing */
 #endif
 
+/*
+  ERROR INJECTION: Non-thread-safe global variable to request error inject.
+  Set this variable to non-zero to request the next my_malloc() to fail.
+  This works with my_malloc.c:my_malloc() and safemalloc.c:_mymalloc().
+  If using this in tests, note that the error messages produced by
+  my_malloc and safemalloc are different. You may need to modify the
+  results with --replace_regex. You may find examples in
+  client/backup_stream.c and backup_client_coverage.test.
+  The global variable is defined in my_static.c.
+*/
+IF_DBUG(extern int my_malloc_error_inject);
+
 #ifdef HAVE_LARGE_PAGES
 extern uint my_get_large_page_size(void);
 extern uchar * my_large_malloc(size_t size, myf my_flags);

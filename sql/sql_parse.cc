@@ -2382,7 +2382,15 @@ mysql_execute_command(THD *thd)
     goto error;
 #else
   {
-    /* 
+    /*
+      Stack the 'backup_in_progress' variable. If this is run inside
+      backup/restore, it will probably fail. But then we need to
+      return to the former value.
+    */
+    int saved_backup_in_progress= thd->backup_in_progress;
+    thd->backup_in_progress= lex->sql_command;
+
+    /*
        Reset warnings for BACKUP and RESTORE commands. Note: this will
        cause problems if BACKUP/RESTORE is allowed inside stored
        routines and events. In that case, warnings should not be
@@ -2438,9 +2446,11 @@ mysql_execute_command(THD *thd)
     /*
       Note: execute_backup_command() sends a correct response to the client
       (either ok, result set or error message).
-     */ 
-    if (execute_backup_command(thd, lex, &backupdir, overwrite_restore,
-                               skip_gap_event))
+    */
+    res= execute_backup_command(thd, lex, &backupdir, overwrite_restore,
+                                skip_gap_event);
+    thd->backup_in_progress= saved_backup_in_progress;
+    if (res)
       goto error;
     break;
   }

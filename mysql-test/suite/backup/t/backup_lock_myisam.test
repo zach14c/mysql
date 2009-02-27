@@ -26,12 +26,12 @@ DROP DATABASE IF EXISTS db2;
 DROP DATABASE IF EXISTS db3;
 --enable_warnings
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0, 1
-remove_file $MYSQLD_DATADIR/db1.bak;
+remove_file $MYSQLD_BACKUPDIR/db1.bak;
 
 --error 0, 1
-remove_file $MYSQLD_DATADIR/db3.bak;
+remove_file $MYSQLD_BACKUPDIR/db3.bak;
 
 --echo Create database 1 and a table then populate it
 CREATE DATABASE db1;
@@ -214,5 +214,5 @@ DROP DATABASE db1;
 DROP DATABASE db2;
 DROP DATABASE db3;
 
-remove_file $MYSQLD_DATADIR/db1.bak;
-remove_file $MYSQLD_DATADIR/db3.bak;
+remove_file $MYSQLD_BACKUPDIR/db1.bak;
+remove_file $MYSQLD_BACKUPDIR/db3.bak;

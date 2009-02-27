@@ -1,26 +1,26 @@
 --source include/not_embedded.inc
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 
 --disable_warnings
---rmdir $MYSQLD_DATADIR/test
---mkdir $MYSQLD_DATADIR/test
+--rmdir $MYSQLD_BACKUPDIR/test
+--mkdir $MYSQLD_BACKUPDIR/test
 DROP DATABASE IF EXISTS empty_db;
 DROP DATABASE IF EXISTS other_db;
 --enable_warnings
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 
 CREATE DATABASE empty_db;
 CREATE DATABASE other_db;
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/empty_db.bak
+--remove_file $MYSQLD_BACKUPDIR/empty_db.bak
 --replace_column 1 #
 BACKUP DATABASE empty_db TO 'empty_db.bak';
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/all.bak
+--remove_file $MYSQLD_BACKUPDIR/all.bak
 --replace_column 1 #
 BACKUP DATABASE * TO 'all.bak';
 
@@ -61,7 +61,7 @@ CREATE TABLE t1 (
 ) DEFAULT CHARSET=latin1;
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/empty_db.bak
+--remove_file $MYSQLD_BACKUPDIR/empty_db.bak
 --replace_column 1 #
 BACKUP DATABASE empty_db TO 'empty_db.bak';
 
@@ -87,12 +87,12 @@ DROP DATABASE IF EXISTS other_db;
 # we remove the test/db.opt file as a part of clean-up.
 #
 --error 0,1
---remove_file $MYSQLD_DATADIR/test/db.opt
+--remove_file $MYSQLD_BACKUPDIR/test/db.opt
 --enable_warnings
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/all.bak
+--remove_file $MYSQLD_BACKUPDIR/all.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/empty_db.bak
+--remove_file $MYSQLD_BACKUPDIR/empty_db.bak
 
 

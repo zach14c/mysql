@@ -19,13 +19,13 @@ SET DEBUG_SYNC= 'reset';
 DROP DATABASE IF EXISTS backup_concurrent;
 --enable_warnings
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/backup1;
+remove_file $MYSQLD_BACKUPDIR/backup1;
 --error 0,1
-remove_file $MYSQLD_DATADIR/backup2;
+remove_file $MYSQLD_BACKUPDIR/backup2;
 --error 0,1
-remove_file $MYSQLD_DATADIR/backup3;
+remove_file $MYSQLD_BACKUPDIR/backup3;
 
 CREATE DATABASE backup_concurrent;
 USE backup_concurrent;
@@ -131,6 +131,6 @@ reap;
 DROP DATABASE backup_concurrent;
 SET DEBUG_SYNC= 'reset';
 
-remove_file $MYSQLD_DATADIR/backup1;
-remove_file $MYSQLD_DATADIR/backup3;
+remove_file $MYSQLD_BACKUPDIR/backup1;
+remove_file $MYSQLD_BACKUPDIR/backup3;
 
