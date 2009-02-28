@@ -1091,8 +1091,8 @@ void Dbb::printPage(Bdb* bdb)
 			//IndexPage::printPage (bdb, false);
 			{
 			IndexPage *indexPage = (IndexPage*) page;
-			Log::debug ("Page %d is index page, parent %d, prior %d, next %d, lvl %d\n", 
-						 pageNumber, indexPage->parentPage, indexPage->priorPage, indexPage->nextPage, indexPage->level);
+			Log::debug ("Page %d is index page, parent %d,  next %d, lvl %d\n", 
+						 pageNumber, indexPage->parentPage, indexPage->nextPage, indexPage->level);
 			}
 			break;
 

@@ -212,7 +212,6 @@ void Debug::execute(IndexPage *indexPage, DebugCommand command, const char *stri
 			break;
 
 		case Left:
-			fetch(indexPage->priorPage);
 			break;
 
 		case Up:

@@ -41,7 +41,7 @@ SRLIndexPage::~SRLIndexPage()
 
 }
 
-void SRLIndexPage::append(Dbb *dbb, TransId transId, int idxVersion, int32 page, int32 lvl, int32 up, int32 left, int32 right, int length, const UCHAR *data)
+void SRLIndexPage::append(Dbb *dbb, TransId transId, int idxVersion, int32 page, int32 lvl, int32 up, int32 right, int length, const UCHAR *data)
 {
 	START_RECORD(srlIndexPage, "SRLIndexPage::append");
 	
@@ -58,7 +58,6 @@ void SRLIndexPage::append(Dbb *dbb, TransId transId, int idxVersion, int32 page,
 	putInt(page);
 	putInt(lvl);
 	putInt(up);
-	putInt(left);
 	putInt(right);
 	putInt(length);
 	putData(length, data);
@@ -79,14 +78,15 @@ void SRLIndexPage::read()
 	pageNumber = getInt();
 	level = getInt();
 	parent = getInt();
-	prior = getInt();
+
+	if (control->version < srlVersion19)
+		(void)getInt(); //ignore prior page that was logged
+
 	next = getInt();
 	length = getInt();
 	data = getData(length);
 
-	if (log->tracePage && (log->tracePage == pageNumber ||
-						   log->tracePage == prior ||
-						   log->tracePage == next))
+	if (log->tracePage && (log->tracePage == pageNumber || log->tracePage == next))
 		print();
 }
 
@@ -106,13 +106,13 @@ void SRLIndexPage::pass2()
 			switch (indexVersion)
 				{
 				case INDEX_VERSION_0:
-					Index2RootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, parent, level, prior, next, length, data);
+					Index2RootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, parent, level, 0, next, length, data);
 					break;
 				
 				case INDEX_VERSION_1:
 					{
 					bool haveSuperNodes = (control->version >=srlVersion14);
-					IndexRootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, parent, level, prior, next, length, data,
+					IndexRootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, parent, level, next, length, data,
 						haveSuperNodes);
 					}
 					break;
@@ -128,7 +128,7 @@ void SRLIndexPage::pass2()
 
 void SRLIndexPage::print()
 {
-	logPrint("Index page %d/%d, level %d, parent %d, prior %d, next %d\n", pageNumber, tableSpaceId, level, parent, prior, next);
+	logPrint("Index page %d/%d, level %d, parent %d, next %d\n", pageNumber, tableSpaceId, level, parent, next);
 }
 
 void SRLIndexPage::redo()
