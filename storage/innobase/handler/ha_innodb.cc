@@ -896,23 +896,26 @@ innobase_mysql_tmpfile(void)
 		my_close(). */
 
 #ifdef _WIN32
-		/* Note that on Windows, the integer returned by mysql_tmpfile 
-		has no relation to C runtime file descriptor. Here, we need 
-		to call my_get_osfhandle to get the HANDLE and then convert it 
+		/* Note that on Windows, the integer returned by mysql_tmpfile
+		has no relation to C runtime file descriptor. Here, we need
+		to call my_get_osfhandle to get the HANDLE and then convert it
 		to C runtime filedescriptor. */
-		{
-			HANDLE hFile = my_get_osfhandle(fd);
-			HANDLE hDup;
-			BOOL bOK = 
-				DuplicateHandle(GetCurrentProcess(), hFile, GetCurrentProcess(),
-								&hDup, 0, FALSE, DUPLICATE_SAME_ACCESS);
-			if(bOK) {
-				fd2 = _open_osfhandle((intptr_t)hDup,0);
-			}
-			else {
-				my_osmaperr(GetLastError());
-				fd2 = -1;
-			}	
+		HANDLE	osf_handle = my_get_osfhandle(fd);
+		HANDLE	dup_handle;
+		BOOL	ret = DuplicateHandle(GetCurrentProcess(),
+					      osf_handle,
+					      GetCurrentProcess(),
+					      &dup_handle,
+					      0,
+					      FALSE,
+					      DUPLICATE_SAME_ACCESS);
+
+		if (ret != 0) {
+			fd2 = _open_osfhandle((intptr_t) dup_handle, 0);
+		}
+		else {
+			my_osmaperr(GetLastError());
+			fd2 = -1;
 		}
 #else
 		fd2 = dup(fd);
@@ -1790,8 +1793,8 @@ innobase_init(
 		goto error;
 	}
 
-        (void) my_hash_init(&innobase_open_tables,system_charset_info, 32, 0, 0,
-                            (my_hash_get_key) innobase_get_key, 0, 0);
+	(void) my_hash_init(&innobase_open_tables, system_charset_info, 32, 0, 0,
+					(my_hash_get_key) innobase_get_key, 0, 0);
 	pthread_mutex_init(&innobase_share_mutex, MY_MUTEX_INIT_FAST);
 	pthread_mutex_init(&prepare_commit_mutex, MY_MUTEX_INIT_FAST);
 	pthread_mutex_init(&commit_threads_m, MY_MUTEX_INIT_FAST);
@@ -1999,6 +2002,19 @@ retry:
 			}
 		}
 
+		/* The following calls to read the MySQL binary log
+		file name and the position return consistent results:
+		1) Other InnoDB transactions cannot intervene between
+		these calls as we are holding prepare_commit_mutex.
+		2) Binary logging of other engines is not relevant
+		to InnoDB as all InnoDB requires is that committing
+		InnoDB transactions appear in the same order in the
+		MySQL binary log as they appear in InnoDB logs.
+		3) A MySQL log file rotation cannot happen because
+		MySQL protects against this by having a counter of
+		transactions in prepared state and it only allows
+		a rotation when the counter drops to zero. See
+		LOCK_prep_xids and COND_prep_xids in log.cc. */
 		trx->mysql_log_file_name = mysql_bin_log_file_name();
 		trx->mysql_log_offset = (ib_longlong) mysql_bin_log_file_pos();
 
@@ -3896,7 +3912,7 @@ calc_row_difference(
 	upd_t*		uvect,		/* in/out: update vector */
 	uchar*		old_row,	/* in: old row in MySQL format */
 	uchar*		new_row,	/* in: new row in MySQL format */
-	TABLE*          table,		/* in: table in MySQL data
+	TABLE*		table,		/* in: table in MySQL data
 					dictionary */
 	uchar*		upd_buff,	/* in: buffer to use */
 	ulint		buff_len,	/* in: buffer length */
@@ -5026,9 +5042,19 @@ create_table_def(
 
 			charset_no = (ulint)field->charset()->number;
 
-			ut_a(charset_no < 256); /* in data0type.h we assume
-						that the number fits in one
-						byte */
+			if (UNIV_UNLIKELY(charset_no >= 256)) {
+				/* in data0type.h we assume that the
+				number fits in one byte in prtype */
+				push_warning_printf(
+					(THD*) trx->mysql_thd,
+					MYSQL_ERROR::WARN_LEVEL_ERROR,
+					ER_CANT_CREATE_TABLE,
+					"In InnoDB, charset-collation codes"
+					" must be below 256."
+					" Unsupported code %lu.",
+					(ulong) charset_no);
+				DBUG_RETURN(ER_CANT_CREATE_TABLE);
+			}
 		}
 
 		ut_a(field->type() < 256); /* we assume in dtype_form_prtype()
@@ -6163,7 +6189,7 @@ ha_innobase::info(
 		}
 
 		stats.check_time = 0;
-	        stats.mrr_length_per_rec= ref_length +  8; // 8 = max(sizeof(void *));
+		stats.mrr_length_per_rec= ref_length +  8; // 8 = max(sizeof(void *));
 
 		if (stats.records == 0) {
 			stats.mean_rec_length = 0;
@@ -6725,17 +6751,17 @@ int ha_innobase::reset()
 
 	reset_template(prebuilt);
 
-	/* TODO: This should really be reset in reset_template() but for now
-	it's safer to do it explicitly here. */
-
-	/* This is a statement level counter. */
-	prebuilt->autoinc_last_value = 0;
-
 	/* Reset index condition pushdown state */
 	pushed_idx_cond_keyno= MAX_KEY;
 	pushed_idx_cond= NULL;
 	ds_mrr.dsmrr_close();
 	prebuilt->idx_cond_func= NULL;
+
+	/* TODO: This should really be reset in reset_template() but for now
+	it's safer to do it explicitly here. */
+
+	/* This is a statement level counter. */
+	prebuilt->autoinc_last_value = 0;
 
 	return(0);
 }
@@ -7482,6 +7508,7 @@ ha_innobase::store_lock(
 		    && isolation_level != TRX_ISO_SERIALIZABLE
 		    && (lock_type == TL_READ || lock_type == TL_READ_NO_INSERT)
 		    && (sql_command == SQLCOM_INSERT_SELECT
+			|| sql_command == SQLCOM_REPLACE_SELECT
 			|| sql_command == SQLCOM_UPDATE
 			|| sql_command == SQLCOM_CREATE_TABLE)) {
 
@@ -7489,10 +7516,11 @@ ha_innobase::store_lock(
 			option set or this session is using READ COMMITTED
 			isolation level and isolation level of the transaction
 			is not set to serializable and MySQL is doing
-			INSERT INTO...SELECT or UPDATE ... = (SELECT ...) or
-			CREATE  ... SELECT... without FOR UPDATE or
-			IN SHARE MODE in select, then we use consistent
-			read for select. */
+			INSERT INTO...SELECT or REPLACE INTO...SELECT
+			or UPDATE ... = (SELECT ...) or CREATE  ...
+			SELECT... without FOR UPDATE or IN SHARE
+			MODE in select, then we use consistent read
+			for select. */
 
 			prebuilt->select_lock_type = LOCK_NONE;
 			prebuilt->stored_select_lock_type = LOCK_NONE;
