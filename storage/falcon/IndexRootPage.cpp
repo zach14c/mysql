@@ -524,6 +524,7 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 		memcpy(leftPage, page, page->length);
 		leftBdb->setPageHeader(leftPage->pageType);
 //		leftPage->pageNumber = leftBdb->pageNumber;
+		splitPage->priorPage = leftBdb->pageNumber;
 		
 		// Create a node referencing the leftmost page. Assign to it a null key
 		// and record number 0 to ensure that all nodes are inserted after it.
@@ -604,7 +605,14 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 
 		if (result == NodeAdded || result == Duplicate)
 			{
+			splitBdb = dbb->fetchPage (splitPageNumber, PAGE_btree, Exclusive);
+			BDB_HISTORY(splitBdb);
+			splitBdb->mark (transId);
+			splitPage = (IndexPage*) splitBdb->buffer;
+			splitPage->parentPage = bdb->pageNumber;
 			bdb->release(REL_HISTORY);
+			splitBdb->release(REL_HISTORY);
+
 			return false;
 			}
 
@@ -770,7 +778,7 @@ void IndexRootPage::debugBucket(Dbb *dbb, int indexId, int recordNumber, TransId
 	bdb->release(REL_HISTORY);
 }
 
-void IndexRootPage::redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPage, int level, int32 nextPage, int length, const UCHAR *data, bool haveSuperNodes)
+void IndexRootPage::redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPage, int level, int32 priorPage, int32 nextPage, int length, const UCHAR *data, bool haveSuperNodes)
 {
 	//Log::debug("redoIndexPage %d -> %d -> %d level %d, parent %d)\n", priorPage, pageNumber, nextPage, level, parentPage);
 	Bdb *bdb = dbb->fakePage(pageNumber, PAGE_btree, NO_TRANSACTION);
@@ -780,6 +788,7 @@ void IndexRootPage::redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPage, 
 	indexPage->level = level;
 	indexPage->parentPage = parentPage;
 	indexPage->nextPage = nextPage;
+	indexPage->priorPage = priorPage;
 
 	if (haveSuperNodes)
 		{

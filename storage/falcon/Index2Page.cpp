@@ -996,7 +996,7 @@ void Index2Page::logIndexPage(Bdb *bdb, TransId transId)
 	ASSERT(bdb->useCount > 0);
 	Index2Page *indexPage = (Index2Page*) bdb->buffer;
 	dbb->serialLog->logControl->indexPage.append(dbb, transId, INDEX_VERSION_0, bdb->pageNumber, indexPage->level, 
-												 indexPage->parentPage, indexPage->nextPage,
+												 indexPage->parentPage, indexPage->priorPage, indexPage->nextPage,  
 												 indexPage->length - OFFSET (Index2Page*, nodes), 
 												 (const UCHAR*) indexPage->nodes);
 }

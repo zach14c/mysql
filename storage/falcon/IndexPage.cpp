@@ -770,10 +770,11 @@ void IndexPage::printPage(IndexPage * page, int32 pageNumber, bool inversion)
 	UCHAR	key [MAX_PHYSICAL_KEY_LENGTH];
 	int		length;
 
-	Log::debug ("Btree Page %d, level %d, length %d, next %d, parent %d\n", 
+	Log::debug ("Btree Page %d, level %d, length %d, prior %d, next %d, parent %d\n", 
 			pageNumber,
 			page->level,
 			page->length,
+			page->priorPage,
 			page->nextPage,
 			page->parentPage);
 
@@ -817,10 +818,11 @@ void IndexPage::printPage(IndexPage *page, int32 pageNum, bool printDetail, bool
 	int32	pageNumber = pageNum;
 #endif	
 
-	Log::debug ("Page: %d  level: %d  length: %d´ next: %d  parent: %d BEGIN\n", 
+	Log::debug ("Page: %d  level: %d  length: %d  prior: %d  next: %d  parent: %d BEGIN\n", 
 			pageNumber,
 			page->level,
 			page->length,
+			page->priorPage,
 			page->nextPage,
 			page->parentPage);
 
@@ -849,10 +851,11 @@ void IndexPage::printPage(IndexPage *page, int32 pageNum, bool printDetail, bool
 		}
 
 //	if (printDetail)
-		Log::debug ("Page: %d  level: %d  length: %d  next: %d  parent: %d END\n", 
+		Log::debug ("Page: %d  level: %d  length: %d  prior: %d  next: %d  parent: %d END\n", 
 				pageNumber,
 				page->level,
 				page->length,
+				page->priorPage,
 				page->nextPage,
 				page->parentPage);
 
@@ -904,10 +907,11 @@ void IndexPage::printNode(IndexPage *page, int32 pageNumber, Btn *node, bool inv
 		
 	{
 	//LogLock logLock;
-	Log::debug("Page: %d  level: %d  length: %d  next: %d  parent: %d\n", 
+	Log::debug("Page: %d  level: %d  length: %d  prior: %d  next: %d  parent: %d\n", 
 			pageNumber,
 			page->level,
 			page->length,
+			page->priorPage,
 			page->nextPage,
 			page->parentPage);
 		
@@ -1193,8 +1197,22 @@ Bdb* IndexPage::splitPage(Dbb *dbb, Bdb *bdb, TransId transId)
 
 	split->level = level;
 	split->version = version;
+	split->priorPage = bdb->pageNumber;
 	split->parentPage = parentPage;
 	split->length = OFFSET(IndexPage*, nodes);
+	
+	// Link page into right sibling
+
+	if ((split->nextPage = nextPage))
+		{
+		Bdb *nextBdb = dbb->fetchPage (split->nextPage, PAGE_btree, Exclusive);
+		BDB_HISTORY(bdb);
+		IndexPage *next = (IndexPage*) nextBdb->buffer;
+		nextBdb->mark(transId);
+		next->priorPage = splitBdb->pageNumber;
+		nextBdb->release(REL_HISTORY);
+		}
+
 	nextPage = splitBdb->pageNumber;
 
 	return splitBdb;
@@ -1229,7 +1247,7 @@ void IndexPage::logIndexPage(Bdb *bdb, TransId transId)
 	***/
 	
 	dbb->serialLog->logControl->indexPage.append(dbb, transId, INDEX_VERSION_1, bdb->pageNumber, indexPage->level, 
-												 indexPage->parentPage, indexPage->nextPage,  
+												 indexPage->parentPage, indexPage->priorPage, indexPage->nextPage,  
 												 indexPage->length - OFFSET (IndexPage*, superNodes), 
 												 (const UCHAR*) indexPage->superNodes);
 }
