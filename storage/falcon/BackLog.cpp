@@ -1,4 +1,4 @@
-/* Copyright © 2008 MySQL AB, 2009 Sun Microsystems, Inc.
+/* Copyright ï¿½ 2008 MySQL AB, 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -59,6 +59,9 @@ BackLog::~BackLog(void)
 
 int32 BackLog::save(RecordVersion* record)
 {
+	// Write the record and entire prior version chain
+	// into a single backlog record
+
 	Serialize stream;
 	record->serialize(&stream);
 	int32 backlogId = section->insertStub(NO_TRANSACTION);

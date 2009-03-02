@@ -203,7 +203,7 @@ public:
 	bool		validateUpdate(int32 recordNumber, TransId transactionId);
 	Record*		treeFetch(int32 recordNumber);
 	
-	int32			backlogRecord(RecordVersion* record);
+	bool			backlogRecord(RecordVersion* record, Bitmap* backlogBitmap);
 	Record*			backlogFetch(int32 recordNumber);
 	void			deleteRecordBacklog(int32 recordNumber);
 	
