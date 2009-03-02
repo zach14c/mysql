@@ -49,7 +49,7 @@ engine=innodb;
 show warnings;
 
 -- echo The following tests check that two-byte collation IDs work
--- The file ../std-data/Index.xml has a number of collations with high IDs.
+# The file ../std-data/Index.xml has a number of collations with high IDs.
 
 # Test that the "ID" column in I_S and SHOW queries can handle two bytes
 select * from information_schema.collations where id>256 order by id;

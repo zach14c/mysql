@@ -61,6 +61,7 @@ The following tests check that two-byte collation IDs work
 select * from information_schema.collations where id>256 order by id;
 COLLATION_NAME	CHARACTER_SET_NAME	ID	IS_DEFAULT	IS_COMPILED	SORTLEN
 utf16_test_ci	utf16	327			8
+utf8_phone_ci	utf8	352			8
 utf8_test_ci	utf8	353			8
 ucs2_test_ci	ucs2	358			8
 ucs2_vn_ci	ucs2	359			8
