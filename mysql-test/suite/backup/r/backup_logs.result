@@ -78,7 +78,7 @@ WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
 SELECT operation,num_objects, username, command FROM mysql.backup_history
 WHERE backup_id=@bup_id;
 operation	num_objects	username	command
-backup	0	tom	BACKUP DATABASE backup_logs TO 'backup_logs1.bak'
+backup	1	tom	BACKUP DATABASE backup_logs TO 'backup_logs1.bak'
 SELECT CURRENT_USER();
 CURRENT_USER()
 root@localhost
@@ -92,11 +92,7 @@ WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
 SELECT operation,num_objects, username, command FROM mysql.backup_history
 WHERE backup_id=@bup_id;
 operation	num_objects	username	command
-backup	0	root	BACKUP DATABASE backup_logs TO 'backup_logs1.bak'
-
-From the above tables we can notice that num_objects shows '0' if only DB
-is included in backup image(BUG#39109)
-
+backup	1	root	BACKUP DATABASE backup_logs TO 'backup_logs1.bak'
 Include all objects in database(Databases, tables, procedures and
 functions, views, triggers and events) and perform backup operation.
 con1: Create tables
@@ -241,7 +237,7 @@ timediff(validity_point_time, start_time) >= 0	timediff(stop_time, validity_poin
 From backup_history log we will notice that "drivers" column will show
 Myisam, snapshot, default and no-data drivers
 "error_num" will be '0' as both backup and restore was successful
-"num_objects" count is always 5(as there are 5 tables in database).
+"num_objects" count is 11: (1 db, 4 routines, 2 views, 3 tables, 1 db)
 It does not list other objects from the backup image(BUG#39109)
 SHOW VARIABLES LIKE 'log_backup_output';
 Variable_name	Value
@@ -254,7 +250,7 @@ binlog_file	#
 backup_state	complete
 operation	backup
 error_num	0
-num_objects	4
+num_objects	11
 total_bytes	5215
 validity_point_time	#
 start_time	#
@@ -323,7 +319,7 @@ binlog_file	#
 backup_state	complete
 operation	restore
 error_num	0
-num_objects	4
+num_objects	11
 total_bytes	1483
 validity_point_time	#
 start_time	#
@@ -366,6 +362,41 @@ The backup id for this command should be 505.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 backup_id
 505
+
+Attempt to set the backup log paths to a really long string.
+
+SET global max_allowed_packet=1024*100;
+
+Now attempt to set the backup_progress_log_file to 512 characters.
+
+SET @@global.backup_progress_log_file = repeat('a',512);
+
+Now attempt to set the backup_progress_log_file to 513 characters.
+
+SET @@global.backup_progress_log_file = repeat('a',513);
+ERROR HY000: The path specified for backup_progress_log_file is too long.
+
+Now attempt to set the backup_progress_log_file to a really long string.
+
+SET @@global.backup_progress_log_file = repeat('a',99*1024);
+ERROR HY000: The path specified for backup_progress_log_file is too long.
+SET @@global.backup_progress_log_file = DEFAULT;
+
+Now attempt to set the backup_history_log_file to 512 characters.
+
+SET @@global.backup_history_log_file = repeat('a',512);
+
+Now attempt to set the backup_history_log_file to 513 characters.
+
+SET @@global.backup_history_log_file = repeat('a',513);
+ERROR HY000: The path specified for backup_history_log_file is too long.
+
+Now attempt to set the backup_history_log_file to a really long string.
+
+SET @@global.backup_history_log_file = repeat('a',99*1024);
+ERROR HY000: The path specified for backup_history_log_file is too long.
+SET @@global.backup_history_log_file = DEFAULT;
+SET global max_allowed_packet=DEFAULT;
 SET @@global.log_backup_output = 'TABLE';
 DROP USER 'tom'@'localhost';
 SET DEBUG_SYNC= 'reset';

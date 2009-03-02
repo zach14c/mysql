@@ -32,7 +32,8 @@
   Additionally, the interface provides two helper services
   for backup:
     - execute an arbitrary SQL statement
-    - lock and unlock all metadata, so called "DDL blocker"
+    - block DDL statements interferring with backup/restore operations - so 
+      called Backup Metadata Lock.
 */
 
 namespace obs {
@@ -396,50 +397,49 @@ bool compare_tablespace_attributes(Obj *ts1, Obj *ts2);
 ///////////////////////////////////////////////////////////////////////////
 
 //
-// DDL blocker methods.
+// Backup Metadata Lock (BML) methods.
 //
 
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Turn on the ddl blocker.
+   Get the backup metadata lock.
 
-  This method is used to start the ddl blocker blocking DDL commands.
+   After successful acquiring of the lock, all statements marked as 
+   CF_BLOCKED_BY_BML will be blocked (see @c sql_command_flags[] in 
+   sql_parse.cc).
 
-  @param[in] thd  Thread context.
+   @param[in] thd  current thread
 
-  @return error status.
+  @return Error status.
     @retval FALSE on success.
     @retval TRUE on error.
 */
-bool ddl_blocker_enable(THD *thd);
+bool bml_get(THD *thd);
 
 /**
-  Turn off the ddl blocker.
-
-  This method is used to stop the ddl blocker from blocking DDL commands.
+  Release the backup metadata lock if acquired earlier.
 */
-void ddl_blocker_disable();
+void bml_release();
 
 /**
-  Turn on the ddl blocker exception
+   Turn on the backup metadata lock exception
 
-  This method is used to allow the exception allowing a restore operation to
-  perform DDL operations while the ddl blocker blocking DDL commands.
+   The thread for which this method is called is allowed to execute statements 
+   which normally are blocked by BML.
 
-  @param[in] thd  Thread context.
+   @param[in] thd  current thread
 */
-void ddl_blocker_exception_on(THD *thd);
+void bml_exception_on(THD *thd);
 
 /**
-  Turn off the ddl blocker exception.
+   Turn off the backup metadata lock exception
 
-  This method is used to suspend the exception allowing a restore operation to
-  perform DDL operations while the ddl blocker blocking DDL commands.
+   This method cancels the exception activated with @c bml_exception_on().
 
-  @param[in] thd  Thread context.
-*/
-void ddl_blocker_exception_off(THD *thd);
+   @param[in] thd  current thread
+  */
+void bml_exception_off(THD *thd);
 
 /*
   The following class is used to manage name locks on a list of tables.

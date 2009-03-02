@@ -49,11 +49,11 @@ SET DEBUG_SYNC= 'RESET';
 DROP DATABASE IF EXISTS bup_online;
 --enable_warnings
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_online.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online.bak;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_online1.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online1.bak;
 
 ##############################################################
 --echo
@@ -221,7 +221,7 @@ SELECT COUNT(*) FROM t1;
 SELECT * FROM t2;
 SELECT  COUNT(*) FROM t2;
 
-remove_file $MYSQLD_DATADIR/bup_online.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online.bak;
 
 
 --echo
@@ -331,7 +331,7 @@ SELECT  COUNT(*) FROM t2;
 SELECT *FROM t3;
 SELECT  COUNT(*) FROM t3;
 
-remove_file $MYSQLD_DATADIR/bup_online1.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online1.bak;
 
 
 --echo
@@ -441,7 +441,7 @@ SELECT  COUNT(*) FROM t2;
 SELECT *FROM t3;
 SELECT  COUNT(*) FROM t3;
 
-remove_file $MYSQLD_DATADIR/bup_online.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online.bak;
 
 
 --echo
@@ -551,7 +551,7 @@ SELECT  COUNT(*) FROM t2;
 SELECT *FROM t3;
 SELECT  COUNT(*) FROM t3;
 
-remove_file $MYSQLD_DATADIR/bup_online.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online.bak;
 
 
 --echo
@@ -661,7 +661,7 @@ SELECT  COUNT(*) FROM t2;
 SELECT *FROM t3;
 SELECT  COUNT(*) FROM t3;
 
-remove_file $MYSQLD_DATADIR/bup_online.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online.bak;
 
 
 --echo
@@ -793,7 +793,7 @@ SELECT  COUNT(*) FROM t2;
 SELECT *FROM t3;
 SELECT  COUNT(*) FROM t3;
 
-remove_file $MYSQLD_DATADIR/bup_online.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online.bak;
 
 
 --echo
@@ -926,7 +926,7 @@ SELECT *FROM t3;
 SELECT  COUNT(*) FROM t3;
 
 
-remove_file $MYSQLD_DATADIR/bup_online.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online.bak;
 
 
 --echo
@@ -1036,7 +1036,7 @@ SELECT  COUNT(*) FROM t2;
 SELECT *FROM t3;
 SELECT  COUNT(*) FROM t3;
 
-remove_file $MYSQLD_DATADIR/bup_online.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online.bak;
 
 
 --echo
@@ -1154,6 +1154,6 @@ SELECT  COUNT(*) FROM t3;
 
 DROP DATABASE bup_online;
 
-remove_file $MYSQLD_DATADIR/bup_online.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_online.bak;
 
 SET DEBUG_SYNC= 'RESET';

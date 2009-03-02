@@ -844,4 +844,3 @@ xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mm
 ***  DROP ptr DATABASE ****
 
 DROP DATABASE ptr;
-SET GLOBAL BINLOG_FORMAT='MIXED';

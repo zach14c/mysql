@@ -29,7 +29,7 @@ class Image_info;
 
   Destination of the messages is determined by the implementation. Currently
   messages are:
-  - for errors, reported to the online backup progress table,
+  - for errors, reported to the MySQL backup progress table,
   - for errors and warning, pushed on client's error stack,
   - written to error log and trace file (if enabled)
   

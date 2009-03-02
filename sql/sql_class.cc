@@ -415,13 +415,14 @@ THD::THD()
    spcont(NULL),
    m_parser_state(NULL),
   /*
-    @todo The following is a work around for online backup and the DDL blocker.
-          It should be removed when the generalized solution is in place.
-          This is needed to ensure the restore (which uses DDL) is not blocked
-          when the DDL blocker is engaged.
+    @todo The following is a work around for MySQL backup and the Backup 
+    Metadata Lock (BML). It should be removed when the generalized solution 
+    is in place. This is needed to ensure the restore thread (which uses BML) 
+    is not blocked by the lock.
   */
-   DDL_exception(FALSE),
+   BML_exception(FALSE),
    backup_wait_timeout(BACKUP_WAIT_TIMEOUT_DEFAULT),
+   backup_in_progress(0),
 #if defined(ENABLED_DEBUG_SYNC)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */

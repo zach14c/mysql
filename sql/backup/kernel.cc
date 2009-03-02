@@ -71,12 +71,11 @@
 #include "be_default.h"
 #include "be_snapshot.h"
 #include "be_nodata.h"
-#include "ddl_blocker.h"
 #include "transaction.h"
 
 
 /** 
-  Global Initialization for online backup system.
+  Global Initialization for MYSQL backup system.
  
   @note This function is called in the server initialization sequence, just
   after it loads all its plugins.
@@ -89,7 +88,7 @@ int backup_init()
 }
 
 /**
-  Global clean-up for online backup system.
+  Global clean-up for MySQL backup system.
   
   @note This function is called in the server shut-down sequences, just before
   it shuts-down all its plugins.
@@ -123,6 +122,9 @@ static int send_reply(Backup_restore_ctx &context);
   @param[in] backupdir  value of the backupdir variable from server.
   @param[in] overwrite  whether or not restore should overwrite existing
                         DB with same name as in backup image
+  @param[in] skip_gap_event  whether or not restore should skip writing
+                             the gap event if run on a master in an active
+                             replication scenario
 
   @note This function sends response to the client (ok, result set or error).
 
@@ -134,7 +136,11 @@ static int send_reply(Backup_restore_ctx &context);
  */
 
 int
-execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
+execute_backup_command(THD *thd, 
+                       LEX *lex, 
+                       String *backupdir, 
+                       bool overwrite,
+                       bool skip_gap_event)
 {
   int res= 0;
   
@@ -209,7 +215,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
   {
 
     Restore_info *info= context.prepare_for_restore(backupdir, lex->backup_dir, 
-                                                    thd->query);
+                                                    thd->query, skip_gap_event);
     
     if (!info || !info->is_valid())
       DBUG_RETURN(send_error(context, ER_BACKUP_RESTORE_PREPARE));
@@ -557,9 +563,11 @@ int Backup_restore_ctx::prepare(::String *backupdir, LEX_STRING location)
 
   // Freeze all meta-data. 
 
-  ret= obs::ddl_blocker_enable(m_thd);
+  ret= obs::bml_get(m_thd);
   if (ret)
     return fatal_error(report_error(ER_DDL_BLOCK));
+
+  DEBUG_SYNC(m_thd, "after_backup_restore_prepare");
 
   return 0;
 }
@@ -617,6 +625,7 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
   /*
     Open output stream.
    */
+  DEBUG_SYNC(m_thd, "before_backup_open_stream");
   Output_stream *s= new Output_stream(*this, 
                                       &m_path,
                                       with_compression);
@@ -671,8 +680,8 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
 
   info->save_start_time(when);
   m_catalog= info;
-  m_state= PREPARED_FOR_BACKUP;
-  
+  m_state= PREPARED_FOR_BACKUP;  
+
   return info;
 }
 
@@ -682,6 +691,7 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
   @param[in] backupdir  path to the file where backup image is stored
   @param[in] orig_loc   path as specified on command line for backup image
   @param[in] query      RESTORE query starting the operation
+  @param[in] skip_gap_event TRUE means do not write gap event
   
   @returns Pointer to a @c Restore_info instance containing catalogue of the
   backup image (read from the image). NULL if errors were detected.
@@ -691,7 +701,8 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
 Restore_info* 
 Backup_restore_ctx::prepare_for_restore(String *backupdir,
                                         LEX_STRING orig_loc, 
-                                        const char *query)
+                                        const char *query,
+                                        bool skip_gap_event)
 {
   using namespace backup;  
 
@@ -737,7 +748,7 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
   /*
     Open input stream.
    */
-
+  DEBUG_SYNC(m_thd, "before_restore_open_stream");
   Input_stream *s= new Input_stream(*this, &m_path);
   m_stream= s;
   
@@ -834,7 +845,8 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
 
     DEBUG_SYNC(m_thd, "after_disable_slave_connections");
 
-    obs::write_incident_event(m_thd, obs::RESTORE_EVENT);
+    if (!skip_gap_event)
+      obs::write_incident_event(m_thd, obs::RESTORE_EVENT);
     m_engage_binlog= TRUE;
     obs::engage_binlog(FALSE);
   }
@@ -1025,7 +1037,7 @@ int Backup_restore_ctx::close()
   unlock_tables();                              // Never errors
 
   // unfreeze meta-data
-  obs::ddl_blocker_disable();                   // Never errors
+  obs::bml_release();                           // Never errors
 
   // restore thread options
 
@@ -1191,6 +1203,8 @@ int Backup_restore_ctx::restore_triggers_and_events()
         DBUG_ASSERT(obj->m_obj_ptr);
         if (events.push_back(obj))
         {
+          delete it;
+          delete dbit;
           // Error has been reported, but not logged to backup logs
           DBUG_RETURN(fatal_error(log_error(ER_OUT_OF_RESOURCES))); 
         }
@@ -1269,6 +1283,8 @@ int Backup_restore_ctx::do_restore(bool overwrite)
   int err;
   Input_stream &s= *static_cast<Input_stream*>(m_stream);
   Restore_info &info= *static_cast<Restore_info*>(m_catalog);
+
+  DEBUG_SYNC(m_thd, "start_do_restore");
 
   report_stats_pre(info);                       // Never errors
 
@@ -1400,7 +1416,7 @@ int Backup_restore_ctx::report_stream_open_failure(int my_open_status,
   int error= 0;
   switch (my_open_status) {
     case ER_OPTION_PREVENTS_STATEMENT:
-      error= report_error(ER_OPTION_PREVENTS_STATEMENT, "--secure-file-priv");
+      error= report_error(ER_OPTION_PREVENTS_STATEMENT, "--secure-backup-file-priv");
       break;
     case ER_BACKUP_WRITE_LOC:
       /*
@@ -2043,34 +2059,10 @@ int bcat_create_item(st_bstream_image_header *catalogue,
 
   if (item->type == BSTREAM_IT_TABLESPACE)
   {
-    Obj *ts= obs::find_tablespace(thd, sobj->get_name());
-
-    if (ts)
-    {
-      /*
-        A tablespace with the same name exists. We have to check if other
-        attributes are the same as they were.
-      */
-
-      if (obs::compare_tablespace_attributes(ts, sobj))
-      {
-        /* The tablespace is the same. There is nothing more to do. */
-        DBUG_PRINT("restore",(" skipping tablespace which exists"));
-        return BSTREAM_OK;
-      }
-
-      /*
-        A tablespace with the same name exists, but it has been changed
-        since backup.  We can't re-create the original tablespace used by
-        tables being restored. We report this and cancel restore process.
-      */
-
-      DBUG_PRINT("restore",
-                 (" tablespace has changed on the server - aborting"));
-      log.report_error(ER_BACKUP_TS_CHANGE, desc);
-      delete ts;
-      return BSTREAM_ERROR;
-    }
+    if (obs::find_tablespace(thd, sobj->get_name()))
+      // A tablespace with the same name exists. Nothing more to do.
+      DBUG_PRINT("restore",(" skipping tablespace which exists"));
+      return BSTREAM_OK;
   }
 
   // Create the object.

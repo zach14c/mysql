@@ -1796,13 +1796,19 @@ public:
   Parser_state *m_parser_state;
 
   /*
-    @todo The following is a work around for online backup and the DDL blocker.
-          It should be removed when the generalized solution is in place.
-          This is needed to ensure the restore (which uses DDL) is not blocked
-          when the DDL blocker is engaged.
+    @todo The following is a work around for MySQL backup and the Backup 
+    Metadata Lock (BML). It should be removed when the generalized solution 
+    is in place. This is needed to ensure the restore thread (which uses BML) 
+    is not blocked by the lock.
   */
-  my_bool DDL_exception; // Allow some DDL if there is an exception
+  my_bool BML_exception; // Allow some DDL if there is an exception
   ulong backup_wait_timeout;
+  /*
+    If online backup/restore in progress, set to SQLCOM_BACKUP or
+    SQLCOM_RESTORE, otherwise 0. This modifies the behavior of some
+    statements, e.g. GRANT.
+  */
+  int backup_in_progress;
 
   Locked_tables_list locked_tables_list;
 
@@ -3041,6 +3047,12 @@ public:
   modifies our currently non-transactional system tables.
 */
 #define CF_AUTO_COMMIT_TRANS  (CF_IMPLICT_COMMIT_BEGIN | CF_IMPLICIT_COMMIT_END)
+/**
+  Mark statements which shuld be blocked when the Backup Metadata Lock is
+  active. See bml.cc.
+*/ 
+#define CF_BLOCKED_BY_BML       (1U << 8)
+
 
 /* Bits in server_command_flags */
 

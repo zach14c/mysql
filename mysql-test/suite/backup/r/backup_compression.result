@@ -1,23 +1,300 @@
 CREATE DATABASE db1;
-CREATE TABLE db1.t1(a INT);
+CREATE DATABASE db2;
+CREATE DATABASE db3;
+CREATE TABLE db1.t1(a INT) ENGINE= MYISAM;
+CREATE TABLE db1.t2(a CHAR(20)) ENGINE= INNODB;
+CREATE TABLE db2.t1(b INT) ENGINE= FALCON;
+CREATE TABLE db2.t2(b CHAR(20)) ENGINE= MEMORY;
+CREATE TABLE db3.t1(c INT) ENGINE= BLACKHOLE;
+INSERT INTO db1.t1 VALUES(10),(20),(30),(40);
+INSERT INTO db1.t2 VALUES('TEST1'),('TEST2'),('TEST3'),('TEST4');
+INSERT INTO db2.t1 VALUES(10),(20),(30),(40);
+INSERT INTO db2.t2 VALUES('TEST1'),('TEST2'),('TEST3'),('TEST4');
+INSERT INTO db3.t1 VALUES(10),(20),(30),(40);
+Perform backup with compression
+PURGE BACKUP LOGS;
 BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION;
 backup_id
 #
-CREATE TABLE db1.t2(a INT);
-BACKUP DATABASE db1 TO 'db2.bak.gz' WITH COMPRESSION COMPRESSION_ALGORITHM=gzip;
+verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	backup	db1.bak.gz	BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION
+
+Verify total bytes of compressed and uncompressed data
+
+Select total_bytes of compressed data in @total_bytes_comp
+SELECT total_bytes into @total_bytes_comp FROM mysql.backup_history;
+PURGE BACKUP LOGS;
+Perform backup without compression
+BACKUP DATABASE db1 TO 'db1_no_compression.bak';
 backup_id
 #
-RESTORE FROM 'db1.bak.gz' OVERWRITE;
+
+Select total_bytes of uncompressed data in @total_bytes_no_comp
+SELECT total_bytes into @total_bytes_no_comp FROM mysql.backup_history;
+Verify the result
+SELECT @total_bytes_comp < @total_bytes_no_comp;
+@total_bytes_comp < @total_bytes_no_comp
+0
+The result 0 indicates that total bytes of compressed and uncompressed
+data is same(bug#41898). Once this bug is fixed, result should be 1.
+The size of compressed backup image should be less than uncomressed 
+image. 
+
+Drop database and execute restore operation
+DROP DATABASE db1;
+PURGE BACKUP LOGS;
+RESTORE FROM 'db1.bak.gz';
 backup_id
 #
-SHOW TABLES FROM db1;
-Tables_in_db1
-t1
-RESTORE FROM 'db2.bak.gz' OVERWRITE;
-backup_id
-#
+verify backup history logs:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	restore	db1.bak.gz	RESTORE FROM 'db1.bak.gz'
 SHOW TABLES FROM db1;
 Tables_in_db1
 t1
 t2
+SELECT * FROM db1.t1;
+a
+10
+20
+30
+40
+SELECT * FROM db1.t2;
+a
+TEST1
+TEST2
+TEST3
+TEST4
+
+Now perform backup by specifying the compression algorithm.
+
+PURGE BACKUP LOGS;
+BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION 
+COMPRESSION_ALGORITHM=gzip;
+backup_id
+#
+verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	backup	db1.bak.gz	BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION 
+COMPRESSION_ALGORITHM=gzip
+PURGE BACKUP LOGS;
+Perform restore
+RESTORE FROM 'db1.bak.gz' OVERWRITE;
+backup_id
+#
+verify backup history log:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	restore	db1.bak.gz	RESTORE FROM 'db1.bak.gz' OVERWRITE
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SELECT * FROM db1.t1;
+a
+10
+20
+30
+40
+SELECT * FROM db1.t2;
+a
+TEST1
+TEST2
+TEST3
+TEST4
+
+Perform backup using invalid syntax.
+
+BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION
+COMPRESSION_ALGORITHM;
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '' at line 2
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '' at line 2
+BACKUP DATABASE db1 TO 'db1.bak.gz' COMPRESSION_ALGORITHM=gzip;
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'COMPRESSION_ALGORITHM=gzip' at line 1
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'COMPRESSION_ALGORITHM=gzip' at line 1
+
+Execute backup with compression using invalid compression algorithm.
+
+BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION 
+COMPRESSION_ALGORITHM=invalid;
+ERROR HY000: Incorrect arguments to COMPRESSION_ALGORITHM
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Incorrect arguments to COMPRESSION_ALGORITHM
+
+Perform backup of all the databases using compression algorithm
+
+PURGE BACKUP LOGS;
+BACKUP DATABASE db1, db2, db3 TO 'db123.bak.gz' WITH COMPRESSION 
+COMPRESSION_ALGORITHM=gzip;
+backup_id
+#
+verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	backup	db123.bak.gz	BACKUP DATABASE db1, db2, db3 TO 'db123.bak.gz' WITH COMPRESSION 
+COMPRESSION_ALGORITHM=gzip
+PURGE BACKUP LOGS;
+RESTORE FROM 'db123.bak.gz' OVERWRITE;
+backup_id
+#
+verify backup history log:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history;
+backup_state	operation	backup_file
+complete	restore	db123.bak.gz
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SHOW TABLES FROM db3;
+Tables_in_db3
+t1
+
+Rename of gzip file without .gz extension, then perform restore.
+
+BACKUP DATABASE db1 TO 'db1.bak.gz' WITH COMPRESSION
+COMPRESSION_ALGORITHM=gzip;
+backup_id
+#
+Rename gzip file db1.bak.gz to db1_copy.bak and perform restore
+Verify that db1_copy.bak file exists using file_exists command
+Perform restore from renamed gzip file
+PURGE BACKUP LOGS;
+RESTORE FROM 'db1_copy.bak' OVERWRITE;
+backup_id
+#
+verify backup history log:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	restore	db1_copy.bak	RESTORE FROM 'db1_copy.bak' OVERWRITE
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SELECT * FROM db1.t1;
+a
+10
+20
+30
+40
+SELECT * FROM db1.t2;
+a
+TEST1
+TEST2
+TEST3
+TEST4
+Creating objects
+** create view **
+CREATE VIEW db1.v1 AS SELECT * FROM db1.t1;
+CREATE VIEW db2.vv AS SELECT * FROM db1.v1;
+** create triggers **
+CREATE TRIGGER db1.trg AFTER INSERT ON db1.t2 FOR EACH ROW
+BEGIN
+INSERT INTO db2.t2 VALUES('Trigger insertion');
+END;||
+** create procedures **
+CREATE PROCEDURE db2.p1()
+BEGIN
+SELECT * FROM db1.t2;
+END;
+||
+** create functions **
+CREATE FUNCTION db2.f1() RETURNS INTEGER
+BEGIN
+RETURN (SELECT COUNT(*) FROM db1.t1);
+END;
+||
+** create event **
+CREATE EVENT db3.e1 ON SCHEDULE EVERY 1 YEAR DO
+DELETE FROM db3.t1 WHERE c=1000;
+
+Do backup of database
+PURGE BACKUP LOGS;
+BACKUP DATABASE db1, db2, db3 TO 'db123.bak.gz' WITH COMPRESSION;
+backup_id
+#
+verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	backup	db123.bak.gz	BACKUP DATABASE db1, db2, db3 TO 'db123.bak.gz' WITH COMPRESSION
+Drop the database and perform restore
 DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+PURGE BACKUP LOGS;
+RESTORE FROM 'db123.bak.gz' OVERWRITE;
+backup_id
+#
+verify backup history log for backup state:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+complete	restore	db123.bak.gz	RESTORE FROM 'db123.bak.gz' OVERWRITE
+SHOW FULL TABLES FROM db1;
+Tables_in_db1	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SHOW FULL TABLES FROM db2;
+Tables_in_db2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+vv	VIEW
+SHOW TABLES FROM db3;
+Tables_in_db3
+t1
+Excercise objects
+Firing trigger trg
+INSERT INTO db1.t2 VALUES('TEST5');
+SELECT * FROM db1.t2;
+a
+TEST1
+TEST2
+TEST3
+TEST4
+TEST5
+SELECT * FROM db2.t2;
+b
+TEST1
+TEST2
+TEST3
+TEST4
+Trigger insertion
+Call procedures and functions
+CALL db2.p1();
+a
+TEST1
+TEST2
+TEST3
+TEST4
+TEST5
+SELECT db2.f1();
+db2.f1()
+4
+SELECT * FROM db1.v1;
+a
+10
+20
+30
+40
+SELECT * FROM db2.vv;
+a
+10
+20
+30
+40
+Test cleanup: Drop databases and remove backup files
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;

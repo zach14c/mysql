@@ -23,9 +23,9 @@ enable_query_log;
 ##############################################################
 
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_objectview.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview.bak;
 
 #Create Database and object view for this test.
 
@@ -173,7 +173,7 @@ SELECT * FROM bup_db1.v6 ORDER BY education, gender;
 SELECT * FROM bup_db2.t2 ORDER BY age;
 SELECT * FROM bup_db2.v2 ORDER BY age;
 SELECT * FROM bup_db2.v3 ORDER BY age;
-SELECT * FROM bup_db2.vv;
+SELECT * FROM bup_db2.vv ORDER BY N;
 SELECT * FROM bup_db2.student_details; #view v4 is renamed as student_details
 
 #Show the data and Create statements
@@ -213,14 +213,14 @@ DROP DATABASE bup_db2;
 
 --echo restore database with view dependency to other, non-existing db
 
---error ER_NO_SUCH_TABLE
+--error ER_BACKUP_CANT_RESTORE_VIEW
 RESTORE FROM 'bup_objectview1.bak';
 
 # An incomplete bup_db1 was created by the failing restore operation.
 # Remove it before trying restore of bup_db2.
 DROP DATABASE bup_db1;
 
---error ER_NO_SUCH_TABLE
+--error ER_BACKUP_CANT_RESTORE_VIEW
 RESTORE FROM 'bup_objectview2.bak';
 
 # An incomplete bup_db2 was created by the failing restore operation.
@@ -256,7 +256,7 @@ SELECT * FROM bup_db1.v6 ORDER BY education, gender;
 SELECT * FROM bup_db2.t2 ORDER BY age;
 SELECT * FROM bup_db2.v2 ORDER BY age;
 SELECT * FROM bup_db2.v3 ORDER BY age;
-SELECT * FROM bup_db2.vv;
+SELECT * FROM bup_db2.vv ORDER BY N;
 SELECT * FROM bup_db2.student_details;
 
 #Alter table t1 and take BACKUP to see if view is not affected.
@@ -382,7 +382,7 @@ DROP TABLE bup_db2.t2;
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 
-remove_file $MYSQLD_DATADIR/bup_objectview.bak;
-remove_file $MYSQLD_DATADIR/bup_objectview1.bak;
-remove_file $MYSQLD_DATADIR/bup_objectview2.bak;
-remove_file $MYSQLD_DATADIR/bup_objectview3.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview1.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview2.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_objectview3.bak;

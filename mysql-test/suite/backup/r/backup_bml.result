@@ -1,0 +1,3344 @@
+DROP DATABASE IF EXISTS bml_test;
+CREATE DATABASE bml_test;
+USE test;
+CREATE TABLE objects (pos int, type char(10), name char(16), args text);
+CREATE FUNCTION drop_stmt(pos_arg int) RETURNS text
+BEGIN
+DECLARE stmt text;
+SELECT concat('DROP ', type, ' ', name)
+INTO stmt
+FROM test.objects WHERE pos=pos_arg;
+RETURN stmt;
+END\\
+CREATE FUNCTION create_stmt(pos_arg int) RETURNS text
+BEGIN
+DECLARE stmt text;
+SELECT concat('CREATE ', type, ' ', name, args)
+INTO stmt
+FROM test.objects WHERE pos=pos_arg;
+RETURN stmt;
+END\\
+CREATE FUNCTION alter_stmt(pos_arg int) RETURNS text
+BEGIN
+DECLARE stmt text;
+SELECT concat('ALTER ', type, ' ', name, args)
+INTO stmt
+FROM test.objects WHERE pos=pos_arg;
+RETURN stmt;
+END\\
+USE test;
+TRUNCATE TABLE test.objects;
+INSERT INTO test.objects VALUES 
+(1, 'DATABASE', 'bml_test_db1', ''), 
+(2, 'TABLE',    't1',	'(a int)'), 
+(3, 'VIEW',	  'v1',	' AS SELECT * FROM t2'), 
+(4, 'FUNCTION', 'f1',	'() RETURNS int RETURN 1'),
+(5, 'PROCEDURE','p1',	'() SET @foo=1'),
+(6, 'EVENT',	  'e1',	' ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1'),
+(7, 'TRIGGER',  'r1',	' AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1'),
+(8, 'INDEX',	  'i1 ON t2', '(b)');
+DROP PROCEDURE IF EXISTS test.check_results\\
+Warnings:
+Note	1305	PROCEDURE test.check_results does not exist
+CREATE PROCEDURE test.check_results()
+BEGIN
+# show databases
+SHOW DATABASES LIKE 'bml%';
+# show objects in bml_test database
+SELECT table_name AS name, table_type AS type
+FROM information_schema.tables
+WHERE table_schema = 'bml_test'
+  UNION SELECT routine_name , routine_type
+FROM information_schema.routines
+WHERE routine_schema = 'bml_test'
+  UNION SELECT event_name, 'EVENT'
+    FROM information_schema.events
+WHERE event_schema = 'bml_test'
+  UNION SELECT trigger_name, 'TRIGGER'
+    FROM information_schema.triggers
+WHERE trigger_schema = 'bml_test';
+# show definiton of t2 to see the index if created
+SHOW CREATE TABLE bml_test.t2;
+END\\
+USE bml_test;
+CREATE TABLE t2 (b int);
+CREATE DATABASE bml_test_db1;
+CREATE TABLE t1(a int);
+CREATE VIEW v1 AS SELECT * FROM t2;
+CREATE FUNCTION f1() RETURNS int RETURN 1;
+CREATE PROCEDURE p1() SET @foo=1;
+CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1;
+CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1;
+CREATE INDEX i1 ON t2(b);
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+BACKUP DATABASE bml_test, bml_test_db1 TO 'bml_test_orig.bkp';
+backup_id
+#
+DROP VIEW v1;
+DROP TABLE t1;
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= CREATE VIEW v1 AS SELECT * FROM t2
+# DDL2= DROP FUNCTION f1
+# DDL3= DROP DATABASE bml_test_db1
+# DDL4= CREATE TABLE t1(a int)
+#
+# BML is activated by BACKUP DATABASE bml_test TO 'bml_test.bkp'.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+f1	FUNCTION
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+CREATE VIEW v1 AS SELECT * FROM t2;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+DROP FUNCTION f1;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE bml_test TO 'bml_test.bkp';
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= CREATE VIEW v1 AS SELECT * FROM t2
+# DDL2= DROP FUNCTION f1
+# DDL3= DROP DATABASE bml_test_db1
+# DDL4= CREATE TABLE t1(a int)
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "CREATE VIEW v1 AS SELECT * FROM t2%"
+     OR info LIKE "DROP FUNCTION f1%";
+state	info
+BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+debug sync point: before_execute_sql_command	DROP FUNCTION f1
+debug sync point: before_execute_sql_command	CREATE VIEW v1 AS SELECT * FROM t2
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+f1	FUNCTION
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= CREATE VIEW v1 AS SELECT * FROM t2
+# DDL2= DROP FUNCTION f1
+# DDL3= DROP DATABASE bml_test_db1
+# DDL4= CREATE TABLE t1(a int)
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+DROP DATABASE bml_test_db1;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+CREATE TABLE t1(a int);
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= CREATE VIEW v1 AS SELECT * FROM t2
+# DDL2= DROP FUNCTION f1
+# DDL3= DROP DATABASE bml_test_db1
+# DDL4= CREATE TABLE t1(a int)
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "DROP DATABASE bml_test_db1%"
+     OR info LIKE "CREATE TABLE t1(a int)%";
+state	info
+BML: waiting until released	CREATE TABLE t1(a int)
+BML: waiting until released	DROP DATABASE bml_test_db1
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= CREATE VIEW v1 AS SELECT * FROM t2
+# DDL2= DROP FUNCTION f1
+# DDL3= DROP DATABASE bml_test_db1
+# DDL4= CREATE TABLE t1(a int)
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+name	type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= CREATE DATABASE bml_test_db1
+# DDL2= DROP TABLE t1
+# DDL3= DROP VIEW v1
+# DDL4= CREATE FUNCTION f1() RETURNS int RETURN 1
+#
+# BML is activated by RESTORE FROM 'bml_test.bkp' OVERWRITE.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Database (bml%)
+bml_test
+name	type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+CREATE DATABASE bml_test_db1;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+DROP TABLE t1;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+RESTORE FROM 'bml_test.bkp' OVERWRITE;
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= CREATE DATABASE bml_test_db1
+# DDL2= DROP TABLE t1
+# DDL3= DROP VIEW v1
+# DDL4= CREATE FUNCTION f1() RETURNS int RETURN 1
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "CREATE DATABASE bml_test_db1%"
+     OR info LIKE "DROP TABLE t1%";
+state	info
+BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
+debug sync point: before_execute_sql_command	DROP TABLE t1
+debug sync point: before_execute_sql_command	CREATE DATABASE bml_test_db1
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+name	type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= CREATE DATABASE bml_test_db1
+# DDL2= DROP TABLE t1
+# DDL3= DROP VIEW v1
+# DDL4= CREATE FUNCTION f1() RETURNS int RETURN 1
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+DROP VIEW v1;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+CREATE FUNCTION f1() RETURNS int RETURN 1;
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= CREATE DATABASE bml_test_db1
+# DDL2= DROP TABLE t1
+# DDL3= DROP VIEW v1
+# DDL4= CREATE FUNCTION f1() RETURNS int RETURN 1
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "DROP VIEW v1%"
+     OR info LIKE "CREATE FUNCTION f1() RETURNS int RETURN 1%";
+state	info
+BML: waiting until released	CREATE FUNCTION f1() RETURNS int RETURN 1
+BML: waiting until released	DROP VIEW v1
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= CREATE DATABASE bml_test_db1
+# DDL2= DROP TABLE t1
+# DDL3= DROP VIEW v1
+# DDL4= CREATE FUNCTION f1() RETURNS int RETURN 1
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+f1	FUNCTION
+p1	PROCEDURE
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+CREATE VIEW v1 AS SELECT * FROM t2;
+DROP TRIGGER r1;
+DROP EVENT e1;
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1
+# DDL2= DROP INDEX i1 ON t2
+# DDL3= DROP PROCEDURE p1
+# DDL4= CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
+#
+# BML is activated by BACKUP DATABASE bml_test TO 'bml_test.bkp'.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+p1	PROCEDURE
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+DROP INDEX i1 ON t2;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE bml_test TO 'bml_test.bkp';
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1
+# DDL2= DROP INDEX i1 ON t2
+# DDL3= DROP PROCEDURE p1
+# DDL4= CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1%"
+     OR info LIKE "DROP INDEX i1 ON t2%";
+state	info
+BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+debug sync point: before_execute_sql_command	DROP INDEX i1 ON t2
+debug sync point: before_execute_sql_command	CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+p1	PROCEDURE
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1
+# DDL2= DROP INDEX i1 ON t2
+# DDL3= DROP PROCEDURE p1
+# DDL4= CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+p1	PROCEDURE
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+DROP PROCEDURE p1;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1;
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1
+# DDL2= DROP INDEX i1 ON t2
+# DDL3= DROP PROCEDURE p1
+# DDL4= CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "DROP PROCEDURE p1%"
+     OR info LIKE "CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1%";
+state	info
+BML: waiting until released	CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
+BML: waiting until released	DROP PROCEDURE p1
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+p1	PROCEDURE
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1
+# DDL2= DROP INDEX i1 ON t2
+# DDL3= DROP PROCEDURE p1
+# DDL4= CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= CREATE PROCEDURE p1() SET @foo=1
+# DDL2= DROP EVENT e1
+# DDL3= DROP TRIGGER r1
+# DDL4= CREATE INDEX i1 ON t2(b)
+#
+# BML is activated by RESTORE FROM 'bml_test.bkp' OVERWRITE.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+CREATE PROCEDURE p1() SET @foo=1;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+DROP EVENT e1;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+RESTORE FROM 'bml_test.bkp' OVERWRITE;
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= CREATE PROCEDURE p1() SET @foo=1
+# DDL2= DROP EVENT e1
+# DDL3= DROP TRIGGER r1
+# DDL4= CREATE INDEX i1 ON t2(b)
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "CREATE PROCEDURE p1() SET @foo=1%"
+     OR info LIKE "DROP EVENT e1%";
+state	info
+BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
+debug sync point: before_execute_sql_command	DROP EVENT e1
+debug sync point: before_execute_sql_command	CREATE PROCEDURE p1() SET @foo=1
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+e1	EVENT
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= CREATE PROCEDURE p1() SET @foo=1
+# DDL2= DROP EVENT e1
+# DDL3= DROP TRIGGER r1
+# DDL4= CREATE INDEX i1 ON t2(b)
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+p1	PROCEDURE
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+DROP TRIGGER r1;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+CREATE INDEX i1 ON t2(b);
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= CREATE PROCEDURE p1() SET @foo=1
+# DDL2= DROP EVENT e1
+# DDL3= DROP TRIGGER r1
+# DDL4= CREATE INDEX i1 ON t2(b)
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "DROP TRIGGER r1%"
+     OR info LIKE "CREATE INDEX i1 ON t2(b)%";
+state	info
+BML: waiting until released	CREATE INDEX i1 ON t2(b)
+BML: waiting until released	DROP TRIGGER r1
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+p1	PROCEDURE
+r1	TRIGGER
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= CREATE PROCEDURE p1() SET @foo=1
+# DDL2= DROP EVENT e1
+# DDL3= DROP TRIGGER r1
+# DDL4= CREATE INDEX i1 ON t2(b)
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Database (bml%)
+bml_test
+bml_test_db1
+name	type
+t2	BASE TABLE
+v1	VIEW
+f1	FUNCTION
+p1	PROCEDURE
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `b` int(11) DEFAULT NULL,
+  KEY `i1` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1;
+RESTORE FROM 'bml_test_orig.bkp' OVERWRITE;
+backup_id
+501
+TRUNCATE TABLE test.objects;
+INSERT INTO test.objects VALUES
+(1, 'DATABASE',  'bml_test_db1', ' CHARACTER SET = utf8'),
+(2, 'TABLE',	   't1', ' ADD INDEX `i` (a)'),
+(3, 'VIEW',	   'v1', ' AS SELECT 1'),
+(4, 'FUNCTION',  'f1', " COMMENT 'testing alter'"),
+(5, 'PROCEDURE', 'p1', " COMMENT 'testing alter'"),
+(6, 'EVENT',	   'e1', ' RENAME TO e2');
+DROP PROCEDURE IF EXISTS test.check_results\\
+CREATE PROCEDURE test.check_results()
+BEGIN
+SHOW CREATE DATABASE  bml_test_db1;
+SHOW CREATE TABLE     bml_test.t1;
+SHOW CREATE VIEW      bml_test.v1;
+SHOW CREATE FUNCTION  bml_test.f1;
+SHOW CREATE PROCEDURE bml_test.p1;
+SELECT event_name FROM information_schema.events
+WHERE event_schema = 'bml_test';
+END\\
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+# BML is activated by BACKUP DATABASE bml_test TO 'bml_test.bkp'.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+ALTER DATABASE bml_test_db1 CHARACTER SET = utf8;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+ALTER TABLE t1 ADD INDEX `i` (a);
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE bml_test TO 'bml_test.bkp';
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "ALTER DATABASE bml_test_db1 CHARACTER SET = utf8%"
+     OR info LIKE "ALTER TABLE t1 ADD INDEX `i` (a)%";
+state	info
+BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+debug sync point: before_execute_sql_command	ALTER TABLE t1 ADD INDEX `i` (a)
+debug sync point: before_execute_sql_command	ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET utf8 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL,
+  KEY `i` (`a`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+ALTER VIEW v1 AS SELECT 1;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+ALTER FUNCTION f1 COMMENT 'testing alter';
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "ALTER VIEW v1 AS SELECT 1%"
+     OR info LIKE "ALTER FUNCTION f1 COMMENT 'testing alter'%";
+state	info
+BML: waiting until released	ALTER FUNCTION f1 COMMENT 'testing alter'
+BML: waiting until released	ALTER VIEW v1 AS SELECT 1
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET utf8 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL,
+  KEY `i` (`a`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET utf8 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL,
+  KEY `i` (`a`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select 1 AS `1`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+    COMMENT 'testing alter'
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
+backup_id
+501
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= ALTER VIEW v1 AS SELECT 1
+# DDL2= ALTER FUNCTION f1 COMMENT 'testing alter'
+# DDL3= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL4= ALTER EVENT e1 RENAME TO e2
+#
+# BML is activated by RESTORE FROM 'bml_test.bkp' OVERWRITE.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+ALTER VIEW v1 AS SELECT 1;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+ALTER FUNCTION f1 COMMENT 'testing alter';
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+RESTORE FROM 'bml_test.bkp' OVERWRITE;
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= ALTER VIEW v1 AS SELECT 1
+# DDL2= ALTER FUNCTION f1 COMMENT 'testing alter'
+# DDL3= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL4= ALTER EVENT e1 RENAME TO e2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "ALTER VIEW v1 AS SELECT 1%"
+     OR info LIKE "ALTER FUNCTION f1 COMMENT 'testing alter'%";
+state	info
+BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
+debug sync point: before_execute_sql_command	ALTER FUNCTION f1 COMMENT 'testing alter'
+debug sync point: before_execute_sql_command	ALTER VIEW v1 AS SELECT 1
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= ALTER VIEW v1 AS SELECT 1
+# DDL2= ALTER FUNCTION f1 COMMENT 'testing alter'
+# DDL3= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL4= ALTER EVENT e1 RENAME TO e2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select 1 AS `1`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+    COMMENT 'testing alter'
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+ALTER PROCEDURE p1 COMMENT 'testing alter';
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+ALTER EVENT e1 RENAME TO e2;
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= ALTER VIEW v1 AS SELECT 1
+# DDL2= ALTER FUNCTION f1 COMMENT 'testing alter'
+# DDL3= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL4= ALTER EVENT e1 RENAME TO e2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "ALTER PROCEDURE p1 COMMENT 'testing alter'%"
+     OR info LIKE "ALTER EVENT e1 RENAME TO e2%";
+state	info
+BML: waiting until released	ALTER EVENT e1 RENAME TO e2
+BML: waiting until released	ALTER PROCEDURE p1 COMMENT 'testing alter'
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select 1 AS `1`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+    COMMENT 'testing alter'
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= ALTER VIEW v1 AS SELECT 1
+# DDL2= ALTER FUNCTION f1 COMMENT 'testing alter'
+# DDL3= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL4= ALTER EVENT e1 RENAME TO e2
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL,
+  KEY `i` (`a`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+    COMMENT 'testing alter'
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e2
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
+backup_id
+501
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL2= ALTER EVENT e1 RENAME TO e2
+# DDL3= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL4= ALTER TABLE t1 ADD INDEX `i` (a)
+#
+# BML is activated by BACKUP DATABASE bml_test TO 'bml_test.bkp'.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+ALTER PROCEDURE p1 COMMENT 'testing alter';
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+ALTER EVENT e1 RENAME TO e2;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE bml_test TO 'bml_test.bkp';
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL2= ALTER EVENT e1 RENAME TO e2
+# DDL3= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL4= ALTER TABLE t1 ADD INDEX `i` (a)
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "ALTER PROCEDURE p1 COMMENT 'testing alter'%"
+     OR info LIKE "ALTER EVENT e1 RENAME TO e2%";
+state	info
+BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+debug sync point: before_execute_sql_command	ALTER EVENT e1 RENAME TO e2
+debug sync point: before_execute_sql_command	ALTER PROCEDURE p1 COMMENT 'testing alter'
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL2= ALTER EVENT e1 RENAME TO e2
+# DDL3= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL4= ALTER TABLE t1 ADD INDEX `i` (a)
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+    COMMENT 'testing alter'
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e2
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+ALTER DATABASE bml_test_db1 CHARACTER SET = utf8;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+ALTER TABLE t1 ADD INDEX `i` (a);
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL2= ALTER EVENT e1 RENAME TO e2
+# DDL3= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL4= ALTER TABLE t1 ADD INDEX `i` (a)
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "ALTER DATABASE bml_test_db1 CHARACTER SET = utf8%"
+     OR info LIKE "ALTER TABLE t1 ADD INDEX `i` (a)%";
+state	info
+BML: waiting until released	ALTER TABLE t1 ADD INDEX `i` (a)
+BML: waiting until released	ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+    COMMENT 'testing alter'
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e2
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= ALTER PROCEDURE p1 COMMENT 'testing alter'
+# DDL2= ALTER EVENT e1 RENAME TO e2
+# DDL3= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL4= ALTER TABLE t1 ADD INDEX `i` (a)
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET utf8 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL,
+  KEY `i` (`a`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+    COMMENT 'testing alter'
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e2
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
+backup_id
+501
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+# BML is activated by RESTORE FROM 'bml_test.bkp' OVERWRITE.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+ALTER DATABASE bml_test_db1 CHARACTER SET = utf8;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+ALTER TABLE t1 ADD INDEX `i` (a);
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+RESTORE FROM 'bml_test.bkp' OVERWRITE;
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "ALTER DATABASE bml_test_db1 CHARACTER SET = utf8%"
+     OR info LIKE "ALTER TABLE t1 ADD INDEX `i` (a)%";
+state	info
+BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
+debug sync point: before_execute_sql_command	ALTER TABLE t1 ADD INDEX `i` (a)
+debug sync point: before_execute_sql_command	ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET utf8 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL,
+  KEY `i` (`a`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+ALTER VIEW v1 AS SELECT 1;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+ALTER FUNCTION f1 COMMENT 'testing alter';
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "ALTER VIEW v1 AS SELECT 1%"
+     OR info LIKE "ALTER FUNCTION f1 COMMENT 'testing alter'%";
+state	info
+BML: waiting until released	ALTER FUNCTION f1 COMMENT 'testing alter'
+BML: waiting until released	ALTER VIEW v1 AS SELECT 1
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET utf8 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL,
+  KEY `i` (`a`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select `bml_test`.`t2`.`b` AS `b` from `bml_test`.`t2`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e1
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
+# DDL2= ALTER TABLE t1 ADD INDEX `i` (a)
+# DDL3= ALTER VIEW v1 AS SELECT 1
+# DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Database	Create Database
+bml_test_db1	CREATE DATABASE `bml_test_db1` /*!40100 DEFAULT CHARACTER SET utf8 */
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bml_test`.`v1` AS select 1 AS `1`	latin1	latin1_swedish_ci
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f1		CREATE DEFINER=`root`@`localhost` FUNCTION `f1`() RETURNS int(11)
+    COMMENT 'testing alter'
+RETURN 1	latin1	latin1_swedish_ci	latin1_swedish_ci
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p1		CREATE DEFINER=`root`@`localhost` PROCEDURE `p1`()
+SET @foo=1	latin1	latin1_swedish_ci	latin1_swedish_ci
+event_name
+e2
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
+backup_id
+501
+DROP DATABASE IF EXISTS bml_test_db1;
+DROP TABLE test.objects;
+DROP FUNCTION test.drop_stmt;
+DROP FUNCTION test.create_stmt;
+DROP FUNCTION test.alter_stmt;
+DROP DATABASE bml_test;
+CREATE DATABASE bml_test;
+CREATE USER bml_u1;
+CREATE USER bml_u2;
+CREATE USER bml_u3;
+CREATE TABLESPACE bml_ts1 ADD DATAFILE 'bml_ts1.dat' ENGINE=falcon;
+CREATE TABLESPACE bml_ts2 ADD DATAFILE 'bml_ts2.dat' ENGINE=falcon;
+CREATE TABLE bml_test.t1 (a int);
+CREATE TABLE bml_test.t2 (b int);
+DROP PROCEDURE IF EXISTS test.check_results\\
+CREATE PROCEDURE test.check_results()
+BEGIN
+SHOW TABLES IN bml_test;
+# show users
+SELECT DISTINCT grantee AS user 
+FROM information_schema.user_privileges
+WHERE grantee like '%bml%';
+# show privileges
+SELECT grantee, count(*) > 0 AS has_privileges
+FROM information_schema.schema_privileges
+WHERE grantee like '%bml%'
+    GROUP BY grantee;
+# show tablespaces
+SELECT tablespace_name, file_name 
+FROM information_schema.files
+WHERE tablespace_name like 'bml%';
+END\\
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= RENAME TABLE t1 TO t1_renamed
+# DDL2= DROP USER bml_u1
+# DDL3= RENAME USER bml_u2 TO bml_u2_renamed
+# DDL4= DROP TABLESPACE bml_ts1 ENGINE=falcon
+#
+# BML is activated by BACKUP DATABASE bml_test TO 'bml_test.bkp'.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+user
+'bml_u1'@'%'
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+tablespace_name	file_name
+BML_TS1	bml_ts1.dat.fts
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+RENAME TABLE t1 TO t1_renamed;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+DROP USER bml_u1;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE bml_test TO 'bml_test.bkp';
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= RENAME TABLE t1 TO t1_renamed
+# DDL2= DROP USER bml_u1
+# DDL3= RENAME USER bml_u2 TO bml_u2_renamed
+# DDL4= DROP TABLESPACE bml_ts1 ENGINE=falcon
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "RENAME TABLE t1 TO t1_renamed%"
+     OR info LIKE "DROP USER bml_u1%";
+state	info
+BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+debug sync point: before_execute_sql_command	DROP USER bml_u1
+debug sync point: before_execute_sql_command	RENAME TABLE t1 TO t1_renamed
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+user
+'bml_u1'@'%'
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+tablespace_name	file_name
+BML_TS1	bml_ts1.dat.fts
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= RENAME TABLE t1 TO t1_renamed
+# DDL2= DROP USER bml_u1
+# DDL3= RENAME USER bml_u2 TO bml_u2_renamed
+# DDL4= DROP TABLESPACE bml_ts1 ENGINE=falcon
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1_renamed
+t2
+user
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+tablespace_name	file_name
+BML_TS1	bml_ts1.dat.fts
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+RENAME USER bml_u2 TO bml_u2_renamed;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+DROP TABLESPACE bml_ts1 ENGINE=falcon;
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= RENAME TABLE t1 TO t1_renamed
+# DDL2= DROP USER bml_u1
+# DDL3= RENAME USER bml_u2 TO bml_u2_renamed
+# DDL4= DROP TABLESPACE bml_ts1 ENGINE=falcon
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "RENAME USER bml_u2 TO bml_u2_renamed%"
+     OR info LIKE "DROP TABLESPACE bml_ts1 ENGINE=falcon%";
+state	info
+BML: waiting until released	DROP TABLESPACE bml_ts1 ENGINE=falcon
+BML: waiting until released	RENAME USER bml_u2 TO bml_u2_renamed
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1_renamed
+t2
+user
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+tablespace_name	file_name
+BML_TS1	bml_ts1.dat.fts
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= RENAME TABLE t1 TO t1_renamed
+# DDL2= DROP USER bml_u1
+# DDL3= RENAME USER bml_u2 TO bml_u2_renamed
+# DDL4= DROP TABLESPACE bml_ts1 ENGINE=falcon
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1_renamed
+t2
+user
+'bml_u2_renamed'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+tablespace_name	file_name
+BML_TS2	bml_ts2.dat.fts
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= RENAME USER bml_u2_renamed TO bml_u2
+# DDL2= GRANT ALL ON bml_test.* TO bml_u3
+# DDL3= RENAME TABLE t1_renamed TO t1
+# DDL4= GRANT ALL ON bml_test.* TO bml_u2
+#
+# BML is activated by RESTORE FROM 'bml_test.bkp' OVERWRITE.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Tables_in_bml_test
+t1_renamed
+t2
+user
+'bml_u2_renamed'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+tablespace_name	file_name
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+RENAME USER bml_u2_renamed TO bml_u2;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+GRANT ALL ON bml_test.* TO bml_u3;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+RESTORE FROM 'bml_test.bkp' OVERWRITE;
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= RENAME USER bml_u2_renamed TO bml_u2
+# DDL2= GRANT ALL ON bml_test.* TO bml_u3
+# DDL3= RENAME TABLE t1_renamed TO t1
+# DDL4= GRANT ALL ON bml_test.* TO bml_u2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "RENAME USER bml_u2_renamed TO bml_u2%"
+     OR info LIKE "GRANT ALL ON bml_test.* TO bml_u3%";
+state	info
+BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
+debug sync point: before_execute_sql_command	GRANT ALL ON bml_test.* TO bml_u3
+debug sync point: before_execute_sql_command	RENAME USER bml_u2_renamed TO bml_u2
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1_renamed
+t2
+user
+'bml_u2_renamed'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+tablespace_name	file_name
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= RENAME USER bml_u2_renamed TO bml_u2
+# DDL2= GRANT ALL ON bml_test.* TO bml_u3
+# DDL3= RENAME TABLE t1_renamed TO t1
+# DDL4= GRANT ALL ON bml_test.* TO bml_u2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1_renamed
+t2
+user
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+'bml_u3'@'%'	1
+tablespace_name	file_name
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+RENAME TABLE t1_renamed TO t1;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+GRANT ALL ON bml_test.* TO bml_u2;
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= RENAME USER bml_u2_renamed TO bml_u2
+# DDL2= GRANT ALL ON bml_test.* TO bml_u3
+# DDL3= RENAME TABLE t1_renamed TO t1
+# DDL4= GRANT ALL ON bml_test.* TO bml_u2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "RENAME TABLE t1_renamed TO t1%"
+     OR info LIKE "GRANT ALL ON bml_test.* TO bml_u2%";
+state	info
+BML: waiting until released	GRANT ALL ON bml_test.* TO bml_u2
+BML: waiting until released	RENAME TABLE t1_renamed TO t1
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1_renamed
+t2
+user
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+'bml_u3'@'%'	1
+tablespace_name	file_name
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= RENAME USER bml_u2_renamed TO bml_u2
+# DDL2= GRANT ALL ON bml_test.* TO bml_u3
+# DDL3= RENAME TABLE t1_renamed TO t1
+# DDL4= GRANT ALL ON bml_test.* TO bml_u2
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+user
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+'bml_u2'@'%'	1
+'bml_u3'@'%'	1
+tablespace_name	file_name
+BML_TS2	bml_ts2.dat.fts
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= DROP TABLESPACE bml_ts2 ENGINE=falcon
+# DDL2= REVOKE ALL ON bml_test.* FROM bml_u2
+# DDL3= DROP USER bml_u2
+# DDL4= REVOKE ALL ON bml_test.* FROM bml_u3
+#
+# BML is activated by BACKUP DATABASE bml_test TO 'bml_test.bkp'.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+user
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+'bml_u2'@'%'	1
+'bml_u3'@'%'	1
+tablespace_name	file_name
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+DROP TABLESPACE bml_ts2 ENGINE=falcon;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+REVOKE ALL ON bml_test.* FROM bml_u2;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE bml_test TO 'bml_test.bkp';
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= DROP TABLESPACE bml_ts2 ENGINE=falcon
+# DDL2= REVOKE ALL ON bml_test.* FROM bml_u2
+# DDL3= DROP USER bml_u2
+# DDL4= REVOKE ALL ON bml_test.* FROM bml_u3
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "DROP TABLESPACE bml_ts2 ENGINE=falcon%"
+     OR info LIKE "REVOKE ALL ON bml_test.* FROM bml_u2%";
+state	info
+BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+debug sync point: before_execute_sql_command	REVOKE ALL ON bml_test.* FROM bml_u2
+debug sync point: before_execute_sql_command	DROP TABLESPACE bml_ts2 ENGINE=falcon
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+user
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+'bml_u2'@'%'	1
+'bml_u3'@'%'	1
+tablespace_name	file_name
+BML_TS2	bml_ts2.dat.fts
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= DROP TABLESPACE bml_ts2 ENGINE=falcon
+# DDL2= REVOKE ALL ON bml_test.* FROM bml_u2
+# DDL3= DROP USER bml_u2
+# DDL4= REVOKE ALL ON bml_test.* FROM bml_u3
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+user
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+'bml_u3'@'%'	1
+tablespace_name	file_name
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+DROP USER bml_u2;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+REVOKE ALL ON bml_test.* FROM bml_u3;
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= DROP TABLESPACE bml_ts2 ENGINE=falcon
+# DDL2= REVOKE ALL ON bml_test.* FROM bml_u2
+# DDL3= DROP USER bml_u2
+# DDL4= REVOKE ALL ON bml_test.* FROM bml_u3
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "DROP USER bml_u2%"
+     OR info LIKE "REVOKE ALL ON bml_test.* FROM bml_u3%";
+state	info
+BML: waiting until released	REVOKE ALL ON bml_test.* FROM bml_u3
+BML: waiting until released	DROP USER bml_u2
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+user
+'bml_u2'@'%'
+'bml_u3'@'%'
+grantee	has_privileges
+'bml_u3'@'%'	1
+tablespace_name	file_name
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= DROP TABLESPACE bml_ts2 ENGINE=falcon
+# DDL2= REVOKE ALL ON bml_test.* FROM bml_u2
+# DDL3= DROP USER bml_u2
+# DDL4= REVOKE ALL ON bml_test.* FROM bml_u3
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+user
+'bml_u3'@'%'
+grantee	has_privileges
+tablespace_name	file_name
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+DROP USER bml_u3;
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+user
+grantee	has_privileges
+tablespace_name	file_name
+DROP DATABASE bml_test;
+CREATE DATABASE bml_test;
+USE bml_test;
+CREATE TABLE t1 (a int) ENGINE=myisam;
+CREATE TABLE t2 (a int) ENGINE=myisam;
+INSERT INTO t1 VALUES (1),(2);
+INSERT INTO t2 VALUES (3),(4);
+DROP PROCEDURE IF EXISTS test.check_results\\
+CREATE PROCEDURE test.check_results()
+BEGIN
+SHOW TABLES IN bml_test;
+SELECT count(*) AS rows_in_t1 FROM bml_test.t1;
+SELECT count(*) AS rows_in_t2 FROM bml_test.t2;
+CHECKSUM TABLE bml_test.t1, bml_test.t2 EXTENDED;
+END\\
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= OPTIMIZE TABLE t1
+# DDL2= REPAIR TABLE t2 USE_FRM
+# DDL3= TRUNCATE TABLE t1
+# DDL4= TRUNCATE TABLE t2
+#
+# BML is activated by BACKUP DATABASE bml_test TO 'bml_test.bkp'.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+2
+rows_in_t2
+2
+Table	Checksum
+bml_test.t1	2865344526
+bml_test.t2	1578680517
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+OPTIMIZE TABLE t1;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+REPAIR TABLE t2 USE_FRM;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE bml_test TO 'bml_test.bkp';
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= OPTIMIZE TABLE t1
+# DDL2= REPAIR TABLE t2 USE_FRM
+# DDL3= TRUNCATE TABLE t1
+# DDL4= TRUNCATE TABLE t2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "OPTIMIZE TABLE t1%"
+     OR info LIKE "REPAIR TABLE t2 USE_FRM%";
+state	info
+BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+debug sync point: before_execute_sql_command	REPAIR TABLE t2 USE_FRM
+debug sync point: before_execute_sql_command	OPTIMIZE TABLE t1
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+2
+rows_in_t2
+2
+Table	Checksum
+bml_test.t1	2865344526
+bml_test.t2	1578680517
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+Table	Op	Msg_type	Msg_text
+bml_test.t1	optimize	status	OK
+# con2: Reaping DDL2
+Table	Op	Msg_type	Msg_text
+bml_test.t2	repair	warning	Number of rows changed from 0 to 2
+bml_test.t2	repair	status	OK
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= OPTIMIZE TABLE t1
+# DDL2= REPAIR TABLE t2 USE_FRM
+# DDL3= TRUNCATE TABLE t1
+# DDL4= TRUNCATE TABLE t2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+2
+rows_in_t2
+2
+Table	Checksum
+bml_test.t1	2865344526
+bml_test.t2	1578680517
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+TRUNCATE TABLE t1;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+TRUNCATE TABLE t2;
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= OPTIMIZE TABLE t1
+# DDL2= REPAIR TABLE t2 USE_FRM
+# DDL3= TRUNCATE TABLE t1
+# DDL4= TRUNCATE TABLE t2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "TRUNCATE TABLE t1%"
+     OR info LIKE "TRUNCATE TABLE t2%";
+state	info
+BML: waiting until released	TRUNCATE TABLE t2
+BML: waiting until released	TRUNCATE TABLE t1
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+2
+rows_in_t2
+2
+Table	Checksum
+bml_test.t1	2865344526
+bml_test.t2	1578680517
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+# con4: Completing DDL4
+
+== Checkpoint E ==
+#
+# DDL1= OPTIMIZE TABLE t1
+# DDL2= REPAIR TABLE t2 USE_FRM
+# DDL3= TRUNCATE TABLE t1
+# DDL4= TRUNCATE TABLE t2
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+0
+rows_in_t2
+0
+Table	Checksum
+bml_test.t1	0
+bml_test.t2	0
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+INSERT INTO t1 VALUES (1);
+INSERT INTO t2 VALUES (3);
+
+########################################################
+# Running BML test for the following statements:
+#
+# DDL1= TRUNCATE t1
+# DDL2= TRUNCATE t2
+# DDL3= REPAIR TABLE t1
+# DDL4= OPTIMIZE TABLE t2
+#
+# BML is activated by RESTORE FROM 'bml_test.bkp' OVERWRITE.
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+SET DEBUG_SYNC= 'reset';
+USE bml_test;
+
+== Checkpoint A ==
+# Check the initial situation.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+1
+rows_in_t2
+1
+Table	Checksum
+bml_test.t1	3459908756
+bml_test.t2	1681116191
+==================
+
+# con1: Start DDL1 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started 
+   					       WAIT_FOR continue_ddl';
+TRUNCATE t1;
+# con2: Wait for DDL1 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 15';
+# con2: Start DDL2 making it to stop after it has started (and 
+#       possibly registered with BML).
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl2_started 
+   					       WAIT_FOR continue_ddl';
+TRUNCATE t2;
+# con5: Wait for DDL2 to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl2_started TIMEOUT 15';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Activate synchronization points for BACKUP/RESTORE.
+SET DEBUG_SYNC= 'bml_get_check2 SIGNAL bup_waiting';
+SET DEBUG_SYNC= 'after_backup_start_backup  WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'after_backup_start_restore WAIT_FOR continue_bup';
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_running WAIT_FOR finish_bup';
+SET DEBUG_SYNC= 'start_do_restore SIGNAL bup_running WAIT_FOR finish_bup';
+# con5: Starting BACKUP/RESTORE operation -- should be blocked 
+#       by ongoing DDLs.
+SET SESSION debug="+d,set_backup_id";
+RESTORE FROM 'bml_test.bkp' OVERWRITE;
+# Waiting for BACKUP/RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
+
+== Checkpoint B ==
+#
+# DDL1= TRUNCATE t1
+# DDL2= TRUNCATE t2
+# DDL3= REPAIR TABLE t1
+# DDL4= OPTIMIZE TABLE t2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%"
+     OR info LIKE "TRUNCATE t1%"
+     OR info LIKE "TRUNCATE t2%";
+state	info
+BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
+debug sync point: before_execute_sql_command	TRUNCATE t2
+debug sync point: before_execute_sql_command	TRUNCATE t1
+# Checking that BACKUP is blocked by DDLs.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Checking that DDL1 and DDL2 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+1
+rows_in_t2
+1
+Table	Checksum
+bml_test.t1	3459908756
+bml_test.t2	1681116191
+==================
+
+# Resume DDL1 and DDL2. 
+# Now BACKUP/RESTORE should stop after acquiring BML.
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# con1: Reaping DDL1
+# con2: Reaping DDL2
+SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
+
+== Checkpoint C ==
+#
+# DDL1= TRUNCATE t1
+# DDL2= TRUNCATE t2
+# DDL3= REPAIR TABLE t1
+# DDL4= OPTIMIZE TABLE t2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "RESTORE FROM%";
+state	info
+debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
+# Checking that DDL1 and DDL2 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+0
+rows_in_t2
+0
+Table	Checksum
+bml_test.t1	0
+bml_test.t2	0
+==================
+
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl3_blocked';
+REPAIR TABLE t1;
+# Wait for DDL3 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl3_blocked TIMEOUT 15';
+# con3: Send DDL3 but it is blocked by BACKUP/RESTORE 
+#       (will not be in backup) make it send signal when
+#       blocked on BML.
+SET DEBUG_SYNC= 'bml_enter_check SIGNAL ddl4_blocked';
+OPTIMIZE TABLE t2;
+# Wait for DDL4 to send its signal.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
+
+== Checkpoint D ==
+#
+# DDL1= TRUNCATE t1
+# DDL2= TRUNCATE t2
+# DDL3= REPAIR TABLE t1
+# DDL4= OPTIMIZE TABLE t2
+#
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "REPAIR TABLE t1%"
+     OR info LIKE "OPTIMIZE TABLE t2%";
+state	info
+BML: waiting until released	OPTIMIZE TABLE t2
+BML: waiting until released	REPAIR TABLE t1
+# Checking that DDL3 and DDL4 have not executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+0
+rows_in_t2
+0
+Table	Checksum
+bml_test.t1	0
+bml_test.t2	0
+==================
+
+# Resume BACKUP/RESTORE - this allows DDL3 and DDL4 to complete.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# con5: Reaping BACKUP/RESTORE
+backup_id
+500
+SET debug="-d";
+# con3: Completing DDL3
+Table	Op	Msg_type	Msg_text
+bml_test.t1	repair	status	OK
+# con4: Completing DDL4
+Table	Op	Msg_type	Msg_text
+bml_test.t2	optimize	status	OK
+
+== Checkpoint E ==
+#
+# DDL1= TRUNCATE t1
+# DDL2= TRUNCATE t2
+# DDL3= REPAIR TABLE t1
+# DDL4= OPTIMIZE TABLE t2
+#
+# Checking that DDL3 and DDL4 have executed.
+CALL test.check_results();
+Tables_in_bml_test
+t1
+t2
+rows_in_t1
+2
+rows_in_t2
+2
+Table	Checksum
+bml_test.t1	2865344526
+bml_test.t2	1578680517
+==================
+
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+DROP DATABASE bml_test;
+DROP PROCEDURE test.check_results;
+
+########################################################
+#
+# Test BACKUP with statements not blocked by BML: 
+#   CREATE USER and CREATE SERVER
+#
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+CREATE DATABASE bml_test;
+# con1: Start CREATE USER statement and make it stop after it has started.
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started  
+                                             WAIT_FOR continue_ddl';
+CREATE USER bml_usr;;
+# con5: Wait for DDL to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 3';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Start BACKUP command making it to stop in the middle.
+SET DEBUG_SYNC= 'after_backup_start_backup SIGNAL bup_started 
+         					    WAIT_FOR finish_bup';
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE bml_test TO 'bml_test.bkp';;
+# Waiting for BACKUP to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_started TIMEOUT 3';
+# Check the state of both statements.
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "CREATE USER%";
+state	info
+debug sync point: after_backup_start_backup	BACKUP DATABASE bml_test TO 'bml_test.bkp'
+debug sync point: before_execute_sql_command	CREATE USER bml_usr
+# Checking that CREATE USER has not executed yet.
+SELECT User, Password FROM mysql.user WHERE User like 'bml%';
+User	Password
+# Checking that BACKUP is not blocked by DDL.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Resume and reap CREATE USER;
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# Check that CREATE USER has executed.
+SELECT User, Password FROM mysql.user WHERE User like 'bml%';
+User	Password
+bml_usr	
+# See that bml_srv does not exist at this point.
+SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
+Server_name
+# Start CREATE SERVER while BACKUP is in progress.
+CREATE SERVER bml_srv FOREIGN DATA WRAPPER mysql OPTIONS  (USER 'user');
+# See that it has executed.
+SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
+Server_name
+bml_srv
+# Let BACKUP finish its operation.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# Reap BACKUP.
+backup_id
+500
+SET debug="-d";
+SET DEBUG_SYNC= 'reset';
+
+########################################################
+#
+# Test RESTORE with statements not blocked by BML: 
+#   DROP SERVER and SET PASSWORD
+#
+########################################################
+
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC= 'reset';
+# con1: Start DROP SERVER statement and make it stop after it has started.
+SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl_started  
+ 					     WAIT_FOR continue_ddl';
+DROP SERVER bml_srv;;
+# con5: Wait for DDL to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR ddl_started TIMEOUT 3';
+SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+# con5: Start RESTORE command making it to stop in the middle.
+SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL bup_started 
+         					     WAIT_FOR finish_bup';
+SET SESSION debug="+d,set_backup_id";
+RESTORE FROM 'bml_test.bkp' OVERWRITE;;
+# Waiting for RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_started TIMEOUT 3';
+# Check the state of both statements.
+SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "RESTORE FROM%"
+     OR info LIKE "DROP SERVER%";
+state	info
+debug sync point: after_backup_start_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
+debug sync point: before_execute_sql_command	DROP SERVER bml_srv
+# Checking that DROP SERVER has not executed yet.
+SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
+Server_name
+bml_srv
+# Checking that RESTORE is not blocked by DDL.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+object	notes	error_num
+backup kernel	starting	0
+backup kernel	running	0
+# Resume and reap DROP SERVER;
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+# Check that DROP SERVER has executed.
+SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
+Server_name
+# Check current user's pasword.
+SELECT User, Password FROM mysql.user WHERE User like 'bml%';
+User	Password
+bml_usr	
+# Start SET PASSWORD while RESTORE is in progress.
+SET PASSWORD FOR bml_usr = PASSWORD('password');
+# See that password was set.
+SELECT User, Password FROM mysql.user WHERE User like 'bml%';
+User	Password
+bml_usr	*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19
+# Let RESTORE finish its operation.
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+# Reap RESTORE.
+backup_id
+500
+SET debug="-d";
+SET DEBUG_SYNC= 'reset';
+SET DEBUG_SYNC= 'reset';
+DROP DATABASE bml_test;
+DROP USER bml_usr;
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC= 'reset';

@@ -17,9 +17,9 @@ connect (breakpoints,localhost,root,,);
 --echo
 ##############################################################
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_sp.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_sp.bak;
 
 # Multiple instances of stored routines without atleast one table in
 # database results in failure.
@@ -121,4 +121,4 @@ SELECT @x;
 
 DROP DATABASE bup_sp;
 
-remove_file $MYSQLD_DATADIR/bup_sp.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_sp.bak;

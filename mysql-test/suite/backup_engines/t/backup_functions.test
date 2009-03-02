@@ -17,9 +17,9 @@ connect (breakpoints,localhost,root,,);
 --echo
 ##############################################################
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_sfs.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_sfs.bak;
 
 #Create Database and object stored function for this test.
 
@@ -270,4 +270,4 @@ SELECT paymentno,amount, dollars(amount) FROM penalties;
 
 DROP DATABASE bup_sfs;
 
-remove_file $MYSQLD_DATADIR/bup_sfs.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_sfs.bak;

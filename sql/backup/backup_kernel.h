@@ -18,7 +18,7 @@
 #define DATA_BUFFER_SIZE  (1024*1024)
 
 /*
-  Functions used to initialize and shut down the online backup system.
+  Functions used to initialize and shut down the MySQL backup system.
   
   Note: these functions are called at plugin load and plugin shutdown time,
   respectively.
@@ -30,7 +30,11 @@ void backup_shutdown();
   Called from the big switch in mysql_execute_command() to execute
   backup related statement
 */
-int execute_backup_command(THD*, LEX*, String*, bool);
+int execute_backup_command(THD *thd, 
+                           LEX *lex, 
+                           String *backupdir, 
+                           bool overwrite,
+                           bool skip_gap_event);
 
 // forward declarations
 
@@ -73,7 +77,7 @@ public:
                                    const char*, bool);
   Restore_info* prepare_for_restore(String *location, 
                                    LEX_STRING orig_loc,
-                                   const char*);  
+                                   const char*, bool);  
 
   int do_backup();
   int do_restore(bool overwrite);

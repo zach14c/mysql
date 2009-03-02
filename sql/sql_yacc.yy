@@ -1075,6 +1075,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  SHUTDOWN
 %token  SIGNED_SYM
 %token  SIMPLE_SYM                    /* SQL-2003-N */
+%token  SKIP_GAP_EVENT_SYM
 %token  SLAVE
 %token  SMALLINT                      /* SQL-2003-R */
 %token  SNAPSHOT_SYM
@@ -6461,7 +6462,7 @@ restore:
           }
           FROM
           TEXT_STRING_sys 
-          opt_overwrite
+          opt_overwrite opt_skip_gap_event
           {
             Lex->backup_dir = $4; 
           }
@@ -6483,6 +6484,23 @@ opt_overwrite:
 
             lex->value_list.empty();
             lex->value_list.push_front(it);
+           }
+         ;
+         
+opt_skip_gap_event:
+        /* empty */ 
+          {         
+            LEX *lex= Lex;
+            Item *it= new Item_int((int8) 0);
+
+            lex->value_list.push_back(it);
+          }
+        | SKIP_GAP_EVENT_SYM
+          {
+            LEX *lex= Lex;
+            Item *it= new Item_int((int8) 2);
+
+            lex->value_list.push_back(it);
            }
          ;
 

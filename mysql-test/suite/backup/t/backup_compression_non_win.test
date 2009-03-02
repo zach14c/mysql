@@ -1,0 +1,114 @@
+--source include/not_embedded.inc
+--source include/have_compress.inc
+--source include/have_innodb.inc
+--source include/not_windows.inc
+
+# This test will be executed only in non windows platform. This test uses
+# manual gunzip and gzip commands which are not supported by default in
+# windows. There is a seperate test (backup_compression.test) which will be 
+# executed in all platforms.
+
+let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
+
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE DATABASE db3;
+
+CREATE TABLE db1.t1(a INT) ENGINE= MYISAM;
+CREATE TABLE db1.t2(a CHAR(20)) ENGINE= INNODB;
+CREATE TABLE db2.t1(b INT) ENGINE= FALCON;
+CREATE TABLE db2.t2(b CHAR(20)) ENGINE= MEMORY;
+CREATE TABLE db3.t1(c INT) ENGINE= BLACKHOLE;
+
+INSERT INTO db1.t1 VALUES(10),(20),(30),(40);
+INSERT INTO db1.t2 VALUES('TEST1'),('TEST2'),('TEST3'),('TEST4');
+INSERT INTO db2.t1 VALUES(10),(20),(30),(40);
+INSERT INTO db2.t2 VALUES('TEST1'),('TEST2'),('TEST3'),('TEST4');
+INSERT INTO db3.t1 VALUES(10),(20),(30),(40);
+
+--echo
+--echo Unzip a gzip file and perform restore.
+--echo
+
+# This test will help to verify that backup file which is compressed  can be 
+# uncompressed and restore can be performed of a manually uncompressed file.
+
+PURGE BACKUP LOGS;
+--replace_column 1 #
+BACKUP DATABASE db1, db2, db3 TO 'db123.bak.gz' WITH COMPRESSION;
+
+--echo verify backup history for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+--echo Unzip db123.bak.gz and perform restore of unzipped file.
+--exec gunzip $MYSQLD_DATADIR/db123.bak.gz
+file_exists $MYSQLD_DATADIR/db123.bak;
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+
+PURGE BACKUP LOGS;
+--echo Restore of unzipped file(db123.bak)
+--replace_column 1 #
+RESTORE FROM 'db123.bak';
+
+--echo verify backup history log:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+SHOW TABLES FROM db1;
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SHOW TABLES FROM db2;
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+SHOW TABLES FROM db3;
+SELECT * FROM db3.t1;
+--remove_file $MYSQLD_BACKUPDIR/db123.bak
+
+--echo
+--echo Restore of any manually gzipped image
+--echo
+
+# This test will verify that restore can be performed from manually
+# compressed backup image.
+
+PURGE BACKUP LOGS;
+--replace_column 1 #
+BACKUP DATABASE db1, db2, db3 TO 'db123.bak';
+
+--echo verify backup history log for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+--echo Zip the db123.bak file and perform restore of zipped file.
+--exec gzip $MYSQLD_DATADIR/db123.bak
+file_exists $MYSQLD_DATADIR/db123.bak.gz;
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+
+PURGE BACKUP LOGS;
+--echo Restore of zipped file
+--replace_column 1 #
+RESTORE FROM 'db123.bak.gz';
+
+--echo verify backup history logs:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+
+SHOW TABLES FROM db1;
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SHOW TABLES FROM db2;
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+SHOW TABLES FROM db3;
+SELECT * FROM db3.t1;
+
+--echo Test cleanup: Drop databases and remove backup files
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+--remove_file $MYSQLD_BACKUPDIR/db123.bak.gz
+
