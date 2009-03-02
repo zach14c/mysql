@@ -207,8 +207,8 @@ int set_table_list(TABLE_LIST &tl, const Table_ref &tbl,
   tl.db= const_cast<char*>(tbl.db().name().ptr());
   tl.lock_type= lock_type;
 
-  tl.mdl_lock_data= mdl_alloc_lock(0, tl.db, tl.table_name, mem); 
-  if (!tl.mdl_lock_data)                    // Failed to allocate lock
+  tl.mdl_lock_request= mdl_request_alloc(0, tl.db, tl.table_name, mem);
+  if (!tl.mdl_lock_request)
   {
     return 1;
   }
