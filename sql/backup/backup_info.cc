@@ -172,15 +172,20 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
 #ifndef DBUG_OFF
   backup_factory *saved_factory; // to save hton->get_backup_engine
 
+#ifdef WITH_MARIA_STORAGE_ENGINE
   DBUG_EXECUTE_IF("backup_test_dummy_be_factory", 
     {
       handlerton *hton= se_hton(se);
       saved_factory= hton->get_backup_engine;
-      if (hton == myisam_hton
-#ifdef WITH_MARIA_STORAGE_ENGINE
-          || hton == maria_hton
-#endif
-          ) 
+      if (hton == myisam_hton || hton == maria_hton) 
+        hton->get_backup_engine= dummy_backup_engine_factory;
+    });
+#else
+   DBUG_EXECUTE_IF("backup_test_dummy_be_factory", 
+    {
+      handlerton *hton= se_hton(se);
+      saved_factory= hton->get_backup_engine;
+      if (hton == myisam_hton) 
         hton->get_backup_engine= dummy_backup_engine_factory;
     });
 #endif
