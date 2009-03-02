@@ -210,15 +210,6 @@ void Debug::execute(IndexPage *indexPage, DebugCommand command, const char *stri
 		case Right:
 			fetch(indexPage->nextPage);
 			break;
-
-		case Left:
-			fetch(indexPage->priorPage);
-			break;
-
-		case Up:
-			fetch(indexPage->parentPage);
-			break;
-
 		default:
 			break;
 		}
