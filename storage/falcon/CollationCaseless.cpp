@@ -88,7 +88,7 @@ int CollationCaseless::compare(Value *value1, Value *value2)
 	return 0;
 }
 
-int CollationCaseless::makeKey(Value *value, IndexKey *key, int partialKey, int maxKeyLength)
+int CollationCaseless::makeKey(Value *value, IndexKey *key, int partialKey, int maxKeyLength, bool highKey)
 {
 	int l = value->getString (sizeof(key->key), (char*) key->key);
 	
@@ -102,6 +102,14 @@ int CollationCaseless::makeKey(Value *value, IndexKey *key, int partialKey, int 
 
 	for (int n = 0; n < l; ++n)
 		p [n] = caseTable [p [n]];
+
+	// If this is a highKey, append 0x20 (pad char) if the final byte 
+	// >= 0x20. This is done when creating an upper bound
+	// search key to make it position after all values with
+	// trailing characters between 0x00 and the pad character
+
+	if (highKey && l > 0 && l < maxKeyLength && p[l-1] >= 0x20)
+		p[l++] = 0x20;
 
 	key->keyLength = l;
 
