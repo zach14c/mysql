@@ -189,7 +189,9 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
         hton->get_backup_engine= dummy_backup_engine_factory;
     });
 #endif
-  
+
+#endif /* !DBUG_OFF */
+
   snap= native_snapshots[se];
   
   if (!snap)
