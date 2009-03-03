@@ -1,4 +1,4 @@
-/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1970,6 +1970,7 @@ bool Table::insertIntoTree(Record * record, Record *prior, int recordNumber)
 	ageGroup = database->currentGeneration;
 
 	Sync sync(&syncObject, "Table::insert");
+	
 	if (!record || !records)
 		sync.lock(Exclusive);
 	else
@@ -3583,16 +3584,20 @@ void Table::optimize(Connection *connection)
 	int recordNumber = 0;
 	Transaction *transaction = connection->getTransaction();
 	
-	for (Record *candidate; (candidate = fetchNext(recordNumber));)
+	// Fetch every base record in this table. Count each
+	// base record that has a version visible to this transaction.
+	// Be sure to release the base record afterwards.
+	
+	for (Record *record; (record = fetchNext(recordNumber));)
 		{
-		recordNumber = candidate->recordNumber + 1;
-		Record *record = candidate->fetchVersion(transaction);
+		recordNumber = record->recordNumber + 1;
+		Record *recordVersion = record->fetchVersion(transaction);
 		
-		if (record)
+		if (recordVersion)
 			++count;
-
-		RECORD_HISTORY(candidate);
-		candidate->release(REC_HISTORY); // no need to keep it around
+		
+		RECORD_HISTORY(record);
+		record->release(REC_HISTORY); // no need to keep it around
 		}
 	
 	cardinality = count;
@@ -3786,7 +3791,7 @@ void Table::expungeRecord(int32 recordNumber)
 	dataSection->expungeRecord(recordNumber);
 }
 
-int32 Table::backlogRecord(RecordVersion* record)
+bool Table::backlogRecord(RecordVersion* record, Bitmap* backlogBitmap)
 {
 	Sync sync(&syncObject, "Table::backlogRecord");
 	sync.lock(Exclusive);
@@ -3795,6 +3800,9 @@ int32 Table::backlogRecord(RecordVersion* record)
 		backloggedRecords = new SparseArray<int32, BL_SIZE>;
 
 	int32 backlogId = backloggedRecords->get(record->recordNumber);
+	bool inserted = false;
+	
+	// Update if already backlogged, insert if not
 	
 	if (backlogId)
 		database->backLog->update(backlogId, record);
@@ -3802,15 +3810,39 @@ int32 Table::backlogRecord(RecordVersion* record)
 		{
 		backlogId = database->backLog->save(record);
 		backloggedRecords->set(record->recordNumber, backlogId);
+		inserted = true;
 		}
+	
+	// Now that the record is backlogged, replace it with a null
+	// base record in the record tree
+	
+	if (!insertIntoTree(NULL, record, record->recordNumber))
+		{
+		// If the tree insert fails, remove the record number from
+		// the backlog sparse array and from the backlog repository
+		
+		backloggedRecords->set(record->recordNumber, 0);
+		database->backLog->deleteRecord(backlogId);
+		
+		// Remove from caller's backlog bitmap
+		
+		if (backlogBitmap && !inserted)
+			backlogBitmap->clear(backlogId);
+		}
+	else
+		{
+		// Update caller's bitmap
+		
+		if (backlogBitmap)
+			backlogBitmap->set(backlogId);
+		}
+	
+	// Always keep the record number set in the table's record bitmap
+	// so this record can be found in fetchNext()
 
-	// InsertIntoTree does not clear bits in recordBitmap.
-	// We want the bit to remain set so this record can be found
-	// in fetchNext().
+	recordBitmap->set(record->recordNumber);
 
-	ASSERT(insertIntoTree(NULL, record, record->recordNumber));
-
-	return backlogId;
+	return backlogId != 0;
 }
 
 void Table::deleteRecordBacklog(int32 recordNumber)
