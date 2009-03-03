@@ -1,4 +1,4 @@
-/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -68,6 +68,9 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *trans, Rec
 
 RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(database, stream)
 {
+	// Reconstitute a record version and recursively restore all
+	// prior versions from 'stream'
+
 	virtualOffset = stream->getInt64();
 	transactionId = stream->getInt();
 	int priorType = stream->getInt();
@@ -446,6 +449,8 @@ void RecordVersion::serialize(Serialize* stream)
 	Record::serialize(stream);
 	stream->putInt64(virtualOffset);
 	stream->putInt(transactionId);
+	
+	// Recursively serialize the prior version chain
 	
 	if (priorVersion)
 		{

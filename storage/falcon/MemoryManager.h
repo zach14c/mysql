@@ -40,6 +40,7 @@
 class Stream;
 class InfoTable;
 class MemMgr;
+class MemControl;
 struct MemObject;
 
 #ifdef _DEBUG
@@ -110,9 +111,19 @@ enum MemMgrWhat {
 	MemMgrRecordDetail
 	};
 
-static const int MemMgrPoolGeneral		= 0;
-static const int MemMgrPoolRecordData	= 1;
-static const int MemMgrPoolRecordObject	= 2;
+// Memory pool identifiers
+
+static const int MemMgrDefault		 = 1;
+static const int MemMgrGeneral		 = 2;
+static const int MemMgrRecordData	 = 4;
+static const int MemMgrRecord		 = 8;
+static const int MemMgrRecordVersion = 16;
+static const int MemMgrAllPools		 = -1;
+
+// Memory pool group identifiers
+
+static const int MemMgrControlGeneral = 0; // general memory pool
+static const int MemMgrControlRecord  = 1; // record and object memory pools
 
 extern void		MemMgrAnalyze(MemMgrWhat what, InfoTable *table);
 extern void		MemMgrRelease (void *object);
@@ -122,6 +133,7 @@ extern void*	MemMgrRecordAllocate (size_t size, const char *file, int line);
 extern void		MemMgrRecordDelete (char *record);
 extern void		MemMgrSetMaxRecordMember (long long size);
 extern MemMgr*	MemMgrGetFixedPool (int id);
+extern MemControl* MemMgrGetControl (int id);
 
 extern MemObject* MemMgrFindPriorBlock (void *block);
 

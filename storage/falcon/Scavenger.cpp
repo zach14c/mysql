@@ -65,7 +65,8 @@ void Scavenger::scavenge()
 
 void Scavenger::execute(Scheduler * scheduler)
 {
-	database->signalScavenger();
+	bool forced = database->scavengeForced || database->lowMemory;
+	database->signalScavenger(forced);
 	getNextEvent();
 	scheduler->addEvent (this);
 }

@@ -1,4 +1,4 @@
-/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -72,6 +72,7 @@
 #include "InfoTable.h"
 #include "MemoryManager.h"
 #include "MemMgr.h"
+#include "MemControl.h"
 #include "RecordScavenge.h"
 #include "RecordSection.h"
 #include "LogStream.h"
@@ -117,6 +118,7 @@ static const char THIS_FILE[]=__FILE__;
 
 #define STATEMENT_RETIREMENT_AGE	60
 #define RECORD_RETIREMENT_AGE		60
+#define MAX_LOW_MEMORY				10
 
 extern uint falcon_debug_trace;
 
@@ -484,8 +486,10 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent) :
 	scavengeCycle = 0;
 	serialLogBlockSize = configuration->serialLogBlockSize;
 	longSync = false;
-	recordDataPool = MemMgrGetFixedPool(MemMgrPoolRecordData);
-	//recordObjectPool = MemMgrGetFixedPool(MemMgrPoolRecordObject);
+	recordMemoryControl = MemMgrGetControl(MemMgrControlRecord);
+	recordPool = MemMgrGetFixedPool(MemMgrRecord);
+	recordVersionPool = MemMgrGetFixedPool(MemMgrRecordVersion);
+	recordDataPool = MemMgrGetFixedPool(MemMgrRecordData);
 	syncObject.setName("Database::syncObject");
 	syncTables.setName("Database::syncTables");
 	syncStatements.setName("Database::syncStatements");
@@ -496,7 +500,6 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent) :
 	syncSysDDL.setName("Database::syncSysDDL");
 	IO::deleteFile(BACKLOG_FILE);
 }
-
 
 void Database::start()
 {
@@ -1826,7 +1829,7 @@ void Database::scavengeRecords(bool forced)
 	// Take inventory of the record cache and prune invisible record versions
 
 	pruneRecords(&recordScavenge);
-	recordScavenge.prunedActiveMemory = recordDataPool->activeMemory;
+	recordScavenge.prunedActiveMemory = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 	recordScavenge.pruneStop = deltaTime;
 	syncScavenger.unlock();  // take a breath!
 
@@ -1834,15 +1837,20 @@ void Database::scavengeRecords(bool forced)
 
 	syncScavenger.lock(Exclusive);
 	retireRecords(&recordScavenge);
-	recordScavenge.retiredActiveMemory = recordDataPool->activeMemory;
+	recordScavenge.retiredActiveMemory = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 	recordScavenge.retireStop = deltaTime;
 
 	// Enable backlogging if memory is low
 
 	if (recordScavenge.retiredActiveMemory > recordScavengeFloor)
-		setLowMemory();
+		if (!lowMemory)
+			setLowMemory(recordScavenge.retiredActiveMemory - recordScavengeFloor);
 	else
-		clearLowMemory();
+		{
+		if (lowMemoryCount)
+			if (--lowMemoryCount == 0)
+				clearLowMemory();
+		}
 
 	recordScavenge.print();
 	// Log::log(analyze(analyzeRecordLeafs));
@@ -1859,7 +1867,7 @@ void Database::scavengeRecords(bool forced)
 	Sync syncMem(&syncMemory, "Database::checkRecordScavenge");
 	syncMem.lock(Exclusive);
 
-	lastActiveMemoryChecked = lastGenerationMemory = recordDataPool->activeMemory;
+	lastActiveMemoryChecked = lastGenerationMemory = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 }
 
 // Take inventory of the record cache and prune invisible record versions
@@ -1892,7 +1900,7 @@ void Database::retireRecords(RecordScavenge *recordScavenge)
 	// Scavenge if we passed the upper limit or if a forced scavenge
 	// was requested.
 
-	if (recordDataPool->activeMemory < recordScavengeThreshold
+	if (recordMemoryControl->getCurrentMemory(MemMgrRecordData) < recordScavengeThreshold
 		&& !recordScavenge->forced)
 		return;
 
@@ -1902,7 +1910,7 @@ void Database::retireRecords(RecordScavenge *recordScavenge)
 	Sync syncTbl(&syncTables, "Database::retireRecords(2)");
 	syncTbl.lock(Shared);
 
-	uint64 spaceToRetire = recordDataPool->activeMemory - recordScavengeFloor;
+	uint64 spaceToRetire = recordMemoryControl->getCurrentMemory(MemMgrRecordData) - recordScavengeFloor;
 	recordScavenge->computeThreshold(spaceToRetire);
 
 	for (Table *table = tableList; table; table = table->next)
@@ -1956,7 +1964,7 @@ void Database::scavengerThreadMain(void)
 		{
 		scavenge((scavengeForced > 0));
 		
-		if (recordDataPool->activeMemory < recordScavengeThreshold)
+		if (recordMemoryControl->getCurrentMemory(MemMgrRecordData) < recordScavengeThreshold)
 			{
 			INTERLOCKED_INCREMENT(scavengerThreadSleeping);
 			thread->sleep();
@@ -2611,32 +2619,32 @@ void Database::checkRecordScavenge(void)
 		syncMem.lock(Exclusive);
 
 		if (   !scavengerThreadSignaled 
-			&& (recordDataPool->activeMemory > lastActiveMemoryChecked))
+			&& (recordMemoryControl->getCurrentMemory(MemMgrRecordData) > lastActiveMemoryChecked))
 			{
 			// Start a new age generation regularly.  Note that since activeMemory
 			// can go down due to a recent scavenge, it is possible for
-			// lastGenerationMemory to be > recordDataPool->activeMemory
+			// lastGenerationMemory to be > recordMemoryControl->getCurrentMemory()
 
-			if (  (int64) (recordDataPool->activeMemory - lastGenerationMemory)
+			if (  (int64) (recordMemoryControl->getCurrentMemory(MemMgrRecordData) - lastGenerationMemory)
 			    > (int64) recordScavengeMaxGroupSize)
 				{
 				// Let the scavenger run to prune records.  
 				// It will also retire records if recordScavengeThreshold has been reached.
 
 				INTERLOCKED_INCREMENT (currentGeneration);
-				lastGenerationMemory = recordDataPool->activeMemory;
+				lastGenerationMemory = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 
 				INTERLOCKED_INCREMENT(scavengerThreadSignaled);
 				scavengerThreadWakeup();
 				}
 
-			else if (recordDataPool->activeMemory >= recordScavengeThreshold)
+			else if (recordMemoryControl->getCurrentMemory(MemMgrRecordData) >= recordScavengeThreshold)
 				{
 				INTERLOCKED_INCREMENT(scavengerThreadSignaled);
 				scavengerThreadWakeup();
 				}
 
-			lastActiveMemoryChecked = recordDataPool->activeMemory;
+			lastActiveMemoryChecked = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 			}
 		}
 }
@@ -2757,7 +2765,7 @@ void Database::flushWait(void)
 	cache->flushWait();
 	}
 
-void Database::setLowMemory(void)
+void Database::setLowMemory(uint64 spaceNeeded)
 {
 	if (!backLog)
 		{	
@@ -2769,9 +2777,12 @@ void Database::setLowMemory(void)
 		}
 
 	lowMemory = true;
+	lowMemoryCount = MAX_LOW_MEMORY;
+//	this->transactionManager->setLowMemory(spaceNeeded);
 }
 
 void Database::clearLowMemory(void)
 {
+//	this->transactionManager->clearLowMemory();
 	lowMemory = false;
 }
