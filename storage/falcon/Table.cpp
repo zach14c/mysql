@@ -1010,23 +1010,38 @@ Record* Table::treeFetch(int32 recordNumber)
 	return section->fetch(id);
 }
 
+// Read a record chain from the backlog. If another thread
+// beats us to it, just read from the tree. Try multiple
+// times, if necessary.
+
 Record* Table::backlogFetch(int32 recordNumber)
 {
-	if (backloggedRecords)
-		{
-		int32 backlogId = backloggedRecords->get(recordNumber);
-		
-		if (backlogId)
-			{
-			Record *record = database->backLog->fetch(backlogId);
-			ASSERT (insertIntoTree(record, NULL, recordNumber));
-			
-			return record;
-			}
-		}
-	
-	return NULL;	
-}
+    if (backloggedRecords)
+        {
+        int32 backlogId = backloggedRecords->get(recordNumber);
+        int attempts = 5;
+
+        while (backlogId && attempts--)
+            {
+            Record *record = database->backLog->fetch(backlogId);
+
+            if (record)
+            	{
+            	if (insertIntoTree(record, NULL, recordNumber))
+            		{
+            		RECORD_HISTORY(record);
+            		return record;
+            		}
+            	record->release();
+            	}
+
+            if (record = fetch(recordNumber))
+                return record;
+            }
+        }
+    
+    return NULL;   
+} 
 
 void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transaction)
 {
@@ -3802,7 +3817,7 @@ bool Table::backlogRecord(RecordVersion* record, Bitmap* backlogBitmap)
 	int32 backlogId = backloggedRecords->get(record->recordNumber);
 	bool inserted = false;
 	
-	// Update if already backlogged, insert if not
+	// Update if already backlogged, else insert
 	
 	if (backlogId)
 		database->backLog->update(backlogId, record);
@@ -3816,33 +3831,27 @@ bool Table::backlogRecord(RecordVersion* record, Bitmap* backlogBitmap)
 	// Now that the record is backlogged, replace it with a null
 	// base record in the record tree
 	
-	if (!insertIntoTree(NULL, record, record->recordNumber))
+	if (insertIntoTree(NULL, record, record->recordNumber))
 		{
-		// If the tree insert fails, remove the record number from
-		// the backlog sparse array and from the backlog repository
-		
-		backloggedRecords->set(record->recordNumber, 0);
-		database->backLog->deleteRecord(backlogId);
-		
-		// Remove from caller's backlog bitmap
-		
-		if (backlogBitmap && !inserted)
-			backlogBitmap->clear(backlogId);
-		}
-	else
-		{
-		// Update caller's bitmap
-		
 		if (backlogBitmap)
 			backlogBitmap->set(backlogId);
+		return true;
 		}
+		
+	// If the tree insert failed, then there must be a new base
+	// record and the old backlog record is no good.
+	// Remove the record number from the sparse array and
+	// remove the backlog record from the repository.
+		
+	backloggedRecords->set(record->recordNumber, 0);
+	database->backLog->deleteRecord(backlogId);
+		
+	// Remove from caller's backlog bitmap
+		
+	if (backlogBitmap)
+		backlogBitmap->clear(backlogId);
 	
-	// Always keep the record number set in the table's record bitmap
-	// so this record can be found in fetchNext()
-
-	recordBitmap->set(record->recordNumber);
-
-	return backlogId != 0;
+	return false;
 }
 
 void Table::deleteRecordBacklog(int32 recordNumber)
