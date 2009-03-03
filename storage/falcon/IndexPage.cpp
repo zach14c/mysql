@@ -626,8 +626,7 @@ Bdb* IndexPage::findLevel(Dbb * dbb, int32 indexId, Bdb *bdb, int level, IndexKe
 		IndexNode node (page->findNodeInBranch(indexKey, recordNumber));
 
 		int32 pageNumber = node.getNumber();
-		int32 parentPageNumber = bdb->pageNumber;
-		
+
 		if (pageNumber == END_BUCKET)
 			{
 			if (dbb->debug & (DEBUG_PAGES | DEBUG_FIND_LEVEL))

@@ -307,7 +307,6 @@ Bdb* IndexRootPage::findInsertionLeaf(Dbb *dbb, int32 indexId, IndexKey *indexKe
 		int level = page->level;
 		int32 nextPage = page->nextPage;
 
-		int32 parentPage = bdb->pageNumber;
 		bdb = dbb->handoffPage(bdb, pageNumber, PAGE_btree, 
 								(page->level > 1) ? Shared : Exclusive);
 		BDB_HISTORY(bdb);
@@ -321,8 +320,7 @@ Bdb* IndexRootPage::findInsertionLeaf(Dbb *dbb, int32 indexId, IndexKey *indexKe
 
 		if (dbb->debug & (DEBUG_PAGES | DEBUG_FIND_LEAF))
 			page->printPage (bdb, false);
-		
-		// page->parentPage = parentPage;
+
 		}
 	if (isRoot)
 		*isRoot = (bdb->pageNumber == rootPageNumber);

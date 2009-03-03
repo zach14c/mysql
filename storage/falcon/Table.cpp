@@ -1016,32 +1016,33 @@ Record* Table::treeFetch(int32 recordNumber)
 
 Record* Table::backlogFetch(int32 recordNumber)
 {
-    if (backloggedRecords)
-        {
-        int32 backlogId = backloggedRecords->get(recordNumber);
-        int attempts = 5;
+	if (backloggedRecords)
+		{
+		int32 backlogId = backloggedRecords->get(recordNumber);
+		int attempts = 5;
 
-        while (backlogId && attempts--)
-            {
-            Record *record = database->backLog->fetch(backlogId);
+		while (backlogId && attempts--)
+			{
+			Record *record = database->backLog->fetch(backlogId);
 
-            if (record)
-            	{
-            	if (insertIntoTree(record, NULL, recordNumber))
-            		{
-            		RECORD_HISTORY(record);
-            		return record;
-            		}
-            	record->release();
-            	}
+			if (record)
+				{
+				if (insertIntoTree(record, NULL, recordNumber))
+					{
+					RECORD_HISTORY(record);
+					return record;
+					}
+				record->release();
+				}
 
-            if (record = fetch(recordNumber))
-                return record;
-            }
-        }
-    
-    return NULL;   
-} 
+			record = fetch(recordNumber);
+			if (record)
+				return record;
+			}
+		}
+	
+	return NULL;
+}
 
 void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transaction)
 {
