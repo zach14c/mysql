@@ -247,13 +247,13 @@ void _maria_log_command(IO_CACHE *log, enum maria_log_commands command,
   int old_errno, headerlen;
   ulong pid=(ulong) GETPID();
   File file= share->kfile.file;
-  old_errno=my_errno;
   DBUG_ENTER("_maria_log_command");
   DBUG_PRINT("enter", ("command: %u share->open_file_name.str '%s'",
                        command, share->open_file_name.str));
   DBUG_ASSERT(command == MA_LOG_OPEN  || command == MA_LOG_CLOSE);
 
   DBUG_ASSERT(((uint)result) <= UINT_MAX16);
+  old_errno=my_errno;
   if (file >= UINT_MAX16 || length >= UINT_MAX16)
   {
     header[0]= ((uchar) command) | MA_LOG_BIG_NUMBERS;
