@@ -1,4 +1,4 @@
-/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -535,7 +535,7 @@ void Transaction::chillRecords()
 
 	syncSP.unlock();
 
-	if (database->lowMemory)
+	if (database->lowMemory && !systemTransaction)
 		backlogRecords();
 
 	Log::log(LogInfo, "%d: Record chill: transaction %ld, %ld records, %ld bytes\n", database->deltaTime, transactionId, chilledRecords-chilledBefore,
@@ -598,12 +598,18 @@ void Transaction::addRecord(RecordVersion * record)
 	totalRecordData += record->getEncodedSize();
 	++totalRecords;
 	
-	if (totalRecordData > database->configuration->recordChillThreshold)
-		{
-		// Chill all records except the current record, which may be part of an update or insert
+	// If the transaction size has exceeded the chill threshold,
+	// write the pending records to the serial log and free the record data.
+	//
+	// Never do this for system transactions.
 
+	if (totalRecordData > database->configuration->recordChillThreshold
+		&& !systemTransaction)
+		{
 		UCHAR saveState = record->state;
 		
+		// Chill all records except the current record, which may be part of an update or insert
+
 		if (record->state != recLock && record->state != recChilled)
 			record->state = recNoChill;
 			
@@ -617,6 +623,7 @@ void Transaction::addRecord(RecordVersion * record)
 	
 	Sync syncRec(&syncRecords,"Transaction::addRecord");
 	syncRec.lock(Exclusive);
+	
 	if ( (record->prevInTrans = lastRecord) )
 		lastRecord->nextInTrans = record;
 	else
@@ -626,7 +633,8 @@ void Transaction::addRecord(RecordVersion * record)
 	lastRecord = record;
 	syncRec.unlock();
 	
-	if (database->lowMemory && deletedRecords > MAX_LOW_MEMORY_RECORDS)
+	if (database->lowMemory && !systemTransaction
+		&& deletedRecords > MAX_LOW_MEMORY_RECORDS)
 		backlogRecords();
 }
 
@@ -1515,11 +1523,11 @@ void Transaction::backlogRecords(void)
 				if (!backloggedRecords)
 					backloggedRecords = new Bitmap;
 
-				int32 backlogId = record->format->table->backlogRecord(record);
-				backloggedRecords->set(backlogId);
+				// Backlog the record and remove it from the transaction
+				
+				if (record->format->table->backlogRecord(record, backloggedRecords))
+					removeRecord(record);
 				}
-
-			removeRecord(record);
 			}
 		}
 }
