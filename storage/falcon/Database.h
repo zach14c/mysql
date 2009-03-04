@@ -61,7 +61,7 @@ static const int OUT_OF_RECORD_MEMORY_RETRIES = 10;
 
 // Milliseconds per iteration to wait for the Scavenger
 
-static const int SCAVENGE_WAIT_MS			  = 50;//500;
+static const int SCAVENGE_WAIT_MS			  = 50;
 
 // Scavenger cycles per call to updateCardinalities()
 

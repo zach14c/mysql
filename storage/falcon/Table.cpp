@@ -1035,7 +1035,7 @@ Record* Table::backlogFetch(int32 recordNumber)
             	record->release();
             	}
 
-            if (record = fetch(recordNumber))
+            if ((record = fetch(recordNumber)))
                 return record;
             }
         }
