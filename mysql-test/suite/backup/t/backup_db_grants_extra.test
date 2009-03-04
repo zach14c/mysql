@@ -1,6 +1,6 @@
---echo Test - 4
---echo Test to ensure routine-level GRANT statements are recorded in the
---echo backup image and restore reapplies the GRANT statements.
+--echo # Test - 4
+--echo # Test to ensure routine-level GRANT statements are recorded in the
+--echo # backup image and restore reapplies the GRANT statements.
 
 --source include/not_embedded.inc
 
@@ -11,9 +11,9 @@ DROP DATABASE IF EXISTS db1;
 DROP DATABASE IF EXISTS db2;
 --enable_warnings
 
---echo
---echo create databases and tables
---echo
+--echo #
+--echo # create databases and tables
+--echo #
 
 CREATE DATABASE db1;
 CREATE DATABASE db2;
@@ -30,16 +30,16 @@ INSERT INTO db1.t2 VALUES(10,'a'),(20,'b'),(30,'c'),(40,'d');
 INSERT INTO db2.t1 VALUES(10,'a1'),(20,'b1'),(30,'c1'),(40,'d1');
 INSERT INTO db2.t2 VALUES(100,'2008-09-09'),(200,'1996-06-13');
 
---echo
---echo create users
---echo
+--echo #
+--echo # create users
+--echo #
 
 CREATE USER 'jim'@'%';
 CREATE USER 'carry'@'%';
 
---echo
---echo create procedures and functions.
---echo
+--echo #
+--echo # create procedures and functions.
+--echo #
 
 DELIMITER ||;
 
@@ -61,9 +61,9 @@ CREATE FUNCTION db2.f21() RETURNS INT
 
 DELIMITER ;||
 
---echo
---echo Grant Routine level privileges to users
---echo
+--echo #
+--echo # Grant Routine level privileges to users
+--echo #
 
 GRANT EXECUTE ON PROCEDURE db2.p21 TO jim@'%';
 GRANT EXECUTE ON FUNCTION db1.f11 TO jim@'%';
@@ -74,8 +74,8 @@ GRANT EXECUTE ON PROCEDURE db1.p11 TO carry@'%';
 GRANT EXECUTE ON FUNCTION db2.f21 TO carry@'%';
 FLUSH PRIVILEGES;
 
---echo
---echo Verify the grant privileges for users
+--echo #
+--echo # Verify the grant privileges for users
 
 SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA 
 FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES 
@@ -86,22 +86,21 @@ SELECT * FROM mysql.procs_priv
  WHERE Db='db1' OR Db='db2' 
  ORDER BY Db, User, Routine_name;
 
---echo Perform backup
+--echo # Perform backup
 --replace_column 1 #
 BACKUP DATABASE db1, db2 TO 'db12.bak';
 
---echo Drop database and users
+--echo # Drop databases but not users
 
 DROP DATABASE db1;
 DROP DATABASE db2;
 
---echo Perform restore and verify that restore properly reapplies all 
---echo grants for users.
+--echo # Perform restore and verify that all grants are retained.
 
 --replace_column 1 #
 RESTORE FROM 'db12.bak';
 
---echo Verify the objects and grants
+--echo # Verify the objects and grants
 
 SHOW TABLES FROM db1;
 SHOW TABLES FROM db2;
@@ -119,8 +118,8 @@ SELECT * FROM mysql.procs_priv
  WHERE Db='db1' OR Db='db2' 
  ORDER BY Db, User, Routine_name;
 
---echo We notice that all the grants are restored intact.
---echo Excercise objects
+--echo # We notice that all the grants are intact.
+--echo # Excercise objects
 
 CALL db1.p11(2);
 CALL db2.p21('TEST');
@@ -132,31 +131,31 @@ SELECT * FROM db2.t1;
 SELECT * FROM db1.t2;
 SELECT * FROM db2.t2;
 
---echo
---echo Drop database and users
+--echo #
+--echo # Drop databases and users
 
 DROP DATABASE db1;
 DROP DATABASE db2;
 DROP USER jim@'%';
 DROP USER carry@'%';
 
---echo
---echo Recreate users
+--echo #
+--echo # Recreate users
 
 CREATE USER 'jim'@'%';
 CREATE USER 'carry'@'%';
 
---echo Verify grants for users
+--echo # Verify grants for users
 FLUSH PRIVILEGES;
 SHOW GRANTS FOR jim@'%';
 SHOW GRANTS FOR carry@'%';
 
---echo Ensure that restore properly reapplies all grants for users.
+--echo # Ensure that restore properly reapplies all grants.
 
 --replace_column 1 #
 RESTORE FROM 'db12.bak';
 
---echo Verify the objects and grants
+--echo # Verify the objects and grants
 
 FLUSH PRIVILEGES;
 SHOW TABLES FROM db1;
@@ -175,11 +174,8 @@ SELECT * FROM mysql.procs_priv
  WHERE Db='db1' OR Db='db2' 
  ORDER BY Db, User, Routine_name;
 
---echo From the above table, We can notice that grants for stored routines will
---echo not be restored. Bug#41979
-
---echo Drop users, then restore and verify the grants.
---echo Restore will throw a warning message
+--echo # Drop databases and users, then restore and verify the grants.
+--echo # Restore will throw warning messages
 
 DROP DATABASE db1;
 DROP DATABASE db2;
@@ -193,7 +189,7 @@ RESTORE FROM 'db12.bak';
 --replace_column 2 #
 SHOW WARNINGS;
 
---echo Verify grants after restore
+--echo # Verify grants after restore
 # If the users are dropped, grants will not be restored.
 
 --error ER_NONEXISTING_GRANT
