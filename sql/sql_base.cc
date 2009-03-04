@@ -47,9 +47,12 @@ public:
 
   virtual ~Prelock_error_handler() {}
 
-  virtual bool handle_error(THD *thd,
-                            MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno, const char *message);
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl);
 
   bool safely_trapped_errors();
 
@@ -60,11 +63,14 @@ private:
 
 
 bool
-Prelock_error_handler::handle_error(THD * /* thd */,
-                                    MYSQL_ERROR::enum_warning_level /* level */,
-                                    uint sql_errno,
-                                    const char * /* message */)
+Prelock_error_handler::handle_condition(THD *,
+                                        uint sql_errno,
+                                        const char*,
+                                        MYSQL_ERROR::enum_warning_level,
+                                        const char*,
+                                        MYSQL_ERROR ** cond_hdl)
 {
+  *cond_hdl= NULL;
   if (sql_errno == ER_NO_SUCH_TABLE)
   {
     m_handled_errors++;

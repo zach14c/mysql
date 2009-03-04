@@ -403,7 +403,7 @@ static const char *changedTables [] = {
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-Database::Database(const char *dbName, Configuration *config, Threads *parent)
+Database::Database(const char *dbName, Configuration *config, Threads *parent) : syncCardinality("Database::syncCardinality"), syncMemory("Database::syncMemory")
 {
 	panicShutdown = false;
 	name = dbName;
@@ -516,7 +516,6 @@ void Database::start()
 	imageManager = new ImageManager(this);
 	roleModel = new RoleModel(this);
 	systemConnection = new Connection(this);
-	tableSpaceManager = new TableSpaceManager(this);
 	dbb->serialLog = serialLog = new SerialLog(this, configuration->checkpointSchedule, configuration->maxTransactionBacklog);
 	pageWriter = new PageWriter(this);
 	searchWords = new SearchWords (this);
@@ -645,7 +644,7 @@ void Database::createDatabase(const char * filename)
 	// If valid, use the user-defined serial log path, otherwise use the default.
 	
 	JString logRoot = setLogRoot(filename, true);
-	
+	tableSpaceManager = new TableSpaceManager(this);
 	//TBD: Return error to server.
 	
 #ifdef STORAGE_ENGINE
@@ -745,8 +744,6 @@ void Database::openDatabase(const char * filename)
 			if (dbb->logLength)
 				serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
 			serialLog->open(dbb->logRoot, false);
-			if (dbb->tableSpaceSectionId)
-				tableSpaceManager->bootstrap(dbb->tableSpaceSectionId);
 
 			try 
 				{
@@ -785,6 +782,9 @@ void Database::openDatabase(const char * filename)
 		END_FOR;
 		}
 
+	Sync syncDDL(&syncSysDDL, "Database::openDatabase");
+	syncDDL.lock(Shared);
+	
 	PreparedStatement *statement = prepareStatement ("select tableid from tables");
 	ResultSet *resultSet = statement->executeQuery();
 
@@ -798,6 +798,8 @@ void Database::openDatabase(const char * filename)
 
 	resultSet->close();
 	statement->close();
+	syncDDL.unlock();
+	
 	upgradeSystemTables();
 	Trigger::initialize (this);
 	serialLog->checkpoint(true);
@@ -1736,10 +1738,14 @@ void Database::scavenge(bool forced)
 {
 	// Signal the cardinality task unless a forced scavenge is pending
 
-	if (!forced &&
-		++scavengeCount % CARDINALITY_FREQUENCY == 0)
+	if (!forced)
 		{
-		signalCardinality();
+		// Don't disturb recovery
+		if (serialLog && serialLog->recovering)
+			return;
+
+		if (++scavengeCount % CARDINALITY_FREQUENCY == 0)
+			signalCardinality();
 		}
 	
 	scavengeForced = 0;
@@ -1791,10 +1797,14 @@ void Database::scavenge(bool forced)
 	transactionManager->reportStatistics();
 
 	if (serialLog)
+		{
 		serialLog->reportStatistics();
+		if (!serialLog->recovering)
+			tableSpaceManager->reportStatistics();
+		}	
 		
 	dbb->reportStatistics();
-	tableSpaceManager->reportStatistics();
+
 	repositoryManager->reportStatistics();
 	
 	if (backLog)
