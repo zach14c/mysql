@@ -147,7 +147,7 @@ static NDB_SCHEMA_OBJECT *ndb_get_schema_object(const char *key,
 static void ndb_free_schema_object(NDB_SCHEMA_OBJECT **ndb_schema_object,
                                    bool have_lock);
 
-static MDL_LOCK_REQUEST binlog_mdl_lock_request;
+static MDL_request binlog_mdl_request;
 
 /*
   Helper functions
@@ -3018,8 +3018,8 @@ static int open_and_lock_ndb_binlog_index(THD *thd, TABLE_LIST *tables,
   THD_SET_PROC_INFO(thd, "Opening " NDB_REP_DB "." NDB_REP_TABLE);
   tables->required_type= FRMTYPE_TABLE;
   thd->clear_error();
-  mdl_request_init(&binlog_mdl_lock_request, 0, tables->db, tables->table_name);
-  tables->mdl_lock_request= &binlog_mdl_lock_request;
+  binlog_mdl_request.init(0, tables->db, tables->table_name);
+  tables->mdl_request= &binlog_mdl_request;
   if (simple_open_n_lock_tables(thd, tables))
   {
     if (thd->killed)

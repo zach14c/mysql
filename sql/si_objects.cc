@@ -223,7 +223,7 @@ void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
   names.
 */
 
-typedef MDL_KEY Table_name_key;
+typedef MDL_key Table_name_key;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1562,7 +1562,7 @@ Find_view_underlying_tables::execute_server_code(THD *thd)
                             &table_name_key, sizeof(*table_name_key), NullS))
         goto end;
 
-      table_name_key->mdl_key_init(&table->mdl_lock_request->key);
+      table_name_key->mdl_key_init(&table->mdl_request->key);
 
       if (my_hash_insert(m_table_names, (uchar*) table_name_key))
       {
