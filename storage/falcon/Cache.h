@@ -79,6 +79,7 @@ public:
 	PageWriter	*pageWriter;
 	Database	*database;
 	int			numberBuffers;
+	bool		shuttingDown;
 	bool		panicShutdown;
 	bool		flushing;
 	bool		recovering;

@@ -4474,10 +4474,10 @@ send_result:
         protocol->prepare_for_resend();
         protocol->store(table_name, system_charset_info);
         protocol->store((char*) operator_name, system_charset_info);
-        protocol->store(warning_level_names[err->level].str,
-                        warning_level_names[err->level].length,
+        protocol->store(warning_level_names[err->get_level()].str,
+                        warning_level_names[err->get_level()].length,
                         system_charset_info);
-        protocol->store(err->msg, system_charset_info);
+        protocol->store(err->get_message_text(), system_charset_info);
         if (protocol->write())
           goto err;
       }

@@ -252,22 +252,23 @@ void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestAct
 		if (trans)
 			trans->removeRecord((RecordVersion*) rec);
 		}
-	
+
 	// If we didn't find anyone, there's nothing to do
-	
+
 	if (!ptr)
 		return;
-	
-	// There are intermediate versions to collapse.  Splice the unnecessary ones out of the loop
-	
+
+	// There are intermediate versions to collapse.  Make this 
+	// priorRecord point past the intermediate version(s) to the 
+	// next staying version.  
+
 	Record *prior = priorVersion;
 	prior->addRef();
 
 	syncPrior.unlock();
 	syncPrior.lock(Exclusive);
-	
+
 	setPriorVersion(rec);
-	//ptr->setPriorVersion(NULL);
 	ptr->state = recEndChain;
 	format->table->garbageCollect(prior, this, transaction, false);
 	prior->release();

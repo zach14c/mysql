@@ -107,8 +107,8 @@ public:
 	void		checkMaxKeyLength(void);
 
 	void		makeKey (Record *record, IndexKey *key);
-	void		makeKey (int count, Value **values, IndexKey *key);
-	void		makeKey (Field *field, Value *value, int segment, IndexKey *key);
+	void		makeKey (int count, Value **values, IndexKey *key, bool highKey);
+	void		makeKey (Field *field, Value *value, int segment, IndexKey *key, bool highKey);
 
 	void		detachDeferredIndex(DeferredIndex *deferredIndex);
 	UCHAR		getPadByte(void);
