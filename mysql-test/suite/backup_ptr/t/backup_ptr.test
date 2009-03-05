@@ -11,9 +11,9 @@
 --source include/not_embedded.inc
 --source include/have_log_bin.inc
 
+let $saved_format=`select @@binlog_format`;
 let $MYSQLD_DATADIR=`select @@datadir`;
 
-SELECT @@BINLOG_FORMAT;
 RESET MASTER;
 
 --error 0,1
@@ -34,22 +34,22 @@ CREATE DATABASE IF NOT EXISTS ptr;
 USE ptr;
 
 --echo **** Creating tables ****
-CREATE TABLE ptr.t1(id INT, a CHAR(4));
+CREATE TABLE ptr.t1(id INT, a CHAR(4)) ENGINE=MYISAM;
 INSERT INTO ptr.t1 VALUES(1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e');
 SELECT * FROM ptr.t1;
 
-CREATE TABLE ptr.t3(id INT, b CHAR(4));
+CREATE TABLE ptr.t3(id INT, b CHAR(4)) ENGINE=MYISAM;
 INSERT INTO ptr.t3 VALUES
 (11,'aa'),(22,'bb'),(33,'cc'),(44,'dd'),(55,'ee');
 
-CREATE TABLE ptr.t2(id INT, deletes_data VARCHAR(30), updates_data TEXT);
+CREATE TABLE ptr.t2(id INT, deletes_data VARCHAR(30), updates_data TEXT) ENGINE=MYISAM;
 INSERT INTO ptr.t2 VALUES
 (100,'data1 for testing','update data1'),
 (200,'data2 for testing','update data2'),
 (300,'data3 for testing','update data3'),
 (400,'data4 for testing','update data4'),
 (500,'data5 for testing','update data5'),
-(100,'data1 for testing','update data1'),
+(101,'data1 for testing','update data1'),
 (600,'data6 for testing','update data6');
 SELECT * FROM ptr.t2 ORDER BY id;
 SELECT COUNT(*) FROM ptr.t2;
@@ -72,7 +72,7 @@ continent ENUM('Asia', 'Europe','Africa','Antartica'),
 ts TIMESTAMP DEFAULT 0,
 dob DATE,
 y YEAR
-);
+) ENGINE=MYISAM;
 
 CREATE TABLE ptr.d2(
 region TEXT,
@@ -83,7 +83,7 @@ queries TINYTEXT,
 query2 TINYBLOB,
 extract LONGBLOB,
 paras MEDIUMTEXT
-);
+) ENGINE=MYISAM;
 
 INSERT INTO ptr.d1 VALUES
 (785,127,7288,278829899,3777,'testing1','sweden','678.299',200.23,829899.909,
@@ -99,7 +99,7 @@ SELECT * FROM ptr.d2;
 --echo **** Perform Data Manipulation Operations ****
 --echo ## Delete ##
 DELETE FROM ptr.t2 WHERE deletes_data='data4 for testing';
-DELETE FROM ptr.t2 WHERE id=100 LIMIT 1;
+DELETE FROM ptr.t2 WHERE id=100;
 
 --echo ## Insert and Select ##
 --echo **** Now ptr.t2 will have 5 counts in the table ****
@@ -191,7 +191,7 @@ SELECT * FROM ptr.t2 ORDER BY id;
 
 ALTER TABLE ptr.t2 DROP COLUMN changes;
 ALTER TABLE ptr.t3 ENGINE=MEMORY;
-CREATE TABLE definition(details LONGTEXT);
+CREATE TABLE definition(details LONGTEXT) ENGINE=MYISAM;
 INSERT INTO definition VALUES
 ('Performing some data definition statements for PTR');
 
@@ -387,3 +387,7 @@ SELECT * FROM ptr.d2;
 
 DROP DATABASE ptr;
 --remove_file $MYSQLD_DATADIR/ptr.bak
+
+--disable_query_log
+eval SET GLOBAL BINLOG_FORMAT='$saved_format';
+--enable_query_log

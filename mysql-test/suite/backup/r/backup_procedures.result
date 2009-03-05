@@ -1,6 +1,3 @@
-SHOW VARIABLES LIKE 'storage_engine';
-Variable_name	Value
-storage_engine	#
 
 starting the test for backup
 
@@ -11,7 +8,7 @@ USE bup_sp;
 CREATE TABLE bup_sp.country(
 ccode CHAR(10),
 city VARCHAR(10)
-);
+) ENGINE=MYISAM;
 *********loading data*********
 INSERT INTO bup_sp.country VALUES
 ('IND','chennai'),('US','sfo'),('US','austin'),
@@ -64,7 +61,7 @@ Table	country
 Create Table	CREATE TABLE `country` (
   `ccode` char(10) DEFAULT NULL,
   `city` varchar(10) DEFAULT NULL
-) ENGINE=ENGINE DEFAULT CHARSET=latin1
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
 SHOW PROCEDURE STATUS WHERE Db <> 'mtr';;
 Db	bup_sp
 Name	countryinfo
@@ -115,7 +112,7 @@ Table	country
 Create Table	CREATE TABLE `country` (
   `ccode` char(10) DEFAULT NULL,
   `city` varchar(10) DEFAULT NULL
-) ENGINE=ENGINE DEFAULT CHARSET=latin1
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
 SHOW PROCEDURE STATUS WHERE Db <> 'mtr';;
 Db	bup_sp
 Name	countryinfo
@@ -173,3 +170,44 @@ SELECT @x;
 ***  DROP bup_sp DATABASE ****
 
 DROP DATABASE bup_sp;
+
+Starting regression test for 34868 - Backup: restore failure if two procedures
+
+Create database and procedures
+DROP DATABASE IF EXISTS bup_proc;
+CREATE DATABASE bup_proc;
+USE bup_proc;
+CREATE PROCEDURE p1() SET @a=5;
+CREATE PROCEDURE p2() SET @a=100;
+
+Check that procedures are there before the backup
+CALL p1();
+SELECT @a;
+@a
+5
+CALL p2();
+SELECT @a;
+@a
+100
+
+Backup and restore
+BACKUP DATABASE bup_proc to 'bup_proc.bak';
+backup_id
+#
+DROP DATABASE bup_proc;
+RESTORE FROM 'bup_proc.bak';
+backup_id
+#
+
+Check that procedures are there after the restore
+CALL p1();
+SELECT @a;
+@a
+5
+CALL p2();
+SELECT @a;
+@a
+100
+
+Cleaning up
+DROP DATABASE bup_proc;
