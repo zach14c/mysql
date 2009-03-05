@@ -362,30 +362,22 @@ unpack_row(Relay_log_info const *rli,
 /**
   Fills @c table->record[0] with default values.
 
-  First @c empty_record() is called and then, additionally, fields are
-  initialized explicitly with a call to @c set_default().
+  First @c restore_record() is called to restore default values.
 
-  For optimization reasons, the explicit initialization can be skipped
-  for fields that are not marked in the @c cols vector. These fields
-  will be set later, and filling them with default values is
-  unnecessary.
-
-  If @c check is true, fields are explicitly initialized only if they
-  have default value or can be NULL. Otherwise error is reported. If
-  @c check is false, no error is reported and the field is not set to
-  any value.
+  If @c check is true, fields are explicitly check if they have default
+  value or can be NULL. Otherwise error is reported. If @c check is false, 
+  no error is reported and the field is not checked for default value.
 
   @todo When flag is added to allow engine to handle default values
   itself, the record should not be emptied and default values not set.
 
   @param table[in,out] Table whose record[0] buffer is prepared. 
-  @param cols[in]      Vector of bits denoting columns that will be set
-                       elsewhere
-  @param check[in]     Indicates if errors should be checked when setting default
+  @param cols[in]      Vector of bits denoting columns that will not be checked.
+  @param check[in]     Indicates if errors should be raised when checking default 
                        values.
 
   @retval 0                       Success
-  @retval ER_NO_DEFAULT_FOR_FIELD Default value could not be set for a field
+  @retval ER_NO_DEFAULT_FOR_FIELD Default value could not be checked for a field
  */ 
 int prepare_record(TABLE *const table, 
                    const MY_BITMAP *cols, uint width, const bool check)
@@ -393,13 +385,14 @@ int prepare_record(TABLE *const table,
   DBUG_ENTER("prepare_record");
 
   int error= 0;
-  empty_record(table);
+  restore_record(table, s->default_values);
+
+  if (!check)
+    DBUG_RETURN(error);
 
   /*
-    Explicit initialization of fields. For fields that are not in the
-    cols for the row, we set them to default. If the fields are in
-    addition to what exists on the master, we give an error if the
-    have no sensible default.
+    For fields that are not in the cols for the row, we check them if they
+    have default or can be null.
   */
 
   DBUG_PRINT_BITSET("debug", "cols: %s", cols);
@@ -411,15 +404,10 @@ int prepare_record(TABLE *const table,
       uint32 const mask= NOT_NULL_FLAG | NO_DEFAULT_VALUE_FLAG;
       Field *const f= *field_ptr;
 
-      if (check && ((f->flags & mask) == mask))
+      if (((f->flags & mask) == mask))
       {
         my_error(ER_NO_DEFAULT_FOR_FIELD, MYF(0), f->field_name);
         error = HA_ERR_ROWS_EVENT_APPLY;
-      }
-      else
-      {
-        DBUG_PRINT("debug", ("Set default; field: %s", f->field_name));
-        f->set_default();
       }
     }
   }
