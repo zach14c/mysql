@@ -9,7 +9,3 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-
-rpl_ndb_circular_simplex : Bug#42837 rpl_ndb_big.rpl_ndb_circular_simplex is disabled 
-
-# the below testcase have been reworked to avoid the bug, test contains comment, keep bug open
