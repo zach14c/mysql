@@ -83,20 +83,25 @@ public:
 
   virtual ~Silence_log_table_errors() {}
 
-  virtual bool handle_error(THD *thd,
-                            MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno, const char *message);
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sql_state,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl);
   const char *message() const { return m_message; }
 };
 
 bool
-Silence_log_table_errors::
-handle_error(THD * /* thd */,
-             MYSQL_ERROR::enum_warning_level /* level */,
-             uint /* sql_errno */,
-             const char *message_arg)
+Silence_log_table_errors::handle_condition(THD *,
+                                           uint,
+                                           const char*,
+                                           MYSQL_ERROR::enum_warning_level,
+                                           const char* msg,
+                                           MYSQL_ERROR ** cond_hdl)
 {
-  strmake(m_message, message_arg, sizeof(m_message)-1);
+  *cond_hdl= NULL;
+  strmake(m_message, msg, sizeof(m_message)-1);
   return TRUE;
 }
 
@@ -3917,9 +3922,10 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
     thd->stmt_da->reset_diagnostics_area();
-    thd->stmt_da->set_error_status(thd, 
-                                   ER_BACKUP_PROGRESS_TABLES, 
-                                   ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->set_error_status(thd,
+                                   ER_BACKUP_PROGRESS_TABLES,
+                                   ER(ER_BACKUP_PROGRESS_TABLES),
+                                   NULL);
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);
@@ -3939,9 +3945,10 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
     thd->stmt_da->reset_diagnostics_area();
-    thd->stmt_da->set_error_status(thd, 
-                                   ER_BACKUP_PROGRESS_TABLES, 
-                                   ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->set_error_status(thd,
+                                   ER_BACKUP_PROGRESS_TABLES,
+                                   ER(ER_BACKUP_PROGRESS_TABLES),
+                                   NULL);
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);

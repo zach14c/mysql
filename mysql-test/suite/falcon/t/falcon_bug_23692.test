@@ -1,0 +1,53 @@
+--source include/have_falcon.inc
+
+#
+# Bug #23692: Falcon: searches fail if data is 0x00
+#
+--echo *** Bug #23692 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+CREATE TABLE t1 (s1 char(5), key(s1));
+INSERT INTO t1 VALUES (0x4200), (0x4209), (0x42), (0x4242);
+
+# Should return 0x4200 & 0x4209
+SELECT hex(s1) FROM t1 WHERE s1 < 0x42;
+SELECT hex(s1) FROM t1 WHERE s1 < 0x4209;
+DROP TABLE t1;
+
+CREATE TABLE t1 (s1 char(1),key(s1));
+INSERT INTO t1 VALUES (0x00);
+SELECT hex(s1) FROM t1 WHERE s1 < '';
+DROP TABLE t1;
+
+CREATE TABLE t1 (s1 varbinary(5));
+CREATE INDEX i on t1 (s1);
+INSERT INTO t1 VALUES (0x02),(0x0202);
+SELECT hex(s1) FROM t1 WHERE s1 >= 0x02 or s1 = 0x0202;
+DROP TABLE t1;
+
+CREATE TABLE t1(s1 varbinary(3) primary key);
+INSERT INTO t1 VALUES (0x41),(0x4100),(0x4120),(0x4121),(0x4141);
+SELECT hex(s1) FROM t1 WHERE s1 > 0x41;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

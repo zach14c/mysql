@@ -200,25 +200,6 @@ run_service_interface_sql(THD *thd, Ed_connection *ed_connection,
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Update THD with the warnings from the given list.
-
-  @param[in]  thd   Thread context.
-  @parampin]  src   Warning list.
-*/
-
-void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
-{
-  List_iterator_fast<MYSQL_ERROR> err_it(*src);
-  MYSQL_ERROR *err;
-
-  while ((err= err_it++))
-    push_warning(thd, err->level, err->code, err->msg);
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-/**
   Table_name_key defines a hash key, which includes database and tables
   names.
 */
@@ -774,7 +755,7 @@ bool Abstract_obj::create(THD *thd)
     rc= ed_connection.execute_direct(*sql_text);
 
     /* Push warnings on the THD error stack. */
-    copy_warnings(thd, ed_connection.get_warn_list());
+    thd->warning_info->append_warnings(thd, ed_connection.get_warn_list());
 
     if (rc)
       break;

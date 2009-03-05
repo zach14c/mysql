@@ -10,4 +10,4 @@
 #
 ##############################################################################
 
-ndb_views:		Bug #40860 funcs_1.ndb_views fail
+ndb_views:  Bug#39125 Result file for test contains a "temporary error", how can this be stable?

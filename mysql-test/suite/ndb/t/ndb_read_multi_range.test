@@ -1,6 +1,11 @@
 -- source include/have_ndb.inc
 -- source include/not_embedded.inc
 
+if (`select @@version_compile_os like 'apple-darwin%'`)
+{
+--skip "Can't run on Mac because of bug#42979"
+}
+
 --disable_warnings
 DROP TABLE IF EXISTS t1, t2, r1;
 --enable_warnings
