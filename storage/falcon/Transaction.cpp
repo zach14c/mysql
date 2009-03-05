@@ -290,7 +290,10 @@ void Transaction::commit()
 	// with the commit of this transaction we use the opportunity to clean up
 	// old transaction objects
 
-	transactionManager->purgeTransactionsWithLocks();
+	// Temporarily disable this call and let the scavenger delete all
+	// old transactions object (see bug 41357)
+
+	// transactionManager->purgeTransactionsWithLocks();
 
 	syncCommitted.unlock();
 	syncActiveTransactions.unlock();
