@@ -225,8 +225,9 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 	if (recovering && pageType != PAGE_inventory &&
 		!PageInventoryPage::isPageInUse (dbb, pageNumber))
 		{
-		FATAL ("During recovery, fetched page %d tablespace %d type %d marked free in PIP\n",
+		Log::debug ("During recovery, fetched page %d tablespace %d type %d marked free in PIP\n",
 			pageNumber, dbb->tableSpaceId, pageType);
+		PageInventoryPage::markPageInUse(dbb, pageNumber, 0);
 		}
 
 	int slot = pageNumber % hashSize;
