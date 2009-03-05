@@ -236,6 +236,16 @@ extern ulong my_thread_stack_size;
 extern const char *(*proc_info_hook)(void *, const char *, const char *,
                                      const char *, const unsigned int);
 
+#if defined(ENABLED_DEBUG_SYNC)
+extern void (*debug_sync_C_callback_ptr)(const char *, size_t);
+#define DEBUG_SYNC_C(_sync_point_name_) do {                            \
+    if (debug_sync_C_callback_ptr != NULL)                              \
+      (*debug_sync_C_callback_ptr)(STRING_WITH_LEN(_sync_point_name_)); } \
+  while(0)
+#else
+#define DEBUG_SYNC_C(_sync_point_name_)
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
 #ifdef HAVE_LARGE_PAGES
 extern my_bool my_use_large_pages;
 extern uint    my_large_page_size;
