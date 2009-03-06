@@ -83,17 +83,25 @@ int injector::transaction::commit()
      explicitly.
    */
    trans_commit_stmt(m_thd);
-   trans_commit(m_thd);
+   if (!trans_commit(m_thd))
+   {
+     close_thread_tables(m_thd);
+     if (!m_thd->locked_tables_mode)
+       m_thd->mdl_context.release_all_locks();
+   }
    DBUG_RETURN(0);
 }
 
 int injector::transaction::rollback()
 {
    DBUG_ENTER("injector::transaction::rollback()");
- //psergey  ha_autocommit_or_rollback(m_thd, 1 /* error to get rollback */);
    trans_rollback_stmt(m_thd);
- //psergey  end_trans(m_thd, ROLLBACK);
-   trans_rollback(m_thd);
+   if (!trans_rollback(m_thd))
+   {
+     close_thread_tables(m_thd);
+     if (!m_thd->locked_tables_mode)
+       m_thd->mdl_context.release_all_locks();
+   }
    DBUG_RETURN(0);
 }
 

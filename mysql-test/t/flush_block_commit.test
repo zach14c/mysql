@@ -21,16 +21,13 @@ create table t1 (a int) engine=innodb;
 begin;
 insert into t1 values(1);
 connection con2;
-flush tables with read lock;
-select * from t1;
+--send flush tables with read lock;
 connection con1;
-send commit; # blocked by con2
-sleep 1;
+commit;
 connection con2;
-select * from t1; # verify con1 was blocked and data did not move
+--reap
+select * from t1;
 unlock tables;
-connection con1;
-reap;
 
 # No deadlock ?
 
@@ -47,6 +44,7 @@ connection con1;
 commit; # should not be blocked by con3
 connection con2;
 reap;
+commit;
 connection con3;
 reap;
 unlock tables;
@@ -60,8 +58,6 @@ connection con1;
 begin;
 insert into t1 values(10);
 flush tables with read lock;
-commit;
-unlock tables;
 connection con2;
 flush tables with read lock; # bug caused hang here
 unlock tables;
@@ -71,6 +67,24 @@ unlock tables;
 begin;
 select * from t1;
 show create database test;
+commit;
+
+# GLR blocks new transactions
+connection con1;
+flush tables with read lock;
+connection con2;
+begin;
+--send insert into t1 values (1);
+connection con1;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "Waiting for release of readlock" and
+        info = "insert into t1 values (1)";
+--source include/wait_condition.inc
+unlock tables;
+connection con2;
+--reap
+commit;
 
 drop table t1;
 

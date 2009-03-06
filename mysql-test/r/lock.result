@@ -235,5 +235,17 @@ unlock tables;
 drop table t1;
 drop view v1;
 #
+# WL#4284: Transactional DDL locking
+#
+# FLUSH PRIVILEGES should not implicitly unlock locked tables.
+#
+drop table if exists t1;
+create table t1 (c1 int);
+lock tables t1 read;
+flush privileges;
+ERROR HY000: Table 'host' was not locked with LOCK TABLES
+unlock tables;
+drop table t1;
+#
 # End of 6.0 tests.
 #

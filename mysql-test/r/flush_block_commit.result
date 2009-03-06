@@ -2,12 +2,11 @@ drop table if exists t1;
 create table t1 (a int) engine=innodb;
 begin;
 insert into t1 values(1);
-flush tables with read lock;
-select * from t1;
-a
+flush tables with read lock;;
 commit;
 select * from t1;
 a
+1
 unlock tables;
 begin;
 select * from t1 for update;
@@ -19,13 +18,12 @@ flush tables with read lock;
 commit;
 a
 1
+commit;
 unlock tables;
 commit;
 begin;
 insert into t1 values(10);
 flush tables with read lock;
-commit;
-unlock tables;
 flush tables with read lock;
 unlock tables;
 begin;
@@ -36,4 +34,10 @@ a
 show create database test;
 Database	Create Database
 test	CREATE DATABASE `test` /*!40100 DEFAULT CHARACTER SET latin1 */
+commit;
+flush tables with read lock;
+begin;
+insert into t1 values (1);;
+unlock tables;
+commit;
 drop table t1;

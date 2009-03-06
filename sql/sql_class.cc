@@ -946,6 +946,17 @@ void THD::cleanup(void)
     trans_rollback(this);
     xid_cache_delete(&transaction.xid_state);
   }
+
+  /*
+    Thread could be in the middle of a ongoing transaction
+    that just got rolled back. Release any metadata locks.
+  */
+  if (!locked_tables_mode)
+  {
+    DBUG_ASSERT(open_tables == NULL);
+    mdl_context.release_all_locks();
+  }
+
   locked_tables_list.unlock_locked_tables(this);
 
 #if defined(ENABLED_DEBUG_SYNC)

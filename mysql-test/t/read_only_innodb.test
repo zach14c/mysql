@@ -28,15 +28,16 @@ BEGIN;
 insert into table_11733 values(11733);
 
 connection default;
-set global read_only=1;
+send set global read_only=1;
 
 connection con1;
 select @@global.read_only;
+-- error ER_LOCK_DEADLOCK
 select * from table_11733 ;
--- error ER_OPTION_PREVENTS_STATEMENT
 COMMIT;
 
 connection default;
+reap;
 set global read_only=0;
 drop table table_11733 ;
 drop user test@localhost;

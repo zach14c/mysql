@@ -1475,11 +1475,22 @@ void close_thread_tables(THD *thd,
   if (thd->open_tables)
     close_open_tables(thd);
 
-  thd->mdl_context.release_all_locks();
   if (!is_back_off)
   {
     thd->mdl_context.remove_all_requests();
   }
+
+  /*
+    Defer the release of metadata locks until the current transaction
+    is either committed or rolled back. This prevents other statements
+    from modifying the table for the entire duration of this transaction.
+    This provides commitment ordering for guaranteeing serializability
+    across multiple transactions.
+  */
+  if (!thd->in_multi_stmt_transaction() ||
+      (thd->state_flags & Open_tables_state::BACKUPS_AVAIL))
+    thd->mdl_context.release_all_locks();
+
   DBUG_VOID_RETURN;
 }
 
@@ -3618,6 +3629,7 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
   /* Also used for indicating that prelocking is need */
   TABLE_LIST **query_tables_last_own;
   bool safe_to_ignore_table;
+  bool has_locks= thd->mdl_context.has_locks();
   DBUG_ENTER("open_tables");
 
   /*
@@ -3758,6 +3770,18 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
     {
       if (action)
       {
+        /*
+          We have met a exclusive metadata lock or a old version of table and
+          we are inside a transaction that already hold locks. We can't follow
+          the locking protocol in this scenario as it might lead to deadlocks.
+        */
+        if (thd->in_multi_stmt_transaction() && has_locks)
+        {
+          my_error(ER_LOCK_DEADLOCK, MYF(0));
+          result= -1;
+          goto err;
+        }
+
         /*
           We have met exclusive metadata lock or old version of table. Now we
           have to close all tables which are not up to date/release metadata
@@ -4625,6 +4649,8 @@ void close_tables_for_reopen(THD *thd, TABLE_LIST **tables, bool is_back_off)
   for (TABLE_LIST *tmp= *tables; tmp; tmp= tmp->next_global)
     tmp->table= 0;
   close_thread_tables(thd, is_back_off);
+  if (!thd->locked_tables_mode)
+    thd->mdl_context.release_all_locks();
 }
 
 

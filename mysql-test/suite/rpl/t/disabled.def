@@ -17,3 +17,5 @@ rpl_binlog_corruption      : BUG#41793 2008-12-30 sven rpl_binlog_corruption dis
 rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)
 rpl_cross_version	   : Bug#42311 2009-01-23 aelkin
 rpl_log_pos                : Bug#42858 2009-02-14 alik rpl.rpl_log_pos fails, thus was disabled
+rpl_failed_optimize        : WL#4284: Can't optimize table used by a pending transaction (there is metadata lock on the table).
+rpl_read_only              : WL#4284: Setting Read only won't succeed until all metadata locks are released.
