@@ -1,11 +1,10 @@
 ###########################################################################
 # Author: Hema
 # Date: 2008-03-11
-# Purpose: To test the metadata consistency of  object (stored functions)
+# Purpose: To test the metadata consistency of object (stored functions)
 # after backup and Restore.
 ###############################################################################
 --source include/not_embedded.inc
---source suite/backup_engines/include/backup_engine.inc
 --source include/have_debug.inc
 
 connect (backup,localhost,root,,);
@@ -42,14 +41,14 @@ name CHAR(10),
 Bdate DATE,
 sex CHAR(2),
 joined YEAR
-);
+) ENGINE=MYISAM;
 
 CREATE TABLE bup_sfs.teams(
 teamno INT NOT NULL PRIMARY KEY,
 playerno INT,
 division CHAR(10),
 FOREIGN KEY(playerno) REFERENCES players(playerno)
-);
+) ENGINE=MYISAM;
 
 CREATE TABLE bup_sfs.matches(
 Matchno INT NOT NULL PRIMARY KEY,
@@ -59,7 +58,7 @@ won INT,
 lost INT,
 FOREIGN KEY(teamno) REFERENCES teams(teamno),
 FOREIGN KEY(playerno) REFERENCES players(playerno)
-);
+) ENGINE=MYISAM;
 
 CREATE TABLE bup_sfs.penalties(
 paymentno INT not null PRIMARY KEY,
@@ -67,7 +66,7 @@ playerno INT,
 paymentdate DATE,
 amount FLOAT,
 FOREIGN KEY(playerno) REFERENCES players(playerno)
-);
+) ENGINE=MYISAM;
 
 --echo Load Data in tables
 
@@ -141,7 +140,6 @@ SELECT square_area(11);
 #Show data and create statements.
 --echo showing objects and create statements.
 --query_vertical SHOW CREATE FUNCTION number_of_players;
---replace_result $ENGINE ENGINE
 --query_vertical SHOW CREATE TABLE players;
 describe penalties;
 --replace_column  4 # 5 # 6 #
@@ -248,7 +246,6 @@ SELECT @@SQL_MODE;
 --echo showing objects and create statements
 --query_vertical SHOW CREATE DATABASE bup_sfs;
 --query_vertical SHOW CREATE FUNCTION number_of_players;
---replace_result $ENGINE ENGINE
 --query_vertical SHOW CREATE TABLE players;
 describe matches;
 --replace_column  4 # 5 # 6 #

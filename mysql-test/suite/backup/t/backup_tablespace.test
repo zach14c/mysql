@@ -265,18 +265,31 @@ INSERT INTO t VALUES (1);
 --replace_column 1 #
 BACKUP DATABASE backup_ts TO 'ts_drop.bak';
 
+--echo
+--echo # Show tablespace info
+--query_vertical SELECT t1.tablespace_name, t1.engine, t1.tablespace_type, t2.file_name, t2.file_type FROM INFORMATION_SCHEMA.TABLESPACES AS t1, INFORMATION_SCHEMA.FILES AS t2 WHERE t1.tablespace_name = t2.tablespace_name AND t1.tablespace_name = 'TB';
+--echo
+
 DROP DATABASE backup_ts;
 DROP TABLESPACE tb ENGINE=FALCON;
 
---echo 
---echo BUG#42402 - Crashes.
---echo 
+--echo
+--echo # Restore and verify database content
+--echo
 
-#### Uncomment when 42402 is fixed ####
-#--replace_column 1 #
-# RESTORE FROM 'ts_drop.bak';
-#--remove_file $MYSQLD_BACKUPDIR/ts_drop.bak
-#DROP DATABASE backup_ts;
-#DROP TABLESPACE tb ENGINE=FALCON;
-#######################################
+--replace_column 1 #
+RESTORE FROM 'ts_drop.bak';
+
+SHOW TABLES IN backup_ts;
+SELECT * FROM backup_ts.t;
+
+--echo
+--echo # Show tablespace info
+--query_vertical SELECT t1.tablespace_name, t1.engine, t1.tablespace_type, t2.file_name, t2.file_type FROM INFORMATION_SCHEMA.TABLESPACES AS t1, INFORMATION_SCHEMA.FILES AS t2 WHERE t1.tablespace_name = t2.tablespace_name AND t1.tablespace_name = 'TB';
+--echo
+
+--remove_file $MYSQLD_BACKUPDIR/ts_drop.bak
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+
 

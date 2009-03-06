@@ -1,3 +1,6 @@
+SHOW VARIABLES LIKE 'storage_engine';
+Variable_name	Value
+storage_engine	#
 #
 # Creating databases
 #

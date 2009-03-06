@@ -2059,10 +2059,12 @@ int bcat_create_item(st_bstream_image_header *catalogue,
 
   if (item->type == BSTREAM_IT_TABLESPACE)
   {
-    if (obs::find_tablespace(thd, sobj->get_name()))
+    if (obs::find_tablespace(thd, sobj->get_name())) 
+    {
       // A tablespace with the same name exists. Nothing more to do.
       DBUG_PRINT("restore",(" skipping tablespace which exists"));
       return BSTREAM_OK;
+    }
   }
 
   // Create the object.

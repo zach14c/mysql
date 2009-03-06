@@ -1,4 +1,4 @@
-# We will disable Memory storage engine if we include not_have_memory.inc
+# We will disable Memory storage engine if we include not_memory.inc
 # in our test case.
 
 

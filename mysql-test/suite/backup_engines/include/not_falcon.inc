@@ -1,4 +1,4 @@
-# We will disable Falcon storage engine if we include not_have_falcon.inc
+# We will disable Falcon storage engine if we include not_falcon.inc
 # in our test case.
 
 --replace_result $ENGINE ENGINE
