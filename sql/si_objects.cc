@@ -2719,6 +2719,11 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
 
   ed_result_set= ed_connection.use_result_set();
 
+  // Return NULL if the tablespace does not exist
+  if (ed_result_set->size() == 0)
+    return NULL;
+
+  // There can only be one tablespace with this name
   DBUG_ASSERT(ed_result_set->size() == 1);
 
   List_iterator_fast<Ed_row> row_it(*ed_result_set);
