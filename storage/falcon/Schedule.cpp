@@ -49,6 +49,7 @@ static const char THIS_FILE[]=__FILE__;
 
 Schedule::Schedule(const char *scheduleString)
 {
+	int elementsFound = 0;
 	string = scheduleString;
 	memset(elements, 0, sizeof (elements));
 	const char *p = string;
@@ -68,6 +69,7 @@ Schedule::Schedule(const char *scheduleString)
 		else if (ISDIGIT (*p))
 			{
 			ASSERT (n >= 0 && n < SCHEDULE_ELEMENTS);
+			elementsFound++;
 			elements [n] = new ScheduleElement (&p);
 			int max = maxValues [n];
 			
@@ -76,12 +78,13 @@ Schedule::Schedule(const char *scheduleString)
 				
 			for (ScheduleElement *element = elements [n]; element; element = element->next)
 				if (element->from >= max || element->to >= max)
-					throw SQLEXCEPTION (RUNTIME_ERROR, "invalid schedule string \"%s\"", (const char*) string);
+					throw SQLEXCEPTION (RUNTIME_ERROR, "Invalid schedule string \"%s\"", (const char*) string);
 			}
 		else
-			throw SQLEXCEPTION (RUNTIME_ERROR, "invalid schedule string \"%s\"", (const char*) string);
+			throw SQLEXCEPTION (RUNTIME_ERROR, "Invalid schedule string \"%s\"", (const char*) string);
 		}
-
+	if (!elementsFound)
+		throw SQLEXCEPTION (RUNTIME_ERROR, "Invalid schedule string \"%s\"", (const char*)  string);
 	getNextEvent();
 }
 
