@@ -9,8 +9,6 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-ctype_create         : Bug#32965 main.ctype_create fails
-csv_alter_table      : Bug#42831 main.csv_alter_table is disabled 
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 events_bugs          : Bug#37774 Bug#39569 Bug#39863 Bug#39848 2008-10-08 alik
 innodb               : Bug#41299 2008-12-08 alik

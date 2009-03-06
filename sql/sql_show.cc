@@ -3868,11 +3868,23 @@ void store_column_type(TABLE *table, Field *field, CHARSET_INFO *cs,
   /* DTD_IDENTIFIER column */
   table->field[offset + 7]->store(column_type.ptr(), column_type.length(), cs);
   table->field[offset + 7]->set_notnull();
+  /*
+    DATA_TYPE column:
+    MySQL column type has the following format:
+    base_type [(dimension)] [unsigned] [zerofill].
+    For DATA_TYPE column we extract only base type.
+  */
   tmp_buff= strchr(column_type.ptr(), '(');
-  /* DATA_TYPE column */
+  if (!tmp_buff)
+    /*
+      if there is no dimention part then check the presence of
+      [unsigned] [zerofill] attributes and cut them of if exist.
+    */
+    tmp_buff= strchr(column_type.ptr(), ' ');
   table->field[offset]->store(column_type.ptr(),
-                         (tmp_buff ? tmp_buff - column_type.ptr() :
-                          column_type.length()), cs);
+                              (tmp_buff ? tmp_buff - column_type.ptr() :
+                               column_type.length()), cs);
+
   is_blob= (field->type() == MYSQL_TYPE_BLOB);
   if (field->has_charset() || is_blob ||
       field->real_type() == MYSQL_TYPE_VARCHAR ||  // For varbinary type
@@ -4063,6 +4075,8 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     table->field[3]->store(field->field_name, strlen(field->field_name),
                            cs);
     table->field[4]->store((longlong) count, TRUE);
+    field->sql_type(type);
+    table->field[14]->store(type.ptr(), type.length(), cs);
 
     if (get_field_default_value(thd, timestamp_field, field, &type, 0))
     {
