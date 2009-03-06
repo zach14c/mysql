@@ -6164,6 +6164,14 @@ ER_CONFLICT_FN_PARSE_ERROR
 ER_EXCEPTIONS_WRITE_ERROR
         eng "Write to exceptions table failed. Message: %-.128s""
 
+ER_TOO_LONG_TABLE_COMMENT
+  eng "Comment for table '%-.64s' is too long (max = %lu)"
+  por "Comentário para a tabela '%-.64s' é longo demais (max = %lu)"
+
+ER_TOO_LONG_FIELD_COMMENT
+  eng "Comment for field '%-.64s' is too long (max = %lu)"
+  por "Comentário para o campo '%-.64s' é longo demais (max = %lu)"
+
 ER_WARN_AUTO_CONVERT_LOCK
         eng "Converted to non-transactional lock on '%-.64s'"
         ger "Umgewandelt zu nicht-transaktionalen Sperren auf '%-.64s'"
