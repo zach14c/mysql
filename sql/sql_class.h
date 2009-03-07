@@ -798,6 +798,8 @@ struct st_savepoint {
   char                *name;
   uint                 length;
   Ha_trx_info         *ha_list;
+  /** Last acquired lock before this savepoint was set. */
+  MDL_ticket     *mdl_savepoint;
 };
 
 enum xa_states {XA_NOTR=0, XA_ACTIVE, XA_IDLE, XA_PREPARED, XA_ROLLBACK_ONLY};
@@ -999,8 +1001,8 @@ public:
   */
   uint state_flags;
 
-  MDL_CONTEXT mdl_context;
-  MDL_CONTEXT handler_mdl_context;
+  MDL_context mdl_context;
+  MDL_context handler_mdl_context;
 
   /**
      This constructor initializes Open_tables_state instance which can only
@@ -1031,8 +1033,8 @@ public:
     locked_tables_mode= LTM_NONE;
     state_flags= 0U;
     m_reprepare_observer= NULL;
-    mdl_context_init(&mdl_context, thd);
-    mdl_context_init(&handler_mdl_context, thd);
+    mdl_context.init(thd);
+    handler_mdl_context.init(thd);
   }
 };
 
