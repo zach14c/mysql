@@ -24,7 +24,11 @@
 		parent->lower = newChild;	 \
 	else							\
 		parent->higher = newChild;
-		
+
+// Using a negative record number, that is not
+// END_BUCKET (-1) or END_LEVEL (-2) which are defined
+// in Page.h
+static const int32 INITIAL_LAST_RECORD_NUMBER = -3;		
 
 IndexWalker::IndexWalker(Index *idx, Transaction *trans, int flags)
 {
@@ -39,7 +43,7 @@ IndexWalker::IndexWalker(Index *idx, Transaction *trans, int flags)
 	balance = 0;
 	higher = NULL;
 	lower = NULL;
-	lastRecordNumber = 0;
+	lastRecordNumber = INITIAL_LAST_RECORD_NUMBER;
 	firstRecord = true;
 }
 
