@@ -118,5 +118,3 @@ uint64 MemControl::getCurrentMemory(int poolMask)
 	
 	return inUse;
 }
-
-

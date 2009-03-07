@@ -213,8 +213,6 @@ void Debug::execute(IndexPage *indexPage, DebugCommand command, const char *stri
 		default:
 			break;
 		}
-
-
 }
 
 bool Debug::execute(const char *buffer)

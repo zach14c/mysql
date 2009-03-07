@@ -70,5 +70,3 @@ void SavePoint::backlogRecord(RecordVersion* record)
 	
 	record->format->table->backlogRecord(record, backloggedRecords);
 }
-
-

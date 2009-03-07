@@ -1060,19 +1060,6 @@ void Record::addHistory(int delta, const char *file, int line)
 	history[historyOffset].line = line;
 
 	historyCount++;
-
-	// KLTEST
-	if (this->isVersion())
-		{
-		RecordVersion * rec = (RecordVersion *) this;
-		Record * prior = rec->getPriorVersion();
-		if (prior && prior->state == recLock)
-			if (!rec->transaction)
-				{
-				rec->ShowHistory();
-				Log::log("lost Lock record; RecordNumber=%d\n", rec->recordNumber);
-				}
-		}
 }
 
 void Record::ShowHistory(void)

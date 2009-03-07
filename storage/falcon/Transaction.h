@@ -53,7 +53,7 @@ enum State {
 	RolledBack,				// 3
 
 	// The following are 'relative states'.  See getRelativeState()
-	
+
 	Us,						// 4
 	CommittedVisible,		// 5
 	CommittedInvisible,		// 6

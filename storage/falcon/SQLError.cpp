@@ -70,7 +70,7 @@ SQLError::SQLError (SqlCode code, const char *txt, ...)
 	error (code, temp);
 	sqlcode = (int) code;
 }
-
+
 SQLError::SQLError(const char *trace, int traceLength, SqlCode code, const char * txt, ...)
 {
 /**************************************
@@ -100,7 +100,7 @@ SQLError::SQLError(const char *trace, int traceLength, SqlCode code, const char 
 	error (code, temp);
 	sqlcode = (int) code;
 }
-
+
 SQLError::~SQLError ()
 {
 /**************************************
@@ -114,7 +114,7 @@ SQLError::~SQLError ()
  *
  **************************************/
 }
-
+
 int SQLError::getSqlcode ()
 {
 /**************************************
@@ -130,7 +130,7 @@ int SQLError::getSqlcode ()
 
 return sqlcode;
 }
-
+
 const char *SQLError::getText ()
 {
 /**************************************
@@ -146,7 +146,7 @@ const char *SQLError::getText ()
 
 return text;
 }
-
+
 SQLError::operator const char* ()
 {
 /**************************************
@@ -189,7 +189,7 @@ void SQLError::error(int code, const char *string)
 #ifdef FALCONDB
 	if (Log::isActive(LogException))
 		{
-		// We special handle out-memory-errors in order to reduce the
+		// We special handle out-of-memory-errors in order to reduce the
 		// likelyhood that a call to the Log will generate a new call
 		// back to the memory manager
 

@@ -1600,7 +1600,7 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 	if (wasLock)
 		{
 		record->state = recDeleted;
-		--transaction->deletedRecords;
+			--transaction->deletedRecords;
 		}
 	else
 		{
@@ -3805,6 +3805,8 @@ void Table::expungeRecord(int32 recordNumber)
 {
 	dataSection->expungeRecord(recordNumber);
 }
+
+// Write out the current record chain to the backlog tablespace.
 
 bool Table::backlogRecord(RecordVersion* record, Bitmap* backlogBitmap)
 {
