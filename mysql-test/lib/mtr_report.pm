@@ -115,6 +115,7 @@ sub mtr_report_test ($) {
   my $logfile=  $tinfo->{'logfile'};
   my $warnings= $tinfo->{'warnings'};
   my $result=   $tinfo->{'result'};
+  my $retry=    $tinfo->{'retries'} ? "retry-" : "";
 
   if ($result eq 'MTR_RES_FAILED'){
 
@@ -149,7 +150,7 @@ sub mtr_report_test ($) {
 
     if ( $warnings )
     {
-      mtr_report("[ $fail ]  Found warnings/errors in server log file!");
+      mtr_report("[ $retry$fail ]  Found warnings/errors in server log file!");
       mtr_report("        Test ended at $timest");
       mtr_report($warnings);
       return;
@@ -157,14 +158,14 @@ sub mtr_report_test ($) {
     my $timeout= $tinfo->{'timeout'};
     if ( $timeout )
     {
-      mtr_report("[ $fail ]  timeout after $timeout seconds");
+      mtr_report("[ $retry$fail ]  timeout after $timeout seconds");
       mtr_report("        Test ended at $timest");
       mtr_report("\n$tinfo->{'comment'}");
       return;
     }
     else
     {
-      mtr_report("[ $fail ]\n        Test ended at $timest");
+      mtr_report("[ $retry$fail ]\n        Test ended at $timest");
     }
 
     if ( $logfile )
@@ -207,7 +208,7 @@ sub mtr_report_test ($) {
   {
     my $timer_str= $tinfo->{timer} || "";
     $tot_real_time += ($timer_str/1000);
-    mtr_report("[ pass ] ", sprintf("%5s", $timer_str));
+    mtr_report("[ ${retry}pass ] ", sprintf("%5s", $timer_str));
 
     # Show any problems check-testcase found
     if ( defined $tinfo->{'check'} )
