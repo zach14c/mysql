@@ -1352,7 +1352,7 @@ bool Log_to_csv_event_handler::purge_backup_logs(THD *thd)
     tables.init_one_table("mysql", strlen("mysql"), 
                           "backup_history", strlen("backup_history"),
                           "backup_history", TL_READ);
-    alloc_mdl_locks(&tables, thd->mem_root);
+    alloc_mdl_requests(&tables, thd->mem_root);
     res= mysql_truncate(thd, &tables, 1);
     close_thread_tables(thd);
     if (res)
@@ -1364,7 +1364,7 @@ bool Log_to_csv_event_handler::purge_backup_logs(THD *thd)
     tables.init_one_table("mysql", strlen("mysql"), 
                           "backup_progress", strlen("backup_progress"),
                           "backup_progress", TL_READ);
-    alloc_mdl_locks(&tables, thd->mem_root);
+    alloc_mdl_requests(&tables, thd->mem_root);
     res= mysql_truncate(thd, &tables, 1);
     close_thread_tables(thd);
   }
@@ -3911,7 +3911,7 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
   tables.init_one_table("mysql", strlen("mysql"), 
                         "backup_history", strlen("backup_history"),
                         "backup_history", TL_READ);
-  alloc_mdl_locks(&tables, thd->mem_root);
+  alloc_mdl_requests(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
     /*
@@ -3934,7 +3934,7 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
   tables.init_one_table("mysql", strlen("mysql"), 
                         "backup_progress", strlen("backup_progress"),
                         "backup_progress", TL_READ);
-  alloc_mdl_locks(&tables, thd->mem_root);
+  alloc_mdl_requests(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
     /*
