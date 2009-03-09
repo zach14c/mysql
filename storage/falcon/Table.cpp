@@ -3666,9 +3666,6 @@ RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transactio
 		{
 		try
 			{
-			if ((++database->recordPoolAllocCount & 0x7F) == 0)
-				database->checkRecordScavenge();
-
 			return POOL_NEW(database->recordVersionPool) RecordVersion(this, format, transaction, priorVersion);
 			}
 
@@ -3703,9 +3700,6 @@ Record* Table::allocRecord(int recordNumber, Stream* stream)
 		{
 		try
 			{
-			if ((++database->recordPoolAllocCount & 0x7F) == 0)
-				database->checkRecordScavenge();
-
 			return POOL_NEW(database->recordPool) Record (this, recordNumber, stream);
 			}
 
