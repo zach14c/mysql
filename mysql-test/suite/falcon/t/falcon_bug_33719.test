@@ -1,0 +1,38 @@
+--source include/have_falcon.inc
+
+#
+# Bug #33719: CREATE TABLE only accepts falcon_user tablespace in uppercase
+#
+--echo *** Bug #33719 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+# Used to fail with Can't create table 'test.foo' (errno: 156)
+CREATE TABLE t1 (f1 integer) tablespace falcon_user;
+DROP TABLE t1;
+
+# Testing with all upper case as well
+CREATE TABLE t1 (f1 integer) tablespace FALCON_USER;
+
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

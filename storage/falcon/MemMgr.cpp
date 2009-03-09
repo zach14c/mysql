@@ -289,7 +289,7 @@ void MemMgrLogDump()
 }
 
 
-MemMgr::MemMgr(int rounding, int cutoff, int minAlloc, bool *alive)
+MemMgr::MemMgr(int rounding, int cutoff, int minAlloc, bool *alive) : mutex("MemMgr::mutex")
 {
 	signature = defaultSignature;
 	roundingSize = rounding;
@@ -321,7 +321,7 @@ MemMgr::MemMgr(int rounding, int cutoff, int minAlloc, bool *alive)
 }
 
 
-MemMgr::MemMgr(void* arg1, void* arg2)
+MemMgr::MemMgr(void* arg1, void* arg2) : mutex("MemMgr::mutex")
 {
 	MemMgr();
 }

@@ -72,7 +72,8 @@ static const int srlSmallBlob		= 35;
 static const int srlSession			= 36;
 static const int srlSavepointRollback = 37;
 static const int srlInventoryPage	= 38;
-static const int srlMax				= 39;
+static const int srlTableSpaces		= 39;
+static const int srlMax				= 40;
 
 
 class SerialLog;

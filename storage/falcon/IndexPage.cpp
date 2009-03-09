@@ -618,35 +618,6 @@ void IndexPage::printPage(Bdb * bdb, bool inversion)
 	printPage ((IndexPage*) bdb->buffer, bdb->pageNumber, inversion);
 }
 
-Bdb* IndexPage::createNewLevel(Dbb* dbb, int level, int version, TransId transId)
-{
-	Bdb *bdb = dbb->allocPage (PAGE_btree, transId);
-	BDB_HISTORY(bdb);
-	IndexPage *page = (IndexPage*) bdb->buffer;
-	page->level = level;
-	page->version = version;
-	IndexKey dummy;
-	page->length = OFFSET (IndexPage*, nodes);
-	//page->addNode (dbb, &dummy, END_LEVEL);
-	IndexNode node;
-	node.insert(page->nodes, 0, 0, dummy.key, END_LEVEL);
-	page->length += IndexNode::nodeLength(0, 0, END_LEVEL);
-	
-	return bdb;
-}
-
-Bdb* IndexPage::createNewLevel(Dbb * dbb, int level, int version, int32 page1, int32 page2, IndexKey* key2, TransId transId)
-{
-	Bdb *parentBdb = createNewLevel(dbb, level, version, transId);
-	BDB_HISTORY(parentBdb);
-	IndexPage *parentPage = (IndexPage*) parentBdb->buffer;
-	IndexKey dummy(key2->index);
-	parentPage->addNode (dbb, &dummy, page1);
-	parentPage->addNode (dbb, key2, page2);
-	//parentPage->validate(NULL);
-
-	return parentBdb;
-}
 
 Bdb* IndexPage::findLevel(Dbb * dbb, int32 indexId, Bdb *bdb, int level, IndexKey *indexKey, int32 recordNumber)
 {
@@ -1704,4 +1675,17 @@ void IndexPage::backup(EncodedDataStream* stream)
 
 void IndexPage::restore(EncodedDataStream* stream)
 {
+}
+
+void IndexPage::initRootPage(Bdb *bdb)
+{
+	// Initialize index root page
+	IndexPage *page = (IndexPage*) bdb->buffer;
+	page->level = 0;
+	page->version = INDEX_CURRENT_VERSION;
+	IndexKey dummy;
+	page->length = OFFSET (IndexPage*, nodes);
+	IndexNode node;
+	node.insert(page->nodes, 0, 0, dummy.key, END_LEVEL);
+	page->length += IndexNode::nodeLength(0, 0, END_LEVEL);
 }

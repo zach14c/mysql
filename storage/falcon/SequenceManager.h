@@ -47,7 +47,7 @@ protected:
 	Sequence	*sequences [SEQUENCE_HASH_SIZE];
 	SyncObject	syncObject;
 public:
-	void renameSequence(Sequence* sequence, const char* newName);
+	void renameSequence(Sequence* sequence, const char* newSchema, const char* newName);
 	Sequence *recreateSequence(Sequence *oldSequence);
 };
 
