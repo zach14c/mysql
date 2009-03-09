@@ -2175,7 +2175,7 @@ const String *Tablespace_obj::get_description()
 
   /* Either description or id and data file name must be not empty. */
   DBUG_ASSERT(m_description.length() ||
-              m_id.length() && m_data_file_name.length());
+              (m_id.length() && m_data_file_name.length()));
 
   if (m_description.length())
     DBUG_RETURN(&m_description);
@@ -2246,6 +2246,7 @@ Grant_obj::Grant_obj(const Ed_row &row)
   const LEX_STRING *db_name= row.get_column(2);
   const LEX_STRING *tbl_name= row.get_column(3);
   const LEX_STRING *col_name= row.get_column(4);
+  const LEX_STRING *routine_type= row.get_column(5);
 
   LEX_STRING table_name= { C_STRING_WITH_LEN("") };
   LEX_STRING column_name= { C_STRING_WITH_LEN("") };
@@ -2263,10 +2264,21 @@ Grant_obj::Grant_obj(const Ed_row &row)
   String_stream s_stream(&m_grant_info);
   s_stream << privilege_type;
 
+  /*
+    Either column_name or routine_type or both are NULL.
+    They are never both non-NULL.
+  */
+  DBUG_ASSERT(!column_name.length || !routine_type->length);
+
   if (column_name.length)
     s_stream << "(" << &column_name << ")";
 
-  s_stream << " ON " << db_name << ".";
+  s_stream << " ON ";
+
+  if (routine_type->length)
+    s_stream << routine_type << " ";
+
+  s_stream << db_name << ".";
 
   if (table_name.length)
     s_stream << &table_name;
@@ -2463,7 +2475,8 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "privilege_type AS c2, "
     "table_schema AS c3, "
     "NULL AS c4, "
-    "NULL AS c5 "
+    "NULL AS c5, "
+    "NULL AS c6 "
     "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES "
     "WHERE table_schema = '" << db_name << "') "
     "UNION "
@@ -2471,6 +2484,7 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "privilege_type, "
     "table_schema, "
     "table_name, "
+    "NULL, "
     "NULL "
     "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES "
     "WHERE table_schema = '" << db_name << "') "
@@ -2479,10 +2493,20 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "privilege_type, "
     "table_schema, "
     "table_name, "
-    "column_name "
+    "column_name, "
+    "NULL "
     "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES "
     "WHERE table_schema = '" << db_name << "') "
-    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
+    "UNION "
+    "(SELECT CONCAT('''', User, '''@''', Host, ''''), "
+    "Proc_priv, "
+    "Db, "
+    "Routine_name, "
+    "NULL, "
+    "Routine_type "
+    "FROM mysql.procs_priv "
+    "WHERE Db = '" << db_name << "') "
+    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC, c6 ASC";
 
   return create_row_set_iterator<Grant_iterator>(thd, s_stream.lex_string());
 }
@@ -2719,6 +2743,11 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
 
   ed_result_set= ed_connection.use_result_set();
 
+  // Return NULL if the tablespace does not exist
+  if (ed_result_set->size() == 0)
+    return NULL;
+
+  // There can only be one tablespace with this name
   DBUG_ASSERT(ed_result_set->size() == 1);
 
   List_iterator_fast<Ed_row> row_it(*ed_result_set);

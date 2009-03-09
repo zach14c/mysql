@@ -2059,10 +2059,12 @@ int bcat_create_item(st_bstream_image_header *catalogue,
 
   if (item->type == BSTREAM_IT_TABLESPACE)
   {
-    if (obs::find_tablespace(thd, sobj->get_name()))
+    if (obs::find_tablespace(thd, sobj->get_name())) 
+    {
       // A tablespace with the same name exists. Nothing more to do.
       DBUG_PRINT("restore",(" skipping tablespace which exists"));
       return BSTREAM_OK;
+    }
   }
 
   // Create the object.
@@ -2091,6 +2093,19 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     /*
       We need to check the grant against the database list to ensure the
       grants have not been altered to apply to another database.
+      At the time of fixing Bug#41979 (Routine level grants not restored
+      when user is dropped, recreated before restore), a GRANT "statement"
+      looks like so:
+          15 'bup_user2'@'%'
+          29 SELECT(b) ON bup_db_grants.s1
+          32 SET character_set_client= binary
+          54 GRANT SELECT(b) ON bup_db_grants.s1 TO 'bup_user2'@'%'
+
+      For procedures and functions:
+          15 'bup_user1'@'%'
+          37 Execute ON PROCEDURE bup_db_grants.p1
+          32 SET character_set_client= binary
+          62 GRANT Execute ON PROCEDURE bup_db_grants.p1 TO 'bup_user1'@'%'
     */
     ::String db_name;  // db name extracted from grant statement
     char *start;
@@ -2098,6 +2113,10 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     int size= 0;
 
     start= strstr((char *)create_stmt.begin, "ON ") + 3;
+    if (!strncmp(start, "PROCEDURE ", 10))
+      start+= 10;
+    if (!strncmp(start, "FUNCTION ", 9))
+      start+= 9;
     end= strstr(start, ".");
     size= end - start;
     db_name.alloc(size);

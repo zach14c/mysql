@@ -1,4 +1,4 @@
-# We will disable Innodb storage engine if we include not_have_innodb.inc
+# We will disable Innodb storage engine if we include not_innodb.inc
 # in our test case.
 
 

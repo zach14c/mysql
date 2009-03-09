@@ -11,9 +11,9 @@
 --source include/not_embedded.inc
 --source include/have_log_bin.inc
 
+let $saved_format=`select @@binlog_format`;
 let $MYSQLD_DATADIR=`select @@datadir`;
 
-SELECT @@BINLOG_FORMAT;
 RESET MASTER;
 
 --error 0,1
@@ -58,26 +58,26 @@ CREATE TABLE ptr_ob1.t1(
  id INT, 
  a INT, 
  b CHAR(5)
-);
+) ENGINE=MYISAM;
 
 CREATE TABLE ptr_ob1.t2(
   id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, 
   data CHAR(50)
-);
+) ENGINE=MYISAM;
 
 CREATE TABLE ptr_ob1.t3(
  srno INT AUTO_INCREMENT, 
  PRIMARY KEY(srno), 
  name VARCHAR(30) NOT NULL, 
  old_a INT
-); 
+) ENGINE=MYISAM; 
 
 CREATE TABLE ptr_ob2.t1(
  id INT, 
  b CHAR(5)
-);
+) ENGINE=MYISAM;
 
-CREATE TABLE ptr_ob2.t2(id SMALLINT);
+CREATE TABLE ptr_ob2.t2(id SMALLINT) ENGINE=MYISAM;
 
 INSERT INTO ptr_ob2.t1 VALUES(11,'set1'),(21,'set2'),(3,'set3'),(4,'set4');
 INSERT INTO ptr_ob2.t2 VALUES(91),(5),(26),(33),(5);
@@ -87,7 +87,7 @@ INSERT INTO ptr_ob2.t2 VALUES(91),(5),(26),(33),(5);
 CREATE VIEW ptr_ob1.v AS SELECT * FROM ptr_ob1.t1;
 CREATE VIEW ptr_ob1.v1 AS SELECT * FROM ptr_ob2.t1;
 
-CREATE TABLE ptr_ob1.tv1(id SMALLINT);
+CREATE TABLE ptr_ob1.tv1(id SMALLINT) ENGINE=MYISAM;
 INSERT INTO ptr_ob1.tv1  VALUES(1),(2),(3),(3),(5);
 SELECT * FROM ptr_ob1.tv1 UNION ALL SELECT * FROM ptr_ob2.t2;
 CREATE VIEW ptr_ob2.v1 AS SELECT * FROM ptr_ob1.tv1  UNION ALL 
@@ -276,7 +276,7 @@ SELECT * FROM ptr_ob1.v;
 
 --echo Creating some new objects
 
-CREATE TABLE ptr_ob1.t11 (i INT, sr INT, j INT) engine=myisam;
+CREATE TABLE ptr_ob1.t11 (i INT, sr INT, j INT) ENGINE=MYISAM;
 INSERT INTO ptr_ob1.t11 VALUES (1, 2, 3);
 CREATE TRIGGER ptr_ob1.ai AFTER INSERT ON ptr_ob1.t11 FOR EACH ROW SET @a:= new.sr;
 CREATE TRIGGER ptr_ob1.au AFTER UPDATE ON ptr_ob1.t11 FOR EACH ROW SET @a:= new.sr;
@@ -636,5 +636,6 @@ DROP DATABASE ptr_ob1;
 DROP DATABASE ptr_ob2;
 --remove_file $MYSQLD_DATADIR/ptr_objects.bak
 
-
-
+--disable_query_log
+eval SET GLOBAL BINLOG_FORMAT='$saved_format';
+--enable_query_log

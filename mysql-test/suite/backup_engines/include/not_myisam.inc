@@ -1,4 +1,4 @@
-# We will disable Myisam storage engine if we include not_have_myisam.inc
+# We will disable Myisam storage engine if we include not_myisam.inc
 # in our test case.
 
 

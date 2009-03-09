@@ -2950,7 +2950,7 @@ static int sys_check_backupdir(THD *thd, set_var *var)
   if (!(res= var->value->val_str(&str)))
     goto err;
 
-  log_file_str= res->c_ptr();
+  log_file_str= res->c_ptr_safe();
   bzero(&f_stat, sizeof(MY_STAT));
 
   /* Get dirname of the file path. */
@@ -3003,7 +3003,7 @@ static bool sys_update_backupdir(THD *thd, set_var * var)
 
     if (!(strres= var->value->val_str(&str)))
       goto err;
-    copied_value= strres->c_ptr();
+    copied_value= strres->c_ptr_safe();
     str_length= strres->length();
   }
   else

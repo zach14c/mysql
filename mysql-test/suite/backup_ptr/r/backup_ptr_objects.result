@@ -1,11 +1,3 @@
-SHOW VARIABLES LIKE 'storage_engine';
-Variable_name	Value
-storage_engine	#
-SET GLOBAL BINLOG_FORMAT='MIXED';
-SET BINLOG_FORMAT='MIXED';
-SELECT @@BINLOG_FORMAT;
-@@BINLOG_FORMAT
-MIXED
 RESET MASTER;
 **START TEST**
 *** TEST1 ***
@@ -24,28 +16,28 @@ CREATE TABLE ptr_ob1.t1(
 id INT, 
 a INT, 
 b CHAR(5)
-);
+) ENGINE=MYISAM;
 CREATE TABLE ptr_ob1.t2(
 id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, 
 data CHAR(50)
-);
+) ENGINE=MYISAM;
 CREATE TABLE ptr_ob1.t3(
 srno INT AUTO_INCREMENT, 
 PRIMARY KEY(srno), 
 name VARCHAR(30) NOT NULL, 
 old_a INT
-);
+) ENGINE=MYISAM;
 CREATE TABLE ptr_ob2.t1(
 id INT, 
 b CHAR(5)
-);
-CREATE TABLE ptr_ob2.t2(id SMALLINT);
+) ENGINE=MYISAM;
+CREATE TABLE ptr_ob2.t2(id SMALLINT) ENGINE=MYISAM;
 INSERT INTO ptr_ob2.t1 VALUES(11,'set1'),(21,'set2'),(3,'set3'),(4,'set4');
 INSERT INTO ptr_ob2.t2 VALUES(91),(5),(26),(33),(5);
 **** Creating views ****
 CREATE VIEW ptr_ob1.v AS SELECT * FROM ptr_ob1.t1;
 CREATE VIEW ptr_ob1.v1 AS SELECT * FROM ptr_ob2.t1;
-CREATE TABLE ptr_ob1.tv1(id SMALLINT);
+CREATE TABLE ptr_ob1.tv1(id SMALLINT) ENGINE=MYISAM;
 INSERT INTO ptr_ob1.tv1  VALUES(1),(2),(3),(3),(5);
 SELECT * FROM ptr_ob1.tv1 UNION ALL SELECT * FROM ptr_ob2.t2;
 id
@@ -451,7 +443,7 @@ id	a
 1	20
 3	85
 Creating some new objects
-CREATE TABLE ptr_ob1.t11 (i INT, sr INT, j INT) engine=myisam;
+CREATE TABLE ptr_ob1.t11 (i INT, sr INT, j INT) ENGINE=MYISAM;
 INSERT INTO ptr_ob1.t11 VALUES (1, 2, 3);
 CREATE TRIGGER ptr_ob1.ai AFTER INSERT ON ptr_ob1.t11 FOR EACH ROW SET @a:= new.sr;
 CREATE TRIGGER ptr_ob1.au AFTER UPDATE ON ptr_ob1.t11 FOR EACH ROW SET @a:= new.sr;

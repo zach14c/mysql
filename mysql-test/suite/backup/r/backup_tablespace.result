@@ -208,8 +208,37 @@ INSERT INTO t VALUES (1);
 BACKUP DATABASE backup_ts TO 'ts_drop.bak';
 backup_id
 #
+
+# Show tablespace info
+SELECT t1.tablespace_name, t1.engine, t1.tablespace_type, t2.file_name, t2.file_type FROM INFORMATION_SCHEMA.TABLESPACES AS t1, INFORMATION_SCHEMA.FILES AS t2 WHERE t1.tablespace_name = t2.tablespace_name AND t1.tablespace_name = 'TB';;
+tablespace_name	TB
+engine	Falcon
+tablespace_type	USER DEFINED
+file_name	tblspace.fts
+file_type	USER DATAFILE
+
 DROP DATABASE backup_ts;
 DROP TABLESPACE tb ENGINE=FALCON;
 
-BUG#42402 - Crashes.
+# Restore and verify database content
 
+RESTORE FROM 'ts_drop.bak';
+backup_id
+#
+SHOW TABLES IN backup_ts;
+Tables_in_backup_ts
+t
+SELECT * FROM backup_ts.t;
+s1
+1
+
+# Show tablespace info
+SELECT t1.tablespace_name, t1.engine, t1.tablespace_type, t2.file_name, t2.file_type FROM INFORMATION_SCHEMA.TABLESPACES AS t1, INFORMATION_SCHEMA.FILES AS t2 WHERE t1.tablespace_name = t2.tablespace_name AND t1.tablespace_name = 'TB';;
+tablespace_name	TB
+engine	Falcon
+tablespace_type	USER DEFINED
+file_name	tblspace.fts
+file_type	USER DATAFILE
+
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;

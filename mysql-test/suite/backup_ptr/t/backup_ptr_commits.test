@@ -12,9 +12,9 @@
 --source include/not_embedded.inc
 --source include/have_log_bin.inc
 
+let $saved_format=`select @@binlog_format`;
 let $MYSQLD_DATADIR=`select @@datadir`;
 
-SELECT @@BINLOG_FORMAT;
 RESET MASTER;
 
 --error 0,1
@@ -227,3 +227,7 @@ SELECT * FROM ptr.t3;
 DROP DATABASE ptr;
 --remove_file $MYSQLD_DATADIR/ptr_commit.bak
 SET DEBUG_SYNC= 'RESET';
+
+--disable_query_log
+eval SET GLOBAL BINLOG_FORMAT='$saved_format';
+--enable_query_log

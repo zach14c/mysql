@@ -47,7 +47,6 @@ SHOW GRANTS FOR 'no_user'@'%';
 --echo Run backup
 --replace_column 1 #
 BACKUP DATABASE bup_db_grants TO 'bup_db_grants.bak';
-
 --echo Drop users and recreate them (removes grants completely).
 DROP USER 'bup_user1'@'%';
 DROP USER bup_user2;
@@ -201,6 +200,79 @@ SET NAMES latin1;
 
 DROP DATABASE bup_db_grants;
 DROP DATABASE db2;
-
---error 0,1
 --remove_file $MYSQLD_BACKUPDIR/bup_db_grants.bak
+
+--echo #
+--echo # Bug#41979 - Routine level grants not restored when user is dropped,
+--echo #             recreated before restore
+--echo #
+--echo # Create database, table, and users.
+CREATE DATABASE bup_db_grants;
+CREATE TABLE bup_db_grants.t1(c1 INT, c2 CHAR(20));
+CREATE USER 'bup_user1'@'%';
+CREATE USER 'bup_user2'@'doodle';
+#
+--echo # Create stored procedure.
+--delimiter ||
+CREATE PROCEDURE bup_db_grants.p1(p1 CHAR(20))
+  BEGIN
+    INSERT INTO bup_db_grants.t1 VALUES(50,'e');
+    INSERT INTO bup_db_grants.t1 VALUES(50,'e');
+  END||
+--delimiter ;
+--echo # Grant privileges on the procedure.
+GRANT EXECUTE ON PROCEDURE bup_db_grants.p1 TO 'bup_user1'@'%';
+GRANT ALTER ROUTINE ON PROCEDURE bup_db_grants.p1 TO 'bup_user2'@'doodle';
+#
+--echo # Create stored function.
+--delimiter ||
+CREATE FUNCTION bup_db_grants.f1(p1 CHAR(20)) RETURNS INT
+  BEGIN
+    RETURN (SELECT c1 FROM bup_db_grants.t1 WHERE c2 = p1 LIMIT 1);
+  END||
+--delimiter ;
+--echo # Grant privileges on the function.
+GRANT EXECUTE ON FUNCTION bup_db_grants.f1 TO 'bup_user1'@'%';
+GRANT ALTER ROUTINE ON FUNCTION bup_db_grants.f1 TO 'bup_user2'@'doodle';
+#
+FLUSH PRIVILEGES;
+#
+--echo # Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+SHOW GRANTS FOR 'bup_user2'@'doodle';
+#
+--echo # Run backup
+--replace_column 1 #
+BACKUP DATABASE bup_db_grants TO 'bup_db_grants.bak';
+#
+--echo # Drop users and recreate them (removes grants completely).
+DROP USER 'bup_user1'@'%';
+DROP USER 'bup_user2'@'doodle';
+#
+FLUSH PRIVILEGES;
+#
+CREATE USER 'bup_user1'@'%';
+CREATE USER 'bup_user2'@'doodle';
+#
+FLUSH PRIVILEGES;
+#
+--echo # Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+SHOW GRANTS FOR 'bup_user2'@'doodle';
+#
+--echo # Run Restore
+--replace_column 1 #
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
+#
+FLUSH PRIVILEGES;
+#
+--echo # Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+SHOW GRANTS FOR 'bup_user2'@'doodle';
+#
+--echo # Cleanup
+DROP USER 'bup_user1'@'%';
+DROP USER 'bup_user2'@'doodle';
+DROP DATABASE bup_db_grants;
+--remove_file $MYSQLD_BACKUPDIR/bup_db_grants.bak
+
