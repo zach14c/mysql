@@ -1161,6 +1161,7 @@ SET GLOBAL expire_logs_days = @old_eld;
 #
 # Bug#41030 Wrong meta data (incorrect fieldlen)
 #
+
 --enable_metadata
 select @@storage_engine;
 --disable_metadata
