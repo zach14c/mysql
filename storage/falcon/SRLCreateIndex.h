@@ -31,8 +31,9 @@ public:
 	SRLCreateIndex();
 	virtual ~SRLCreateIndex();
 
-	void			append (Dbb *dbb, TransId transId, int32 indexId, int indexVersion);
+	void			append (Dbb *dbb, TransId transId, int32 indexId, int indexVersion, int pageNumber);
 	virtual void	pass1();
+	virtual void	pass2();
 	virtual void	print();
 	virtual void	redo();
 	virtual void	read();
@@ -40,6 +41,7 @@ public:
 
 	int32		indexId;
 	int			indexVersion;
+	int32		pageNumber;
 };
 
 #endif // !defined(AFX_SRLCREATEINDEX_H__4044BC3E_E422_4CB3_B61F_316DD6ED5B96__INCLUDED_)

@@ -74,7 +74,7 @@ void SRLDeleteIndex::pass1()
 	log->bumpIndexIncarnation(indexId, tableSpaceId, objDeleted);
 }
 
-void SRLDeleteIndex::redo()
+void SRLDeleteIndex::pass2()
 {
 	if (!log->bumpIndexIncarnation(indexId, tableSpaceId, objDeleted))
 		return;
@@ -82,7 +82,9 @@ void SRLDeleteIndex::redo()
 	Dbb *dbb = log->findDbb(tableSpaceId);
 	if (!dbb)
 		return;
-		
+	if (!control->isPostFlush())
+		return;
+
 	switch (indexVersion)
 		{
 		case INDEX_VERSION_0:
@@ -96,6 +98,11 @@ void SRLDeleteIndex::redo()
 		default:
 			ASSERT(false);
 		}
+}
+
+void SRLDeleteIndex::redo()
+{
+	log->bumpIndexIncarnation(indexId, tableSpaceId, objDeleted);
 }
 
 void SRLDeleteIndex::print()

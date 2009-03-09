@@ -39,7 +39,7 @@ SRLCreateIndex::~SRLCreateIndex()
 
 }
 
-void SRLCreateIndex::append(Dbb *dbb, TransId transId, int32 id, int idxVersion)
+void SRLCreateIndex::append(Dbb *dbb, TransId transId, int32 id, int idxVersion, int pageNumber)
 {
 	START_RECORD(srlCreateIndex, "SRLCreateIndex::append");
 	log->getTransaction(transId);
@@ -48,6 +48,7 @@ void SRLCreateIndex::append(Dbb *dbb, TransId transId, int32 id, int idxVersion)
 	putInt(id);
 	putInt(idxVersion);
 	putInt(transId);
+	putInt(pageNumber);
 	sync.unlock();
 }
 
@@ -61,22 +62,31 @@ void SRLCreateIndex::read()
 	indexId = getInt();
 	indexVersion = getInt();
 	transactionId = getInt();
+	if (control->version >= srlVersion17)
+		pageNumber = getInt();
+	else
+		pageNumber = 0; // we'll probably suck in recovery
 }
 
 void SRLCreateIndex::pass1()
 {
+	log->bumpPageIncarnation(pageNumber,tableSpaceId, objInUse);
 	log->bumpIndexIncarnation(indexId, tableSpaceId, objInUse);
 }
 
-void SRLCreateIndex::redo()
+void SRLCreateIndex::pass2()
 {
+	log->bumpPageIncarnation(pageNumber,tableSpaceId, objInUse);
 	if (!log->bumpIndexIncarnation(indexId, tableSpaceId, objInUse))
+		return;
+
+	if (!control->isPostFlush())
 		return;
 
 	switch (indexVersion)
 		{
 		case INDEX_VERSION_1:
-			IndexRootPage::redoCreateIndex(log->getDbb(tableSpaceId), indexId);
+			IndexRootPage::redoCreateIndex(log->getDbb(tableSpaceId), indexId, pageNumber);
 			break;
 		
 		case INDEX_VERSION_0:
@@ -86,6 +96,12 @@ void SRLCreateIndex::redo()
 		default:
 			ASSERT(false);
 		}
+}
+
+void SRLCreateIndex::redo()
+{
+	log->bumpPageIncarnation(pageNumber,tableSpaceId, objInUse);
+	log->bumpIndexIncarnation(indexId, tableSpaceId, objInUse);
 }
 
 void SRLCreateIndex::print()

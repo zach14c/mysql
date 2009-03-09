@@ -19,7 +19,7 @@
 #include "Sync.h"
 #include "Thread.h"
 
-PriorityScheduler::PriorityScheduler(void)
+PriorityScheduler::PriorityScheduler(void) : mutex("PriorityScheduler::mutex")
 {
 	currentPriority = 0;
 	count = 0;

@@ -29,6 +29,7 @@
 #include "PageType.h"
 #include "SyncObject.h"
 #include "SparseArray.h"
+#include "Mutex.h"
 
 #define TRANSACTION_ID(transaction)		((transaction) ? transaction->transactionId : 0)
 
@@ -203,6 +204,7 @@ public:
 	bool		utf8;
 	bool		noLog;
 	Section		*sections[SECTION_HASH_SIZE];
+	Mutex		sectionsMutex;
 	int			debug;
 	int			sequence;
 	int			odsVersion;

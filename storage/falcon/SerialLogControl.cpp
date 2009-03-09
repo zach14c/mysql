@@ -175,6 +175,9 @@ SerialLogRecord* SerialLogControl::getRecordManager(int which)
 		case srlInventoryPage:
 			return &inventoryPage;
 
+		case srlTableSpaces:
+			return &tableSpaces;
+
 		default:
 			ASSERT(false);
 		}
