@@ -56,9 +56,9 @@ int64 Sequence::updatePhysical(int64 delta, Transaction *transaction)
 	return database->updateSequence (id, delta, transaction);
 }
 
-void Sequence::rename(const char* newName)
+void Sequence::rename(const char *newSchema, const char* newName)
 {
-	database->sequenceManager->renameSequence(this, newName);
+	database->sequenceManager->renameSequence(this, newSchema, newName);
 }
 
 Sequence* Sequence::recreate(void)

@@ -11,6 +11,11 @@
 --source include/have_myisam_or_maria_default.inc
 --source include/blackhole.inc
 
+if (`select @@version_compile_os like 'apple-darwin%'`)
+{
+--skip "Can't run on Mac because of bug#43221"
+}
+
 SET DEBUG_SYNC= 'RESET';
 
 let $MYSQLD_DATADIR= `select @@datadir`;

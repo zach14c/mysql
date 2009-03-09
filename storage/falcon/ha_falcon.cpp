@@ -299,6 +299,16 @@ int falcon_strnxfrm (void *cs,
 	                              (uchar *) src, srclen, 0);
 }
 
+int falcon_strnxfrm_space_pad (void *cs,
+                     const char *dst, uint dstlen, int nweights,
+                     const char *src, uint srclen)
+{
+	CHARSET_INFO *charset = (CHARSET_INFO*) cs;
+
+	return (int)charset->coll->strnxfrm(charset, (uchar *) dst, dstlen, nweights,
+	                              (uchar *) src, srclen, MY_STRXFRM_PAD_WITH_SPACE);
+}
+
 char falcon_get_pad_char (void *cs)
 {
 	return (char) ((CHARSET_INFO*) cs)->pad_char;
@@ -2454,10 +2464,8 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 	DBUG_ENTER("StorageInterface::check_if_supported_alter");
 	tempTable = (create_info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
 	HA_ALTER_FLAGS supported;
-	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX | HA_ADD_PK_INDEX | HA_DROP_PK_INDEX;
-						/**
-						| HA_ADD_COLUMN | HA_COLUMN_STORAGE | HA_COLUMN_FORMAT ;
-						**/
+	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX
+	                      | HA_ADD_PK_INDEX | HA_DROP_PK_INDEX | HA_ADD_COLUMN;
 	HA_ALTER_FLAGS notSupported = ~(supported);
 	
 #ifndef ONLINE_ALTER
@@ -3130,11 +3138,36 @@ void StorageInterface::decodeRecord(uchar *buf)
 	my_ptrdiff_t ptrDiff = buf - table->record[0];
 	my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->write_set);
 	DBUG_ENTER("StorageInterface::decodeRecord");
+
+	// Format of this record
+
 	FieldFormat *fieldFormat = storageTable->format->format;
 	int maxId = storageTable->format->maxId;
 	
-	for (int n = 0; n < maxId; ++n, ++fieldFormat)
+	// Current format for the table, possibly newer than the record format
+	
+	int tableMaxId = storageTable->share->format->maxId;
+	FieldFormat *tableFieldFormat = storageTable->share->format->format;
+	
+	for (int n = 0; n < tableMaxId; ++n, ++fieldFormat, ++tableFieldFormat)
 		{
+		// Online ALTER ADD COLUMN creates a new record format for the table
+		// that will have more fields than the older formats associated with
+		// existing rows.
+		//
+		// Currently, online ALTER ADD COLUMN only supports nullable columns and
+		// no default value. If the format of this record has fewer fields
+		// than the default format of the table, then there are no fields to
+		// decode beyond maxId, so set them to NULL.
+		
+		if (n >= maxId)
+			{
+			Field *newField = fieldMap[tableFieldFormat->fieldId];
+			newField->set_null();
+			newField->reset();
+			continue;
+			}
+	
 		// If the format doesn't have an offset, the field doesn't exist in the record
 		
 		if (fieldFormat->fieldId < 0 || fieldFormat->offset == 0)
@@ -3934,7 +3967,7 @@ static MYSQL_SYSVAR_UINT(allocation_extent, falcon_allocation_extent,
 static MYSQL_SYSVAR_ULONGLONG(page_cache_size, falcon_page_cache_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "The amount of memory to be used for the database page cache.",
-  NULL, NULL, LL(250)<<20, LL(2)<<20, (ulonglong) max_memory_address, LL(1)<<20);
+  NULL, NULL, LL(4)<<20, LL(2)<<20, (ulonglong) max_memory_address, LL(1)<<20);
 
 static MYSQL_THDVAR_BOOL(consistent_read, PLUGIN_VAR_OPCMDARG,
    "Enable Consistent Read Mode for Repeatable Reads",

@@ -496,16 +496,24 @@ db_find_routine(THD *thd, int type, sp_name *name, sp_head **sphp)
 struct Silence_deprecated_warning : public Internal_error_handler
 {
 public:
-  virtual bool handle_error(THD *thd,
-                            MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno, const char *message);
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl);
 };
 
 bool
-Silence_deprecated_warning::
-handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
-             uint sql_errno, const char *message)
+Silence_deprecated_warning::handle_condition(
+  THD *,
+  uint sql_errno,
+  const char*,
+  MYSQL_ERROR::enum_warning_level level,
+  const char*,
+  MYSQL_ERROR ** cond_hdl)
 {
+  *cond_hdl= NULL;
   if (sql_errno == ER_WARN_DEPRECATED_SYNTAX &&
       level == MYSQL_ERROR::WARN_LEVEL_WARN)
     return TRUE;

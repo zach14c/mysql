@@ -333,7 +333,7 @@ void PageInventoryPage::validateInventory(Dbb *dbb, Validation *validation)
 							else
 								freePage(dbb, pageNumber, NO_TRANSACTION);
 								
-							pipBdb = dbb->fetchPage (pageNumber, PAGE_any, Shared);
+							pipBdb = dbb->fetchPage (pageNumber, PAGE_any, Exclusive);
 							BDB_HISTORY(pipBdb);
 							page = (PageInventoryPage*) pipBdb->buffer;
 							}

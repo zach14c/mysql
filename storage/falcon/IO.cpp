@@ -289,8 +289,18 @@ void IO::readPage(Bdb * bdb)
 	if (length != pageSize)
 		{
 		declareFatalError();
-		throw SQLError(IO_ERROR, "read error on page %d of \"%s\": %s (%d)",
+		if (length == -1)
+			{
+			throw SQLError(IO_ERROR, "read error on page %d of \"%s\": %s (%d)",
 				bdb->pageNumber, (const char*) fileName, strerror (errno), errno);
+			}
+		else
+			{
+			throw SQLError(IO_ERROR,
+				"pread on file %s from  page %d (offset %lld) returned %d bytes"
+				" instead of %d (possible read behind EOF)",
+				(const char*) fileName, bdb->pageNumber, (int64)offset, length, pageSize);
+			}
 		}
 
 	++reads;

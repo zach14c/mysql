@@ -25,6 +25,10 @@ extern int falcon_strnxfrm (void *cs,
 							const char *dst, uint dstlen, int nweights,
 							const char *src, uint srclen);
 
+extern int falcon_strnxfrm_space_pad (void *cs, 
+							const char *dst, uint dstlen, int nweights,
+							const char *src, uint srclen);
+
 extern char falcon_get_pad_char (void *cs);
 extern int falcon_cs_is_binary (void *cs);
 extern unsigned int falcon_get_mbmaxlen (void *cs);
@@ -49,7 +53,7 @@ public:
 	~MySQLCollation(void);
 
 	virtual int			compare (Value *value1, Value *value2);
-	virtual int			makeKey (Value *value, IndexKey *key, int partialKey, int maxKeyLength);
+	virtual int			makeKey (Value *value, IndexKey *key, int partialKey, int maxKeyLength, bool highKey);
 	virtual const char	*getName ();
 	virtual bool		starting (const char *string1, const char *string2);
 	virtual bool		like (const char *string, const char *pattern);
