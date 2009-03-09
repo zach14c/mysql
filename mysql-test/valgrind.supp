@@ -608,3 +608,17 @@
    obj:*/libdl-*.so
    fun:dlclose*
 }
+
+#
+# BUG#36989: By design, zlib does not initialize all variables which leads
+# to this warning. This is reported on zlib FAQ: 
+# http://www.zlib.net/zlib_faq.html#faq36
+#
+
+{
+  zlib does not initialize all variables
+  Memcheck:Cond
+  fun: longest_match
+  fun: deflate_slow
+  fun: deflate
+}
