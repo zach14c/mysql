@@ -4608,7 +4608,7 @@ static my_bool reset_stmt_handle(MYSQL_STMT *stmt, uint flags)
         if (stmt->field_count && mysql->status != MYSQL_STATUS_READY)
         {
           /* There is a result set and it belongs to this statement */
-          (*mysql->methods->flush_use_result)(mysql);
+          (*mysql->methods->flush_use_result)(mysql, FALSE);
           if (mysql->unbuffered_fetch_owner)
             *mysql->unbuffered_fetch_owner= TRUE;
           mysql->status= MYSQL_STATUS_READY;
@@ -4692,7 +4692,7 @@ my_bool STDCALL mysql_stmt_close(MYSQL_STMT *stmt)
           Flush result set of the connection. If it does not belong
           to this statement, set a warning.
         */
-        (*mysql->methods->flush_use_result)(mysql);
+        (*mysql->methods->flush_use_result)(mysql, TRUE);
         if (mysql->unbuffered_fetch_owner)
           *mysql->unbuffered_fetch_owner= TRUE;
         mysql->status= MYSQL_STATUS_READY;

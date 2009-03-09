@@ -110,8 +110,8 @@ my $opt_tmpdir;                 # Path to use for tmp/ dir
 my $opt_tmpdir_pid;
 
 END {
-  if (defined $opt_tmpdir_pid and
-      $opt_tmpdir_pid == $$){
+  if ( defined $opt_tmpdir_pid and $opt_tmpdir_pid == $$ )
+  {
     # Remove the tempdir this process has created
     mtr_verbose("Removing tmpdir '$opt_tmpdir");
     rmtree($opt_tmpdir);
@@ -277,7 +277,6 @@ sub main {
        "bzr_mysql-5.1-telco-6.3"        => "ndb_team",
        "bzr_mysql-5.1-telco-6.4"        => "ndb_team",
        "bzr_mysql-6.0-ndb"              => "ndb_team,rpl_ndb_big,ndb_binlog",
-       "bzr_mysql-6.0-falcon"           => "falcon_team",
        "bzr_mysql-6.0-falcon-team"      => "falcon_team",
        "bzr_mysql-6.0-falcon-ann"       => "falcon_team",
        "bzr_mysql-6.0-falcon-chris"     => "falcon_team",
@@ -4997,7 +4996,7 @@ Options to control what engine/variation to run
 
   config|defaults-file=<config template> Use fixed config template for all
                         tests
-  defaults_extra_file=<config template> Extra config template to add to
+  defaults-extra-file=<config template> Extra config template to add to
                         all generated configs
 
 Options to control directories to use

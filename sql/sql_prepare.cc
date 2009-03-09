@@ -83,8 +83,8 @@ When one supplies long data for a placeholder:
     at statement execute.
 */
 
-#include "sql_prepare.h"
 #include "mysql_priv.h"
+#include "sql_prepare.h"
 #include "sql_select.h" // for JOIN
 #include "sql_cursor.h"
 #include "sp_head.h"
@@ -241,7 +241,7 @@ protected:
                        const char *message);
 
   virtual void send_eof(uint server_status, uint statement_warn_count);
-  virtual void send_error(uint sql_errno, const char *err_msg);
+  virtual void send_error(uint sql_errno, const char *err_msg, const char* sqlstate);
 private:
   bool store_string(const char *str, size_t length,
                     CHARSET_INFO *src_cs, CHARSET_INFO *dst_cs);
@@ -2890,8 +2890,16 @@ Select_fetch_protocol_binary::send_data(List<Item> &fields)
 bool
 Reprepare_observer::report_error(THD *thd)
 {
-  my_error(ER_NEED_REPREPARE, MYF(ME_NO_WARNING_FOR_ERROR|ME_NO_SP_HANDLER));
-
+  /*
+    This 'error' is purely internal to the server:
+    - No exception handler is invoked,
+    - No condition is added in the condition area (warn_list).
+    The diagnostics area is set to an error status to enforce
+    that this thread execution stops and returns to the caller,
+    backtracking all the way to Prepared_statement::execute_loop().
+  */
+  thd->stmt_da->set_error_status(thd, ER_NEED_REPREPARE,
+                                 ER(ER_NEED_REPREPARE), "HY000");
   m_invalidated= TRUE;
 
   return TRUE;
@@ -4376,7 +4384,7 @@ void Protocol_local::send_eof(uint server_status, uint statement_warn_count)
 /** Called to send an error to the client at the end of a statement. */
 
 void
-Protocol_local::send_error(uint sql_errno, const char *err_msg)
+Protocol_local::send_error(uint sql_errno, const char *err_msg, const char*)
 {
   /*
     Just make sure that nothing is sent to the client (default

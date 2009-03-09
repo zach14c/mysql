@@ -39,12 +39,12 @@ int CollationUnknown::compare(Value *value1, Value *value2)
 	return collation->compare(value1, value2);
 }
 
-int CollationUnknown::makeKey(Value *value, IndexKey *key, int partialKey, int maxKeyLength)
+int CollationUnknown::makeKey(Value *value, IndexKey *key, int partialKey, int maxKeyLength, bool highKey)
 {
 	if (!collation)
 		getCollation();
 	
-	return collation->makeKey(value, key, partialKey, maxKeyLength);
+	return collation->makeKey(value, key, partialKey, maxKeyLength, highKey);
 }
 
 const char* CollationUnknown::getName()

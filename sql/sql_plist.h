@@ -79,6 +79,7 @@ public:
     **B::prev_ptr(a)= next;
   }
   inline T* head() { return first; }
+  inline const T *head() const { return first; }
   void swap(I_P_List<T,B> &rhs)
   {
     swap_variables(T *, first, rhs.first);
@@ -90,6 +91,7 @@ public:
 #ifndef _lint
   friend class I_P_List_iterator<T, B>;
 #endif
+  typedef I_P_List_iterator<T, B> Iterator;
 };
 
 

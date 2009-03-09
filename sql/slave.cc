@@ -1956,8 +1956,9 @@ static int has_temporary_error(THD *thd)
   MYSQL_ERROR *err;
   while ((err= it++))
   {
-    DBUG_PRINT("info", ("has warning %d %s", err->code, err->msg));
-    switch (err->code)
+    DBUG_PRINT("info", ("has condition %d %s", err->get_sql_errno(),
+                        err->get_message_text()));
+    switch (err->get_sql_errno())
     {
     case ER_GET_TEMPORARY_ERRMSG:
       DBUG_RETURN(1);
@@ -2917,10 +2918,11 @@ Slave SQL thread aborted. Can't execute init_slave query");
         bool udf_error = false;
         while ((err= it++))
         {
-          if (err->code == ER_CANT_OPEN_LIBRARY)
+          sql_print_message_func fct;
+          if (err->get_sql_errno() == ER_CANT_OPEN_LIBRARY)
             udf_error = true;
-          (sql_print_message_handlers[err->level])("Slave: %s Error_code: %d",
-                                                   err->msg, err->code);
+          fct= sql_print_message_handlers[err->get_level()];
+          (fct)("Slave: %s Error_code: %d", err->get_message_text(), err->get_sql_errno());
         }
         if (udf_error)
           sql_print_error("Error loading user-defined library, slave SQL "

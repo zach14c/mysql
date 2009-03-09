@@ -2354,7 +2354,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   {
     /* Can't use my_error since store_globals has not yet been called */
     thd->stmt_da->set_error_status(thd, ER_OUT_OF_RESOURCES,
-                                  ER(ER_OUT_OF_RESOURCES));
+                                   ER(ER_OUT_OF_RESOURCES), NULL);
     goto end;
   }
   DBUG_ENTER("handle_delayed_insert");
@@ -2363,7 +2363,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   {
     /* Can't use my_error since store_globals has perhaps failed */
     thd->stmt_da->set_error_status(thd, ER_OUT_OF_RESOURCES,
-                                  ER(ER_OUT_OF_RESOURCES));
+                                   ER(ER_OUT_OF_RESOURCES), NULL);
     thd->fatal_error();
     goto err;
   }
@@ -2382,7 +2382,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   thd->lex->set_stmt_unsafe();
   thd->set_current_stmt_binlog_row_based_if_mixed();
 
-  alloc_mdl_locks(&di->table_list, thd->mem_root);
+  alloc_mdl_requests(&di->table_list, thd->mem_root);
 
   if (di->open_and_lock_table())
     goto err;
