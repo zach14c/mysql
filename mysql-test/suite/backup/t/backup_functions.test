@@ -5,7 +5,6 @@
 # after backup and Restore.
 ###############################################################################
 --source include/not_embedded.inc
---source include/have_debug.inc
 
 connect (backup,localhost,root,,);
 connect (breakpoints,localhost,root,,);
