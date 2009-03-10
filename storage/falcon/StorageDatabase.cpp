@@ -484,14 +484,45 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 
 int StorageDatabase::nextIndexed(StorageTable* storageTable, IndexWalker* indexWalker, bool lockForUpdate)
 {
-	Record *record = indexWalker->getNext(lockForUpdate);
 
-	if (!record)
-		return StorageErrorRecordNotFound;
+	try
+		{
+		Record *record = indexWalker->getNext(lockForUpdate);
+
+		if (!record)
+			return StorageErrorRecordNotFound;
+
+		storageTable->setRecord(record, lockForUpdate);
+		return record->recordNumber;
+		}
+	catch (SQLException& exception)
+		{
+		StorageConnection *storageConnection = storageTable->storageConnection;
+		storageConnection->setErrorText(&exception);
+		int errorCode = exception.getSqlcode();
 		
-	storageTable->setRecord(record, lockForUpdate);
-	
-	return record->recordNumber;
+		switch (errorCode)
+			{
+			case UPDATE_CONFLICT:
+				return StorageErrorUpdateConflict;
+
+			case OUT_OF_MEMORY_ERROR:
+				return StorageErrorOutOfMemory;
+
+			case OUT_OF_RECORD_MEMORY_ERROR:
+				return StorageErrorOutOfRecordMemory;
+
+			case DEADLOCK:
+				return StorageErrorDeadlock;
+
+			case LOCK_TIMEOUT:
+				return StorageErrorLockTimeout;
+				
+			default:
+				ASSERT(false);
+			}
+
+		}
 }
 
 int StorageDatabase::savepointSet(Connection* connection)

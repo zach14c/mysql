@@ -142,31 +142,51 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 
 	// Fetch record.  If it doesn't exist, that's ok.
 
-	Record *candidate = table->fetch(recordId);
-	if (!candidate)
-		return NULL;
-	RECORD_HISTORY(candidate);
+	Record *candidate = NULL;
+	Record *record = NULL;
 
-	// Get the correct version.  If this is select for update, get a lock record
-
-	Record *record = (lockForUpdate) 
-				    ? table->fetchForUpdate(transaction, candidate, true)
-				    : candidate->fetchVersion(transaction);
-	
-	if (!record)
+	try
 		{
-		if (!lockForUpdate)
-			candidate->release(REC_HISTORY);
+		candidate = table->fetch(recordId);
+
+		if (!candidate)
+			return NULL;
+
+		RECORD_HISTORY(candidate);
+
+		// Get the correct version.  If this is select for update, get a lock record
+		record = (lockForUpdate) 
+			? table->fetchForUpdate(transaction, candidate, true)
+			: candidate->fetchVersion(transaction);
+	
+		if (!record)
+			{
+			if (!lockForUpdate)
+				candidate->release(REC_HISTORY);
 		
-		return NULL;
+			return NULL;
+			}
+	
+		// If we have a different record version, release the original
+	
+		if (!lockForUpdate && candidate != record)
+			{
+			record->addRef(REC_HISTORY);
+			candidate->release(REC_HISTORY);
+			}
 		}
-	
-	// If we have a different record version, release the original
-	
-	if (!lockForUpdate && candidate != record)
+	catch (SQLException& exception)
 		{
-		record->addRef(REC_HISTORY);
-		candidate->release(REC_HISTORY);
+
+		if (record && record != candidate)
+			record->release(REC_HISTORY);
+
+		if (candidate && !lockForUpdate)
+			candidate->release(REC_HISTORY);
+
+		// Re-throw the exception, catch it further up to return the correct
+		// error
+		throw;
 		}
 	
 	// Compute record key and compare against index key.  If there' different, punt
