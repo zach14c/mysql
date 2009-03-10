@@ -1917,10 +1917,7 @@ JOIN::optimize()
     Yet the current implementation of FORCE INDEX hints does not
     allow us to do it in a clean manner.
   */   
-  uint no_jbuf_after= tables;
-#if 0
-  no_jbuf_after= make_join_orderinfo(this);
-#endif
+  uint no_jbuf_after= 1 ? tables : make_join_orderinfo(this);
 
   ulonglong select_opts_for_readinfo= 
     (select_options & (SELECT_DESCRIBE | SELECT_NO_JOIN_CACHE)) |
