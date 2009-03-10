@@ -602,7 +602,7 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 			}
 
 		// Parent page needs to be split.Recurse
-		ASSERT(result == SplitMiddle || result == SplitEnd);
+		ASSERT(result == SplitMiddle || result == SplitEnd || result == NextPage);
 
 		if (splitIndexPage (dbb, indexId, parentBdb, transId, result, &splitKey,
 				splitPageNumber, (parentBdb->pageNumber == rootPageNumber)))

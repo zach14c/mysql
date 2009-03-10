@@ -41,7 +41,8 @@ SET(FALCON_SOURCES
 		Bitmap.cpp 
 		BlobReference.cpp 
 		Btn.cpp 
-		Cache.cpp 
+		Cache.cpp
+		ErrorInjector.cpp
 		CmdGen.cpp
 		CollationCaseless.cpp 
 		CollationUnknown.cpp 
@@ -324,6 +325,7 @@ SET(FALCON_SOURCES
 		Context.h 
 		Coterie.h
 		CoterieRange.h 
+		ErrorInjector.h
 		Database.h 
 		DatabaseBackup.h 
 		DatabaseClone.h 

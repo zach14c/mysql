@@ -1840,6 +1840,9 @@ void Database::scavengeRecords(bool forced)
 	recordScavenge.retiredActiveMemory = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 	recordScavenge.retireStop = deltaTime;
 
+	// Backlogging disabled: Bug#43504 "Falcon DBT2 crash in Table::rollbackRecord()"
+
+#if 0 
 	// Enable backlogging if memory is low
 
 	if (recordScavenge.retiredActiveMemory > recordScavengeFloor)
@@ -1851,6 +1854,7 @@ void Database::scavengeRecords(bool forced)
 			if (--lowMemoryCount == 0)
 				clearLowMemory();
 		}
+#endif	
 
 	recordScavenge.print();
 	// Log::log(analyze(analyzeRecordLeafs));

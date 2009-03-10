@@ -36,6 +36,7 @@
 #include "Format.h"
 #include "Error.h"
 #include "Log.h"
+#include "ErrorInjector.h"
 
 #ifdef _WIN32
 #define I64FORMAT			"%I64d"
@@ -96,6 +97,7 @@ ulonglong	falcon_page_cache_size;
 char*		falcon_serial_log_dir;
 char*		falcon_checkpoint_schedule;
 char*		falcon_scavenge_schedule;
+char*		falcon_error_inject;
 FILE		*falcon_log_file;
 
 // Determine the largest memory address, assume 64-bits max
@@ -195,6 +197,9 @@ int StorageInterface::falcon_init(void *p)
 {
 	DBUG_ENTER("falcon_init");
 	falcon_hton = (handlerton *)p;
+	
+	ERROR_INJECTOR_PARSE(falcon_error_inject);
+	
 	my_bool error = false;
 
 	if (!checkExceptionSupport()) 
@@ -3840,6 +3845,11 @@ static void updateRecordChillThreshold(MYSQL_THD thd,
 		storageHandler->setRecordChillThreshold(falcon_record_chill_threshold);
 }
 
+static void updateErrorInject(MYSQL_THD thd, struct st_mysql_sys_var *var,
+	void *var_ptr, const void *save)
+{
+	ERROR_INJECTOR_PARSE(*(const char**)save);
+}
 void StorageInterface::updateRecordMemoryMax(MYSQL_THD thd, struct st_mysql_sys_var* variable, void* var_ptr, const void* save)
 {
 	falcon_record_memory_max = *(ulonglong*) save;
@@ -3931,6 +3941,11 @@ static MYSQL_SYSVAR_STR(checkpoint_schedule, falcon_checkpoint_schedule,
   "Falcon checkpoint schedule.",
   NULL, NULL, "7 * * * * *");
 
+static MYSQL_SYSVAR_STR(error_inject, falcon_error_inject,
+  PLUGIN_VAR_MEMALLOC,
+  "Used for testing purposes (error injection)",
+  NULL, &updateErrorInject, "");
+
 static MYSQL_SYSVAR_STR(scavenge_schedule, falcon_scavenge_schedule,
   PLUGIN_VAR_RQCMDARG| PLUGIN_VAR_READONLY | PLUGIN_VAR_MEMALLOC,
   "Falcon record scavenge schedule.",
@@ -4007,6 +4022,7 @@ static struct st_mysql_sys_var* falconVariables[]= {
 	MYSQL_SYSVAR(page_cache_size),
 	MYSQL_SYSVAR(consistent_read),
 	MYSQL_SYSVAR(serial_log_file_size),
+	MYSQL_SYSVAR(error_inject),
 	NULL
 };
 
