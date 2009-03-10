@@ -9,6 +9,11 @@
 --source include/not_embedded.inc
 --source include/have_debug.inc
 
+if (`select @@version_compile_os like 'apple-darwin%'`)
+{
+--skip "Can't run on Mac because of bug#43220"
+}
+
 connect (backup,localhost,root,,);
 connect (breakpoints,localhost,root,,);
 

@@ -1035,7 +1035,7 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
   TABLE *table;
   bool error;
   uint path_length;
-  MDL_LOCK_DATA *mdl_lock_data= 0;
+  MDL_request *mdl_request= NULL;
   Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_truncate");
 
@@ -1100,13 +1100,13 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
              tries to get table enging and therefore accesses table in some way
              without holding any kind of meta-data lock.
     */
-    mdl_lock_data= mdl_alloc_lock(0, table_list->db, table_list->table_name,
-                                  thd->mem_root);
-    mdl_set_lock_type(mdl_lock_data, MDL_EXCLUSIVE);
-    mdl_add_lock(&thd->mdl_context, mdl_lock_data);
-    if (mdl_acquire_exclusive_locks(&thd->mdl_context))
+    mdl_request= MDL_request::create(0, table_list->db,
+                                     table_list->table_name, thd->mem_root);
+    mdl_request->set_type(MDL_EXCLUSIVE);
+    thd->mdl_context.add_request(mdl_request);
+    if (thd->mdl_context.acquire_exclusive_locks())
     {
-      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+      thd->mdl_context.remove_request(mdl_request);
       DBUG_RETURN(TRUE);
     }
     pthread_mutex_lock(&LOCK_open);
@@ -1139,18 +1139,18 @@ end:
       write_bin_log(thd, TRUE, thd->query, thd->query_length);
       my_ok(thd);		// This should return record count
     }
-    if (mdl_lock_data)
+    if (mdl_request)
     {
-      mdl_release_lock(&thd->mdl_context, mdl_lock_data);
-      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+      thd->mdl_context.release_lock(mdl_request->ticket);
+      thd->mdl_context.remove_request(mdl_request);
     }
   }
   else if (error)
   {
-    if (mdl_lock_data)
+    if (mdl_request)
     {
-      mdl_release_lock(&thd->mdl_context, mdl_lock_data);
-      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+      thd->mdl_context.release_lock(mdl_request->ticket);
+      thd->mdl_context.remove_request(mdl_request);
     }
   }
   DBUG_RETURN(error);

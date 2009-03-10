@@ -56,10 +56,12 @@ static bool make_empty_rec(THD *thd, int file, enum legacy_db_type table_type,
 
 struct Pack_header_error_handler: public Internal_error_handler
 {
-  virtual bool handle_error(THD *thd,
-                            MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno,
-                            const char *message);
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl);
   bool is_handled;
   Pack_header_error_handler() :is_handled(FALSE) {}
 };
@@ -67,11 +69,14 @@ struct Pack_header_error_handler: public Internal_error_handler
 
 bool
 Pack_header_error_handler::
-handle_error(THD * /* thd */,
-             MYSQL_ERROR::enum_warning_level /* level */,
-             uint sql_errno,
-             const char * /* message */)
+handle_condition(THD *,
+                 uint sql_errno,
+                 const char*,
+                 MYSQL_ERROR::enum_warning_level,
+                 const char*,
+                 MYSQL_ERROR ** cond_hdl)
 {
+  *cond_hdl= NULL;
   is_handled= (sql_errno == ER_TOO_MANY_FIELDS);
   return is_handled;
 }
@@ -224,16 +229,15 @@ bool mysql_create_frm(THD *thd, const char *file_name,
     if ((thd->variables.sql_mode &
          (MODE_STRICT_TRANS_TABLES | MODE_STRICT_ALL_TABLES)))
     {
-      my_error(ER_WRONG_STRING_LENGTH, MYF(0),
-                 create_info->comment.str,"TABLE COMMENT",
-                 (uint) TABLE_COMMENT_MAXLEN);
+      my_error(ER_TOO_LONG_TABLE_COMMENT, MYF(0),
+               table, (uint) TABLE_COMMENT_MAXLEN);
       my_free(screen_buff,MYF(0));
       DBUG_RETURN(1);
     }
     push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                        ER_WRONG_STRING_LENGTH, ER(ER_WRONG_STRING_LENGTH),
-                        create_info->comment.str,"TABLE COMMENT",
-                        (uint) TABLE_COMMENT_MAXLEN);
+                        ER_TOO_LONG_TABLE_COMMENT,
+                        ER(ER_TOO_LONG_TABLE_COMMENT),
+                        table, (uint) TABLE_COMMENT_MAXLEN);
     create_info->comment.length= tmp_len;
   }
 
@@ -704,15 +708,14 @@ static bool pack_header(uchar *forminfo, enum legacy_db_type table_type,
       if ((current_thd->variables.sql_mode &
 	   (MODE_STRICT_TRANS_TABLES | MODE_STRICT_ALL_TABLES)))
       {
-        my_error(ER_WRONG_STRING_LENGTH, MYF(0),
-                   field->comment.str,"COLUMN COMMENT",
-                   (uint) COLUMN_COMMENT_MAXLEN);
+        my_error(ER_TOO_LONG_FIELD_COMMENT, MYF(0),
+                 field->field_name, (uint) COLUMN_COMMENT_MAXLEN);
 	DBUG_RETURN(1);
       }
       push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                          ER_WRONG_STRING_LENGTH, ER(ER_WRONG_STRING_LENGTH),
-                          field->comment.str,"COLUMN COMMENT",
-                          (uint) COLUMN_COMMENT_MAXLEN);
+                          ER_TOO_LONG_FIELD_COMMENT,
+                          ER(ER_TOO_LONG_FIELD_COMMENT),
+                          field->field_name, (uint) COLUMN_COMMENT_MAXLEN);
       field->comment.length= tmp_len;
     }
 

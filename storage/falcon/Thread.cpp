@@ -51,7 +51,7 @@ static int threadIndex = TlsAlloc();
 static pthread_key_t	threadIndex;
 #endif
 
-static Mutex	exitMutex;
+static Mutex	exitMutex("Thread::exitMutex");
 static int		initThreads();
 static int		initialized = initThreads();
 
