@@ -1726,6 +1726,15 @@ public:
     return (unit == &thd->lex->unit && (unit->fake_select_lex == 0 ||
                                         select_lex == unit->fake_select_lex));
   }
+  /* 
+    Return the table for which an index scan can be used to satisfy 
+    the sort order needed by the ORDER BY/GROUP BY clause 
+  */
+  JOIN_TAB *get_sort_by_join_tab()
+  {
+    return (need_tmp || !sort_by_table || skip_sort_order) ?
+              NULL : join_tab+const_tables;
+  }
 private:
   bool make_simple_join(JOIN *join, TABLE *tmp_table);
 };
