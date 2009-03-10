@@ -2132,6 +2132,15 @@ case "$target" in
 esac
 AC_CHECK_FUNCS(pthread_condattr_setclock)
 
+case "$mysql_cv_sys_os" in
+ OS400) # i5/OS (OS/400) emits a SIGILL (Function not implemented) when
+        # unsupported priority values are passed to pthread_setschedprio.
+        # Since the only supported value is 1, treat it as inexistent.
+    ;;
+ *) AC_CHECK_FUNCS(pthread_setschedprio)
+    ;;
+esac
+
 # Check that isinf() is available in math.h and can be used in both C and C++ 
 # code
 AC_MSG_CHECKING(for isinf in <math.h>)
