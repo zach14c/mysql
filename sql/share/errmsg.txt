@@ -6463,8 +6463,6 @@ ER_OPERATION_ABORTED
   eng "Operation aborted"
 ER_OPERATION_ABORTED_CORRUPTED
   eng "Operation aborted - data might be corrupted"
-ER_PATH_LENGTH
-  eng "The path specified for %.64s is too long."
 ER_DUP_SIGNAL_SET 42000
         eng "Duplicate condition information item '%s'"
 
@@ -6491,4 +6489,6 @@ WARN_COND_ITEM_TRUNCATED
 
 ER_COND_ITEM_TOO_LONG
         eng "Data too long for condition item '%s'"
+ER_PATH_LENGTH
+  eng "The path specified for %.64s is too long."
 
