@@ -2231,7 +2231,7 @@ int bcat_get_item_create_data(st_bstream_image_header *catalogue,
                             bstream_blob *data)
 {
   /* We don't use any extra data now */
-  return BSTREAM_ERROR;
+  return BSTREAM_EOS;
 }
 
 
