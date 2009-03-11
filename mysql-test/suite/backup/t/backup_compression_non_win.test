@@ -1,5 +1,7 @@
 --source include/not_embedded.inc
 --source include/have_compress.inc
+--source include/have_blackhole.inc
+--source include/have_falcon.inc
 --source include/have_innodb.inc
 --source include/not_windows.inc
 

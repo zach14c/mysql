@@ -2318,9 +2318,65 @@ bool Grant_obj::do_init_from_image(In_stream *is)
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
-Obj *get_database_stub(const String *db_name)
+Obj *get_database_stub(THD *thd, const String *db_name)
 {
-  return new Database_obj(db_name->lex_string());
+
+  DBUG_EXECUTE_IF("siobj_get_db_stub",  return NULL; );
+  /*
+    The specified db name may have characters in a wrong case. Get the
+    normalized name by reading it from INFORMATION_SCHEMA. Note: if
+    lower_case_table_names=0, the db name must not be converted.
+   */
+
+  if (!lower_case_table_names)
+    return new Database_obj(db_name->lex_string()); 
+
+
+  Ed_connection ed_connection(thd);
+  String_stream s_stream;
+  Ed_result_set *ed_result_set;
+
+  // Prepare SELECT statement.
+
+  s_stream << "SELECT schema_name "
+              "FROM INFORMATION_SCHEMA.SCHEMATA WHERE "
+              "LCASE(schema_name) = LCASE('" << db_name << "')";
+
+  // Execute SELECT.
+
+  if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+      ed_connection.get_warn_count())
+    return NULL;
+
+  // Fetch result.
+
+  ed_result_set= ed_connection.use_result_set();
+
+  // The database did not find the database. Return a Database_obj
+  // with correct name anyway as per method specification
+  if (ed_result_set->size() != 1)
+  {
+    // Need to convert the name to lower case when lctn=1
+    if (lower_case_table_names == 1)
+    {
+      String lcasename;
+      lcasename.copy(db_name->ptr(), db_name->length(), system_charset_info);
+      my_casedn_str(lcasename.charset(), lcasename.c_ptr());
+      return new Database_obj(lcasename.lex_string()); 
+    }
+    else 
+      return new Database_obj(db_name->lex_string()); 
+  }
+
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
+  Ed_row *row= row_it++;
+
+  DBUG_ASSERT(row->size() == 1);
+    
+
+  // Create object using normalized name.
+
+  return new Database_obj(*row); 
 }
 
 ///////////////////////////////////////////////////////////////////////////
