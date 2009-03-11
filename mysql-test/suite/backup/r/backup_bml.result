@@ -292,7 +292,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -327,6 +326,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 
 ########################################################
 # Running BML test for the following statements:
@@ -527,7 +527,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -562,6 +561,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 CREATE VIEW v1 AS SELECT * FROM t2;
 DROP TRIGGER r1;
 DROP EVENT e1;
@@ -761,7 +761,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -795,6 +794,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 
 ########################################################
 # Running BML test for the following statements:
@@ -991,7 +991,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -1025,6 +1024,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1;
 RESTORE FROM 'bml_test_orig.bkp' OVERWRITE;
 backup_id
@@ -1275,7 +1275,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -1314,6 +1313,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
 backup_id
 501
@@ -1527,7 +1527,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -1566,6 +1565,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
 backup_id
 501
@@ -1779,7 +1779,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -1818,6 +1817,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
 backup_id
 501
@@ -2031,7 +2031,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -2069,6 +2068,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
 backup_id
 501
@@ -2290,7 +2290,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -2320,6 +2319,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 
 ########################################################
 # Running BML test for the following statements:
@@ -2502,7 +2502,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -2534,6 +2533,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 
 ########################################################
 # Running BML test for the following statements:
@@ -2718,7 +2718,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -2746,6 +2745,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 DROP USER bml_u3;
 CALL test.check_results();
 Tables_in_bml_test
@@ -2958,7 +2958,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 # con4: Completing DDL4
 
@@ -2989,6 +2988,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 INSERT INTO t1 VALUES (1);
 INSERT INTO t2 VALUES (3);
 
@@ -3175,7 +3175,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 # con5: Reaping BACKUP/RESTORE
 backup_id
 500
-SET debug="-d";
 # con3: Completing DDL3
 Table	Op	Msg_type	Msg_text
 bml_test.t1	repair	status	OK
@@ -3210,6 +3209,7 @@ SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
 SET DEBUG_SYNC= 'reset';
+SET debug="-d";
 DROP DATABASE bml_test;
 DROP PROCEDURE test.check_results;
 

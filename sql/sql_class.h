@@ -3174,12 +3174,6 @@ public:
   modifies our currently non-transactional system tables.
 */
 #define CF_AUTO_COMMIT_TRANS  (CF_IMPLICT_COMMIT_BEGIN | CF_IMPLICIT_COMMIT_END)
-/**
-  Mark statements which shuld be blocked when the Backup Metadata Lock is
-  active. See bml.cc.
-*/ 
-#define CF_BLOCKED_BY_BML       (1U << 8)
-
 
 /**
   Diagnostic statement.
@@ -3190,6 +3184,12 @@ public:
   do not modify the diagnostics area during execution.
 */
 #define CF_DIAGNOSTIC_STMT        (1U << 8)
+
+/**
+  Mark statements which shuld be blocked when the Backup Metadata Lock is
+  active. See bml.cc.
+*/ 
+#define CF_BLOCKED_BY_BML       (1U << 9)
 
 /* Bits in server_command_flags */
 
