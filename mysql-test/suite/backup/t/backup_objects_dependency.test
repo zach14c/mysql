@@ -432,8 +432,12 @@ SHOW CREATE TABLE ob3.tp;
 SHOW CREATE TABLE ob2.t23;
 SHOW CREATE TABLE ob3.tp;
 
+#
+# BUG#43549 This portion disabled because the firing of the event is
+#           non-deterministic.
+#
 # Verify event ob3.ev is fired
-SELECT * FROM ob3.log;
+#SELECT * FROM ob3.log;
 
 # Checking tables and other objects in databases.
 CALL show_objects('ob1');
@@ -523,7 +527,12 @@ CALL ob3.p31('TEST');
 SHOW CREATE TABLE ob3.tp;
 SHOW CREATE TABLE ob2.t23;
 SHOW CREATE TABLE ob3.tp;
-SELECT * FROM ob3.log;
+
+#
+# BUG#43549 This portion disabled because the firing of the event is
+#           non-deterministic.
+#
+#SELECT * FROM ob3.log;
 
 --echo
 --echo CREATE DEPENDENT TESTS
@@ -636,7 +645,13 @@ GRANT ALL ON *.* TO tom@'%';
 INSERT INTO ob3.t32 VALUES(97);
 SELECT * FROM ob3.t32;
 SELECT * FROM ob1.t14;
-SELECT * FROM ob3.log;
+
+#
+# BUG#43549 This portion disabled because the firing of the event is
+#           non-deterministic.
+#
+#SELECT * FROM ob3.log;
+
 # Note that we will see both values 97 and 98. trg32 will not update value
 # in t14 if user is not present.
 # Note that if user is not present, event will not be fired
@@ -723,7 +738,12 @@ Let $db=ob3;
 # Try to fire event
 --error ER_NO_SUCH_TABLE
 CALL ob3.fire('user3 created');
-SELECT * FROM ob3.log;
+
+#
+# BUG#43549 This portion disabled because the firing of the event is
+#           non-deterministic.
+#
+#SELECT * FROM ob3.log;
 
 --echo # Test cleanup section
 
