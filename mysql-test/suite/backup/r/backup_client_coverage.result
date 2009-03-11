@@ -28,7 +28,7 @@ backup_id
 ERROR: ERROR_INJECT("str_read_z_io_error")
 
 
-ERROR: cannot read compressed image #: Input/output error
+ERROR: cannot read compressed image #: Input output error
 
 # Injecting error at str_read_z_eof
 
@@ -49,7 +49,7 @@ ERROR: cannot decompress image #: -2: error injected
 ERROR: ERROR_INJECT("str_read_io_error")
 
 
-ERROR: cannot read image #: Input/output error
+ERROR: cannot read image #: Input output error
 
 
 ERROR: cannot open stream library on #.
@@ -63,14 +63,14 @@ ERROR: cannot open backup image #: No such file or directory
 ERROR: ERROR_INJECT("str_open_rd_stat_error")
 
 
-ERROR: cannot fstat open backup image #: Bad file descriptor
+ERROR: cannot fstat open backup image #: Bad file descriptor or number
 
 # Injecting error at str_open_rd_read_error
 
 ERROR: ERROR_INJECT("str_open_rd_read_error")
 
 
-ERROR: cannot read image #: Input/output error
+ERROR: cannot read image #: Input output error
 
 # Injecting error at str_open_rd_read_length
 
@@ -172,7 +172,7 @@ No binlog information
 ERROR: ERROR_INJECT("str_close_file")
 
 
-ERROR: cannot close image #: Input/output error
+ERROR: cannot close image #: Input output error
 
 # Injecting error at bcat_add_item_global_malloc
 
