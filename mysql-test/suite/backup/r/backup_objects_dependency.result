@@ -536,9 +536,6 @@ Table	Create Table
 tp	CREATE TABLE `tp` (
   `a` varchar(4) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
-SELECT * FROM ob3.log;
-pos	msg
-1	user1 created
 CALL show_objects('ob1');
 TABLE_NAME	TABLE_TYPE
 t11	BASE TABLE
@@ -848,10 +845,6 @@ Table	Create Table
 tp	CREATE TABLE `tp` (
   `a` varchar(4) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
-SELECT * FROM ob3.log;
-pos	msg
-1	user1 created
-2	user2 created
 
 CREATE DEPENDENT TESTS
 ======================
@@ -1131,9 +1124,6 @@ cash	1000
 dd	2000
 dd	2000
 dd	2000
-SELECT * FROM ob3.log;
-pos	msg
-1	user1 created
 
 # Drop the procedure(ob1.p11) in which procedure(ob2.p23) depends
 Perform restore again to get all objects back.
@@ -1824,9 +1814,6 @@ collation_connection	#
 Database Collation	latin1_swedish_ci
 CALL ob3.fire('user3 created');
 ERROR 42S02: Table 'ob3.msg' doesn't exist
-SELECT * FROM ob3.log;
-pos	msg
-1	user1 created
 # Test cleanup section
 REVOKE ALL ON *.* FROM tom@'%';
 DROP USER tom@'%';
