@@ -693,7 +693,7 @@ my_bool acl_reload(THD *thd)
   tables[0].lock_type=tables[1].lock_type=tables[2].lock_type=TL_READ;
   tables[0].skip_temporary= tables[1].skip_temporary=
     tables[2].skip_temporary= TRUE;
-  alloc_mdl_locks(tables, thd->mem_root);
+  alloc_mdl_requests(tables, thd->mem_root);
 
   if (simple_open_n_lock_tables(thd, tables))
   {
@@ -1591,7 +1591,7 @@ bool change_password(THD *thd, const char *host, const char *user,
   bzero((char*) &tables, sizeof(tables));
   tables.alias= tables.table_name= (char*) "user";
   tables.db= (char*) "mysql";
-  alloc_mdl_locks(&tables, thd->mem_root);
+  alloc_mdl_requests(&tables, thd->mem_root);
 
 #ifdef HAVE_REPLICATION
   /*
@@ -3027,7 +3027,7 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
 			    ? tables+2 : 0);
   tables[0].lock_type=tables[1].lock_type=tables[2].lock_type=TL_WRITE;
   tables[0].db=tables[1].db=tables[2].db=(char*) "mysql";
-  alloc_mdl_locks(tables, thd->mem_root);
+  alloc_mdl_requests(tables, thd->mem_root);
 
   /*
     This statement will be replicated as a statement, even when using
@@ -3249,7 +3249,7 @@ bool mysql_routine_grant(THD *thd, TABLE_LIST *table_list, bool is_proc,
   tables[0].next_local= tables[0].next_global= tables+1;
   tables[0].lock_type=tables[1].lock_type=TL_WRITE;
   tables[0].db=tables[1].db=(char*) "mysql";
-  alloc_mdl_locks(tables, thd->mem_root);
+  alloc_mdl_requests(tables, thd->mem_root);
 
   /*
     This statement will be replicated as a statement, even when using
@@ -3391,7 +3391,7 @@ bool mysql_grant(THD *thd, const char *db, List <LEX_USER> &list,
   tables[0].next_local= tables[0].next_global= tables+1;
   tables[0].lock_type=tables[1].lock_type=TL_WRITE;
   tables[0].db=tables[1].db=(char*) "mysql";
-  alloc_mdl_locks(tables, thd->mem_root);
+  alloc_mdl_requests(tables, thd->mem_root);
 
   /*
     This statement will be replicated as a statement, even when using
@@ -3724,7 +3724,7 @@ static my_bool grant_reload_procs_priv(THD *thd)
   table.db= (char *) "mysql";
   table.lock_type= TL_READ;
   table.skip_temporary= 1;
-  alloc_mdl_locks(&table, thd->mem_root);
+  alloc_mdl_requests(&table, thd->mem_root);
 
   if (simple_open_n_lock_tables(thd, &table))
   {
@@ -3791,7 +3791,7 @@ my_bool grant_reload(THD *thd)
   tables[0].next_local= tables[0].next_global= tables+1;
   tables[0].lock_type= tables[1].lock_type= TL_READ;
   tables[0].skip_temporary= tables[1].skip_temporary= TRUE;
-  alloc_mdl_locks(tables, thd->mem_root);
+  alloc_mdl_requests(tables, thd->mem_root);
 
   /*
     To avoid deadlocks we should obtain table locks before
@@ -5137,7 +5137,7 @@ int open_grant_tables(THD *thd, TABLE_LIST *tables)
     (tables+4)->lock_type= TL_WRITE;
   tables->db= (tables+1)->db= (tables+2)->db= 
     (tables+3)->db= (tables+4)->db= (char*) "mysql";
-  alloc_mdl_locks(tables, thd->mem_root);
+  alloc_mdl_requests(tables, thd->mem_root);
 
 #ifdef HAVE_REPLICATION
   /*
@@ -6147,9 +6147,12 @@ public:
   virtual ~Silence_routine_definer_errors()
   {}
 
-  virtual bool handle_error(THD *thd,
-                            MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno, const char *message);
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl);
 
   bool has_errors() { return is_grave; }
 
@@ -6158,17 +6161,23 @@ private:
 };
 
 bool
-Silence_routine_definer_errors::
-handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
-             uint sql_errno, const char *message)
+Silence_routine_definer_errors::handle_condition(
+  THD *thd,
+  uint sql_errno,
+  const char*,
+  MYSQL_ERROR::enum_warning_level level,
+  const char* msg,
+  MYSQL_ERROR ** cond_hdl)
 {
+  *cond_hdl= NULL;
   if (level == MYSQL_ERROR::WARN_LEVEL_ERROR)
   {
     switch (sql_errno)
     {
       case ER_NONEXISTING_PROC_GRANT:
         /* Convert the error into a warning. */
-        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, sql_errno, message);
+        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                     sql_errno, msg);
         return TRUE;
       default:
         is_grave= TRUE;
@@ -6427,6 +6436,7 @@ static bool update_schema_privilege(THD *thd, TABLE *table, char *buff,
   CHARSET_INFO *cs= system_charset_info;
   restore_record(table, s->default_values);
   table->field[0]->store(buff, (uint) strlen(buff), cs);
+  table->field[1]->store(STRING_WITH_LEN("def"), cs);
   if (db)
     table->field[i++]->store(db, (uint) strlen(db), cs);
   if (t_name)

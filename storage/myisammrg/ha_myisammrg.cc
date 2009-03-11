@@ -111,7 +111,7 @@ static handler *myisammrg_create_handler(handlerton *hton,
 */
 
 ha_myisammrg::ha_myisammrg(handlerton *hton, TABLE_SHARE *table_arg)
-  :handler(hton, table_arg), file(0)
+  :handler(hton, table_arg), file(0), is_cloned(0)
 {
   init_sql_alloc(&children_mem_root, max(4 * sizeof(TABLE_LIST), FN_REFLEN) +
                  ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
@@ -337,7 +337,27 @@ int ha_myisammrg::open(const char *name, int mode __attribute__((unused)),
   my_errno= 0;
 
   /* retrieve children table list. */
-  if (!(file= myrg_parent_open(name, myisammrg_parent_open_callback, this)))
+  if (is_cloned)
+  {
+    /*
+      Open and attaches the MyISAM tables,that are under the MERGE table 
+      parent, on the MyISAM storage engine interface directly within the
+      MERGE engine. The new MyISAM table instances, as well as the MERGE 
+      clone itself, are not visible in the table cache. This is not a 
+      problem because all locking is handled by the original MERGE table
+      from which this is cloned of.
+    */
+    if (!(file= myrg_open(name, table->db_stat,  HA_OPEN_IGNORE_IF_LOCKED)))
+    {
+      DBUG_PRINT("error", ("my_errno %d", my_errno));
+      DBUG_RETURN(my_errno ? my_errno : -1); 
+    }
+
+    file->children_attached= TRUE;
+
+    info(HA_STATUS_NO_LOCK | HA_STATUS_VARIABLE | HA_STATUS_CONST);
+  }
+  else if (!(file= myrg_parent_open(name, myisammrg_parent_open_callback, this)))
   {
     /* purecov: begin inspected */
     DBUG_PRINT("error", ("my_errno %d", my_errno));
@@ -414,16 +434,15 @@ int ha_myisammrg::add_children_list(void)
     /* Copy select_lex. Used in unique_table() at least. */
     child_l->select_lex= parent_l->select_lex;
 
-    child_l->mdl_lock_data= NULL; /* Safety, if alloc_mdl_locks fails. */
+    child_l->mdl_request= NULL; /* Safety, if alloc_mdl_requests fails. */
 
     /* Break when this was the last child. */
     if (&child_l->next_global == this->children_last_l)
       break;
   }
 
-  alloc_mdl_locks(children_l,
-                  thd->locked_tables_root ? thd->locked_tables_root :
-                  thd->mem_root);
+  alloc_mdl_requests(children_l, thd->locked_tables_root ?
+                     thd->locked_tables_root : thd->mem_root);
 
   /* Insert children into the table list. */
   if (parent_l->next_global)
@@ -530,6 +549,56 @@ static MI_INFO *myisammrg_attach_children_callback(void *callback_param)
  err:
   DBUG_RETURN(my_errno ? NULL : myisam);
 }
+
+
+/**
+   Returns a cloned instance of the current handler.
+
+   @return A cloned handler instance.
+ */
+handler *ha_myisammrg::clone(MEM_ROOT *mem_root)
+{
+  MYRG_TABLE    *u_table,*newu_table;
+  ha_myisammrg *new_handler= 
+    (ha_myisammrg*) get_new_handler(table->s, mem_root, table->s->db_type());
+  if (!new_handler)
+    return NULL;
+  
+  /* Inform ha_myisammrg::open() that it is a cloned handler */
+  new_handler->is_cloned= TRUE;
+  /*
+    Allocate handler->ref here because otherwise ha_open will allocate it
+    on this->table->mem_root and we will not be able to reclaim that memory 
+    when the clone handler object is destroyed.
+  */
+  if (!(new_handler->ref= (uchar*) alloc_root(mem_root, ALIGN_SIZE(ref_length)*2)))
+  {
+    delete new_handler;
+    return NULL;
+  }
+
+  if (new_handler->ha_open(table, table->s->normalized_path.str, table->db_stat,
+                            HA_OPEN_IGNORE_IF_LOCKED))
+  {
+    delete new_handler;
+    return NULL;
+  }
+ 
+  /*
+    Iterate through the original child tables and
+    copy the state into the cloned child tables.
+    We need to do this because all the child tables
+    can be involved in delete.
+  */
+  newu_table= new_handler->file->open_tables;
+  for (u_table= file->open_tables; u_table < file->end_table; u_table++)
+  {
+    newu_table->table->state= u_table->table->state;
+    newu_table++;
+  }
+
+  return new_handler;
+ }
 
 
 /**
@@ -818,7 +887,8 @@ int ha_myisammrg::close(void)
     There are cases where children are not explicitly detached before
     close. detach_children() protects itself against double detach.
   */
-  detach_children();
+  if (!is_cloned)
+    detach_children();
 
   rc= myrg_close(file);
   file= 0;
@@ -1121,7 +1191,12 @@ int ha_myisammrg::external_lock(THD *thd, int lock_type)
     them first. So they are detached all the time. But locking of the
     children should work anyway because thd->open_tables is not changed
     during FLUSH TABLES.
+
+    If this handler instance has been cloned, we still must call
+    myrg_lock_database().
   */
+  if (is_cloned)
+    return myrg_lock_database(file, lock_type);
   return 0;
 }
 

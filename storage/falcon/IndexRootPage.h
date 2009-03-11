@@ -55,14 +55,13 @@ public:
 	static int32	createIndex (Dbb *dbb, TransId transId);
 	static void		create (Dbb *dbb, TransId transId);
 	static void		indexMerge(Dbb *dbb, int indexId, SRLUpdateIndex *indexNodes, TransId transId);
-	static Bdb*		createIndexRoot(Dbb* dbb, TransId transId);
+	static void		createIndexRoot(Dbb* dbb, TransId transId, int pageNumber, int indexId, Bdb *sectionPage);
 	static void		analyzeIndex(Dbb* dbb, int indexId, IndexAnalysis *indexAnalysis);
 	static int32	getIndexRoot(Dbb* dbb, int indexId);
 
 	static void		redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPageNumber, int level, int32 prior, int32 next, int length, const UCHAR *data, bool haveSuperNodes);
-	static void		setIndexRoot(Dbb* dbb, int indexId, int32 pageNumber, TransId transId);
 	static void		redoIndexDelete(Dbb* dbb, int indexId);
-	static void		redoCreateIndex(Dbb* dbb, int indexId);
+	static void		redoCreateIndex(Dbb* dbb, int indexId, int pageNumber);
 };
 
 #endif // !defined(AFX_INDEXROOTPAGE_H__6A019C27_A340_11D2_AB5A_0000C01D2301__INCLUDED_)

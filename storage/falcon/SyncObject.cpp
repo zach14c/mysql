@@ -102,7 +102,7 @@ int cas_emulation (volatile int *state, int compare, int exchange)
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-SyncObject::SyncObject()
+SyncObject::SyncObject() : mutex("SyncObject::mutex")
 {
 	readers = 0;
 	waiters = 0;

@@ -7,7 +7,7 @@ AC_PREREQ(2.59)
 # Remember to also update version.c in ndb.
 # When changing major version number please also check switch statement
 # in mysqlbinlog::check_master_version().
-AC_INIT([MySQL Server], [6.0.10-alpha], [], [mysql])
+AC_INIT([MySQL Server], [6.0.11-alpha], [], [mysql])
 AC_CONFIG_SRCDIR([sql/mysqld.cc])
 AC_CANONICAL_TARGET
 # automake 1.9.2 has 'filename-length-max=99', but not 1.6.2
@@ -44,6 +44,7 @@ MYSQL_NUMERIC_VERSION=`echo $MYSQL_NO_DASH_VERSION | sed -e "s|[[a-z]][[a-z0-9]]
 MYSQL_BASE_VERSION=`echo $MYSQL_NUMERIC_VERSION | sed -e "s|\.[[^.]]*$||"`
 MYSQL_VERSION_ID=`echo $MYSQL_NUMERIC_VERSION | \
     awk -F. '{printf "%d%0.2d%0.2d", $1, $2, $3}'`
+MYSQL_COPYRIGHT_YEAR=`date '+%Y'`
 
 # Add previous major version for debian package upgrade path
 MYSQL_PREVIOUS_BASE_VERSION=5.1
@@ -82,6 +83,7 @@ AC_SUBST(MYSQL_NO_DASH_VERSION)
 AC_SUBST(MYSQL_BASE_VERSION)
 AC_SUBST(MYSQL_VERSION_ID)
 AC_SUBST(MYSQL_PREVIOUS_BASE_VERSION)
+AC_SUBST(MYSQL_COPYRIGHT_YEAR)
 AC_SUBST(PROTOCOL_VERSION)
 AC_DEFINE_UNQUOTED([PROTOCOL_VERSION], [$PROTOCOL_VERSION],
                    [mysql client protocol version])
