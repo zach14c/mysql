@@ -10,12 +10,10 @@
 
 --source include/have_partition.inc
 --source include/not_embedded.inc
-
-#
-# BUG#43028 : Partitioning has issues in archive. Remove the following directives
-#             when this bug is fixed.
-#
 --source suite/backup_engines/include/backup_engine.inc
+#
+# The archive engine does not support partitioning using indexes. 
+#
 --source suite/backup_engines/include/not_archive.inc
 
 let $bdir=`select @@backupdir`;
