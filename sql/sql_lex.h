@@ -699,14 +699,6 @@ public:
 
   List<udf_func>     udf_list;                  /* udf function calls stack */
 
-  /**
-    Per sub-query locking strategy.
-    Note: This variable might interfer with the corresponding statement-level
-    variable Lex::lock_option because on how different parser rules depend
-    on eachother.
-  */
-  thr_lock_type lock_option;
-
   /* 
     This is a copy of the original JOIN USING list that comes from
     the parser. The parser :
