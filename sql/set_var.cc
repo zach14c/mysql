@@ -2538,7 +2538,7 @@ static int  sys_check_log_path(THD *thd,  set_var *var)
     return 1;
   }
 
-  log_file_str= res->c_ptr();
+  log_file_str= res->c_ptr_safe();
   bzero(&f_stat, sizeof(MY_STAT));
 
   path_length= unpack_filename(path, log_file_str);
@@ -2745,7 +2745,7 @@ static bool sys_update_backup_history_log_path(THD *thd, set_var * var)
   String str(buff,sizeof(buff), system_charset_info), *res;
 
   res= var->value->val_str(&str);
-  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+  if (my_strcasecmp(system_charset_info, res->c_ptr_safe(), 
       sys_var_backup_progress_log_path.value) == 0)
   {
     my_error(ER_BACKUP_LOGPATHS, MYF(0));
@@ -2773,7 +2773,7 @@ static bool sys_update_backup_progress_log_path(THD *thd, set_var * var)
   String str(buff,sizeof(buff), system_charset_info), *res;
 
   res= var->value->val_str(&str);
-  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+  if (my_strcasecmp(system_charset_info, res->c_ptr_safe(), 
       sys_var_backup_history_log_path.value) == 0)
   {
     my_error(ER_BACKUP_LOGPATHS, MYF(0));
