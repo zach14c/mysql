@@ -118,7 +118,8 @@ LOAD DATA LOCAL INFILE 'include/UnicodeData.txt' INTO TABLE t0
 FIELDS TERMINATED BY ';'
   OPTIONALLY ENCLOSED BY ''
   LINES TERMINATED BY '\n'
-  (@var1, @category, @dummy3, @dummy4, @dummy5, @dummy6, @dummy7,
+  IGNORE 226 LINES
+(@var1, @category, @dummy3, @dummy4, @dummy5, @dummy6, @dummy7,
 @dummy8, @dummy9, @dummy10, @comment, @dummy12, @uppercase, @lowercase, @dummy15)
 SET a = (UNHEX((SELECT transform(@var1)))),
 category = @category,
