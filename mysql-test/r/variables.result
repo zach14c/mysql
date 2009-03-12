@@ -1439,13 +1439,13 @@ SELECT @@GLOBAL.server_id;
 4294967295
 SET GLOBAL server_id = (1 << 32);
 Warnings:
-Warning	1292	Truncated incorrect server-id value: '4294967296'
+Warning	1292	Truncated incorrect server_id value: '4294967296'
 SELECT @@GLOBAL.server_id;
 @@GLOBAL.server_id
 4294967295
 SET GLOBAL server_id = (1 << 60);
 Warnings:
-Warning	1292	Truncated incorrect server-id value: '1152921504606846976'
+Warning	1292	Truncated incorrect server_id value: '1152921504606846976'
 SELECT @@GLOBAL.server_id;
 @@GLOBAL.server_id
 4294967295
