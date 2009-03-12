@@ -106,8 +106,6 @@ extern int NEAR my_errno;		/* Last error in mysys */
 #define ME_COLOUR2	((2 << ME_HIGHBYTE))
 #define ME_COLOUR3	((3 << ME_HIGHBYTE))
 #define ME_FATALERROR   1024    /* Fatal statement error */
-#define ME_NO_WARNING_FOR_ERROR 2048 /* Don't push a warning for error */
-#define ME_NO_SP_HANDLER 4096 /* Don't call stored routine error handlers */
 #define ME_JUST_INFO    8192    /**< not error but just info */
 #define ME_JUST_WARNING 16384    /**< not error but just warning */
 
@@ -688,6 +686,7 @@ extern void     my_osmaperr(unsigned long last_error);
 extern void TERMINATE(FILE *file, uint flag);
 #endif
 extern void init_glob_errs(void);
+extern void wait_for_free_space(const char *filename, int errors);
 extern FILE *my_fopen(const char *FileName,int Flags,myf MyFlags);
 extern FILE *my_fdopen(File Filedes,const char *name, int Flags,myf MyFlags);
 extern int my_fclose(FILE *fd,myf MyFlags);

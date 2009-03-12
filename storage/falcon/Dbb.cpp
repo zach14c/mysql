@@ -68,7 +68,7 @@ static const char THIS_FILE[]=__FILE__;
 //////////////////////////////////////////////////////////////////////
 
 
-Dbb::Dbb(Database *dbase)
+Dbb::Dbb(Database *dbase) : sectionsMutex("Dbb::sectionMutex")
 {
 	database = dbase;
 	cache = NULL;
@@ -92,7 +92,7 @@ Dbb::Dbb(Database *dbase)
 }
 
 
-Dbb::Dbb(Dbb *dbb, int tblSpaceId)
+Dbb::Dbb(Dbb *dbb, int tblSpaceId) : sectionsMutex("Dbb::sectionMutex")
 {
 	database = dbb->database;
 	tableSpaceId = tblSpaceId;
@@ -372,6 +372,8 @@ Section* Dbb::findSection(int32 sectionId)
 	int slot = sectionId % SECTION_HASH_SIZE;
 	Section *section;
 
+	Sync sync (&sectionsMutex, "Dbb::findSection");
+	sync.lock(Exclusive);
 	for (section = sections [slot]; section; section = section->hash)
 		if (section->sectionId == sectionId)
 			return section;
@@ -419,9 +421,6 @@ int32 Dbb::createIndex(TransId transId, int indexVersion)
 		default:
 			ASSERT(false);
 		}
-
-	if (serialLog)
-		serialLog->logControl->createIndex.append(this, transId, indexId, indexVersion);
 
 	return indexId;
 }
@@ -623,7 +622,10 @@ void Dbb::deleteSection(int32 sectionId, TransId transId)
 		Section::deleteSection (this, sectionId, transId);
 
 	Section *section;
-	
+
+	Sync sync(&sectionsMutex, "Dbb::deleteSection");
+	sync.lock(Exclusive);
+
 	for (Section **ptr = sections + slot; (section = *ptr); ptr = &section->hash)
 		if (section->sectionId == sectionId)
 			{

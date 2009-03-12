@@ -26,7 +26,7 @@
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-Event::Event()
+Event::Event() : mutex("Event::mutex")
 {
 	eventCount = 0;
 	waiters = NULL;

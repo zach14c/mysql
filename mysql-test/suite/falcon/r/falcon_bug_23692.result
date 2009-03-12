@@ -1,0 +1,39 @@
+*** Bug #23692 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (s1 char(5), key(s1));
+INSERT INTO t1 VALUES (0x4200), (0x4209), (0x42), (0x4242);
+SELECT hex(s1) FROM t1 WHERE s1 < 0x42;
+hex(s1)
+4200
+4209
+SELECT hex(s1) FROM t1 WHERE s1 < 0x4209;
+hex(s1)
+4200
+DROP TABLE t1;
+CREATE TABLE t1 (s1 char(1),key(s1));
+INSERT INTO t1 VALUES (0x00);
+SELECT hex(s1) FROM t1 WHERE s1 < '';
+hex(s1)
+00
+DROP TABLE t1;
+CREATE TABLE t1 (s1 varbinary(5));
+CREATE INDEX i on t1 (s1);
+INSERT INTO t1 VALUES (0x02),(0x0202);
+SELECT hex(s1) FROM t1 WHERE s1 >= 0x02 or s1 = 0x0202;
+hex(s1)
+02
+0202
+DROP TABLE t1;
+CREATE TABLE t1(s1 varbinary(3) primary key);
+INSERT INTO t1 VALUES (0x41),(0x4100),(0x4120),(0x4121),(0x4141);
+SELECT hex(s1) FROM t1 WHERE s1 > 0x41;
+hex(s1)
+4100
+4120
+4121
+4141
+SELECT count(*) FROM t1;
+count(*)
+5
+DROP TABLE t1;

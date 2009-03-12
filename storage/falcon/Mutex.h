@@ -47,9 +47,10 @@ public:
 	void unlock();
 	void release();
 	void lock();
-	Mutex();
+	Mutex(const char* desc);
 	~Mutex();
 	Sync	*holder;
+	const char* description;
 	
 #ifdef _WIN32
 	//void*	mutex;

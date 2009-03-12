@@ -214,6 +214,33 @@ void SerialLog::start()
 		gopher->start();
 }
 
+
+// Setup up tableSpaceManager and open all tablespaces.
+//
+// This function should be called after phase 1 of recovery,
+// At this stage, serial log is inspected and  up-to-date tablespace list
+// is stored in SRLTableSpaces.
+//
+// If no SRLTableSpaces is not found in serial log, it means no changes
+// were done to tablespace list after the last checkpoint and it is  safe 
+// to use TableSpaceManager::bootstrap() that reads from disk
+
+static void openTableSpaces(Database *database)
+{
+	TableSpaceManager *manager = SRLTableSpaces::getTableSpaceManager();
+	
+	if(!manager)
+		{
+		manager = new TableSpaceManager(database);
+		manager->bootstrap(database->dbb->tableSpaceSectionId);
+		}
+	
+	manager->openTableSpaces();
+	
+	database->tableSpaceManager = database->serialLog->tableSpaceManager = 
+		manager;
+
+}
 void SerialLog::recover()
 {
 	Log::log("Recovering database %s ...\n", (const char*) defaultDbb->fileName);
@@ -352,12 +379,14 @@ void SerialLog::recover()
 	recoveryPages->reset();
 	recoveryIndexes->reset();
 	recoverySections->reset();
-	recoveryPhase = 2;	// Physical operations, skip old incarnations
 
+	recoveryPhase = 2;	// Physical operations, skip old incarnations
 	// Next, make a second pass to reallocate any necessary pages
 
 	Log::log("Recovery phase 2...\n");
 	recordCount = 0;
+	
+	openTableSpaces(database);
 	
 	while ( (record = control.nextRecord()) )
 		{

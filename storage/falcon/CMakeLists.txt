@@ -254,7 +254,8 @@ SET(FALCON_SOURCES
 		SRLSequence.cpp 
 		SRLSequencePage.cpp 
 		SRLSession.cpp
-		SRLSwitchLog.cpp 
+		SRLSwitchLog.cpp
+		SRLTableSpaces.cpp
 		SRLUpdateIndex.cpp
 		SRLUpdateBlob.cpp
 		SRLUpdateRecords.cpp
@@ -535,7 +536,8 @@ SET(FALCON_SOURCES
 		SRLSequence.h 
 		SRLSequencePage.h 
 		SRLSession.h
-		SRLSwitchLog.h 
+		SRLSwitchLog.h
+		SRLTableSpaces.h
 		SRLUpdateIndex.h
 		SRLUpdateBlob.h
 		SRLUpdateRecords.h

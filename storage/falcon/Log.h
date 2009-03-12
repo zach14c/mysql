@@ -27,20 +27,23 @@
 #include <stdarg.h>
 #include "SyncObject.h"
 
-static const int	LogLog			= 1;
-static const int	LogDebug		= 2;
-static const int	LogInfo			= 4;
-static const int	LogJavaLog		= 8;
-static const int	LogJavaDebug	= 16;
-static const int	LogGG			= 32;
-static const int	LogPanic		= 64;
-static const int	LogScrub		= 128;
-static const int	LogException	= 256;
-static const int	LogScavenge		= 512;
-static const int	LogXARecovery	= 1024;
-static const int	LogMysqlInfo		= 0x20000000;
-static const int	LogMysqlWarning		= 0x40000000;
-static const int	LogMysqlError		= 0x80000000;
+// To activate certain messages, set global falcon_debug_mask=x 
+// where x is the total of the message types you want to get.
+
+static const int	LogLog           = 0x00000001;	// 1;
+static const int	LogDebug         = 0x00000002;	// 2;
+static const int	LogInfo          = 0x00000004;	// 4;
+static const int	LogJavaLog       = 0x00000008;	// 8;
+static const int	LogJavaDebug     = 0x00000010;	// 16;
+static const int	LogGG            = 0x00000020;	// 32;
+static const int	LogPanic         = 0x00000040;	// 64;
+static const int	LogScrub         = 0x00000080;	// 128;
+static const int	LogException     = 0x00000100;	// 256;
+static const int	LogScavenge      = 0x00000200;	// 512;
+static const int	LogXARecovery    = 0x00000400;	// 1024;
+static const int	LogMysqlInfo     = 0x20000000;
+static const int	LogMysqlWarning  = 0x40000000;
+static const int	LogMysqlError    = 0x80000000;
 
 typedef void (Listener) (int, const char*, void *arg);
 

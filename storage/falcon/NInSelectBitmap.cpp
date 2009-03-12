@@ -68,7 +68,7 @@ Bitmap* NInSelectBitmap::evalInversion(Statement *statement)
 		{
 		IndexKey indexKey(index);
 		Value *value = resultSet->getValue (1);
-		index->makeKey (1, &value, &indexKey);
+		index->makeKey (1, &value, &indexKey, false);
 		Bitmap *bits = index->scanIndex (&indexKey, &indexKey, index->numberFields > 1, statement->transaction, NULL);
 
 		if (bits)

@@ -733,7 +733,7 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 	try
 		{
 		Database *database = connection->database;
-		Sequence *sequence = connection->findSequence(schemaName, table->name);
+		Sequence *sequence = connection->findSequence(table->schemaName, table->name);
 
 		Sync syncDDL(&database->syncSysDDL, "StorageDatabase::renameTable(1)");
 		syncDDL.lock(Exclusive);
@@ -744,7 +744,7 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 		table->rename(schemaName, tableName);
 
 		if (sequence)
-			sequence->rename(tableName);
+			sequence->rename(schemaName, tableName);
 
 		syncTables.unlock();
 		syncDDL.unlock();
@@ -799,7 +799,7 @@ IndexWalker* StorageDatabase::indexPosition(Index* index, StorageKey* lower, Sto
 								storageConnection->connection->getTransaction());
 }
 
-int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int keyLength, StorageKey* storageKey)
+int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int keyLength, StorageKey* storageKey, bool highKey)
 {
 	int segmentNumber = 0;
 	Value vals [MAX_KEY_SEGMENTS];
@@ -827,7 +827,7 @@ int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int 
 			p += len;
 			}
 
-		index->makeKey(segmentNumber, values, &storageKey->indexKey);
+		index->makeKey(segmentNumber, values, &storageKey->indexKey, highKey);
 		storageKey->numberSegments = segmentNumber;
 		
 		return 0;

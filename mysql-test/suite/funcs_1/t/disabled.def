@@ -10,5 +10,4 @@
 #
 ##############################################################################
 
-ndb_views:		Bug #40860 funcs_1.ndb_views fail
-falcon_storedproc:      BUG#42536: funcs_1.falcon_storedproc fails due to missing file storedproc_master.inc
+ndb_views:  Bug#39125 Result file for test contains a "temporary error", how can this be stable?

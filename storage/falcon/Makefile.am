@@ -168,6 +168,7 @@ falcon_headers= Agent.h Alias.h Application.h \
 		SRLSequencePage.h \
 		SRLSession.h \
 		SRLSwitchLog.h \
+		SRLTableSpaces.h \
 		SRLUpdateIndex.h \
 		SRLUpdateBlob.h \
 		SRLUpdateRecords.h \
@@ -353,6 +354,7 @@ falcon_sources= Agent.cpp Alias.cpp \
 		SRLSequencePage.cpp \
 		SRLSession.cpp \
 		SRLSwitchLog.cpp \
+		SRLTableSpaces.cpp \
 		SRLUpdateIndex.cpp \
 		SRLUpdateBlob.cpp \
 		SRLUpdateRecords.cpp \
