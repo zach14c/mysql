@@ -115,11 +115,15 @@ int delegates_init()
 
 void delegates_destroy()
 {
-  transaction_delegate->~Trans_delegate();
-  binlog_storage_delegate->~Binlog_storage_delegate();
+  if (transaction_delegate)
+    transaction_delegate->~Trans_delegate();
+  if (binlog_storage_delegate)
+    binlog_storage_delegate->~Binlog_storage_delegate();
 #ifdef HAVE_REPLICATION
-  binlog_transmit_delegate->~Binlog_transmit_delegate();
-  binlog_relay_io_delegate->~Binlog_relay_IO_delegate();
+  if (binlog_transmit_delegate)
+    binlog_transmit_delegate->~Binlog_transmit_delegate();
+  if (binlog_relay_io_delegate)
+    binlog_relay_io_delegate->~Binlog_relay_IO_delegate();
 #endif /* HAVE_REPLICATION */
 }
 
