@@ -21,8 +21,11 @@
 #include <NdbMain.h>
 #include <NdbOut.hpp>
 #include <NdbSleep.h>
+#include <NdbTick.h>
 
 #include <NDBT.hpp>
+
+#include <kernel/NodeBitmask.hpp>
 
 static int
 waitClusterStatus(const char* _addr, ndb_mgm_node_status _status);
@@ -30,6 +33,7 @@ waitClusterStatus(const char* _addr, ndb_mgm_node_status _status);
 enum ndb_waiter_options {
   OPT_WAIT_STATUS_NOT_STARTED = NDB_STD_OPTIONS_LAST,
   OPT_WAIT_STATUS_SINGLE_USER
+  ,OPT_NOWAIT_NODES
 };
 NDB_STD_OPTS_VARS;
 
@@ -37,6 +41,8 @@ static int _no_contact = 0;
 static int _not_started = 0;
 static int _single_user = 0;
 static int _timeout = 120;
+static const char* _nowait_nodes = 0;
+static NdbNodeBitmask nowait_nodes_bitmask;
 
 const char *load_default_groups[]= { "mysql_cluster",0 };
 
@@ -56,6 +62,10 @@ static struct my_option my_long_options[] =
   { "timeout", 't', "Timeout to wait in seconds",
     (uchar**) &_timeout, (uchar**) &_timeout, 0,
     GET_INT, REQUIRED_ARG, 120, 0, 0, 0, 0, 0 }, 
+  { "nowait-nodes", OPT_NOWAIT_NODES, 
+    "Nodes that will not be waited for",
+    (uchar**) &_nowait_nodes, (uchar**) &_nowait_nodes, 0,
+    GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
   { 0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
 
@@ -106,6 +116,23 @@ int main(int argc, char** argv){
     wait_status= NDB_MGM_NODE_STATUS_STARTED;
   }
 
+  if (_nowait_nodes)
+  {
+    int res = nowait_nodes_bitmask.parseMask(_nowait_nodes);
+    if(res == -2 || (res > 0 && nowait_nodes_bitmask.get(0)))
+    {
+      ndbout_c("Invalid nodeid specified in nowait-nodes: %s", 
+               _nowait_nodes);
+      exit(-1);
+    }
+    else if (res < 0)
+    {
+      ndbout_c("Unable to parse nowait-nodes argument: %s",
+               _nowait_nodes);
+      exit(-1);
+    }
+  }
+
   if (waitClusterStatus(_hostName, wait_status) != 0)
     return NDBT_ProgramExit(NDBT_FAILED);
   return NDBT_ProgramExit(NDBT_OK);
@@ -147,7 +174,8 @@ getStatus(){
       node = &status->node_states[i];      
       switch(node->node_type){
       case NDB_MGM_NODE_TYPE_NDB:
-	ndbNodes.push_back(*node);
+        if (!nowait_nodes_bitmask.get(node->node_id))
+          ndbNodes.push_back(*node);
 	break;
       case NDB_MGM_NODE_TYPE_MGM:
         /* Don't care about MGM nodes */
@@ -213,9 +241,12 @@ waitClusterStatus(const char* _addr,
   int resetAttempts = 0;
   const int MAX_RESET_ATTEMPTS = 10;
   bool allInState = false;
-  int timeout_ms= _timeout * 10; /* In number of 100 milliseconds */
+
+  Uint64 time_now = NdbTick_CurrentMillisecond();
+  Uint64 timeout_time = time_now + 1000 * _timeout;
+
   while (allInState == false){
-    if (_timeout > 0 && attempts > _timeout){
+    if (_timeout > 0 && time_now > timeout_time){
       /**
        * Timeout has expired waiting for the nodes to enter
        * the state we want
@@ -243,19 +274,23 @@ waitClusterStatus(const char* _addr,
 	g_err << "waitNodeState("
 	      << ndb_mgm_get_node_status_string(_status)
 	      <<", "<<_startphase<<")"
-	      << " timeout after " << attempts <<" attemps" << endl;
+	      << " timeout after " << attempts << " attempts" << endl;
 	return -1;
       }
 
       g_err << "waitNodeState("
 	    << ndb_mgm_get_node_status_string(_status)
 	    <<", "<<_startphase<<")"
-	    << " resetting number of attempts "
+	    << " resetting timeout "
 	    << resetAttempts << endl;
-      attempts = 0;
+
+      timeout_time = time_now + 1000 * _timeout;
+
       resetAttempts++;
     }
 
+    if (attempts > 0)
+      NdbSleep_MilliSleep(100);
     if (getStatus() != 0){
       return -1;
     }
@@ -279,10 +314,11 @@ waitClusterStatus(const char* _addr,
     if (!allInState) {
       g_info << "Waiting for cluster enter state "
              << ndb_mgm_get_node_status_string(_status)<< endl;
-      NdbSleep_MilliSleep(100);
     }
 
     attempts++;
+    
+    time_now = NdbTick_CurrentMillisecond();
   }
   return 0;
 }

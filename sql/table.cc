@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -465,6 +465,8 @@ void init_tmp_table_share(THD *thd, TABLE_SHARE *share, const char *key,
 void free_table_share(TABLE_SHARE *share)
 {
   MEM_ROOT mem_root;
+  uint idx;
+  KEY *key_info;
   DBUG_ENTER("free_table_share");
   DBUG_PRINT("enter", ("table: %s.%s", share->db.str, share->table_name.str));
   DBUG_ASSERT(share->ref_count == 0);
@@ -472,11 +474,23 @@ void free_table_share(TABLE_SHARE *share)
   /* The mutex is initialized only for shares that are part of the TDC */
   if (share->tmp_table == NO_TMP_TABLE)
     pthread_mutex_destroy(&share->LOCK_ha_data);
-  hash_free(&share->name_hash);
+  my_hash_free(&share->name_hash);
+  if (share->ha_data_destroy)
+    share->ha_data_destroy(share->ha_data);
 
   plugin_unlock(NULL, share->db_plugin);
   share->db_plugin= NULL;
 
+  /* Release fulltext parsers */
+  key_info= share->key_info;
+  for (idx= share->keys; idx; idx--, key_info++)
+  {
+    if (key_info->flags & HA_USES_PARSER)
+    {
+      plugin_unlock(NULL, key_info->parser);
+      key_info->flags= 0;
+    }
+  }
   /* We must copy mem_root from share because share is allocated through it */
   memcpy((char*) &mem_root, (char*) &share->mem_root, sizeof(mem_root));
   free_root(&mem_root, MYF(0));                 // Free's share
@@ -717,7 +731,8 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   const char **interval_array;
   enum legacy_db_type legacy_db_type;
   my_bitmap_map *bitmaps;
-  uchar *buff= 0;
+  uchar *buffbuff= 0; // rename to cause compile error if automerged stuff
+                      // as scope of variable has changed
   uchar *field_extra_info= 0;
   DBUG_ENTER("open_binary_frm");
 
@@ -914,14 +929,14 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
     /* Read extra data segment */
     uchar *next_chunk, *buff_end;
     DBUG_PRINT("info", ("extra segment size is %u bytes", n_length));
-    if (!(next_chunk= buff= (uchar*) my_malloc(n_length, MYF(MY_WME))))
+    if (!(next_chunk= buffbuff= (uchar*) my_malloc(n_length, MYF(MY_WME))))
       goto err;
-    if (my_pread(file, buff, n_length, record_offset + share->reclength,
+    if (my_pread(file, buffbuff, n_length, record_offset + share->reclength,
                  MYF(MY_NABP)))
     {
       goto err;
     }
-    share->connect_string.length= uint2korr(buff);
+    share->connect_string.length= uint2korr(buffbuff);
     if (!(share->connect_string.str= strmake_root(&share->mem_root,
                                                   (char*) next_chunk + 2,
                                                   share->connect_string.
@@ -930,7 +945,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       goto err;
     }
     next_chunk+= share->connect_string.length + 2;
-    buff_end= buff + n_length;
+    buff_end= buffbuff + n_length;
     if (next_chunk + 2 < buff_end)
     {
       uint str_db_type_length= uint2korr(next_chunk);
@@ -947,7 +962,6 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
                 plugin_data(tmp_plugin, handlerton *)))
         {
           /* bad file, legacy_db_type did not match the name */
-          my_free(buff, MYF(0));
           goto err;
         }
         /*
@@ -983,7 +997,6 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
         /* purecov: begin inspected */
         error= 8;
         my_error(ER_UNKNOWN_STORAGE_ENGINE, MYF(0), name.str);
-        my_free(buff, MYF(0));
         goto err;
         /* purecov: end */
       }
@@ -1065,14 +1078,12 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       {
           DBUG_PRINT("error",
                      ("long table comment is not defined in .frm"));
-          my_free(buff, MYF(0));
           goto err;
       }
       share->comment.length = uint2korr(next_chunk);
       if (! (share->comment.str= strmake_root(&share->mem_root,
                                (char*)next_chunk + 2, share->comment.length)))
       {
-          my_free(buff, MYF(0));
           goto err;
       }
       next_chunk+= 2 + share->comment.length;
@@ -1119,12 +1130,6 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
         field_extra_info= next_chunk + format_section_header_size + tablespace_len + 1;
         next_chunk+= format_section_len;
       }
-    }
-    DBUG_ASSERT (next_chunk <= buff_end);
-    if (next_chunk > buff_end)
-    {
-      DBUG_PRINT("error", ("Buffer overflow in field extra info"));
-      goto err;
     }
   }
   share->key_block_size= uint2korr(head+62);
@@ -1260,10 +1265,10 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
 
   use_hash= share->fields >= MAX_FIELDS_BEFORE_HASH;
   if (use_hash)
-    use_hash= !hash_init(&share->name_hash,
-			 system_charset_info,
-			 share->fields,0,0,
-			 (hash_get_key) get_field_name,0,0);
+    use_hash= !my_hash_init(&share->name_hash,
+                            system_charset_info,
+                            share->fields,0,0,
+                            (my_hash_get_key) get_field_name,0,0);
 
   for (i=0 ; i < share->fields; i++, strpos+=field_pack_length, field_ptr++)
   {
@@ -1565,7 +1570,9 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
           */
           if (ha_option & HA_PRIMARY_KEY_IN_READ_INDEX)
           {
-            field->part_of_key= share->keys_in_use;
+            if (field->key_length() == key_part->length &&
+                !(field->flags & BLOB_FLAG))
+              field->part_of_key= share->keys_in_use;
             if (field->part_of_sortkey.is_set(key))
               field->part_of_sortkey= share->keys_in_use;
           }
@@ -1705,22 +1712,22 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   delete handler_file;
 #ifndef DBUG_OFF
   if (use_hash)
-    (void) hash_check(&share->name_hash);
+    (void) my_hash_check(&share->name_hash);
 #endif
-  if (buff)
-    my_free(buff, MYF(0));
+  if (buffbuff)
+    my_free(buffbuff, MYF(0));
   DBUG_RETURN (0);
 
  err:
-  if (buff)
-    my_free(buff, MYF(0));
+  if (buffbuff)
+    my_free(buffbuff, MYF(0));
   share->error= error;
   share->open_errno= my_errno;
   share->errarg= errarg;
   x_free((uchar*) disk_buff);
   delete crypted;
   delete handler_file;
-  hash_free(&share->name_hash);
+  my_hash_free(&share->name_hash);
 
   open_table_error(share, error, share->open_errno, errarg);
   DBUG_RETURN(error);
@@ -2100,22 +2107,11 @@ partititon_err:
 int closefrm(register TABLE *table, bool free_share)
 {
   int error=0;
-  uint idx;
-  KEY *key_info;
   DBUG_ENTER("closefrm");
   DBUG_PRINT("enter", ("table: %p", table));
 
   if (table->db_stat)
     error=table->file->close();
-  key_info= table->key_info;
-  for (idx= table->s->keys; idx; idx--, key_info++)
-  {
-    if (key_info->flags & HA_USES_PARSER)
-    {
-      plugin_unlock(NULL, key_info->parser);
-      key_info->flags= 0;
-    }
-  }
   my_free((char*) table->alias, MYF(MY_ALLOW_ZERO_PTR));
   table->alias= 0;
   if (table->field)
@@ -2821,16 +2817,18 @@ uint calculate_key_len(TABLE *table, uint key, const uchar *buf,
   SYNPOSIS
     check_db_name()
     org_name		Name of database and length
+    preserve_lettercase Preserve lettercase if true
 
   NOTES
-    If lower_case_table_names is set then database is converted to lower case
+    If lower_case_table_names is true and preserve_lettercase is false then
+    database is converted to lower case
 
   RETURN
     0	ok
     1   error
 */
 
-bool check_db_name(LEX_STRING *org_name)
+bool check_and_convert_db_name(LEX_STRING *org_name, bool preserve_lettercase)
 {
   char *name= org_name->str;
   uint name_length= org_name->length;
@@ -2838,7 +2836,7 @@ bool check_db_name(LEX_STRING *org_name)
   if (!name_length || name_length > NAME_LEN || name[name_length - 1] == ' ')
     return 1;
 
-  if (lower_case_table_names && name != any_db)
+  if (!preserve_lettercase && lower_case_table_names && name != any_db)
     my_casedn_str(files_charset_info, name);
 
   return check_identifier_name(org_name);
@@ -4923,12 +4921,11 @@ size_t max_row_length(TABLE *table, const uchar *data)
    objects for all elements of table list.
 */
 
-void alloc_mdl_locks(TABLE_LIST *table_list, MEM_ROOT *root)
+void alloc_mdl_requests(TABLE_LIST *table_list, MEM_ROOT *root)
 {
   for ( ; table_list ; table_list= table_list->next_global)
-    table_list->mdl_lock_data= mdl_alloc_lock(0, table_list->db,
-                                              table_list->table_name,
-                                              root);
+    table_list->mdl_request=
+      MDL_request::create(0, table_list->db, table_list->table_name, root);
 }
 
 

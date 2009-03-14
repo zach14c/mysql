@@ -1,4 +1,5 @@
-/* Copyright (C) 2006,2004 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2004-2008 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+   Copyright (C) 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -40,9 +41,11 @@ C_MODE_END
   Note that in future versions, only *transactional* Maria tables can
   rollback, so this flag should be up or down conditionally.
 */
-#define MARIA_CANNOT_ROLLBACK HA_NO_TRANSACTIONS
 #ifdef MARIA_CANNOT_ROLLBACK
+#define CANNOT_ROLLBACK_FLAG HA_NO_TRANSACTIONS
 #define trans_register_ha(A, B, C)  do { /* nothing */ } while(0)
+#else
+#define CANNOT_ROLLBACK_FLAG 0
 #endif
 #define THD_TRN (*(TRN **)thd_ha_data(thd, maria_hton))
 
@@ -693,6 +696,44 @@ void _ma_check_print_warning(HA_CHECK *param, const char *fmt, ...)
   DBUG_VOID_RETURN;
 }
 
+/**
+  Report list of threads (and queries) accessing a table, thread_id of a
+  thread that detected corruption, ource file name and line number where
+  this corruption was detected, optional extra information (string).
+
+  This function is intended to be used when table corruption is detected.
+
+  @param[in] file      MARIA_HA object.
+  @param[in] message   Optional error message.
+  @param[in] sfile     Name of source file.
+  @param[in] sline     Line number in source file.
+
+  @return void
+*/
+
+void _ma_report_crashed(MARIA_HA *file, const char *message,
+                        const char *sfile, uint sline)
+{
+  THD *cur_thd;
+  LIST *element;
+  char buf[1024];
+  pthread_mutex_lock(&file->s->intern_lock);
+  if ((cur_thd= (THD*) file->in_use.data))
+    sql_print_error("Got an error from thread_id=%lu, %s:%d", cur_thd->thread_id,
+                    sfile, sline);
+  else
+    sql_print_error("Got an error from unknown thread, %s:%d", sfile, sline);
+  if (message)
+    sql_print_error("%s", message);
+  for (element= file->s->in_use; element; element= list_rest(element))
+  {
+    THD *thd= (THD*) element->data;
+    sql_print_error("%s", thd ? thd_security_context(thd, buf, sizeof(buf), 0)
+                              : "Unknown thread accessing table");
+  }
+  pthread_mutex_unlock(&file->s->intern_lock);
+}
+
 }
 
 /**
@@ -716,7 +757,7 @@ handler(hton, table_arg), file(0),
 int_table_flags(HA_NULL_IN_KEY | HA_CAN_FULLTEXT | HA_CAN_SQL_HANDLER |
                 HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE |
                 HA_DUPLICATE_POS | HA_CAN_INDEX_BLOBS | HA_AUTO_PART_KEY |
-                HA_FILE_BASED | HA_CAN_GEOMETRY | MARIA_CANNOT_ROLLBACK |
+                HA_FILE_BASED | HA_CAN_GEOMETRY | CANNOT_ROLLBACK_FLAG |
                 HA_CAN_BIT_FIELD | HA_CAN_RTREEKEYS |
                 HA_HAS_RECORDS | HA_STATS_RECORDS_IS_EXACT),
 can_enable_indexes(1), bulk_insert_single_undo(BULK_INSERT_NONE)
@@ -784,90 +825,6 @@ uint ha_maria::max_supported_key_length() const
   return min(HA_MAX_KEY_BUFF, tmp);
 }
 
-
-#ifdef HAVE_REPLICATION
-int ha_maria::net_read_dump(NET * net)
-{
-  int data_fd= file->dfile.file;
-  int error= 0;
-
-  my_seek(data_fd, 0L, MY_SEEK_SET, MYF(MY_WME));
-  for (;;)
-  {
-    ulong packet_len= my_net_read(net);
-    if (!packet_len)
-      break;                                    // end of file
-    if (packet_len == packet_error)
-    {
-      sql_print_error("ha_maria::net_read_dump - read error ");
-      error= -1;
-      goto err;
-    }
-    if (my_write(data_fd, (uchar *) net->read_pos, (uint) packet_len,
-                 MYF(MY_WME | MY_FNABP)))
-    {
-      error= errno;
-      goto err;
-    }
-  }
-err:
-  return error;
-}
-
-
-int ha_maria::dump(THD * thd, int fd)
-{
-  MARIA_SHARE *share= file->s;
-  NET *net= &thd->net;
-  uint block_size= share->block_size;
-  my_off_t bytes_to_read= share->state.state.data_file_length;
-  int data_fd= file->dfile.file;
-  uchar *buf= (uchar *) my_malloc(block_size, MYF(MY_WME));
-  if (!buf)
-    return ENOMEM;
-
-  int error= 0;
-  my_seek(data_fd, 0L, MY_SEEK_SET, MYF(MY_WME));
-  for (; bytes_to_read > 0;)
-  {
-    size_t bytes= my_read(data_fd, buf, block_size, MYF(MY_WME));
-    if (bytes == MY_FILE_ERROR)
-    {
-      error= errno;
-      goto err;
-    }
-
-    if (fd >= 0)
-    {
-      if (my_write(fd, buf, bytes, MYF(MY_WME | MY_FNABP)))
-      {
-        error= errno ? errno : EPIPE;
-        goto err;
-      }
-    }
-    else
-    {
-      if (my_net_write(net, buf, bytes))
-      {
-        error= errno ? errno : EPIPE;
-        goto err;
-      }
-    }
-    bytes_to_read -= bytes;
-  }
-
-  if (fd < 0)
-  {
-    if (my_net_write(net, (uchar*) "", 0))
-      error= errno ? errno : EPIPE;
-    net_flush(net);
-  }
-
-err:
-  my_free((uchar*) buf, MYF(0));
-  return error;
-}
-#endif                                          /* HAVE_REPLICATION */
 
         /* Name is here without an extension */
 
@@ -1037,7 +994,8 @@ int ha_maria::check(THD * thd, HA_CHECK_OPT * check_opt)
       file->update |= HA_STATE_CHANGED | HA_STATE_ROW_CHANGED;
       pthread_mutex_lock(&share->intern_lock);
       share->state.changed &= ~(STATE_CHANGED | STATE_CRASHED |
-                                STATE_CRASHED_ON_REPAIR);
+                                STATE_CRASHED_ON_REPAIR |
+                                STATE_BAD_OPEN_COUNT);
       if (!(table->db_stat & HA_READ_ONLY))
         error= maria_update_state_info(&param, file,
                                        UPDATE_TIME | UPDATE_OPEN_COUNT |
@@ -1330,7 +1288,8 @@ int ha_maria::repair(THD *thd, HA_CHECK *param, bool do_optimize)
     if ((share->state.changed & STATE_CHANGED) || maria_is_crashed(file))
     {
       share->state.changed &= ~(STATE_CHANGED | STATE_CRASHED |
-                                STATE_CRASHED_ON_REPAIR);
+                                STATE_CRASHED_ON_REPAIR |
+                                STATE_BAD_OPEN_COUNT);
       file->update |= HA_STATE_CHANGED | HA_STATE_ROW_CHANGED;
     }
     /*
@@ -1346,7 +1305,7 @@ int ha_maria::repair(THD *thd, HA_CHECK *param, bool do_optimize)
                                      (local_testflag &
                                       T_STATISTICS ? UPDATE_STAT : 0));
     info(HA_STATUS_NO_LOCK | HA_STATUS_TIME | HA_STATUS_VARIABLE |
-         HA_STATUS_CONST);
+         HA_STATUS_CONST, 0);
     if (rows != file->state->records && !(param->testflag & T_VERY_SILENT))
     {
       char llbuff[22], llbuff2[22];
@@ -1457,7 +1416,7 @@ int ha_maria::preload_keys(THD * thd, HA_CHECK_OPT *check_opt)
 
   if ((error= maria_preload(file, map, table_list->ignore_leaves)))
   {
-    char buf[ERRMSGSIZE+20];
+    char buf[MYSQL_ERRMSG_SIZE];
     const char *errmsg;
 
     switch (error) {
@@ -1468,7 +1427,7 @@ int ha_maria::preload_keys(THD * thd, HA_CHECK_OPT *check_opt)
       errmsg= "Failed to allocate buffer";
       break;
     default:
-      my_snprintf(buf, ERRMSGSIZE,
+      my_snprintf(buf, sizeof(buf),
                   "Failed to read from index file (errno: %d)", my_errno);
       errmsg= buf;
     }
@@ -1881,6 +1840,21 @@ int ha_maria::delete_row(const uchar * buf)
   return maria_delete(file, buf);
 }
 
+C_MODE_START
+
+my_bool index_cond_func_maria(void *arg)
+{
+  ha_maria *h= (ha_maria*)arg;
+  /*if (h->in_range_read)*/
+  if (h->end_range)
+  {
+    if (h->compare_key2(h->end_range) > 0)
+      return 2; /* caller should return HA_ERR_END_OF_FILE already */
+  }
+  return (my_bool)h->pushed_idx_cond->val_int();
+}
+
+C_MODE_END
 
 int ha_maria::index_read_map(uchar * buf, const uchar * key,
 			     key_part_map keypart_map,
@@ -1978,6 +1952,25 @@ int ha_maria::index_next_same(uchar * buf,
 }
 
 
+int ha_maria::index_init(uint idx, bool sorted)
+{ 
+  active_index=idx;
+  if (pushed_idx_cond_keyno == idx)
+    ma_set_index_cond_func(file, index_cond_func_maria, this);
+  return 0; 
+}
+
+
+int ha_maria::index_end()
+{
+  active_index=MAX_KEY;
+  ma_set_index_cond_func(file, NULL, 0);
+  in_range_check_pushed_down= FALSE;
+  ds_mrr.dsmrr_close();
+  return 0; 
+}
+
+
 int ha_maria::rnd_init(bool scan)
 {
   if (scan)
@@ -2034,6 +2027,11 @@ void ha_maria::position(const uchar *record)
 
 int ha_maria::info(uint flag)
 {
+  return info(flag, table->s->tmp_table == NO_TMP_TABLE);
+}
+
+int ha_maria::info(uint flag, my_bool lock_table_share)
+{
   MARIA_INFO maria_info;
   char name_buff[FN_REFLEN];
 
@@ -2045,7 +2043,7 @@ int ha_maria::info(uint flag)
     stats.data_file_length=  maria_info.data_file_length;
     stats.index_file_length= maria_info.index_file_length;
     stats.delete_length=     maria_info.delete_length;
-    stats.check_time=        maria_info.check_time;
+    stats.check_time=        (ulong) maria_info.check_time;
     stats.mean_rec_length=   maria_info.mean_reclength;
   }
   if (flag & HA_STATUS_CONST)
@@ -2053,13 +2051,14 @@ int ha_maria::info(uint flag)
     TABLE_SHARE *share= table->s;
     stats.max_data_file_length=  maria_info.max_data_file_length;
     stats.max_index_file_length= maria_info.max_index_file_length;
-    stats.create_time= maria_info.create_time;
+    stats.create_time= (ulong) maria_info.create_time;
     ref_length= maria_info.reflength;
     share->db_options_in_use= maria_info.options;
     stats.block_size= maria_block_size;
+    stats.mrr_length_per_rec= maria_info.reflength + 8; // 8 = max(sizeof(void *))
 
     /* Update share */
-    if (share->tmp_table == NO_TMP_TABLE)
+    if (lock_table_share)
       pthread_mutex_lock(&share->LOCK_ha_data);
     share->keys_in_use.set_prefix(share->keys);
     share->keys_in_use.intersect_extended(maria_info.key_map);
@@ -2072,7 +2071,7 @@ int ha_maria::info(uint flag)
       for (end= to+ share->key_parts ; to < end ; to++, from++)
         *to= (ulong) (*from + 0.5);
     }
-    if (share->tmp_table == NO_TMP_TABLE)
+    if (lock_table_share)
       pthread_mutex_unlock(&share->LOCK_ha_data);
 
     /*
@@ -2095,7 +2094,7 @@ int ha_maria::info(uint flag)
     my_store_ptr(dup_ref, ref_length, maria_info.dup_key_pos);
   }
   /* Faster to always update, than to do it based on flag */
-  stats.update_time= maria_info.update_time;
+  stats.update_time= (ulong) maria_info.update_time;
   stats.auto_increment_value= maria_info.auto_increment;
 
   return 0;
@@ -2127,6 +2126,10 @@ int ha_maria::extra(enum ha_extra_function operation)
 
 int ha_maria::reset(void)
 {
+  pushed_idx_cond= NULL;
+  pushed_idx_cond_keyno= MAX_KEY;
+  ma_set_index_cond_func(file, NULL, 0);
+  ds_mrr.dsmrr_close();
   return maria_reset(file);
 }
 
@@ -2142,6 +2145,9 @@ int ha_maria::extra_opt(enum ha_extra_function operation, ulong cache_size)
 
 int ha_maria::delete_all_rows()
 {
+  THD *thd= current_thd;
+  (void) translog_log_debug_info(file->trn, LOGREC_DEBUG_INFO_QUERY,
+                                 (uchar*) thd->query, thd->query_length);
   if (file->s->now_transactional &&
       ((table->in_use->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) ||
        table->in_use->locked_tables_mode))
@@ -2158,6 +2164,9 @@ int ha_maria::delete_all_rows()
 
 int ha_maria::delete_table(const char *name)
 {
+  THD *thd= current_thd;
+  (void) translog_log_debug_info(0, LOGREC_DEBUG_INFO_QUERY,
+                                 (uchar*) thd->query, thd->query_length);
   return maria_delete_table(name);
 }
 
@@ -2165,6 +2174,7 @@ int ha_maria::external_lock(THD *thd, int lock_type)
 {
   TRN *trn= THD_TRN;
   DBUG_ENTER("ha_maria::external_lock");
+  file->in_use.data= thd;
   /*
     We don't test now_transactional because it may vary between lock/unlock
     and thus confuse our reference counting.
@@ -2200,12 +2210,7 @@ int ha_maria::external_lock(THD *thd, int lock_type)
         trnman_new_statement(trn);
       }
 
-      if (file->s->lock.get_status)
-      {
-        if (_ma_setup_live_state(file))
-          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-      }
-      else
+      if (!file->s->lock_key_trees)             // If we don't use versioning
       {
         /*
           We come here in the following cases:
@@ -2236,6 +2241,16 @@ int ha_maria::external_lock(THD *thd, int lock_type)
         DBUG_PRINT("info", ("Disabling logging for table"));
         _ma_tmp_disable_logging_for_table(file, TRUE);
       }
+#ifdef EXTRA_DEBUG
+      if (lock_type == F_WRLCK &&
+          ! (trnman_get_flags(trn) & TRN_STATE_INFO_LOGGED))
+      {
+        trnman_set_flags(trn, trnman_get_flags(trn) | TRN_STATE_INFO_LOGGED |
+                         TRN_STATE_TABLES_CAN_CHANGE);
+        (void) translog_log_debug_info(trn, LOGREC_DEBUG_INFO_QUERY,
+                                       (uchar*) thd->query, thd->query_length);
+      }
+#endif
     }
     else
     {
@@ -2245,6 +2260,11 @@ int ha_maria::external_lock(THD *thd, int lock_type)
         We always re-enable, don't rely on thd->transaction.on as it is
         sometimes reset to true after unlocking (see mysql_truncate() for a
         partitioned table based on Maria).
+        Note that we can come here without having an exclusive lock on the
+        table, for example in this case:
+        external_lock(F_(WR|RD)LCK); thr_lock() which fails due to lock
+        abortion; external_lock(F_UNLCK). Fortunately, the re-enabling happens
+        only if we were the thread which disabled logging.
       */
       if (_ma_reenable_logging_for_table(file, TRUE))
         DBUG_RETURN(1);
@@ -2256,9 +2276,10 @@ int ha_maria::external_lock(THD *thd, int lock_type)
         external lock of the table
       */
       file->state= &file->s->state.state;
-      if (trn && trnman_has_locked_tables(trn))
+      if (trn)
       {
-        if (!trnman_decrement_locked_tables(trn))
+        if (trnman_has_locked_tables(trn) &&
+            !trnman_decrement_locked_tables(trn))
         {
           /*
             OK should not have been sent to client yet (ACID),
@@ -2266,7 +2287,7 @@ int ha_maria::external_lock(THD *thd, int lock_type)
             This is a bit excessive, ACID requires this only if there are some
             changes to commit (rollback shouldn't be tested).
           */
-          DBUG_ASSERT(!thd->main_da.is_sent ||
+          DBUG_ASSERT(!thd->stmt_da->is_sent ||
                       thd->killed == THD::KILL_CONNECTION);
           /* autocommit ? rollback a transaction */
 #ifdef MARIA_CANNOT_ROLLBACK
@@ -2282,6 +2303,7 @@ int ha_maria::external_lock(THD *thd, int lock_type)
           }
 #endif
         }
+        trnman_set_flags(trn, trnman_get_flags(trn) & ~ TRN_STATE_INFO_LOGGED);
       }
     }
   } /* if transactional table */
@@ -2316,6 +2338,16 @@ int ha_maria::start_stmt(THD *thd, thr_lock_type lock_type)
       call to start_stmt().
     */
     trnman_new_statement(trn);
+
+#ifdef EXTRA_DEBUG
+    if (!(trnman_get_flags(trn) & TRN_STATE_INFO_LOGGED) &&
+        trnman_get_flags(trn) & TRN_STATE_TABLES_CAN_CHANGE)
+    {
+      trnman_set_flags(trn, trnman_get_flags(trn) | TRN_STATE_INFO_LOGGED);
+      (void) translog_log_debug_info(trn, LOGREC_DEBUG_INFO_QUERY,
+                                     (uchar*) thd->query, thd->query_length);
+    }
+#endif
   }
   return 0;
 }
@@ -2397,7 +2429,8 @@ int ha_maria::implicit_commit(THD *thd, bool new_trn)
         if (handler->s->base.born_transactional)
         {
           _ma_set_trn_for_table(handler, trn);
-          if (handler->s->lock.get_status)
+          /* If handler uses versioning */
+          if (handler->s->lock_key_trees)
           {
             if (_ma_setup_live_state(handler))
               error= HA_ERR_OUT_OF_MEM;
@@ -2524,6 +2557,7 @@ int ha_maria::create(const char *name, register TABLE *table_arg,
   TABLE_SHARE *share= table_arg->s;
   uint options= share->db_options_in_use;
   enum data_file_type row_type;
+  THD *thd= current_thd;
   DBUG_ENTER("ha_maria::create");
 
   for (i= 0; i < share->keys; i++)
@@ -2588,6 +2622,9 @@ int ha_maria::create(const char *name, register TABLE *table_arg,
        ha_create_info->page_checksum ==  HA_CHOICE_YES)
     create_flags|= HA_CREATE_PAGE_CHECKSUM;
 
+  (void) translog_log_debug_info(0, LOGREC_DEBUG_INFO_QUERY,
+                                 (uchar*) thd->query, thd->query_length);
+
   /* TODO: Check that the following fn_format is really needed */
   error=
     maria_create(fn_format(buff, name, "", "",
@@ -2604,6 +2641,9 @@ int ha_maria::create(const char *name, register TABLE *table_arg,
 
 int ha_maria::rename_table(const char *from, const char *to)
 {
+  THD *thd= current_thd;
+  (void) translog_log_debug_info(0, LOGREC_DEBUG_INFO_QUERY,
+                                 (uchar*) thd->query, thd->query_length);
   return maria_rename(from, to);
 }
 
@@ -2748,6 +2788,8 @@ static int maria_commit(handlerton *hton __attribute__ ((unused)),
   TRN *trn= THD_TRN;
   DBUG_ENTER("maria_commit");
   trnman_reset_locked_tables(trn, 0);
+  trnman_set_flags(trn, trnman_get_flags(trn) & ~TRN_STATE_INFO_LOGGED);
+
   /* statement or transaction ? */
   if ((thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) && !all)
     DBUG_RETURN(0); // end of statement
@@ -2838,7 +2880,7 @@ bool maria_show_status(handlerton *hton,
       const char error[]= "can't stat";
       char object[SHOW_MSG_LEN];
       file= translog_filename_by_fileno(i, path);
-      if (!(stat= my_stat(file, &stat_buff, MYF(MY_WME))))
+      if (!(stat= my_stat(file, &stat_buff, MYF(0))))
       {
         status= error;
         status_len= sizeof(error) - 1;
@@ -2958,6 +3000,16 @@ static int mark_recovery_success(void)
 }
 
 
+/*
+  Return 1 if table has changed during the current transaction
+*/
+
+bool ha_maria::is_changed() const
+{
+  return file->state->changed;
+}
+
+
 static int ha_maria_init(void *p)
 {
   int res;
@@ -2973,6 +3025,9 @@ static int ha_maria_init(void *p)
   maria_hton->show_status= maria_show_status;
   /* TODO: decide if we support Maria being used for log tables */
   maria_hton->flags= HTON_CAN_RECREATE | HTON_SUPPORT_LOG_TABLES;
+#if !defined(EMBEDDED_LIBRARY) && defined(HAVE_MARIA_PHYSICAL_LOGGING)
+  maria_hton->get_backup_engine= maria_backup_engine;
+#endif
   bzero(maria_log_pagecache, sizeof(*maria_log_pagecache));
   maria_tmpdir= &mysql_tmpdir_list;             /* For REDO */
   res= maria_init() || ma_control_file_open(TRUE, TRUE) ||
@@ -3005,8 +3060,8 @@ static int ha_maria_init(void *p)
   @brief Register a named table with a call back function to the query cache.
 
   @param thd The thread handle
-  @param table_key A pointer to the table name in the table cache
-  @param key_length The length of the table name
+  @param table_name A pointer to the table name in the table cache
+  @param table_name_len The length of the table name
   @param[out] engine_callback The pointer to the storage engine call back
     function, currently 0
   @param[out] engine_data Engine data will be set to 0.
@@ -3129,6 +3184,64 @@ static SHOW_VAR status_variables[]= {
   {"Maria_pagecache_writes",             (char*) &maria_pagecache_var.global_cache_write, SHOW_LONGLONG},
   {NullS, NullS, SHOW_LONG}
 };
+
+/****************************************************************************
+ * Maria MRR implementation: use DS-MRR
+ ***************************************************************************/
+
+int ha_maria::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
+                                     uint n_ranges, uint mode, 
+                                     HANDLER_BUFFER *buf)
+{
+  return ds_mrr.dsmrr_init(this, seq, seq_init_param, n_ranges, mode, buf);
+}
+
+int ha_maria::multi_range_read_next(char **range_info)
+{
+  return ds_mrr.dsmrr_next(range_info);
+}
+
+ha_rows ha_maria::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
+                                               void *seq_init_param, 
+                                               uint n_ranges, uint *bufsz,
+                                               uint *flags, COST_VECT *cost)
+{
+  /*
+    This call is here because there is no location where this->table would
+    already be known.
+    TODO: consider moving it into some per-query initialization call.
+  */
+  ds_mrr.init(this, table);
+  return ds_mrr.dsmrr_info_const(keyno, seq, seq_init_param, n_ranges, bufsz,
+                                 flags, cost);
+}
+
+ha_rows ha_maria::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                        uint *bufsz, uint *flags, 
+                                        COST_VECT *cost)
+{
+  ds_mrr.init(this, table);
+  return ds_mrr.dsmrr_info(keyno, n_ranges, keys, bufsz, flags, cost);
+}
+
+/* MyISAM MRR implementation ends */
+
+
+/* Index condition pushdown implementation*/
+
+
+Item *ha_maria::idx_cond_push(uint keyno_arg, Item* idx_cond_arg)
+{
+  pushed_idx_cond_keyno= keyno_arg;
+  pushed_idx_cond= idx_cond_arg;
+  in_range_check_pushed_down= TRUE;
+  if (active_index == pushed_idx_cond_keyno)
+    ma_set_index_cond_func(file, index_cond_func_maria, this);
+  return NULL;
+}
+
+
+
 
 struct st_mysql_storage_engine maria_storage_engine=
 { MYSQL_HANDLERTON_INTERFACE_VERSION };

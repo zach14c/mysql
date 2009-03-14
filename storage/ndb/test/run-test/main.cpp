@@ -1,3 +1,4 @@
+
 /* Copyright (C) 2003 MySQL AB
 
    This program is free software; you can redistribute it and/or modify
@@ -56,19 +57,21 @@ atrt_config g_config;
 const char * g_user = 0;
 int          g_baseport = 10000;
 int          g_fqpn = 0;
+int          g_fix_nodeid= 0;
 int          g_default_ports = 0;
 
 const char * g_cwd = 0;
 const char * g_basedir = 0;
 const char * g_my_cnf = 0;
 const char * g_prefix = 0;
+const char * g_prefix1 = 0;
 const char * g_clusters = 0;
 BaseString g_replicate;
 const char *save_file = 0;
-char *save_extra_file = 0;
 const char *save_group_suffix = 0;
 const char * g_dummy;
 char * g_env_path = 0;
+const char* g_mysqld_host = 0;
 
 /** Dummy, extern declared in ndb_opts.h */
 int g_print_full_config = 0, opt_ndb_shm;
@@ -83,6 +86,9 @@ static struct my_option g_options[] =
     GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0 }, 
   { "clusters", 256, "Cluster",
     (uchar **) &g_clusters, (uchar **) &g_clusters,
+    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  { "mysqld", 256, "atrt mysqld",
+    (uchar **) &g_mysqld_host, (uchar **) &g_mysqld_host,
     0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   { "replicate", 1024, "replicate",
     (uchar **) &g_dummy, (uchar **) &g_dummy,
@@ -105,6 +111,9 @@ static struct my_option g_options[] =
   { "prefix", 256, "mysql install dir",
     (uchar **) &g_prefix, (uchar **) &g_prefix,
     0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  { "prefix1", 256, "mysql install dir 1",
+    (uchar **) &g_prefix1, (uchar **) &g_prefix1,
+    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   { "verbose", 'v', "Verbosity",
     (uchar **) &g_verbosity, (uchar **) &g_verbosity,
     0, GET_INT, REQUIRED_ARG, g_verbosity, 0, 0, 0, 0, 0},
@@ -122,6 +131,9 @@ static struct my_option g_options[] =
     0, GET_INT, REQUIRED_ARG, g_do_start, 0, 0, 0, 0, 0 },
   { "fqpn", 256, "Fully qualified path-names ",
     (uchar **) &g_fqpn, (uchar **) &g_fqpn,
+    0, GET_INT, REQUIRED_ARG, g_fqpn, 0, 0, 0, 0, 0 },
+  { "fix-nodeid", 256, "Fix nodeid for each started process ",
+    (uchar **) &g_fix_nodeid, (uchar **) &g_fix_nodeid,
     0, GET_INT, REQUIRED_ARG, g_fqpn, 0, 0, 0, 0, 0 },
   { "default-ports", 256, "Use default ports when possible",
     (uchar **) &g_default_ports, (uchar **) &g_default_ports,
@@ -159,7 +171,7 @@ main(int argc, char ** argv)
   g_logger.info("Starting...");
   g_config.m_generated = false;
   g_config.m_replication = g_replicate;
-  if (!setup_config(g_config))
+  if (!setup_config(g_config, g_mysqld_host))
     goto end;
 
   if (!configure(g_config, g_do_setup))
@@ -200,6 +212,9 @@ main(int argc, char ** argv)
     g_logger.info("Done...sleeping");
     while(true)
     {
+      if (!do_command(g_config))
+        goto end;
+
       NdbSleep_SecSleep(1);
     }
     return_code = 0;
@@ -216,9 +231,18 @@ main(int argc, char ** argv)
     if (!start(g_config, g_do_start))
       goto end;
     
+    if (!setup_db(g_config))
+      goto end;
+
     g_logger.info("Done...sleeping");
     while(true)
     {
+      if (!do_command(g_config))
+      {
+        g_logger.info("Exiting");
+        goto end;
+      }
+
       NdbSleep_SecSleep(1);
     }
     return_code = 0;
@@ -230,15 +254,18 @@ main(int argc, char ** argv)
   /**
    * Main loop
    */
-  while(!feof(g_test_case_file)){
+  while(!feof(g_test_case_file))
+  {
     /**
      * Do we need to restart ndb
      */
-    if(restart){
-      g_logger.info("(Re)starting server processes processes");
+    if(restart)
+    {
+      restart = false;
+      g_logger.info("(Re)starting server processes");
       if(!stop_processes(g_config, ~0))
 	goto end;
-
+      
       if (!setup_directories(g_config, 2))
 	goto end;
       
@@ -249,7 +276,37 @@ main(int argc, char ** argv)
         goto end;
       
       if (!start(g_config, p_ndb | p_servers))
+      {
+        g_logger.info("Failed to start server processes");
+        g_logger.info("Gathering logs and saving them as test %u", test_no);
+        
+        int tmp;
+        if(!gather_result(g_config, &tmp))
+          goto end;
+        
+        if(g_report_file != 0)
+        {
+          fprintf(g_report_file, "%s ; %d ; %d ; %d\n",
+                  "start servers", test_no, ERR_FAILED_TO_START, 0);
+          fflush(g_report_file);
+        }
+
+        BaseString resdir;
+        resdir.assfmt("result.%d", test_no);
+        remove_dir(resdir.c_str(), true);
+        
+        if(rename("result", resdir.c_str()) != 0)
+        {
+          g_logger.critical("Failed to rename %s as %s",
+                            "result", resdir.c_str());
+          goto end;
+        }
+        goto end;
+      }
+
+      if (!setup_db(g_config))
 	goto end;
+      
       g_logger.info("All servers start completed");
     }
     
@@ -273,28 +330,37 @@ main(int argc, char ** argv)
     
     const time_t start = time(0);
     time_t now = start;
-    do {
+    do 
+    {
       if(!update_status(g_config, atrt_process::AP_ALL))
 	goto end;
-
-      int count = 0;
-
-      if((count = is_running(g_config, p_ndb)) != 2){
+      
+      if(is_running(g_config, p_ndb) != 2)
+      {
 	result = ERR_NDB_FAILED;
 	break;
       }
-
-      if((count = is_running(g_config, p_servers)) != 2){
+      
+      if(is_running(g_config, p_servers) != 2)
+      {
 	result = ERR_SERVERS_FAILED;
 	break;
       }
 
-      if((count = is_running(g_config, p_clients)) == 0){
+      if(is_running(g_config, p_clients) == 0)
+      {
 	break;
       }
-      
+
+      if (!do_command(g_config))
+      {
+        result = ERR_COMMAND_FAILED;
+	break;
+      }
+
       now = time(0);
-      if(now  > (start + test_case.m_max_time)){
+      if(now  > (start + test_case.m_max_time))
+      {
 	result = ERR_MAX_TIME_ELAPSED;
 	break;
       }
@@ -314,18 +380,20 @@ main(int argc, char ** argv)
 		  test_no, 
 		  (result == 0 ? "OK" : "FAILED"), result);
 
-    if(g_report_file != 0){
+    if(g_report_file != 0)
+    {
       fprintf(g_report_file, "%s ; %d ; %d ; %ld\n",
 	      test_case.m_name.c_str(), test_no, result, elapsed);
       fflush(g_report_file);
     }    
 
-    if(g_mode == 0 && result){
+    if(g_mode == 0 && result)
+    {
       g_logger.info
 	("Encountered failed test in interactive mode - terminating");
       break;
     }
-
+    
     BaseString resdir;
     resdir.assfmt("result.%d", test_no);
     remove_dir(resdir.c_str(), true);
@@ -343,11 +411,15 @@ main(int argc, char ** argv)
     {
       remove_dir("result", true);
     }
-    
-    if(result != 0){
+   
+    if (reset_config(g_config))
+    {
       restart = true;
-    } else {
-      restart = false;
+    }
+    
+    if(result != 0)
+    {
+      restart = true;
     }
     test_no++;
   }
@@ -363,6 +435,7 @@ main(int argc, char ** argv)
     g_test_case_file = 0;
   }
 
+  g_logger.info("Stopping all processes, result: %d", return_code);
   stop_processes(g_config, atrt_process::AP_ALL);
   return return_code;
 }
@@ -418,13 +491,12 @@ parse_args(int argc, char** argv)
   int ret = load_defaults(mycnf.c_str(), groups, &argc, &argv);
   
   save_file = my_defaults_file;
-  save_extra_file = my_defaults_extra_file;
   save_group_suffix = my_defaults_group_suffix;
 
-  if (save_extra_file)
+  if (my_defaults_extra_file)
   {
     g_logger.error("--defaults-extra-file(%s) is not supported...",
-		   save_extra_file);
+		   my_defaults_extra_file);
     return false;
   }
   
@@ -464,6 +536,9 @@ parse_args(int argc, char** argv)
       case 'f':
 	g_fqpn = 1;
 	break;
+      case 'z':
+	g_fix_nodeid = 1;
+	break;
       case 'q':
 	g_do_quit = 1;
 	break;
@@ -494,12 +569,16 @@ parse_args(int argc, char** argv)
     g_basedir = g_cwd;
     g_logger.info("basedir not specified, using %s", g_basedir);
   }
+  else
+  {
+    g_logger.info("basedir, %s", g_basedir);
+  }
 
   if (!g_prefix)
   {
     g_prefix = DEFAULT_PREFIX;
   }
-  
+
   /**
    * Add path to atrt-*.sh
    */
@@ -577,6 +656,13 @@ parse_args(int argc, char** argv)
   }
   
   g_logger.info("Using --prefix=\"%s\"", g_prefix);
+
+  if (g_prefix1)
+  {
+    g_logger.info("Using --prefix1=\"%s\"", g_prefix1);
+  }
+
+
   
   if(g_report_filename)
   {
@@ -673,6 +759,16 @@ wait_ndb(atrt_config& config, int goal){
   for (size_t i = 0; i<config.m_clusters.size(); i++)
   {
     atrt_cluster* cluster = config.m_clusters[i];
+
+    if (strcmp(cluster->m_name.c_str(), ".atrt") == 0)
+    {
+      /**
+       * skip atrt mysql
+       */
+      cnt++;
+      continue;
+    }
+    
     /**
      * Get mgm handle for cluster
      */
@@ -686,8 +782,7 @@ wait_ndb(atrt_config& config, int goal){
     }
 
     if(handle == 0){
-      g_logger.critical("Unable to find mgm handle");
-      return false;
+      return true;
     }
     
     if(goal == NDB_MGM_NODE_STATUS_STARTED){
@@ -778,7 +873,8 @@ next:
 bool
 start_process(atrt_process & proc){
   if(proc.m_proc.m_id != -1){
-    g_logger.critical("starting already started process: %d", proc.m_index);
+    g_logger.critical("starting already started process: %u", 
+                      (unsigned)proc.m_index);
     return false;
   }
   
@@ -790,7 +886,8 @@ start_process(atrt_process & proc){
   
   g_logger.debug("system(%s)", tmp.c_str());
   const int r1 = system(tmp.c_str());
-  if(r1 != 0){
+  if(r1 != 0)
+  {
     g_logger.critical("Failed to setup process");
     return false;
   }
@@ -1042,21 +1139,35 @@ setup_test_case(atrt_config& config, const atrt_testcase& tc){
   for(; i<config.m_processes.size(); i++)
   {
     atrt_process & proc = *config.m_processes[i]; 
-    if(proc.m_type == atrt_process::AP_NDB_API || proc.m_type == atrt_process::AP_CLIENT){
-      proc.m_proc.m_path = "";
+    if(proc.m_type == atrt_process::AP_NDB_API || 
+       proc.m_type == atrt_process::AP_CLIENT)
+    {
+      BaseString cmd;
       if (tc.m_command.c_str()[0] != '/')
       {
-	proc.m_proc.m_path.appfmt("%s/bin/", g_prefix);
+        cmd.appfmt("%s/bin/", g_prefix);
       }
-      proc.m_proc.m_path.append(tc.m_command.c_str());
-      proc.m_proc.m_args.assign(tc.m_args);
+      cmd.append(tc.m_command.c_str());
+
+      if (0) // valgrind
+      {
+        proc.m_proc.m_path = "/usr/bin/valgrind";
+        proc.m_proc.m_args.appfmt("%s %s", cmd.c_str(), tc.m_args.c_str());
+      }
+      else
+      {
+        proc.m_proc.m_path = cmd;
+        proc.m_proc.m_args.assign(tc.m_args);
+      }
       if(!tc.m_run_all)
         break;
     }
   }
   for(i++; i<config.m_processes.size(); i++){
     atrt_process & proc = *config.m_processes[i]; 
-    if(proc.m_type == atrt_process::AP_NDB_API || proc.m_type == atrt_process::AP_CLIENT){
+    if(proc.m_type == atrt_process::AP_NDB_API || 
+       proc.m_type == atrt_process::AP_CLIENT)
+    {
       proc.m_proc.m_path.assign("");
       proc.m_proc.m_args.assign("");
     }
@@ -1123,28 +1234,38 @@ setup_hosts(atrt_config& config){
   return true;
 }
 
+static
+bool
+do_rsync(const char *dir, const char *dst)
+{
+  BaseString tmp = g_setup_progname;
+  tmp.appfmt(" %s %s/ %s", dst, dir, dir);
+  
+  g_logger.info("rsyncing %s to %s", dir, dst);
+  g_logger.debug("system(%s)", tmp.c_str());
+  const int r1 = system(tmp.c_str());
+  if(r1 != 0)
+  {
+    g_logger.critical("Failed to rsync %s to %s", dir, dst);
+    return false;
+  }
+  
+  return true;
+}
+
 bool
 deploy(atrt_config & config)
 {
   for (size_t i = 0; i<config.m_hosts.size(); i++)
   {
-    BaseString tmp = g_setup_progname;
-    tmp.appfmt(" %s %s/ %s",
-	       config.m_hosts[i]->m_hostname.c_str(),
-	       g_prefix,
-	       g_prefix);
-  
-    g_logger.info("rsyncing %s to %s", g_prefix,
-		  config.m_hosts[i]->m_hostname.c_str());
-    g_logger.debug("system(%s)", tmp.c_str());
-    const int r1 = system(tmp.c_str());
-    if(r1 != 0)
-    {
-      g_logger.critical("Failed to rsync %s to %s", 
-			g_prefix,
-			config.m_hosts[i]->m_hostname.c_str());
+    if (!do_rsync(g_basedir, config.m_hosts[i]->m_hostname.c_str()))
       return false;
-    }
+
+    if (!do_rsync(g_prefix, config.m_hosts[i]->m_hostname.c_str()))
+      return false;
+    
+    if (g_prefix1 && !do_rsync(g_prefix1, config.m_hosts[i]->m_hostname.c_str()))
+      return false;
   }
   
   return true;
@@ -1241,6 +1362,27 @@ require(bool x)
 {
   if (!x)
     abort();
+}
+
+bool
+reset_config(atrt_config & config)
+{
+  bool changed = false;
+  for(size_t i = 0; i<config.m_processes.size(); i++)
+  {
+    atrt_process & proc = *config.m_processes[i]; 
+    if (proc.m_save.m_saved)
+    {
+      if (!stop_process(proc))
+        return false;
+      
+      changed = true;
+      proc.m_save.m_saved = false;
+      proc.m_proc = proc.m_save.m_proc;
+      proc.m_proc.m_id = -1;
+    }
+  }
+  return changed;
 }
 
 template class Vector<Vector<SimpleCpcClient::Process> >;

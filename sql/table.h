@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,7 +27,8 @@ class st_select_lex;
 class partition_info;
 class COND_EQUAL;
 class Security_context;
-struct MDL_LOCK_DATA;
+class MDL_request;
+class MDL_ticket;
 
 /*************************************************************************/
 
@@ -431,6 +432,7 @@ struct TABLE_SHARE
 
   /** place to store storage engine specific data */
   void *ha_data;
+  void (*ha_data_destroy)(void *); /* An optional destructor for ha_data */
 
 
   /*
@@ -789,7 +791,7 @@ public:
   partition_info *part_info;            /* Partition related information */
   bool no_partitions_used; /* If true, all partitions have been pruned away */
 #endif
-  MDL_LOCK_DATA *mdl_lock_data;
+  MDL_ticket *mdl_ticket;
 
   bool fill_item_list(List<Item> *item_list) const;
   void reset_item_list(List<Item> *item_list) const;
@@ -1004,6 +1006,11 @@ public:
 };
 
 
+class SJ_MATERIALIZATION_INFO;
+class Index_hint;
+class Item_in_subselect;
+
+
 /*
   Table reference in the FROM clause.
 
@@ -1039,7 +1046,6 @@ public:
 */
 
 struct LEX;
-class Index_hint;
 struct TABLE_LIST
 {
   TABLE_LIST() {}                          /* Remove gcc warning */
@@ -1085,6 +1091,9 @@ struct TABLE_LIST
   table_map     sj_inner_tables;
   /* Number of IN-compared expressions */
   uint          sj_in_exprs; 
+  Item_in_subselect  *sj_subq_pred;
+  SJ_MATERIALIZATION_INFO *sj_mat_info;
+
   /*
     The structure of ON expression presented in the member above
     can be changed during certain optimizations. This member
@@ -1364,7 +1373,7 @@ struct TABLE_LIST
   uint table_open_method;
   enum enum_schema_table_state schema_table_state;
 
-  MDL_LOCK_DATA *mdl_lock_data;
+  MDL_request *mdl_request;
 
   void calc_md5(char *buffer);
   void set_underlying_merge();
@@ -1502,6 +1511,10 @@ private:
   ulong m_table_ref_version;
 };
 
+struct st_position;
+
+class SJ_MATERIALIZATION_INFO;
+  
 class Item;
 
 /*
@@ -1712,8 +1725,38 @@ static inline void dbug_tmp_restore_column_map(MY_BITMAP *bitmap,
 #endif
 }
 
+
+/* 
+  Variant of the above : handle both read and write sets.
+  Provide for the possiblity of the read set being the same as the write set
+*/
+static inline void dbug_tmp_use_all_columns(TABLE *table,
+                                            my_bitmap_map **save,
+                                            MY_BITMAP *read_set,
+                                            MY_BITMAP *write_set)
+{
+#ifndef DBUG_OFF
+  save[0]= read_set->bitmap;
+  save[1]= write_set->bitmap;
+  (void) tmp_use_all_columns(table, read_set);
+  (void) tmp_use_all_columns(table, write_set);
+#endif
+}
+
+
+static inline void dbug_tmp_restore_column_maps(MY_BITMAP *read_set,
+                                                MY_BITMAP *write_set,
+                                                my_bitmap_map **old)
+{
+#ifndef DBUG_OFF
+  tmp_restore_column_map(read_set, old[0]);
+  tmp_restore_column_map(write_set, old[1]);
+#endif
+}
+
+
 size_t max_row_length(TABLE *table, const uchar *data);
 
 
-void alloc_mdl_locks(TABLE_LIST *table_list, MEM_ROOT *root);
+void alloc_mdl_requests(TABLE_LIST *table_list, MEM_ROOT *root);
 

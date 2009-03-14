@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -419,7 +419,7 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 			
 			if (recordNumber < 0)
 				return StorageErrorRecordNotFound;
-				
+	
 			candidate = table->fetch(recordNumber);
 			++recordNumber;
 			
@@ -491,21 +491,7 @@ int StorageDatabase::nextIndexed(StorageTable* storageTable, IndexWalker* indexW
 	
 	return record->recordNumber;
 }
-/*
-RecordVersion* StorageDatabase::lockRecord(StorageConnection* storageConnection, Table *table, Record* record)
-{
-	try
-		{
-		return table->lockRecord(record, storageConnection->connection->getTransaction());
-		}
-	catch (SQLException& exception)
-		{
-		storageConnection->setErrorText(&exception);
-		
-		return NULL;
-		}
-}
-*/
+
 int StorageDatabase::savepointSet(Connection* connection)
 {
 	Transaction *transaction = connection->getTransaction();
@@ -747,7 +733,7 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 	try
 		{
 		Database *database = connection->database;
-		Sequence *sequence = connection->findSequence(schemaName, table->name);
+		Sequence *sequence = connection->findSequence(table->schemaName, table->name);
 
 		Sync syncDDL(&database->syncSysDDL, "StorageDatabase::renameTable(1)");
 		syncDDL.lock(Exclusive);
@@ -758,7 +744,7 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 		table->rename(schemaName, tableName);
 
 		if (sequence)
-			sequence->rename(tableName);
+			sequence->rename(schemaName, tableName);
 
 		syncTables.unlock();
 		syncDDL.unlock();
@@ -813,7 +799,7 @@ IndexWalker* StorageDatabase::indexPosition(Index* index, StorageKey* lower, Sto
 								storageConnection->connection->getTransaction());
 }
 
-int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int keyLength, StorageKey* storageKey)
+int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int keyLength, StorageKey* storageKey, bool highKey)
 {
 	int segmentNumber = 0;
 	Value vals [MAX_KEY_SEGMENTS];
@@ -841,7 +827,7 @@ int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int 
 			p += len;
 			}
 
-		index->makeKey(segmentNumber, values, &storageKey->indexKey);
+		index->makeKey(segmentNumber, values, &storageKey->indexKey, highKey);
 		storageKey->numberSegments = segmentNumber;
 		
 		return 0;
@@ -961,10 +947,10 @@ void StorageDatabase::validateCache(void)
 int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, Value* value, Field *field)
 {
 	int length = segment->length;
-	
-	switch (segment->type)
+
+	switch (segment->keyFormat)
 		{
-		case HA_KEYTYPE_LONG_INT:
+		case KEY_FORMAT_LONG_INT:
 			{
 			int32 temp = (int32)
 				(((int32) ((UCHAR) ptr[0])) +
@@ -975,7 +961,7 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			}
 			break;
 
-		case HA_KEYTYPE_SHORT_INT:
+		case KEY_FORMAT_SHORT_INT:
 			{
 			short temp = (int16)
 				(((short) ((UCHAR) ptr[0])) +
@@ -984,8 +970,8 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			}
 			break;
 
-		case HA_KEYTYPE_ULONGLONG:
-		case HA_KEYTYPE_LONGLONG:
+		case KEY_FORMAT_ULONGLONG:
+		case KEY_FORMAT_LONGLONG:
 			{
 			int64 temp = (int64)
 				((uint64)(((uint32) ((UCHAR) ptr[0])) +
@@ -1001,7 +987,7 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			}
 			break;
 				
-		case HA_KEYTYPE_FLOAT:
+		case KEY_FORMAT_FLOAT:
 			{
 			float temp;
 #ifdef _BIG_ENDIAN
@@ -1016,7 +1002,7 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			}
 			break;
 		
-		case HA_KEYTYPE_DOUBLE:
+		case KEY_FORMAT_DOUBLE:
 			{
 			double temp;
 #ifdef _BIG_ENDIAN
@@ -1034,11 +1020,9 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			value->setValue(temp);
 			}
 			break;
-		
-		case HA_KEYTYPE_VARBINARY1:
-		case HA_KEYTYPE_VARBINARY2:
-		case HA_KEYTYPE_VARTEXT1:
-		case HA_KEYTYPE_VARTEXT2:
+			
+		case KEY_FORMAT_VARBINARY:		
+		case KEY_FORMAT_VARTEXT:
 			{
 			unsigned short len = (unsigned short)
                         	(((short) ((UCHAR) ptr[0])) +
@@ -1047,45 +1031,32 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			length += 2;
 			}
 			break;
-		
-		case HA_KEYTYPE_BINARY:
-			if (field->isString())
-				value->setString(length, (const char*) ptr, false);
-			else if (segment->isUnsigned)
-				{
-				int64 number = 0;
-				
-				for (int n = 0; n < length; ++n)
-					number = number << 8 | *ptr++;
-					
-				value->setValue(number);
-				}
-			else if (field->precision < 19 && field->scale == 0)
-				{
-				int64 number = (signed char) (*ptr++ ^ 0x80);
-				
-				for (int n = 1; n < length; ++n)
-					number = (number << 8) | *ptr++;
-				
-				if (number < 0)
-					++number;
-					
-				value->setValue(number);
-				}
-			else
-				{
-				BigInt bigInt;
-				ScaledBinary::getBigIntFromBinaryDecimal((const char*) ptr, field->precision, field->scale, &bigInt);
-				value->setValue(&bigInt);
-				}
 
-			break;
-			
-		case HA_KEYTYPE_TEXT:
+		case KEY_FORMAT_TEXT:
+		case KEY_FORMAT_BINARY_STRING:
 			value->setString(length, (const char*) ptr, false);
 			break;
-		
-		case HA_KEYTYPE_ULONG_INT:
+
+		case KEY_FORMAT_BINARY_NEWDECIMAL:
+			{		
+			BigInt bigInt;
+			ScaledBinary::getBigIntFromBinaryDecimal((const char*) 
+													 ptr, field->precision, field->scale, &bigInt);
+			value->setValue(&bigInt);
+			}
+			break;
+		case KEY_FORMAT_BINARY_INTEGER:
+			{
+			int64 number = 0;
+			
+			for (int n = 0; n < length; ++n)
+				number = number << 8 | *ptr++;
+			
+			value->setValue(number);
+			}
+			break;
+	
+		case KEY_FORMAT_ULONG_INT:
 			{
 			uint32 temp = (uint32)
 				(((uint32) ((UCHAR) ptr[0])) +
@@ -1093,18 +1064,27 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 				(((uint32) ((UCHAR) ptr[2]) << 16)) +
 				(((uint32) ((UCHAR) ptr[3]) << 24)));
 			
-			if (field && field->type == Timestamp)
-				value->setValue((int64) temp * 1000);
-			else
 				value->setValue((int64) temp);
 			}
 			break;
+
+		case KEY_FORMAT_TIMESTAMP:
+			{
+			uint32 temp = (uint32)
+				(((uint32) ((UCHAR) ptr[0])) +
+				(((uint32) ((UCHAR) ptr[1]) << 8)) +
+				(((uint32) ((UCHAR) ptr[2]) << 16)) +
+				(((uint32) ((UCHAR) ptr[3]) << 24)));
+			
+				value->setValue((int64) temp * 1000);
+			}
+			break;
 		
-		case HA_KEYTYPE_INT8:
+		case KEY_FORMAT_INT8:
 			value->setValue(*(signed char*) ptr);
 			break;
 		
-		case HA_KEYTYPE_USHORT_INT:
+		case KEY_FORMAT_USHORT_INT:
 			{
 			unsigned short temp = (unsigned short)
 				(((uint16) ((UCHAR) ptr[0])) +
@@ -1113,7 +1093,7 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			}
 			break;
 			
-		case HA_KEYTYPE_UINT24:
+		case KEY_FORMAT_UINT24:
 			{
 			uint32 temp = (uint32)
 				(((uint32) ((UCHAR) ptr[0])) +
@@ -1123,7 +1103,7 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			}
 			break;
 			
-		case HA_KEYTYPE_INT24:
+		case KEY_FORMAT_INT24:
 			{
 			int32 temp = (int32)
 				((((UCHAR) ptr[2]) & 128) ?

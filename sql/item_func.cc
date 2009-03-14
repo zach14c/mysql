@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@
 #include "sp_head.h"
 #include "sp_rcontext.h"
 #include "sp.h"
+#include "debug_sync.h"
 
 #ifdef NO_EMBEDDED_ACCESS_CHECKS
 #define sp_restore_security_context(A,B) while (0) {}
@@ -1368,6 +1369,38 @@ void Item_func_div::fix_length_and_dec()
 longlong Item_func_int_div::val_int()
 {
   DBUG_ASSERT(fixed == 1);
+
+  /*
+    Perform division using DECIMAL math if either of the operands has a
+    non-integer type
+  */
+  if (args[0]->result_type() != INT_RESULT ||
+      args[1]->result_type() != INT_RESULT)
+  {
+    my_decimal value0, value1, tmp;
+    my_decimal *val0, *val1;
+    longlong res;
+    int err;
+
+    val0= args[0]->val_decimal(&value0);
+    val1= args[1]->val_decimal(&value1);
+    if ((null_value= (args[0]->null_value || args[1]->null_value)))
+      return 0;
+
+    if ((err= my_decimal_div(E_DEC_FATAL_ERROR & ~E_DEC_DIV_ZERO, &tmp,
+                             val0, val1, 0)) > 3)
+    {
+      if (err == E_DEC_DIV_ZERO)
+        signal_divide_by_null();
+      return 0;
+    }
+
+    if (my_decimal2int(E_DEC_FATAL_ERROR, &tmp, unsigned_flag, &res) &
+        E_DEC_OVERFLOW)
+      my_error(ER_WARN_DATA_OUT_OF_RANGE, MYF(0), name, 1);
+    return res;
+  }
+  
   longlong value=args[0]->val_int();
   longlong val2=args[1]->val_int();
   if ((null_value= (args[0]->null_value || args[1]->null_value)))
@@ -3296,7 +3329,7 @@ public:
   {
     if (key)
     {
-      hash_delete(&hash_user_locks,(uchar*) this);
+      my_hash_delete(&hash_user_locks,(uchar*) this);
       my_free(key, MYF(0));
     }
     pthread_cond_destroy(&cond);
@@ -3320,8 +3353,8 @@ static bool item_user_lock_inited= 0;
 void item_user_lock_init(void)
 {
   pthread_mutex_init(&LOCK_user_locks,MY_MUTEX_INIT_SLOW);
-  hash_init(&hash_user_locks,system_charset_info,
-	    16,0,0,(hash_get_key) ull_get_key,NULL,0);
+  my_hash_init(&hash_user_locks,system_charset_info,
+	    16,0,0,(my_hash_get_key) ull_get_key,NULL,0);
   item_user_lock_inited= 1;
 }
 
@@ -3330,7 +3363,7 @@ void item_user_lock_free(void)
   if (item_user_lock_inited)
   {
     item_user_lock_inited= 0;
-    hash_free(&hash_user_locks);
+    my_hash_free(&hash_user_locks);
     pthread_mutex_destroy(&LOCK_user_locks);
   }
 }
@@ -3411,9 +3444,9 @@ void debug_sync_point(const char* lock_name, uint lock_timeout)
     this case, we will not be waiting, but rather, just waste CPU and
     memory on the whole deal
   */
-  if (!(ull= ((User_level_lock*) hash_search(&hash_user_locks,
-                                             (uchar*) lock_name,
-                                             lock_name_len))))
+  if (!(ull= ((User_level_lock*) my_hash_search(&hash_user_locks,
+                                                (uchar*) lock_name,
+                                                lock_name_len))))
   {
     pthread_mutex_unlock(&LOCK_user_locks);
     DBUG_VOID_RETURN;
@@ -3564,9 +3597,9 @@ longlong Item_func_get_lock::val_int()
     thd->ull=0;
   }
 
-  if (!(ull= ((User_level_lock *) hash_search(&hash_user_locks,
-                                              (uchar*) res->ptr(),
-                                              (size_t) res->length()))))
+  if (!(ull= ((User_level_lock *) my_hash_search(&hash_user_locks,
+                                                 (uchar*) res->ptr(),
+                                                 (size_t) res->length()))))
   {
     ull= new User_level_lock((uchar*) res->ptr(), (size_t) res->length(),
                              thd->thread_id);
@@ -3667,9 +3700,9 @@ longlong Item_func_release_lock::val_int()
 
   result=0;
   pthread_mutex_lock(&LOCK_user_locks);
-  if (!(ull= ((User_level_lock*) hash_search(&hash_user_locks,
-                                             (const uchar*) res->ptr(),
-                                             (size_t) res->length()))))
+  if (!(ull= ((User_level_lock*) my_hash_search(&hash_user_locks,
+                                                (const uchar*) res->ptr(),
+                                                (size_t) res->length()))))
   {
     null_value=1;
   }
@@ -3847,12 +3880,12 @@ static user_var_entry *get_variable(HASH *hash, LEX_STRING &name,
 {
   user_var_entry *entry;
 
-  if (!(entry = (user_var_entry*) hash_search(hash, (uchar*) name.str,
-					      name.length)) &&
+  if (!(entry = (user_var_entry*) my_hash_search(hash, (uchar*) name.str,
+                                                 name.length)) &&
       create_if_not_exists)
   {
     uint size=ALIGN_SIZE(sizeof(user_var_entry))+name.length+1+extra_size;
-    if (!hash_inited(hash))
+    if (!my_hash_inited(hash))
       return 0;
     if (!(entry = (user_var_entry*) my_malloc(size,MYF(MY_WME | ME_FATALERROR))))
       return 0;
@@ -3884,6 +3917,13 @@ static user_var_entry *get_variable(HASH *hash, LEX_STRING &name,
     }
   }
   return entry;
+}
+
+
+void Item_func_set_user_var::cleanup()
+{
+  Item_func::cleanup();
+  entry= NULL;
 }
 
 
@@ -4099,6 +4139,8 @@ double user_var_entry::val_real(my_bool *null_value)
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
     break;
+  default:
+    break;
   }
   return 0.0;					// Impossible
 }
@@ -4130,6 +4172,8 @@ longlong user_var_entry::val_int(my_bool *null_value) const
   case ROW_RESULT:
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
+    break;
+  default:
     break;
   }
   return LL(0);					// Impossible
@@ -4165,6 +4209,8 @@ String *user_var_entry::val_str(my_bool *null_value, String *str,
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
     break;
+  default:
+    break;
   }
   return(str);
 }
@@ -4192,6 +4238,8 @@ my_decimal *user_var_entry::val_decimal(my_bool *null_value, my_decimal *val)
   case ROW_RESULT:
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
+    break;
+  default:
     break;
   }
   return(val);
@@ -4390,6 +4438,15 @@ my_decimal *Item_func_set_user_var::val_decimal_result(my_decimal *val)
   check(TRUE);
   update();					// Store expression
   return entry->val_decimal(&null_value, val);
+}
+
+
+bool Item_func_set_user_var::is_null_result()
+{
+  DBUG_ASSERT(fixed == 1);
+  check(TRUE);
+  update();					// Store expression
+  return is_null();
 }
 
 
@@ -5434,7 +5491,10 @@ bool Item_func_match::fix_fields(THD *thd, Item **ref)
     if (item->type() == Item::REF_ITEM)
       args[i]= item= *((Item_ref *)item)->ref;
     if (item->type() != Item::FIELD_ITEM)
-      key=NO_SUCH_KEY;
+    {
+      my_error(ER_WRONG_ARGUMENTS, MYF(0), "AGAINST");
+      return TRUE;
+    }
   }
   /*
     Check that all columns come from the same table.
@@ -5698,8 +5758,8 @@ longlong Item_func_is_free_lock::val_int()
   }
   
   pthread_mutex_lock(&LOCK_user_locks);
-  ull= (User_level_lock *) hash_search(&hash_user_locks, (uchar*) res->ptr(),
-                                       (size_t) res->length());
+  ull= (User_level_lock *) my_hash_search(&hash_user_locks, (uchar*) res->ptr(),
+                                          (size_t) res->length());
   pthread_mutex_unlock(&LOCK_user_locks);
   if (!ull || !ull->locked)
     return 1;
@@ -5717,8 +5777,8 @@ longlong Item_func_is_used_lock::val_int()
     return 0;
   
   pthread_mutex_lock(&LOCK_user_locks);
-  ull= (User_level_lock *) hash_search(&hash_user_locks, (uchar*) res->ptr(),
-                                       (size_t) res->length());
+  ull= (User_level_lock *) my_hash_search(&hash_user_locks, (uchar*) res->ptr(),
+                                          (size_t) res->length());
   pthread_mutex_unlock(&LOCK_user_locks);
   if (!ull || !ull->locked)
     return 0;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -671,6 +671,11 @@ public:
   */
   bool using_real_indexes;
   
+  /*
+    Aggressively remove "scans" that do not have conditions on first
+    keyparts. Such scans are usable when doing partition pruning but not
+    regular range optimization.
+  */
   bool remove_jump_scans;
   
   /*
@@ -1154,7 +1159,6 @@ QUICK_RANGE_SELECT::QUICK_RANGE_SELECT(THD *thd, TABLE *table, uint key_nr,
   DBUG_ENTER("QUICK_RANGE_SELECT::QUICK_RANGE_SELECT");
 
   in_ror_merged_scan= 0;
-  sorted= 0;
   index= key_nr;
   head=  table;
   key_part_info= head->key_info[index].key_part;
@@ -1187,6 +1191,20 @@ QUICK_RANGE_SELECT::QUICK_RANGE_SELECT(THD *thd, TABLE *table, uint key_nr,
   else
     bitmap_init(&column_bitmap, bitmap, head->s->fields, FALSE);
   DBUG_VOID_RETURN;
+}
+
+
+void QUICK_RANGE_SELECT::need_sorted_output()
+{
+  if (!(mrr_flags & HA_MRR_SORTED))
+  {
+    /*
+      Native implementation can't produce sorted output. We'll have to
+      switch to default
+    */
+    mrr_flags |= HA_MRR_USE_DEFAULT_IMPL; 
+  }
+  mrr_flags |= HA_MRR_SORTED;
 }
 
 
@@ -1289,6 +1307,9 @@ QUICK_INDEX_MERGE_SELECT::~QUICK_INDEX_MERGE_SELECT()
     quick->file= NULL;
   quick_selects.delete_elements();
   delete pk_quick_select;
+  /* It's ok to call the next two even if they are already deinitialized */
+  end_read_record(&read_record);
+  free_io_cache(head);
   free_root(&alloc,MYF(0));
   DBUG_VOID_RETURN;
 }
@@ -2720,7 +2741,7 @@ bool prune_partitions(THD *thd, TABLE *table, Item *pprune_cond)
   PART_PRUNE_PARAM prune_param;
   MEM_ROOT alloc;
   RANGE_OPT_PARAM  *range_par= &prune_param.range_param;
-  my_bitmap_map *old_read_set, *old_write_set;
+  my_bitmap_map *old_sets[2];
 
   prune_param.part_info= part_info;
   init_sql_alloc(&alloc, thd->variables.range_alloc_block_size, 0);
@@ -2734,8 +2755,8 @@ bool prune_partitions(THD *thd, TABLE *table, Item *pprune_cond)
     DBUG_RETURN(FALSE);
   }
   
-  old_write_set= dbug_tmp_use_all_columns(table, table->write_set);
-  old_read_set=  dbug_tmp_use_all_columns(table, table->read_set);
+  dbug_tmp_use_all_columns(table, old_sets, 
+                           table->read_set, table->write_set);
   range_par->thd= thd;
   range_par->table= table;
   /* range_par->cond doesn't need initialization */
@@ -2825,8 +2846,7 @@ all_used:
   retval= FALSE; // some partitions are used
   mark_all_partitions_as_used(prune_param.part_info);
 end:
-  dbug_tmp_restore_column_map(table->write_set, old_write_set);
-  dbug_tmp_restore_column_map(table->read_set,  old_read_set);
+  dbug_tmp_restore_column_maps(table->read_set, table->write_set, old_sets);
   thd->no_errors=0;
   thd->mem_root= range_par->old_root;
   free_root(&alloc,MYF(0));			// Return memory & allocator
@@ -4827,7 +4847,7 @@ static TRP_RANGE *get_key_scans_params(PARAM *param, SEL_TREE *tree,
         tree->n_ror_scans++;
         tree->ror_scans_map.set_bit(idx);
       }
-      if (read_time > found_read_time && found_records != HA_POS_ERROR)
+      if (found_records != HA_POS_ERROR && read_time > found_read_time)
       {
         read_time=    found_read_time;
         best_records= found_records;
@@ -7511,7 +7531,7 @@ ha_rows check_quick_select(PARAM *param, uint idx, bool index_only,
                            uint *mrr_flags, uint *bufsize, COST_VECT *cost)
 {
   SEL_ARG_RANGE_SEQ seq;
-  RANGE_SEQ_IF seq_if = {sel_arg_range_seq_init, sel_arg_range_seq_next};
+  RANGE_SEQ_IF seq_if = {sel_arg_range_seq_init, sel_arg_range_seq_next, 0, 0};
   handler *file= param->table->file;
   ha_rows rows;
   uint keynr= param->real_keynr[idx];
@@ -7538,7 +7558,10 @@ ha_rows check_quick_select(PARAM *param, uint idx, bool index_only,
     param->is_ror_scan= FALSE;
   
   *mrr_flags= param->force_default_mrr? HA_MRR_USE_DEFAULT_IMPL: 0;
-  *mrr_flags|= HA_MRR_NO_ASSOCIATION;
+  /*
+    Pass HA_MRR_SORTED to see if MRR implementation can handle sorting.
+  */
+  *mrr_flags|= HA_MRR_NO_ASSOCIATION | HA_MRR_SORTED;
 
   bool pk_is_clustered= file->primary_key_is_clustered();
   if (index_only && 
@@ -8427,9 +8450,7 @@ int QUICK_RANGE_SELECT::reset()
   if (!mrr_buf_desc)
     empty_buf.buffer= empty_buf.buffer_end= empty_buf.end_of_used_area= NULL;
  
-  if (sorted)
-     mrr_flags |= HA_MRR_SORTED;
-  RANGE_SEQ_IF seq_funcs= {quick_range_seq_init, quick_range_seq_next};
+  RANGE_SEQ_IF seq_funcs= {quick_range_seq_init, quick_range_seq_next, 0, 0};
   error= file->multi_range_read_init(&seq_funcs, (void*)this, ranges.elements,
                                      mrr_flags, mrr_buf_desc? mrr_buf_desc: 
                                                               &empty_buf);
@@ -8503,65 +8524,6 @@ uint quick_range_seq_next(range_seq_t rseq, KEY_MULTI_RANGE *range)
   range->range_flag= cur->flag;
   ctx->cur++;
   return 0;
-}
-
-
-/*
-  MRR range sequence interface: array<QUICK_RANGE> impl: utility func for NDB
-
-  SYNOPSIS
-    mrr_persistent_flag_storage()
-      seq  Range sequence being traversed
-      idx  Number of range
-
-  DESCRIPTION
-    MRR/NDB implementation needs to store some bits for each range. This
-    function returns a reference to the "range_flag" associated with the
-    range number idx.
-
-    This function should be removed when we get a proper MRR/NDB 
-    implementation.
-
-  RETURN
-    Reference to range_flag associated with range number #idx
-*/
-
-uint16 &mrr_persistent_flag_storage(range_seq_t seq, uint idx)
-{
-  QUICK_RANGE_SEQ_CTX *ctx= (QUICK_RANGE_SEQ_CTX*)seq;
-  return ctx->first[idx]->flag;
-}
-
-
-/*
-  MRR range sequence interface: array<QUICK_RANGE> impl: utility func for NDB
-
-  SYNOPSIS
-    mrr_get_ptr_by_idx()
-      seq  Range sequence bening traversed
-      idx  Number of the range
-
-  DESCRIPTION
-    An extension of MRR range sequence interface needed by NDB: return the
-    data associated with the given range.
-
-    A proper MRR interface implementer is supposed to store and return
-    range-associated data. NDB stores number of the range instead. So this
-    is a helper function that translates range number to range associated
-    data.
-
-    This function does nothing, as currrently there is only one user of the
-    MRR interface - the quick range select code, and this user doesn't need
-    to use range-associated data.
-
-  RETURN
-    Reference to range-associated data
-*/
-
-char* &mrr_get_ptr_by_idx(range_seq_t seq, uint idx)
-{
-  static char *dummy;
-  return dummy;
 }
 
 
@@ -8680,7 +8642,7 @@ int QUICK_RANGE_SELECT::get_next_prefix(uint prefix_length,
     result= file->read_range_first(last_range->min_keypart_map ? &start_key : 0,
 				   last_range->max_keypart_map ? &end_key : 0,
                                    test(last_range->flag & EQ_RANGE),
-				   sorted);
+				   TRUE);
     if (last_range->flag == (UNIQUE_RANGE | EQ_RANGE))
       last_range= 0;			// Stop searching
 
@@ -11302,9 +11264,9 @@ print_key(KEY_PART *key_part, const uchar *key, uint used_length)
   String tmp(buff,sizeof(buff),&my_charset_bin);
   uint store_length;
   TABLE *table= key_part->field->table;
-  my_bitmap_map *old_write_set, *old_read_set;
-  old_write_set= dbug_tmp_use_all_columns(table, table->write_set);
-  old_read_set=  dbug_tmp_use_all_columns(table, table->read_set);
+  my_bitmap_map *old_sets[2];
+
+  dbug_tmp_use_all_columns(table, old_sets, table->read_set, table->write_set);
 
   for (; key < key_end; key+=store_length, key_part++)
   {
@@ -11330,8 +11292,7 @@ print_key(KEY_PART *key_part, const uchar *key, uint used_length)
     if (key+store_length < key_end)
       fputc('/',DBUG_FILE);
   }
-  dbug_tmp_restore_column_map(table->write_set, old_write_set);
-  dbug_tmp_restore_column_map(table->read_set, old_read_set);
+  dbug_tmp_restore_column_maps(table->read_set, table->write_set, old_sets);
 }
 
 
@@ -11339,18 +11300,16 @@ static void print_quick(QUICK_SELECT_I *quick, const key_map *needed_reg)
 {
   char buf[MAX_KEY/8+1];
   TABLE *table;
-  my_bitmap_map *old_read_map, *old_write_map;
+  my_bitmap_map *old_sets[2];
   DBUG_ENTER("print_quick");
   if (!quick)
     DBUG_VOID_RETURN;
   DBUG_LOCK_FILE;
 
   table= quick->head;
-  old_read_map=  dbug_tmp_use_all_columns(table, table->read_set);
-  old_write_map= dbug_tmp_use_all_columns(table, table->write_set);
+  dbug_tmp_use_all_columns(table, old_sets, table->read_set, table->write_set);
   quick->dbug_dump(0, TRUE);
-  dbug_tmp_restore_column_map(table->read_set, old_read_map);
-  dbug_tmp_restore_column_map(table->write_set, old_write_map);
+  dbug_tmp_restore_column_maps(table->read_set, table->write_set, old_sets);
 
   fprintf(DBUG_FILE,"other_keys: 0x%s:\n", needed_reg->print(buf));
 

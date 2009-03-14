@@ -31,7 +31,7 @@ DEFS =			-DEMBEDDED_LIBRARY -DMYSQL_SERVER \
 			@DEFS@ \
 			-DLIBDIR="\"$(MYSQLLIBdir)\"" \
 			-DPLUGINDIR="\"$(pkgplugindir)\""
-INCLUDES=		-I$(top_builddir)/include -I$(top_srcdir)/include \
+AM_CPPFLAGS =		-I$(top_srcdir)/include \
 			-I$(top_builddir)/sql -I$(top_srcdir)/sql \
 			-I$(top_srcdir)/sql/examples \
 			-I$(top_srcdir)/regex \
@@ -67,6 +67,7 @@ sqlsources = derror.cc field.cc field_conv.cc strfunc.cc filesort.cc \
 	sql_profile.cc \
 	sql_analyse.cc sql_base.cc sql_cache.cc sql_class.cc \
 	sql_crypt.cc sql_db.cc sql_delete.cc sql_error.cc sql_insert.cc \
+        sql_join_cache.cc \
 	sql_lex.cc sql_list.cc sql_manager.cc sql_map.cc \
 	scheduler.cc sql_connect.cc sql_parse.cc \
 	sql_prepare.cc sql_derived.cc sql_rename.cc \
@@ -81,7 +82,7 @@ sqlsources = derror.cc field.cc field_conv.cc strfunc.cc filesort.cc \
 	debug_sync.cc sql_tablespace.cc transaction.cc \
 	rpl_injector.cc my_user.c partition_info.cc \
 	sql_servers.cc ddl_blocker.cc si_objects.cc sql_audit.cc \
-        event_parse_data.cc mdl.cc \
+	event_parse_data.cc mdl.cc sql_signal.cc \
         rpl_handler.cc
 
 libmysqld_int_a_SOURCES= $(libmysqld_sources)
@@ -98,9 +99,9 @@ sql_yacc.cc sql_yacc.h: $(top_srcdir)/sql/sql_yacc.yy
 
 # The following libraries should be included in libmysqld.a
 INC_LIB=	$(top_builddir)/regex/libregex.a \
-		$(top_builddir)/mysys/libmysys.a \
-		$(top_builddir)/strings/libmystrings.a \
-		$(top_builddir)/dbug/libdbug.a \
+		$(top_builddir)/mysys/.libs/libmysys.a \
+		$(top_builddir)/strings/.libs/libmystrings.a \
+		$(top_builddir)/dbug/.libs/libdbug.a \
 		$(top_builddir)/vio/libvio.a \
                 @NDB_SCI_LIBS@ \
 		@mysql_plugin_libs@ \
@@ -239,6 +240,3 @@ link_sources:
 clean-local:
 	rm -f `echo $(sqlsources) $(libmysqlsources) $(sqlstoragesources) $(storagesources) | sed "s;\.lo;.c;g"`; \
 	rm -f client_settings.h
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

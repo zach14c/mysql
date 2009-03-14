@@ -13,7 +13,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-INCLUDES =		@ZLIB_INCLUDES@ -I$(top_builddir)/include \
+AM_CPPFLAGS =	  @ZLIB_INCLUDES@ \
 			-I$(top_srcdir)/include -I$(top_srcdir)/unittest/mytap 
 
 noinst_HEADERS = thr_template.c
@@ -21,11 +21,9 @@ noinst_HEADERS = thr_template.c
 noinst_PROGRAMS  = bitmap-t base64-t my_atomic-t lf-t waiting_threads-t
 
 LDADD 		= $(top_builddir)/unittest/mytap/libmytap.a \
-		  $(top_builddir)/mysys/libmysys.a \
-		  $(top_builddir)/dbug/libdbug.a \
-		  $(top_builddir)/strings/libmystrings.a
+		  $(top_builddir)/mysys/libmysyslt.la \
+		  $(top_builddir)/dbug/libdbuglt.la \
+		  $(top_builddir)/strings/libmystringslt.la \
+		  @ZLIB_LIBS@
 
 EXTRA_DIST       = CMakeLists.txt 
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

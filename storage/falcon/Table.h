@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -42,11 +42,18 @@ static const int PostCommit	= 128;
 
 static const int BL_SIZE			= 128;
 static const int FORMAT_HASH_SIZE	= 20;
-static const int SYNC_VERSIONS_SIZE	= 16;
-static const int SYNC_THAW_SIZE		= 16;
+static const int SYNC_VERSIONS_SIZE	= 32; // 16;
+static const int SYNC_THAW_SIZE		= 32; // 16;
 
 #define FOR_FIELDS(field,table)	{for (Field *field=table->fields; field; field = field->next){
-#define FOR_INDEXES(index,table)	{for (Index *index=table->indexes; index; index = index->next){
+
+// For all indexes, regardless of state
+
+#define FOR_ALL_INDEXES(index,table)	{for (Index *index=table->indexes; index; index = index->next){
+
+// For all indexes except incomplete or invalid
+
+#define FOR_INDEXES(index,table)	{for (Index *index=table->indexes; index; index = index->next){if (index->indexId == -1) continue;
 
 class Database;
 class Dbb;
@@ -96,9 +103,9 @@ public:
 	void		rebuildIndexes (Transaction *transaction, bool force = false);
 	void		collationChanged (Field *field);
 	void		validateBlobs (int optionMask);
-	void		cleanupRecords(RecordScavenge *recordScavenge);
 	void		rebuildIndex (Index *index, Transaction *transaction);
-	int			retireRecords (RecordScavenge *recordScavenge);
+	void		pruneRecords (RecordScavenge *recordScavenge);
+	void		retireRecords (RecordScavenge *recordScavenge);
 	int			countActiveRecords();
 	int			chartActiveRecords(int *chart);
 	bool		foreignKeyMember (ForeignKey *key);
@@ -139,7 +146,6 @@ public:
 	void		expungeBlob (Value *blob);
 	bool		duplicateBlob (Value *blob, int fieldId, Record *recordChain);
 	void		expungeRecord(int32 recordNumber);
-	void		expungeRecordVersions (RecordVersion *record, RecordScavenge *recordScavenge);
 	void		setView (View *view);
 	Index*		findIndex (const char *indexName);
 	virtual		PrivObject getPrivilegeType();
@@ -203,16 +209,14 @@ public:
 	
 	RecordVersion*	allocRecordVersion(Format* format, Transaction* transaction, Record* priorVersion);
 	Record*			allocRecord(int recordNumber, Stream* stream);
-	void			inventoryRecords(RecordScavenge* recordScavenge);
 	Format*			getCurrentFormat(void);
 	Record*			fetchForUpdate(Transaction* transaction, Record* record, bool usingIndex);
-//	RecordVersion*	lockRecord(Record* record, Transaction* transaction);
-	void			unlockRecord(int recordNumber);
-	void			unlockRecord(RecordVersion* record);
+	void			unlockRecord(int recordNumber, int verbMark);
+	void			unlockRecord(RecordVersion* record, int verbMark);
 
 	void			insert (Transaction *transaction, int count, Field **fields, Value **values);
 	uint			insert (Transaction *transaction, Stream *stream);
-	bool			insert (Record *record, Record *prior, int recordNumber);
+	bool			insertIntoTree (Record *record, Record *prior, int recordNumber);
 	void			insertIndexes(Transaction *transaction, RecordVersion *record);
 	
 	void			update (Transaction *transaction, Record *record, int numberFields, Field **fields, Value** values);
@@ -231,7 +235,6 @@ public:
 	Dbb				*dbb;
 	SyncObject		syncObject;
 	SyncObject		syncTriggers;
-	SyncObject		syncScavenge;
 	SyncObject		syncAlter;				// prevent concurrent Alter statements.
 	SyncObject		syncPriorVersions[SYNC_VERSIONS_SIZE];
 	SyncObject		syncThaw[SYNC_THAW_SIZE];
@@ -267,7 +270,6 @@ public:
 	bool			changed;
 	bool			eof;
 	bool			markedForDelete;
-	bool			activeVersions;
 	bool			alterIsActive;
 	bool			deleting;					// dropping or truncating.
 	int32			highWater;

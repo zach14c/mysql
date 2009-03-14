@@ -1,4 +1,5 @@
-/* Copyright (C) 2007 MySQL AB & Sanja Belkin
+/* Copyright (C) 2007 MySQL AB & Sanja Belkin,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -121,6 +122,8 @@ struct st_translog_buffer
     in case of flush by LSN it can be offset + size - TRANSLOG_PAGE_SIZE)
   */
   TRANSLOG_ADDRESS next_buffer_offset;
+  /* Previous buffer offset to detect it flush finish */
+  TRANSLOG_ADDRESS prev_buffer_offset;
   /*
      How much is written (or will be written when copy_to_buffer_in_progress
      become 0) to this buffer
@@ -135,12 +138,12 @@ struct st_translog_buffer
   /* list of waiting buffer ready threads */
   struct st_my_thread_var *waiting_flush;
   /*
-    Pointer on the buffer which overlap with this one (due to flush of
+    If true then previous buffer overlap with this one (due to flush of
     loghandler, the last page of that buffer is the same as the first page
     of this buffer) and have to be written first (because contain old
     content of page which present in both buffers)
   */
-  struct st_translog_buffer *overlay;
+  my_bool overlay;
   uint buffer_no;
   /*
     Lock for the buffer.
@@ -175,6 +178,14 @@ struct st_translog_buffer
     With file and offset it allow detect buffer changes
   */
   uint8 ver;
+
+  /*
+    When previous buffer sent to disk it set its address here to allow
+    to detect when it is done
+    (we have to keep it in this buffer to lock buffers only in one direction).
+  */
+  TRANSLOG_ADDRESS prev_sent_to_disk;
+  pthread_cond_t prev_sent_to_disk_cond;
 };
 
 
@@ -608,11 +619,11 @@ static LOG_DESC INIT_LOGREC_PREPARE_WITH_UNDO_PURGE=
 
 static LOG_DESC INIT_LOGREC_COMMIT=
 {LOGRECTYPE_FIXEDLENGTH, 0, 0, NULL,
- NULL, NULL, 0, "commit", LOGREC_IS_GROUP_ITSELF, NULL,
+ write_hook_for_commit, NULL, 0, "commit", LOGREC_IS_GROUP_ITSELF, NULL,
  NULL};
 
 static LOG_DESC INIT_LOGREC_COMMIT_WITH_UNDO_PURGE=
-{LOGRECTYPE_PSEUDOFIXEDLENGTH, 5, 5, NULL, NULL, NULL, 1,
+{LOGRECTYPE_PSEUDOFIXEDLENGTH, 5, 5, NULL, write_hook_for_commit, NULL, 1,
  "commit_with_undo_purge", LOGREC_IS_GROUP_ITSELF, NULL, NULL};
 
 static LOG_DESC INIT_LOGREC_CHECKPOINT=
@@ -674,6 +685,10 @@ static LOG_DESC INIT_LOGREC_REDO_BITMAP_NEW_PAGE=
 static LOG_DESC INIT_LOGREC_IMPORTED_TABLE=
 {LOGRECTYPE_VARIABLE_LENGTH, 0, 0, NULL, NULL, NULL, 0,
  "imported_table", LOGREC_IS_GROUP_ITSELF, NULL, NULL};
+
+static LOG_DESC INIT_LOGREC_DEBUG_INFO=
+{LOGRECTYPE_VARIABLE_LENGTH, 0, 0, NULL, NULL, NULL, 0,
+ "info", LOGREC_IS_GROUP_ITSELF, NULL, NULL};
 
 const myf log_write_flags= MY_WME | MY_NABP | MY_WAIT_IF_FULL;
 
@@ -764,6 +779,9 @@ void translog_table_init()
     INIT_LOGREC_REDO_BITMAP_NEW_PAGE;
   log_record_type_descriptor[LOGREC_IMPORTED_TABLE]=
     INIT_LOGREC_IMPORTED_TABLE;
+  log_record_type_descriptor[LOGREC_DEBUG_INFO]=
+    INIT_LOGREC_DEBUG_INFO;
+
   for (i= LOGREC_FIRST_FREE; i < LOGREC_NUMBER_OF_TYPES; i++)
     log_record_type_descriptor[i].rclass= LOGRECTYPE_NOT_ALLOWED;
 #ifndef DBUG_OFF
@@ -1394,18 +1412,21 @@ LSN translog_get_file_max_lsn_stored(uint32 file)
   SYNOPSIS
     translog_buffer_init()
     buffer               The buffer to initialize
+    num                  Number of this buffer
 
   RETURN
     0  OK
     1  Error
 */
 
-static my_bool translog_buffer_init(struct st_translog_buffer *buffer)
+static my_bool translog_buffer_init(struct st_translog_buffer *buffer, int num)
 {
   DBUG_ENTER("translog_buffer_init");
   buffer->prev_last_lsn= buffer->last_lsn= LSN_IMPOSSIBLE;
   DBUG_PRINT("info", ("last_lsn  and prev_last_lsn set to 0  buffer: 0x%lx",
                       (ulong) buffer));
+
+  buffer->buffer_no= (uint8) num;
   /* This Buffer File */
   buffer->file= NULL;
   buffer->overlay= 0;
@@ -1420,10 +1441,28 @@ static my_bool translog_buffer_init(struct st_translog_buffer *buffer)
   buffer->copy_to_buffer_in_progress= 0;
   /* list of waiting buffer ready threads */
   buffer->waiting_flush= 0;
-  /* lock for the buffer. Current buffer also lock the handler */
-  if (pthread_mutex_init(&buffer->mutex, MY_MUTEX_INIT_FAST))
+  /*
+    Buffers locked by fallowing mutex. As far as buffers create logical
+    circle (after last buffer goes first) it trigger false alarm of deadlock
+    detect system, so we remove check of deadlock for this buffers. In deed
+    all mutex locks concentrated around current buffer except flushing
+    thread (but it is only one thread). One thread can't take more then
+    2 buffer locks at once. So deadlock is impossible here.
+
+    To prevent false alarm of dead lock detection we switch dead lock
+    detection for one buffer in the middle of the buffers chain. Excluding
+    only one of eight buffers from deadlock detection hardly can hide other
+    possible problems which include this mutexes.
+  */
+  if (my_pthread_mutex_init(&buffer->mutex, MY_MUTEX_INIT_FAST,
+                            "translog_buffer->mutex",
+                            (num == TRANSLOG_BUFFERS_NO - 2 ?
+                             MYF_NO_DEADLOCK_DETECTION : 0)) ||
+      pthread_cond_init(&buffer->prev_sent_to_disk_cond, 0))
     DBUG_RETURN(1);
   buffer->is_closing_buffer= 0;
+  buffer->prev_sent_to_disk= LSN_IMPOSSIBLE;
+  buffer->prev_buffer_offset= LSN_IMPOSSIBLE;
   buffer->ver= 0;
   DBUG_RETURN(0);
 }
@@ -1481,7 +1520,9 @@ static void translog_file_init(TRANSLOG_FILE *file, uint32 number,
   pagecache_file_init(file->handler, &translog_page_validator,
                       &translog_dummy_callback,
                       &translog_dummy_write_failure,
-                      maria_flush_log_for_page_none, file);
+                      maria_flush_log_for_page_none,
+                      &translog_dummy_callback,
+                      file);
   file->number= number;
   file->was_recovered= 0;
   file->is_sync= is_sync;
@@ -2100,10 +2141,12 @@ static my_bool translog_buffer_next(TRANSLOG_ADDRESS *horizon,
   {
     translog_lock_assert_owner();
     translog_start_buffer(new_buffer, cursor, new_buffer_no);
+    new_buffer->prev_buffer_offset=
+      log_descriptor.buffers[old_buffer_no].offset;
+    new_buffer->prev_last_lsn=
+      BUFFER_MAX_LSN(log_descriptor.buffers + old_buffer_no);
   }
   log_descriptor.buffers[old_buffer_no].next_buffer_offset= new_buffer->offset;
-  new_buffer->prev_last_lsn=
-    BUFFER_MAX_LSN(log_descriptor.buffers + old_buffer_no);
   DBUG_PRINT("info", ("prev_last_lsn set to (%lu,0x%lx)  buffer: 0x%lx",
                       LSN_IN_PARTS(new_buffer->prev_last_lsn),
                       (ulong) new_buffer));
@@ -2117,14 +2160,16 @@ static my_bool translog_buffer_next(TRANSLOG_ADDRESS *horizon,
 
   SYNOPSIS
     translog_set_sent_to_disk()
-    lsn                  LSN to assign
-    in_buffers           to assign to in_buffers_only
+    buffer               buffer which we have sent to disk
 
   TODO: use atomic operations if possible (64bit architectures?)
 */
 
-static void translog_set_sent_to_disk(LSN lsn, TRANSLOG_ADDRESS in_buffers)
+static void translog_set_sent_to_disk(struct st_translog_buffer *buffer)
 {
+  LSN lsn= buffer->last_lsn;
+  TRANSLOG_ADDRESS in_buffers= buffer->next_buffer_offset;
+
   DBUG_ENTER("translog_set_sent_to_disk");
   pthread_mutex_lock(&log_descriptor.sent_to_disk_lock);
   DBUG_PRINT("enter", ("lsn: (%lu,0x%lx) in_buffers: (%lu,0x%lx)  "
@@ -2415,6 +2460,51 @@ static uint16 translog_get_total_chunk_length(uchar *page, uint16 offset)
   }
 }
 
+/*
+  @brief Waits previous buffer flush finish
+
+  @param buffer          buffer for check
+
+  @retval 0 previous buffer flushed and this thread have to flush this one
+  @retval 1 previous buffer flushed and this buffer flushed by other thread too
+*/
+
+my_bool translog_prev_buffer_flush_wait(struct st_translog_buffer *buffer)
+{
+  TRANSLOG_ADDRESS offset= buffer->offset;
+  TRANSLOG_FILE *file= buffer->file;
+  uint8 ver= buffer->ver;
+  DBUG_ENTER("translog_prev_buffer_flush_wait");
+  DBUG_PRINT("enter", ("buffer: 0x%lx  #%u  offset: (%lu,0x%lx)  "
+                       "prev sent: (%lu,0x%lx) prev offset: (%lu,0x%lx)",
+                       (ulong) buffer, (uint) buffer->buffer_no,
+                       LSN_IN_PARTS(buffer->offset),
+                       LSN_IN_PARTS(buffer->prev_sent_to_disk),
+                       LSN_IN_PARTS(buffer->prev_buffer_offset)));
+  translog_buffer_lock_assert_owner(buffer);
+  /*
+    if prev_sent_to_disk == LSN_IMPOSSIBLE then
+    prev_buffer_offset should be LSN_IMPOSSIBLE
+    because it means that this buffer was never used
+  */
+  DBUG_ASSERT((buffer->prev_sent_to_disk == LSN_IMPOSSIBLE &&
+               buffer->prev_buffer_offset == LSN_IMPOSSIBLE) ||
+              buffer->prev_sent_to_disk != LSN_IMPOSSIBLE);
+  if (buffer->prev_buffer_offset != buffer->prev_sent_to_disk)
+  {
+    do {
+      pthread_cond_wait(&buffer->prev_sent_to_disk_cond, &buffer->mutex);
+      if (buffer->file != file || buffer->offset != offset ||
+          buffer->ver != ver)
+      {
+        translog_buffer_unlock(buffer);
+        DBUG_RETURN(1); /* some the thread flushed the buffer already */
+      }
+    } while(buffer->prev_buffer_offset != buffer->prev_sent_to_disk);
+  }
+  DBUG_RETURN(0);
+}
+
 
 /*
   Flush given buffer
@@ -2460,39 +2550,8 @@ static my_bool translog_buffer_flush(struct st_translog_buffer *buffer)
   if (buffer->file != file || buffer->offset != offset || buffer->ver != ver)
     DBUG_RETURN(0); /* some the thread flushed the buffer already */
 
-  if (buffer->overlay && buffer->overlay->file == buffer->file &&
-      cmp_translog_addr(buffer->overlay->offset + buffer->overlay->size,
-                        buffer->offset) > 0)
-  {
-    /*
-      This can't happen for normal translog_flush,
-      only during destroying the loghandler
-    */
-    struct st_translog_buffer *overlay= buffer->overlay;
-    TRANSLOG_ADDRESS buffer_offset= buffer->offset;
-    TRANSLOG_FILE *fl= buffer->file;
-    uint8 ver= buffer->ver;
-    translog_buffer_unlock(buffer);
-    translog_buffer_lock(overlay);
-    /* rechecks under mutex protection that overlay is still our overlay */
-    if (buffer->overlay->file == fl &&
-        cmp_translog_addr(buffer->overlay->offset + buffer->overlay->size,
-                          buffer_offset) > 0)
-    {
-      translog_wait_for_buffer_free(overlay);
-    }
-    translog_buffer_unlock(overlay);
-    translog_buffer_lock(buffer);
-    if (buffer->file != fl || buffer_offset != buffer->offset ||
-        ver != buffer->ver)
-    {
-      /*
-        This means that somebody else flushed the buffer while we was
-        waiting for overlay then for locking buffer again.
-      */
-      DBUG_RETURN(0);
-    }
-  }
+  if (buffer->overlay && translog_prev_buffer_flush_wait(buffer))
+    DBUG_RETURN(0); /* some the thread flushed the buffer already */
 
   /*
     Send page by page in the pagecache what we are going to write on the
@@ -2553,10 +2612,34 @@ static my_bool translog_buffer_flush(struct st_translog_buffer *buffer)
   file->is_sync= 0;
 
   if (LSN_OFFSET(buffer->last_lsn) != 0)    /* if buffer->last_lsn is set */
-    translog_set_sent_to_disk(buffer->last_lsn,
-                              buffer->next_buffer_offset);
+  {
+    if (translog_prev_buffer_flush_wait(buffer))
+      DBUG_RETURN(0); /* some the thread flushed the buffer already */
+    translog_set_sent_to_disk(buffer);
+  }
   else
     translog_set_only_in_buffers(buffer->next_buffer_offset);
+
+  /* say to next buffer that we are finished */
+  {
+    struct st_translog_buffer *next_buffer=
+      log_descriptor.buffers + ((buffer->buffer_no + 1) % TRANSLOG_BUFFERS_NO);
+    if (likely(translog_status == TRANSLOG_OK)){
+      translog_buffer_lock(next_buffer);
+      next_buffer->prev_sent_to_disk= buffer->offset;
+      translog_buffer_unlock(next_buffer);
+      pthread_cond_broadcast(&next_buffer->prev_sent_to_disk_cond);
+    }
+    else
+    {
+      /*
+        It is shutdown =>
+          1) there is only one thread
+          2) mutexes of other buffers can be destroyed => we can't use them
+      */
+      next_buffer->prev_sent_to_disk= buffer->offset;
+    }
+  }
   /* Free buffer */
   buffer->file= NULL;
   buffer->overlay= 0;
@@ -3498,9 +3581,8 @@ my_bool translog_init_with_table(const char *directory,
   /* Buffers for log writing */
   for (i= 0; i < TRANSLOG_BUFFERS_NO; i++)
   {
-    if (translog_buffer_init(log_descriptor.buffers + i))
+    if (translog_buffer_init(log_descriptor.buffers + i, i))
       goto err;
-    log_descriptor.buffers[i].buffer_no= (uint8) i;
     DBUG_PRINT("info", ("translog_buffer buffer #%u: 0x%lx",
                         i, (ulong) log_descriptor.buffers + i));
   }
@@ -4640,6 +4722,7 @@ static my_bool translog_advance_pointer(int pages, uint16 last_page_data)
     }
     translog_start_buffer(new_buffer, &log_descriptor.bc, new_buffer_no);
     old_buffer->next_buffer_offset= new_buffer->offset;
+    new_buffer->prev_buffer_offset= old_buffer->offset;
     translog_buffer_unlock(old_buffer);
     offset-= min_offset;
   }
@@ -7345,6 +7428,10 @@ static void translog_force_current_buffer_to_finish()
   log_descriptor.bc.buffer->offset= new_buff_beginning;
   log_descriptor.bc.write_counter= write_counter;
   log_descriptor.bc.previous_offset= previous_offset;
+  new_buffer->prev_last_lsn= BUFFER_MAX_LSN(old_buffer);
+  DBUG_PRINT("info", ("prev_last_lsn set to (%lu,0x%lx)  buffer: 0x%lx",
+                      LSN_IN_PARTS(new_buffer->prev_last_lsn),
+                      (ulong) new_buffer));
 
   /*
     Advances this log pointer, increases writers and let other threads to
@@ -7355,7 +7442,7 @@ static void translog_force_current_buffer_to_finish()
     log_descriptor.bc.ptr+= current_page_fill;
     log_descriptor.bc.buffer->size= log_descriptor.bc.current_page_fill=
       current_page_fill;
-    new_buffer->overlay= old_buffer;
+    new_buffer->overlay= 1;
   }
   else
     translog_new_page_header(&log_descriptor.horizon, &log_descriptor.bc);
@@ -7428,8 +7515,8 @@ static void translog_force_current_buffer_to_finish()
     memcpy(new_buffer->buffer, data, current_page_fill);
   }
   old_buffer->next_buffer_offset= new_buffer->offset;
-
   translog_buffer_lock(new_buffer);
+  new_buffer->prev_buffer_offset= old_buffer->offset;
   translog_buffer_decrease_writers(new_buffer);
   translog_buffer_unlock(new_buffer);
 
@@ -8226,6 +8313,46 @@ void translog_set_file_size(uint32 size)
   DBUG_VOID_RETURN;
 }
 
+
+/**
+   Write debug information to log if we EXTRA_DEBUG is enabled
+*/
+
+my_bool translog_log_debug_info(TRN *trn __attribute__((unused)),
+                                enum translog_debug_info_type type
+                                __attribute__((unused)),
+                                uchar *info __attribute__((unused)),
+                                size_t length __attribute__((unused)))
+{
+#ifdef EXTRA_DEBUG
+  LEX_CUSTRING log_array[TRANSLOG_INTERNAL_PARTS + 2];
+  uchar debug_type;
+  LSN lsn;
+
+  if (!trn)
+  {
+    /*
+      We can't log the current transaction because we don't have
+      an active transaction. Use a temporary transaction object instead
+    */
+    trn= &dummy_transaction_object;
+  }
+  debug_type= (uchar) type;
+  log_array[TRANSLOG_INTERNAL_PARTS + 0].str= &debug_type;
+  log_array[TRANSLOG_INTERNAL_PARTS + 0].length= 1;
+  log_array[TRANSLOG_INTERNAL_PARTS + 1].str= info;
+  log_array[TRANSLOG_INTERNAL_PARTS + 1].length= length;
+  return translog_write_record(&lsn, LOGREC_DEBUG_INFO,
+                               trn, NULL,
+                               (translog_size_t) (1+ length),
+                               sizeof(log_array)/sizeof(log_array[0]),
+                               log_array, NULL, NULL);
+#else
+  return 0;
+#endif
+}
+
+
 #ifdef MARIA_DUMP_LOG
 #include <my_getopt.h>
 extern void translog_example_table_init();
@@ -8582,7 +8709,7 @@ static void dump_datapage(uchar *buffer)
     }
     tfile.number= file;
     tfile.handler.file= handler;
-    pagecache_file_init(tfile.handler, NULL, NULL, NULL, NULL, NULL);
+    pagecache_file_init(tfile.handler, NULL, NULL, NULL, NULL, NULL, NULL);
     tfile.was_recovered= 0;
     tfile.is_sync= 1;
     if (translog_check_sector_protection(buffer, &tfile))

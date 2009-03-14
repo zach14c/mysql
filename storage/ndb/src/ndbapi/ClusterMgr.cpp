@@ -482,8 +482,11 @@ ClusterMgr::execNF_COMPLETEREP(const Uint32 * theData){
   const NodeId nodeId = nfComp->failedNodeId;
   assert(nodeId > 0 && nodeId < MAX_NDB_NODES);
   
-  theFacade.ReportNodeFailureComplete(nodeId);
-  theNodes[nodeId].nfCompleteRep = true;
+  if (theNodes[nodeId].nfCompleteRep == false)
+  {
+    theFacade.ReportNodeFailureComplete(nodeId);
+    theNodes[nodeId].nfCompleteRep = true;
+  }
 }
 
 void
@@ -553,8 +556,7 @@ ClusterMgr::reportNodeFailed(NodeId nodeId, bool disconnect){
     theFacade.ReportNodeDead(nodeId);
   }
   
-  theNode.nfCompleteRep = false;
-  if(noOfAliveNodes == 0)
+  if (noOfConnectedNodes == 0)
   {
     if (!global_flag_skip_invalidate_cache &&
         theFacade.m_globalDictCache)
@@ -565,6 +567,10 @@ ClusterMgr::reportNodeFailed(NodeId nodeId, bool disconnect){
       m_connect_count ++;
       m_cluster_state = CS_waiting_for_clean_cache;
     }
+  }
+  theNode.nfCompleteRep = false;
+  if(noOfAliveNodes == 0)
+  {
     NFCompleteRep rep;
     for(Uint32 i = 1; i<MAX_NDB_NODES; i++){
       if(theNodes[i].defined && theNodes[i].nfCompleteRep == false){

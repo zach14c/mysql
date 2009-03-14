@@ -1,4 +1,5 @@
 #include "../mysql_priv.h"
+#include "../rpl_mi.h"
 
 #include "image_info.h"
 #include "be_native.h"
@@ -50,6 +51,7 @@ Image_info::Image_info()
 #endif
 
   bzero(m_snap, sizeof(m_snap));
+  bzero(&master_pos, sizeof(master_pos));
 }
 
 Image_info::~Image_info()
@@ -169,8 +171,7 @@ int Image_info::add_snapshot(Snapshot_info &snap)
 {
   uint num= st_bstream_image_header::snap_count++;
 
-  // The limit of 256 snapshots is imposed by backup stream format.  
-  if (num > 256)
+  if (num > MAX_SNAP_COUNT)
     return -1;
   
   m_snap[num]= &snap;
@@ -273,9 +274,9 @@ Image_info::Dbobj* Image_info::get_db_object(uint db_num, ulong pos) const
 /**
   Add table to the catalogue.
 
-  @param[in]  db  table's database - this database must already be in 
+  @param[in] db   table's database - this database must already be in 
                   the catalogue
-  @param[in] name name of the table
+  @param[in] table_name name of the table
   @param[in] snap snapshot containing table's data
   @param[in] pos  table's position within the snapshot
 
@@ -285,7 +286,7 @@ Image_info::Dbobj* Image_info::get_db_object(uint db_num, ulong pos) const
   @note The snapshot is added to the catalogue if it was not there already.
 
   @see @c get_table().
- */
+*/
 Image_info::Table* 
 Image_info::add_table(Db &db, const ::String &table_name, 
                       Snapshot_info &snap, ulong pos)
@@ -383,6 +384,14 @@ Image_info::Obj *find_obj(const Image_info &info,
     return NULL;
   }
 }
+
+void Image_info::save_master_pos(const ::Master_info &mi)
+{
+  // store binlog coordinates
+  master_pos.pos=  static_cast<unsigned long int>(mi.master_log_pos);
+  master_pos.file= const_cast<char*>(mi.master_log_name);
+}
+
 
 } // backup namespace
 

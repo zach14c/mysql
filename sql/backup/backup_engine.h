@@ -45,7 +45,7 @@ class Restore_driver;
 
 class Engine
 {
- public:
+public:
 
   virtual ~Engine() {}
 
@@ -76,7 +76,7 @@ class Engine
   /**
    Create a restore driver.
 
-   Given a list of tables to be restored, create instance of restore
+   @brief Given a list of tables to be restored, create instance of restore
    driver which will restore these tables from a backup image.
 
    The @c flags parameter gives additional information about
@@ -84,10 +84,10 @@ class Engine
    @c Driver::FULL flag if the driver is supposed to replace all the
    tables stored in a given storage engine with the restored ones.
 
-   @param  version  (in) version of the backup image.
-   @param  flags    (in) additional info about restore operation.
-   @param  tables   (in) list of tables to be restored.
-   @param  drv      (out) pointer to restore driver instance.
+   @param[in]  version  version of the backup image.
+   @param[in]  flags    additional info about restore operation.
+   @param[in]  tables   list of tables to be restored.
+   @param[out] drv      pointer to restore driver instance.
 
    @return  Error code or @c OK on success.
   */
@@ -131,7 +131,7 @@ class Engine
 
 class Driver
 {
- public:
+public:
 
   /// Types of backup/restore operations.
   enum enum_flags { FULL    =0x1,  ///< concerns all tables from given storage engine
@@ -191,7 +191,7 @@ class Driver
   /// Unknown size constant used for backup image size estimates.
   static const size_t UNKNOWN_SIZE;
 
- protected:
+protected:
 
   /// Refers to the list of tables passed when the driver was created.
   const Table_list &m_tables;
@@ -257,8 +257,9 @@ class Driver
 
 class Backup_driver: public Driver
 {
- public:
+public:
 
+  /// Constructor
   Backup_driver(const Table_list &tables) :Driver(tables) {};
 
   virtual ~Backup_driver() {}; // We will derive from this class.
@@ -463,8 +464,9 @@ class Backup_driver: public Driver
 
 class Restore_driver: public Driver
 {
- public:
+public:
 
+  /// Constructor
   Restore_driver(const Table_list &tables) :Driver(tables) {};
   virtual ~Restore_driver() {};
 

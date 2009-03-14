@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2004 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -124,6 +124,9 @@ static my_bool show_plugins(THD *thd, plugin_ref plugin,
     break;
   case PLUGIN_IS_READY:
     table->field[2]->store(STRING_WITH_LEN("ACTIVE"), cs);
+    break;
+  case PLUGIN_IS_DISABLED:
+    table->field[2]->store(STRING_WITH_LEN("DISABLED"), cs);
     break;
   default:
     DBUG_ASSERT(0);
@@ -604,7 +607,7 @@ mysqld_show_create(THD *thd, TABLE_LIST *table_list)
 bool mysqld_show_create_db(THD *thd, char *dbname,
                            HA_CREATE_INFO *create_info)
 {
-  char buff[2048];
+  char buff[2048], orig_dbname[NAME_LEN];
   String buffer(buff, sizeof(buff), system_charset_info);
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   Security_context *sctx= thd->security_ctx;
@@ -612,6 +615,10 @@ bool mysqld_show_create_db(THD *thd, char *dbname,
 #endif
   Protocol *protocol=thd->protocol;
   DBUG_ENTER("mysql_show_create_db");
+
+  strcpy(orig_dbname, dbname);
+  if (lower_case_table_names && dbname != any_db)
+    my_casedn_str(files_charset_info, dbname);
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   if (test_all_bits(sctx->master_access, DB_ACLS))
@@ -629,7 +636,7 @@ bool mysqld_show_create_db(THD *thd, char *dbname,
   }
 #endif
 
-  if (store_db_create_info(thd, dbname, &buffer, create_info))
+  if (store_db_create_info(thd, dbname, &buffer, create_info, orig_dbname))
   {
     /* 
       This assumes that the only reason for which store_db_create_info()
@@ -648,7 +655,7 @@ bool mysqld_show_create_db(THD *thd, char *dbname,
     DBUG_RETURN(TRUE);
 
   protocol->prepare_for_resend();
-  protocol->store(dbname, strlen(dbname), system_charset_info);
+  protocol->store(orig_dbname, strlen(orig_dbname), system_charset_info);
   protocol->store(buffer.ptr(), buffer.length(), buffer.charset());
 
   if (protocol->write())
@@ -699,6 +706,34 @@ mysqld_list_fields(THD *thd, TABLE_LIST *table_list, const char *wild)
   DBUG_VOID_RETURN;
 }
 
+
+int
+mysqld_dump_create_info(THD *thd, TABLE_LIST *table_list, int fd)
+{
+  Protocol *protocol= thd->protocol;
+  String *packet= protocol->storage_packet();
+  DBUG_ENTER("mysqld_dump_create_info");
+  DBUG_PRINT("enter",("table: %s",table_list->table->s->table_name.str));
+
+  protocol->prepare_for_resend();
+  if (store_create_info(thd, table_list, packet, NULL,
+                        FALSE /* show_database */))
+    DBUG_RETURN(-1);
+
+  if (fd < 0)
+  {
+    if (protocol->write())
+      DBUG_RETURN(-1);
+    protocol->flush();
+  }
+  else
+  {
+    if (my_write(fd, (const uchar*) packet->ptr(), packet->length(),
+		 MYF(MY_WME)))
+      DBUG_RETURN(-1);
+  }
+  DBUG_RETURN(0);
+}
 
 /*
   Go through all character combinations and ensure that sql_lex.cc can
@@ -862,6 +897,7 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
 {
   bool has_default;
   bool has_now_default;
+  enum enum_field_types field_type= field->type();
 
   /*
      We are using CURRENT_TIMESTAMP instead of NOW because it is
@@ -870,7 +906,7 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
   has_now_default= (timestamp_field == field &&
                     field->unireg_check != Field::TIMESTAMP_UN_FIELD);
 
-  has_default= (field->type() != FIELD_TYPE_BLOB &&
+  has_default= (field_type != FIELD_TYPE_BLOB &&
                 !(field->flags & NO_DEFAULT_VALUE_FLAG) &&
                 field->unireg_check != Field::NEXT_NUMBER &&
                 !((thd->variables.sql_mode & (MODE_MYSQL323 | MODE_MYSQL40))
@@ -885,7 +921,19 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
     {                                             // Not null by default
       char tmp[MAX_FIELD_WIDTH];
       String type(tmp, sizeof(tmp), field->charset());
-      field->val_str(&type);
+      if (field_type == MYSQL_TYPE_BIT)
+      {
+        longlong dec= field->val_int();
+        char *ptr= longlong2str(dec, tmp + 2, 2);
+        uint32 length= (uint32) (ptr - tmp);
+        tmp[0]= 'b';
+        tmp[1]= '\'';        
+        tmp[length]= '\'';
+        type.length(length + 1);
+        quoted= 0;
+      }
+      else
+        field->val_str(&type);
       if (type.length())
       {
         String def_val;
@@ -1414,7 +1462,7 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
 */
 
 bool store_db_create_info(THD *thd, const char *dbname, String *buffer,
-                          HA_CREATE_INFO *create_info)
+                          HA_CREATE_INFO *create_info, const char* orig_dbname)
 {
   HA_CREATE_INFO create;
   uint create_options = create_info ? create_info->options : 0;
@@ -1442,7 +1490,7 @@ bool store_db_create_info(THD *thd, const char *dbname, String *buffer,
   if (create_options & HA_LEX_CREATE_IF_NOT_EXISTS)
     buffer->append(STRING_WITH_LEN("/*!32312 IF NOT EXISTS*/ "));
 
-  append_identifier(thd, buffer, dbname, strlen(dbname));
+  append_identifier(thd, buffer, orig_dbname, strlen(orig_dbname));
 
   if (create.default_table_charset)
   {
@@ -1718,6 +1766,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
         if ((thd_info->db=tmp->db))             // Safe test
           thd_info->db=thd->strdup(thd_info->db);
         thd_info->command=(int) tmp->command;
+        pthread_mutex_lock(&tmp->LOCK_delete);
         if ((mysys_var= tmp->mysys_var))
           pthread_mutex_lock(&mysys_var->mutex);
         thd_info->proc_info= (char*) (tmp->killed == THD::KILL_CONNECTION? "Killed" : 0);
@@ -1736,7 +1785,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
 #endif
         if (mysys_var)
           pthread_mutex_unlock(&mysys_var->mutex);
-
+        pthread_mutex_unlock(&tmp->LOCK_delete);
         thd_info->start_time= tmp->start_time;
         thd_info->query=0;
         if (tmp->query)
@@ -1835,6 +1884,7 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
         table->field[3]->set_notnull();
       }
 
+      pthread_mutex_lock(&tmp->LOCK_delete);
       if ((mysys_var= tmp->mysys_var))
         pthread_mutex_lock(&mysys_var->mutex);
       /* COMMAND */
@@ -1868,6 +1918,7 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
 
       if (mysys_var)
         pthread_mutex_unlock(&mysys_var->mutex);
+      pthread_mutex_unlock(&tmp->LOCK_delete);
 
       /* INFO */
       if (tmp->query)
@@ -2134,7 +2185,6 @@ static bool show_status_array(THD *thd, const char *wild,
         const char *pos, *end;                  // We assign a lot of const's
 
         pthread_mutex_lock(&LOCK_global_system_variables);
-
         if (show_type == SHOW_SYS)
         {
           sys_var *var= ((sys_var *) value);
@@ -2217,11 +2267,10 @@ static bool show_status_array(THD *thd, const char *wild,
           DBUG_ASSERT(0);
           break;
         }
+        pthread_mutex_unlock(&LOCK_global_system_variables);
         table->field[1]->store(pos, (uint32) (end - pos), charset);
         thd->count_cuted_fields= CHECK_FIELD_IGNORE;
         table->field[1]->set_notnull();
-
-        pthread_mutex_unlock(&LOCK_global_system_variables);
 
         if (schema_table_store_record(thd, table))
         {
@@ -3039,12 +3088,8 @@ uint get_table_open_method(TABLE_LIST *tables,
    Acquire high priority share metadata lock on a table.
 
    @param thd            Thread context.
-   @param mdl_lock_data  Pointer to memory to be used for MDL_LOCK_DATA
+   @param mdl_request    Pointer to memory to be used for MDL_request
                          object for a lock request.
-   @param mdlkey         Pointer to the buffer for key for the lock request
-                         (should be at least strlen(db) + strlen(name) + 2
-                         bytes, or, if the lengths are not known,
-                         MAX_MDLKEY_LENGTH)
    @param table          Table list element for the table
 
    @note This is an auxiliary function to be used in cases when we want to
@@ -3058,23 +3103,23 @@ uint get_table_open_method(TABLE_LIST *tables,
 */
 
 static bool
-acquire_high_prio_shared_mdl_lock(THD *thd, MDL_LOCK_DATA *mdl_lock_data,
-                                  char *mdlkey, TABLE_LIST *table)
+acquire_high_prio_shared_mdl_lock(THD *thd, MDL_request *mdl_request,
+                                  TABLE_LIST *table)
 {
   bool retry;
 
-  mdl_init_lock(mdl_lock_data, mdlkey, 0, table->db, table->table_name);
-  table->mdl_lock_data= mdl_lock_data;
-  mdl_add_lock(&thd->mdl_context, mdl_lock_data);
-  mdl_set_lock_type(mdl_lock_data, MDL_SHARED_HIGH_PRIO);
+  mdl_request->init(0, table->db, table->table_name);
+  table->mdl_request= mdl_request;
+  thd->mdl_context.add_request(mdl_request);
+  mdl_request->set_type(MDL_SHARED_HIGH_PRIO);
 
   while (1)
   {
-    if (mdl_acquire_shared_lock(&thd->mdl_context, mdl_lock_data, &retry))
+    if (thd->mdl_context.acquire_shared_lock(mdl_request, &retry))
     {
-      if (!retry || mdl_wait_for_locks(&thd->mdl_context))
+      if (!retry || thd->mdl_context.wait_for_locks())
       {
-        mdl_remove_all_locks(&thd->mdl_context);
+        thd->mdl_context.remove_all_requests();
         return TRUE;
       }
       continue;
@@ -3116,8 +3161,7 @@ static int fill_schema_table_from_frm(THD *thd, TABLE_LIST *tables,
   int error;
   char key[MAX_DBKEY_LENGTH];
   uint key_length;
-  MDL_LOCK_DATA mdl_lock_data;
-  char mdlkey[MAX_MDLKEY_LENGTH];
+  MDL_request mdl_request;
 
   bzero((char*) &table_list, sizeof(TABLE_LIST));
   bzero((char*) &tbl, sizeof(TABLE));
@@ -3130,8 +3174,7 @@ static int fill_schema_table_from_frm(THD *thd, TABLE_LIST *tables,
           simply obtaining internal lock of data-dictionary (ATM it
           is LOCK_open) instead of obtaning full-blown metadata lock.
   */
-  if (acquire_high_prio_shared_mdl_lock(thd, &mdl_lock_data, mdlkey,
-                                        &table_list))
+  if (acquire_high_prio_shared_mdl_lock(thd, &mdl_request, &table_list))
   {
     /*
       Some error occured (most probably we have been killed while
@@ -3215,8 +3258,8 @@ err_unlock:
   pthread_mutex_unlock(&LOCK_open);
 
 err:
-  mdl_release_lock(&thd->mdl_context, &mdl_lock_data);
-  mdl_remove_lock(&thd->mdl_context, &mdl_lock_data);
+  thd->mdl_context.release_lock(mdl_request.ticket);
+  thd->mdl_context.remove_request(&mdl_request);
   thd->clear_error();
   return res;
 }
@@ -3385,6 +3428,7 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
               (!lookup_field_vals.table_value.length ||
                lookup_field_vals.wild_table_value))
           {
+            table->field[0]->store(STRING_WITH_LEN("def"), system_charset_info);
             if (schema_table_store_record(thd, table))
               goto err;      /* Out of space in temporary table */
             continue;
@@ -3497,6 +3541,7 @@ bool store_schema_shemata(THD* thd, TABLE *table, LEX_STRING *db_name,
                           CHARSET_INFO *cs)
 {
   restore_record(table, s->default_values);
+  table->field[0]->store(STRING_WITH_LEN("def"), system_charset_info);
   table->field[1]->store(db_name->str, db_name->length, system_charset_info);
   table->field[2]->store(cs->csname, strlen(cs->csname), system_charset_info);
   table->field[3]->store(cs->name, strlen(cs->name), system_charset_info);
@@ -3587,6 +3632,7 @@ static int get_schema_tables_record(THD *thd, TABLE_LIST *tables,
   DBUG_ENTER("get_schema_tables_record");
 
   restore_record(table, s->default_values);
+  table->field[0]->store(STRING_WITH_LEN("def"), cs);
   table->field[1]->store(db_name->str, db_name->length, cs);
   table->field[2]->store(table_name->str, table_name->length, cs);
   if (res)
@@ -3681,6 +3727,11 @@ static int get_schema_tables_record(THD *thd, TABLE_LIST *tables,
     if (share->transactional != HA_CHOICE_UNDEF)
       ptr= strxmov(ptr, " transactional=",
                    ha_choice_values[(uint) share->transactional], NullS);
+    if (share->key_block_size)
+    {
+      ptr= strmov(ptr, " KEY_BLOCK_SIZE=");
+      ptr= longlong10_to_str(share->key_block_size, ptr, 10);
+    }
     table->field[19]->store(option_buff+1,
                             (ptr == option_buff ? 0 :
                              (uint) (ptr-option_buff)-1), cs);
@@ -3996,6 +4047,7 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     table->field[17]->store(tmp+1,end == tmp ? 0 : (uint) (end-tmp-1), cs);
 
 #endif
+    table->field[0]->store(STRING_WITH_LEN("def"), cs);
     table->field[1]->store(db_name->str, db_name->length, cs);
     table->field[2]->store(table_name->str, table_name->length, cs);
     table->field[3]->store(field->field_name, strlen(field->field_name),
@@ -4092,6 +4144,25 @@ static my_bool iter_schema_engines(THD *thd, plugin_ref plugin,
   handlerton *default_type= ha_default_handlerton(thd);
   DBUG_ENTER("iter_schema_engines");
 
+
+  /* Disabled plugins */
+  if (plugin_state(plugin) != PLUGIN_IS_READY)
+  {
+
+    struct st_mysql_plugin *plug= plugin_decl(plugin);
+    if (!(wild && wild[0] &&
+          wild_case_compare(scs, plug->name,wild)))
+    {
+      restore_record(table, s->default_values);
+      table->field[0]->store(plug->name, strlen(plug->name), scs);
+      table->field[1]->store(C_STRING_WITH_LEN("NO"), scs);
+      table->field[2]->store(plug->descr, strlen(plug->descr), scs);
+      if (schema_table_store_record(thd, table))
+        DBUG_RETURN(1);
+    }
+    DBUG_RETURN(0);
+  }
+
   if (!(hton->flags & HTON_HIDDEN))
   {
     LEX_STRING *name= plugin_name(plugin);
@@ -4112,10 +4183,13 @@ static my_bool iter_schema_engines(THD *thd, plugin_ref plugin,
                              strlen(plugin_decl(plugin)->descr), scs);
       tmp= &yesno[test(hton->commit)];
       table->field[3]->store(tmp->str, tmp->length, scs);
+      table->field[3]->set_notnull();
       tmp= &yesno[test(hton->prepare)];
       table->field[4]->store(tmp->str, tmp->length, scs);
+      table->field[4]->set_notnull();
       tmp= &yesno[test(hton->savepoint_set)];
       table->field[5]->store(tmp->str, tmp->length, scs);
+      table->field[5]->set_notnull();
 
       if (schema_table_store_record(thd, table))
         DBUG_RETURN(1);
@@ -4126,8 +4200,12 @@ static my_bool iter_schema_engines(THD *thd, plugin_ref plugin,
 
 int fill_schema_engines(THD *thd, TABLE_LIST *tables, COND *cond)
 {
-  return plugin_foreach(thd, iter_schema_engines,
-                        MYSQL_STORAGE_ENGINE_PLUGIN, tables->table);
+  DBUG_ENTER("fill_schema_engines");
+  if (plugin_foreach_with_mask(thd, iter_schema_engines,
+                               MYSQL_STORAGE_ENGINE_PLUGIN,
+                               ~PLUGIN_IS_FREED, tables->table))
+    DBUG_RETURN(1);
+  DBUG_RETURN(0);
 }
 
 
@@ -4197,6 +4275,7 @@ int fill_schema_coll_charset_app(THD *thd, TABLE_LIST *tables, COND *cond)
     {
       CHARSET_INFO *tmp_cl= cl[0];
       if (!tmp_cl || !(tmp_cl->state & MY_CS_AVAILABLE) ||
+          (tmp_cl->state & MY_CS_HIDDEN) ||
           !my_charset_same(tmp_cs,tmp_cl))
 	continue;
       restore_record(table, s->default_values);
@@ -4287,6 +4366,7 @@ bool store_schema_params(THD *thd, TABLE *table, TABLE *proc_table,
     if (routine_type == TYPE_ENUM_FUNCTION)
     {
       restore_record(table, s->default_values);
+      table->field[0]->store(STRING_WITH_LEN("def"), cs);
       table->field[1]->store(sp_db.ptr(), sp_db.length(), cs);
       table->field[2]->store(sp_name.ptr(), sp_name.length(), cs);
       table->field[3]->store((longlong) 0, TRUE);
@@ -4335,6 +4415,7 @@ bool store_schema_params(THD *thd, TABLE *table, TABLE *proc_table,
       }  
 
       restore_record(table, s->default_values);
+      table->field[0]->store(STRING_WITH_LEN("def"), cs);
       table->field[1]->store(sp_db.ptr(), sp_db.length(), cs);
       table->field[2]->store(sp_name.ptr(), sp_name.length(), cs);
       table->field[3]->store((longlong) i + 1, TRUE);
@@ -4406,6 +4487,7 @@ bool store_schema_proc(THD *thd, TABLE *table, TABLE *proc_table,
       get_field(thd->mem_root, proc_table->field[MYSQL_PROC_FIELD_SPECIFIC_NAME],
                 &tmp_string);
       table->field[0]->store(tmp_string.ptr(), tmp_string.length(), cs);
+      table->field[1]->store(STRING_WITH_LEN("def"), cs);
       table->field[2]->store(sp_db.ptr(), sp_db.length(), cs);
       get_field(thd->mem_root, proc_table->field[MYSQL_PROC_MYSQL_TYPE],
                 &tmp_string);
@@ -4609,6 +4691,7 @@ static int get_schema_stat_record(THD *thd, TABLE_LIST *tables,
       for (uint j=0 ; j < key_info->key_parts ; j++,key_part++)
       {
         restore_record(table, s->default_values);
+        table->field[0]->store(STRING_WITH_LEN("def"), cs);
         table->field[1]->store(db_name->str, db_name->length, cs);
         table->field[2]->store(table_name->str, table_name->length, cs);
         table->field[3]->store((longlong) ((key_info->flags &
@@ -4714,6 +4797,7 @@ static int get_schema_views_record(THD *thd, TABLE_LIST *tables,
 #endif
     }
     restore_record(table, s->default_values);
+    table->field[0]->store(STRING_WITH_LEN("def"), cs);
     table->field[1]->store(db_name->str, db_name->length, cs);
     table->field[2]->store(table_name->str, table_name->length, cs);
 
@@ -4808,6 +4892,7 @@ bool store_constraints(THD *thd, TABLE *table, LEX_STRING *db_name,
 {
   CHARSET_INFO *cs= system_charset_info;
   restore_record(table, s->default_values);
+  table->field[0]->store(STRING_WITH_LEN("def"), cs);
   table->field[1]->store(db_name->str, db_name->length, cs);
   table->field[2]->store(key_name, key_len, cs);
   table->field[3]->store(db_name->str, db_name->length, cs);
@@ -4892,10 +4977,12 @@ static bool store_trigger(THD *thd, TABLE *table, LEX_STRING *db_name,
   LEX_STRING sql_mode_rep;
 
   restore_record(table, s->default_values);
+  table->field[0]->store(STRING_WITH_LEN("def"), cs);
   table->field[1]->store(db_name->str, db_name->length, cs);
   table->field[2]->store(trigger_name->str, trigger_name->length, cs);
   table->field[3]->store(trg_event_type_names[event].str,
                          trg_event_type_names[event].length, cs);
+  table->field[4]->store(STRING_WITH_LEN("def"), cs);
   table->field[5]->store(db_name->str, db_name->length, cs);
   table->field[6]->store(table_name->str, table_name->length, cs);
   table->field[9]->store(trigger_stmt->str, trigger_stmt->length, cs);
@@ -4991,8 +5078,10 @@ void store_key_column_usage(TABLE *table, LEX_STRING *db_name,
                             longlong idx)
 {
   CHARSET_INFO *cs= system_charset_info;
+  table->field[0]->store(STRING_WITH_LEN("def"), cs);
   table->field[1]->store(db_name->str, db_name->length, cs);
   table->field[2]->store(key_name, key_len, cs);
+  table->field[3]->store(STRING_WITH_LEN("def"), cs);
   table->field[4]->store(db_name->str, db_name->length, cs);
   table->field[5]->store(table_name->str, table_name->length, cs);
   table->field[6]->store(con_type, con_len, cs);
@@ -5118,6 +5207,7 @@ static void store_schema_partitions_record(THD *thd, TABLE *schema_table,
   PARTITION_INFO stat_info;
   MYSQL_TIME time;
   file->get_dynamic_partition_info(&stat_info, part_id);
+  table->field[0]->store(STRING_WITH_LEN("def"), cs);
   table->field[12]->store((longlong) stat_info.records, TRUE);
   table->field[13]->store((longlong) stat_info.mean_rec_length, TRUE);
   table->field[14]->store((longlong) stat_info.data_file_length, TRUE);
@@ -5166,19 +5256,20 @@ static void store_schema_partitions_record(THD *thd, TABLE *schema_table,
     else
       table->field[23]->store(STRING_WITH_LEN("default"), cs);
 
-    table->field[24]->set_notnull();
     if (part_elem->tablespace_name)
+    {
+      table->field[24]->set_notnull();
       table->field[24]->store(part_elem->tablespace_name,
                               strlen(part_elem->tablespace_name), cs);
-    else
+    }
+  }
+  if (!part_elem || !part_elem->tablespace_name)
+  {
+    const char *ts= showing_table->file->get_tablespace_name();
+    if (ts)
     {
-      const char *ts= showing_table->file->get_tablespace_name();
-      if(ts)
-      {
-        table->field[24]->store(ts, strlen(ts), cs);
-      }
-      else
-        table->field[24]->set_null();
+      table->field[24]->set_notnull();
+      table->field[24]->store(ts, strlen(ts), cs);
     }
   }
   return;
@@ -5479,7 +5570,7 @@ copy_event_to_schema_table(THD *thd, TABLE *sch_table, TABLE *event_table)
     DBUG_RETURN(0);
 
   /* ->field[0] is EVENT_CATALOG and is by default NULL */
-
+  sch_table->field[ISE_EVENT_CATALOG]->store(STRING_WITH_LEN("def"), scs);
   sch_table->field[ISE_EVENT_SCHEMA]->
                                 store(et.dbname.str, et.dbname.length,scs);
   sch_table->field[ISE_EVENT_NAME]->
@@ -5760,10 +5851,12 @@ get_referential_constraints_record(THD *thd, TABLE_LIST *tables,
     while ((f_key_info= it++))
     {
       restore_record(table, s->default_values);
+      table->field[0]->store(STRING_WITH_LEN("def"), cs);
       table->field[1]->store(db_name->str, db_name->length, cs);
       table->field[9]->store(table_name->str, table_name->length, cs);
       table->field[2]->store(f_key_info->forein_id->str,
                              f_key_info->forein_id->length, cs);
+      table->field[3]->store(STRING_WITH_LEN("def"), cs);
       table->field[4]->store(f_key_info->referenced_db->str,
                              f_key_info->referenced_db->length, cs);
       table->field[10]->store(f_key_info->referenced_table->str,
@@ -6430,7 +6523,7 @@ int hton_fill_schema_table(THD *thd, TABLE_LIST *tables, COND *cond)
 
 ST_FIELD_INFO schema_fields_info[]=
 {
-  {"CATALOG_NAME", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"CATALOG_NAME", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"SCHEMA_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Database",
    SKIP_OPEN_TABLE},
   {"DEFAULT_CHARACTER_SET_NAME", MY_CS_NAME_SIZE, MYSQL_TYPE_STRING, 0, 0, 0,
@@ -6444,7 +6537,7 @@ ST_FIELD_INFO schema_fields_info[]=
 
 ST_FIELD_INFO tables_fields_info[]=
 {
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Name",
    SKIP_OPEN_TABLE},
@@ -6484,7 +6577,7 @@ ST_FIELD_INFO tables_fields_info[]=
 
 ST_FIELD_INFO columns_fields_info[]=
 {
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FRM_ONLY},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"COLUMN_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Field",
@@ -6551,16 +6644,16 @@ ST_FIELD_INFO engines_fields_info[]=
   {"ENGINE", 64, MYSQL_TYPE_STRING, 0, 0, "Engine", SKIP_OPEN_TABLE},
   {"SUPPORT", 8, MYSQL_TYPE_STRING, 0, 0, "Support", SKIP_OPEN_TABLE},
   {"COMMENT", 80, MYSQL_TYPE_STRING, 0, 0, "Comment", SKIP_OPEN_TABLE},
-  {"TRANSACTIONS", 3, MYSQL_TYPE_STRING, 0, 0, "Transactions", SKIP_OPEN_TABLE},
-  {"XA", 3, MYSQL_TYPE_STRING, 0, 0, "XA", SKIP_OPEN_TABLE},
-  {"SAVEPOINTS", 3 ,MYSQL_TYPE_STRING, 0, 0, "Savepoints", SKIP_OPEN_TABLE},
+  {"TRANSACTIONS", 3, MYSQL_TYPE_STRING, 0, 1, "Transactions", SKIP_OPEN_TABLE},
+  {"XA", 3, MYSQL_TYPE_STRING, 0, 1, "XA", SKIP_OPEN_TABLE},
+  {"SAVEPOINTS", 3 ,MYSQL_TYPE_STRING, 0, 1, "Savepoints", SKIP_OPEN_TABLE},
   {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
 };
 
 
 ST_FIELD_INFO events_fields_info[]=
 {
-  {"EVENT_CATALOG", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"EVENT_CATALOG", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"EVENT_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Db",
    SKIP_OPEN_TABLE},
   {"EVENT_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Name",
@@ -6609,7 +6702,7 @@ ST_FIELD_INFO coll_charset_app_fields_info[]=
 ST_FIELD_INFO proc_fields_info[]=
 {
   {"SPECIFIC_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
-  {"ROUTINE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"ROUTINE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"ROUTINE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Db",
    SKIP_OPEN_TABLE},
   {"ROUTINE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Name",
@@ -6653,7 +6746,7 @@ ST_FIELD_INFO proc_fields_info[]=
 
 ST_FIELD_INFO stat_fields_info[]=
 {
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FRM_ONLY},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Table", OPEN_FRM_ONLY},
   {"NON_UNIQUE", 1, MYSQL_TYPE_LONGLONG, 0, 0, "Non_unique", OPEN_FRM_ONLY},
@@ -6678,7 +6771,7 @@ ST_FIELD_INFO stat_fields_info[]=
 
 ST_FIELD_INFO view_fields_info[]=
 {
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FRM_ONLY},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"VIEW_DEFINITION", 65535, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
@@ -6697,7 +6790,7 @@ ST_FIELD_INFO view_fields_info[]=
 ST_FIELD_INFO user_privileges_fields_info[]=
 {
   {"GRANTEE", 81, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"PRIVILEGE_TYPE", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"IS_GRANTABLE", 3, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
@@ -6707,7 +6800,7 @@ ST_FIELD_INFO user_privileges_fields_info[]=
 ST_FIELD_INFO schema_privileges_fields_info[]=
 {
   {"GRANTEE", 81, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"PRIVILEGE_TYPE", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"IS_GRANTABLE", 3, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
@@ -6718,7 +6811,7 @@ ST_FIELD_INFO schema_privileges_fields_info[]=
 ST_FIELD_INFO table_privileges_fields_info[]=
 {
   {"GRANTEE", 81, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"PRIVILEGE_TYPE", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
@@ -6730,7 +6823,7 @@ ST_FIELD_INFO table_privileges_fields_info[]=
 ST_FIELD_INFO column_privileges_fields_info[]=
 {
   {"GRANTEE", 81, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"COLUMN_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
@@ -6742,7 +6835,7 @@ ST_FIELD_INFO column_privileges_fields_info[]=
 
 ST_FIELD_INFO table_constraints_fields_info[]=
 {
-  {"CONSTRAINT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FULL_TABLE},
+  {"CONSTRAINT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"CONSTRAINT_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FULL_TABLE},
   {"CONSTRAINT_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
@@ -6757,12 +6850,12 @@ ST_FIELD_INFO table_constraints_fields_info[]=
 
 ST_FIELD_INFO key_column_usage_fields_info[]=
 {
-  {"CONSTRAINT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FULL_TABLE},
+  {"CONSTRAINT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"CONSTRAINT_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FULL_TABLE},
   {"CONSTRAINT_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FULL_TABLE},
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FULL_TABLE},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"COLUMN_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
@@ -6781,7 +6874,7 @@ ST_FIELD_INFO key_column_usage_fields_info[]=
 
 ST_FIELD_INFO table_names_fields_info[]=
 {
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_SCHEMA",NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Tables_in_",
    SKIP_OPEN_TABLE},
@@ -6804,12 +6897,12 @@ ST_FIELD_INFO open_tables_fields_info[]=
 
 ST_FIELD_INFO triggers_fields_info[]=
 {
-  {"TRIGGER_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FRM_ONLY},
+  {"TRIGGER_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"TRIGGER_SCHEMA",NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FRM_ONLY},
   {"TRIGGER_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Trigger",
    OPEN_FRM_ONLY},
   {"EVENT_MANIPULATION", 6, MYSQL_TYPE_STRING, 0, 0, "Event", OPEN_FRM_ONLY},
-  {"EVENT_OBJECT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0,
+  {"EVENT_OBJECT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FRM_ONLY},
   {"EVENT_OBJECT_SCHEMA",NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FRM_ONLY},
@@ -6842,7 +6935,7 @@ ST_FIELD_INFO triggers_fields_info[]=
 
 ST_FIELD_INFO partitions_fields_info[]=
 {
-  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FULL_TABLE},
+  {"TABLE_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"TABLE_SCHEMA",NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"PARTITION_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FULL_TABLE},
@@ -6932,7 +7025,7 @@ ST_FIELD_INFO files_fields_info[]=
   {"FILE_TYPE", 20, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLESPACE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, 0,
    SKIP_OPEN_TABLE},
-  {"TABLE_CATALOG", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
+  {"TABLE_CATALOG", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE},
   {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
   {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, 0, SKIP_OPEN_TABLE},
   {"LOGFILE_GROUP_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, 0,
@@ -6993,12 +7086,12 @@ void init_fill_schema_files_row(TABLE* table)
 
 ST_FIELD_INFO referential_constraints_fields_info[]=
 {
-  {"CONSTRAINT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FULL_TABLE},
+  {"CONSTRAINT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"CONSTRAINT_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FULL_TABLE},
   {"CONSTRAINT_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FULL_TABLE},
-  {"UNIQUE_CONSTRAINT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0,
+  {"UNIQUE_CONSTRAINT_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FULL_TABLE},
   {"UNIQUE_CONSTRAINT_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FULL_TABLE},
@@ -7016,7 +7109,7 @@ ST_FIELD_INFO referential_constraints_fields_info[]=
 
 ST_FIELD_INFO parameters_fields_info[]=
 {
-  {"SPECIFIC_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FULL_TABLE},
+  {"SPECIFIC_CATALOG", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
   {"SPECIFIC_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0,
    OPEN_FULL_TABLE},
   {"SPECIFIC_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, 0, OPEN_FULL_TABLE},
@@ -7096,13 +7189,14 @@ ST_SCHEMA_TABLE schema_tables[]=
    fill_variables, make_old_format, 0, 0, -1, 0, 0},
   {"KEY_COLUMN_USAGE", key_column_usage_fields_info, create_schema_table,
    get_all_tables, 0, get_schema_key_column_usage_record, 4, 5, 0,
-   OPEN_TABLE_ONLY},
+   OPTIMIZE_I_S_TABLE|OPEN_TABLE_ONLY},
   {"OPEN_TABLES", open_tables_fields_info, create_schema_table,
    fill_open_tables, make_old_format, 0, -1, -1, 1, 0},
   {"PARAMETERS", parameters_fields_info, create_schema_table,
    fill_schema_proc, 0, 0, -1, -1, 0, 0},
   {"PARTITIONS", partitions_fields_info, create_schema_table,
-   get_all_tables, 0, get_schema_partitions_record, 1, 2, 0, OPEN_TABLE_ONLY},
+   get_all_tables, 0, get_schema_partitions_record, 1, 2, 0,
+   OPTIMIZE_I_S_TABLE|OPEN_TABLE_ONLY},
   {"PLUGINS", plugin_fields_info, create_schema_table,
    fill_plugins, make_old_format, 0, -1, -1, 0, 0},
   {"PROCESSLIST", processlist_fields_info, create_schema_table,
@@ -7112,7 +7206,7 @@ ST_SCHEMA_TABLE schema_tables[]=
     NULL, -1, -1, false, 0},
   {"REFERENTIAL_CONSTRAINTS", referential_constraints_fields_info,
    create_schema_table, get_all_tables, 0, get_referential_constraints_record,
-   1, 9, 0, OPEN_TABLE_ONLY},
+   1, 9, 0, OPTIMIZE_I_S_TABLE|OPEN_TABLE_ONLY},
   {"ROUTINES", proc_fields_info, create_schema_table,
    fill_schema_proc, make_proc_old_format, 0, -1, -1, 0, 0},
   {"SCHEMATA", schema_fields_info, create_schema_table,
@@ -7134,7 +7228,8 @@ ST_SCHEMA_TABLE schema_tables[]=
   {"TABLESPACES", tablespaces_fields_info, create_schema_table,
    hton_fill_schema_table, 0, 0, -1, -1, 0, 0},
   {"TABLE_CONSTRAINTS", table_constraints_fields_info, create_schema_table,
-   get_all_tables, 0, get_schema_constraints_record, 3, 4, 0, OPEN_TABLE_ONLY},
+   get_all_tables, 0, get_schema_constraints_record, 3, 4, 0,
+   OPTIMIZE_I_S_TABLE|OPEN_TABLE_ONLY},
   {"TABLE_NAMES", table_names_fields_info, create_schema_table,
    get_all_tables, make_table_names_old_format, 0, 1, 2, 1, 0},
   {"TABLE_PRIVILEGES", table_privileges_fields_info, create_schema_table,
@@ -7471,7 +7566,7 @@ bool show_create_trigger(THD *thd, const sp_name *trg_name)
 
   uint num_tables; /* NOTE: unused, only to pass to open_tables(). */
 
-  alloc_mdl_locks(lst, thd->mem_root);
+  alloc_mdl_requests(lst, thd->mem_root);
 
   if (open_tables(thd, &lst, &num_tables, 0))
   {

@@ -8,6 +8,8 @@
 --source include/have_debug.inc
 --source include/have_innodb.inc
 
+let $MYSQLD_DATADIR= `select @@datadir`;
+
 connect (con1,localhost,root,,);
 connect (con2,localhost,root,,);
 
@@ -25,12 +27,12 @@ PURGE BACKUP LOGS;
 
 --disable_warnings
 DROP DATABASE IF EXISTS backup_logs;
---enable warnings
+--enable_warnings
 CREATE DATABASE backup_logs;
 
 --echo Create table and populate with data.
 
-CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
+CREATE TABLE backup_logs.t1 (a char(30));
 CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
 CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
 
@@ -85,10 +87,10 @@ RESTORE from 'backup3.bak' OVERWRITE;
 --echo Do restore of database
 RESTORE from 'backup4.bak' OVERWRITE;
 
---file_exists $MYSQLTEST_VARDIR/master-data/backup1.bak
---file_exists $MYSQLTEST_VARDIR/master-data/backup2.bak
---file_exists $MYSQLTEST_VARDIR/master-data/backup3.bak
---file_exists $MYSQLTEST_VARDIR/master-data/backup4.bak
+--file_exists $MYSQLD_DATADIR/backup1.bak
+--file_exists $MYSQLD_DATADIR/backup2.bak
+--file_exists $MYSQLD_DATADIR/backup3.bak
+--file_exists $MYSQLD_DATADIR/backup4.bak
 
 --echo Display results from backup logs
 SELECT backup_id FROM mysql.backup_history;
@@ -117,13 +119,13 @@ SELECT count(*) FROM mysql.backup_progress;
 --echo Cleanup the logs and images for later testing.
 PURGE BACKUP LOGS;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
+--remove_file $MYSQLD_DATADIR/backup1.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
+--remove_file $MYSQLD_DATADIR/backup2.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
+--remove_file $MYSQLD_DATADIR/backup3.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
+--remove_file $MYSQLD_DATADIR/backup4.bak
 
 SET @@time_zone = '+00:00';
 
@@ -163,10 +165,10 @@ RESTORE from 'backup4.bak' OVERWRITE;
 
 SET SESSION debug="-d";
 
---file_exists $MYSQLTEST_VARDIR/master-data/backup1.bak
---file_exists $MYSQLTEST_VARDIR/master-data/backup2.bak
---file_exists $MYSQLTEST_VARDIR/master-data/backup3.bak
---file_exists $MYSQLTEST_VARDIR/master-data/backup4.bak
+--file_exists $MYSQLD_DATADIR/backup1.bak
+--file_exists $MYSQLD_DATADIR/backup2.bak
+--file_exists $MYSQLD_DATADIR/backup3.bak
+--file_exists $MYSQLD_DATADIR/backup4.bak
 
 --echo Display the results.
 SELECT backup_id FROM mysql.backup_history;
@@ -200,7 +202,7 @@ BACKUP DATABASE backup_logs TO '../bup_logs_dir.bak';
 SET SESSION debug="-d";
 
 --echo Ensure backup image file went to the correct location
---file_exists $MYSQLTEST_VARDIR/bup_logs_dir.bak
+--file_exists $MYSQLTEST_VARDIR/mysqld.1/bup_logs_dir.bak
 
 SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
@@ -238,15 +240,15 @@ PURGE BACKUP LOGS;
 
 --echo Get rid of any lingering image files.
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
+--remove_file $MYSQLD_DATADIR/backup1.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
+--remove_file $MYSQLD_DATADIR/backup2.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
+--remove_file $MYSQLD_DATADIR/backup3.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
+--remove_file $MYSQLD_DATADIR/backup4.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/bup_logs_dir.bak
+--remove_file $MYSQLTEST_VARDIR/mysqld.1/bup_logs_dir.bak
 
 SET DEBUG_SYNC= 'RESET';
 
@@ -274,7 +276,7 @@ SET SESSION debug="+d,set_backup_id";
 # it writes the history log and last complete log entry.
 #
 --echo con2: Activate sync points for the backup statement.
-SET DEBUG_SYNC= 'before_backup_done SIGNAL ready WAIT_FOR proceed';
+SET DEBUG_SYNC= 'before_backup_completed SIGNAL ready WAIT_FOR proceed';
 SEND BACKUP DATABASE backup_logs to 'backup5.bak';
 
 connection con1;
@@ -328,7 +330,7 @@ connection con2;
 # it writes the history log and last complete log entry.
 #
 --echo con2: Activate sync points for the backup statement.
-SET DEBUG_SYNC= 'before_restore_done SIGNAL ready WAIT_FOR proceed';
+SET DEBUG_SYNC= 'before_restore_completed SIGNAL ready WAIT_FOR proceed';
 SEND RESTORE FROM 'backup5.bak' OVERWRITE;
 
 connection con1;
@@ -364,11 +366,11 @@ SELECT count(*) FROM mysql.backup_progress;
 # removal of all entries.
 #
 
---remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
---remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
---remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
---remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
---remove_file $MYSQLTEST_VARDIR/master-data/backup5.bak
+--remove_file $MYSQLD_DATADIR/backup1.bak
+--remove_file $MYSQLD_DATADIR/backup2.bak
+--remove_file $MYSQLD_DATADIR/backup3.bak
+--remove_file $MYSQLD_DATADIR/backup4.bak
+--remove_file $MYSQLD_DATADIR/backup5.bak
 
 --echo First, run some backups.
 
@@ -408,11 +410,11 @@ PURGE BACKUP LOGS TO 999999999;
 SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
---remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
---remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
---remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
---remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
---remove_file $MYSQLTEST_VARDIR/master-data/backup5.bak
+--remove_file $MYSQLD_DATADIR/backup1.bak
+--remove_file $MYSQLD_DATADIR/backup2.bak
+--remove_file $MYSQLD_DATADIR/backup3.bak
+--remove_file $MYSQLD_DATADIR/backup4.bak
+--remove_file $MYSQLD_DATADIR/backup5.bak
 
 --echo Run some more backups to generate more rows.
 
@@ -447,15 +449,15 @@ SET DEBUG_SYNC= 'RESET';
 
 DROP DATABASE backup_logs;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
+--remove_file $MYSQLD_DATADIR/backup1.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
+--remove_file $MYSQLD_DATADIR/backup2.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
+--remove_file $MYSQLD_DATADIR/backup3.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
+--remove_file $MYSQLD_DATADIR/backup4.bak
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup5.bak
+--remove_file $MYSQLD_DATADIR/backup5.bak
 
 PURGE BACKUP LOGS;
 

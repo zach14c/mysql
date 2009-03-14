@@ -5,7 +5,9 @@ EXTRA_DIST = README compat/sys						      \
 	signal.c devpoll.c epoll_sub.c evdns.c event_tagging.c evrpc.c http.c \
 	log.c select.c strlcpy.c					      \
 	evdns.h event.h evrpc-internal.h evsignal.h http-internal.h log.h     \
-	min_heap.h event-internal.h evhttp.h evrpc.h evutil.h strlcpy-internal.h
+	min_heap.h event-internal.h evhttp.h evrpc.h evutil.h strlcpy-internal.h \
+	WIN32-Code/misc.c WIN32-Code/misc.h WIN32-Code/config.h WIN32-Code/tree.h \
+	WIN32-Code/win32.c CMakeLists.txt
 
 
 DISTCLEANFILES = event-config.h
@@ -34,4 +36,4 @@ event-config.h: $(top_srcdir)/include/config.h
 	    -e 's/#ifndef /#ifndef _EVENT_/' < $(top_srcdir)/include/config.h >> $@
 	echo "#endif" >> $@
 
-INCLUDES = -Icompat -I$(top_srcdir)/include
+AM_CPPFLAGS = -Icompat -I$(top_srcdir)/include

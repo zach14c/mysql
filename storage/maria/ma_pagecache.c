@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2008 MySQL AB
+/* Copyright (C) 2000-2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -97,8 +97,9 @@
 
 #define PCBLOCK_INFO(B) \
   DBUG_PRINT("info", \
-             ("block: 0x%lx  fd: %lu  page: %lu  s: %0x  hshL: 0x%lx  req: %u/%u " \
-              "wrlocks: %u  rdlocks %u  rdlocks_q: %u  pins: %u", \
+             ("block: 0x%lx  fd: %lu  page: %lu  s: %0x  hshL: " \
+              " 0x%lx  req: %u/%u wrlocks: %u  rdlocks %u  " \
+              "rdlocks_q: %u  pins: %u  status: %u  type: %s", \
               (ulong)(B), \
               (ulong)((B)->hash_link ? \
                       (B)->hash_link->file.file : \
@@ -113,7 +114,8 @@
                      (B)->hash_link->requests : \
                        0), \
               block->wlocks, block->rlocks, block->rlocks_queue, \
-              (uint)(B)->pins))
+              (uint)(B)->pins, (uint)(B)->status, \
+              page_cache_page_type_str[(B)->type]))
 
 /* TODO: put it to my_static.c */
 my_bool my_disable_flush_pagecache_blocks= 0;
@@ -615,18 +617,23 @@ static my_bool pagecache_fwrite(PAGECACHE *pagecache,
   /* Todo: Integrate this with write_callback so we have only one callback */
   if ((*filedesc->flush_log_callback)(buffer, pageno, filedesc->callback_data))
     DBUG_RETURN(1);
-  DBUG_PRINT("info", ("write_callback: 0x%lx  data: 0x%lx",
-                      (ulong) filedesc->write_callback,
+  DBUG_PRINT("info", ("pre_write_callback: 0x%lx  data: 0x%lx",
+                      (ulong) filedesc->pre_write_callback,
                       (ulong) filedesc->callback_data));
-  if ((*filedesc->write_callback)(buffer, pageno, filedesc->callback_data))
+  if ((*filedesc->pre_write_callback)(buffer, pageno, filedesc->callback_data))
   {
-    DBUG_PRINT("error", ("write callback problem"));
+    DBUG_PRINT("error", ("pre_write callback problem"));
     DBUG_RETURN(1);
   }
   if (my_pwrite(filedesc->file, buffer, pagecache->block_size,
                 ((my_off_t) pageno << pagecache->shift), flags))
   {
     (*filedesc->write_fail)(filedesc->callback_data);
+    DBUG_RETURN(1);
+  }
+  if ((*filedesc->post_write_callback)(buffer, pageno, filedesc->callback_data))
+  {
+    DBUG_PRINT("error", ("post_write callback problem"));
     DBUG_RETURN(1);
   }
   DBUG_RETURN(0);
@@ -727,10 +734,10 @@ ulong init_pagecache(PAGECACHE *pagecache, size_t use_mem,
   if (! pagecache->inited)
   {
     if (pthread_mutex_init(&pagecache->cache_lock, MY_MUTEX_INIT_FAST) ||
-        hash_init(&pagecache->files_in_flush, &my_charset_bin, 32,
-                  offsetof(struct st_file_in_flush, file),
-                  sizeof(((struct st_file_in_flush *)NULL)->file),
-                  NULL, NULL, 0))
+        my_hash_init(&pagecache->files_in_flush, &my_charset_bin, 32,
+                     offsetof(struct st_file_in_flush, file),
+                     sizeof(((struct st_file_in_flush *)NULL)->file),
+                     NULL, NULL, 0))
       goto err;
     pagecache->inited= 1;
     pagecache->in_init= 0;
@@ -1127,7 +1134,7 @@ void end_pagecache(PAGECACHE *pagecache, my_bool cleanup)
 
   if (cleanup)
   {
-    hash_free(&pagecache->files_in_flush);
+    my_hash_free(&pagecache->files_in_flush);
     pthread_mutex_destroy(&pagecache->cache_lock);
     pagecache->inited= pagecache->can_be_used= 0;
     PAGECACHE_DEBUG_CLOSE;
@@ -2598,6 +2605,8 @@ static void read_block(PAGECACHE *pagecache,
 {
 
   DBUG_ENTER("read_block");
+  DBUG_PRINT("enter", ("read block: 0x%lx  primary: %d",
+                       (ulong)block, primary));
   if (primary)
   {
     size_t error;
@@ -2605,9 +2614,6 @@ static void read_block(PAGECACHE *pagecache,
       This code is executed only by threads
       that submitted primary requests
     */
-
-    DBUG_PRINT("read_block",
-               ("page to be read by primary request"));
 
     pagecache->global_cache_read++;
     /* Page is not in buffer yet, is to be read from disk */
@@ -2655,9 +2661,7 @@ static void read_block(PAGECACHE *pagecache,
       This code is executed only by threads
       that submitted secondary requests
     */
-    DBUG_PRINT("read_block",
-               ("secondary request waiting for new page to be read"));
-    {
+
 #ifdef THREAD
       struct st_my_thread_var *thread= my_thread_var;
       /* Put the request into a queue and wait until it can be processed */
@@ -2674,7 +2678,6 @@ static void read_block(PAGECACHE *pagecache,
       KEYCACHE_DBUG_ASSERT(0);
       /* No parallel requests in single-threaded case */
 #endif
-    }
     DBUG_PRINT("read_block",
                ("secondary request: new page in cache"));
   }
@@ -2976,7 +2979,11 @@ void pagecache_unlock_by_link(PAGECACHE *pagecache,
     }
     if (lsn != LSN_IMPOSSIBLE)
       check_and_set_lsn(pagecache, lsn, block);
-    block->status&= ~PCBLOCK_ERROR;
+    /*
+      Reset error flag. Mark also that page is active; This may not have
+      been the case if there was an error reading the page
+    */
+    block->status= (block->status & ~PCBLOCK_ERROR) | PCBLOCK_READ;
   }
 
   /* if we lock for write we must link the block to changed blocks */
@@ -3310,7 +3317,6 @@ restart:
                         page_cache_page_type_str[type]));
     if (((block->status & PCBLOCK_ERROR) == 0) && (page_st != PAGE_READ))
     {
-      DBUG_PRINT("info", ("read block 0x%lx", (ulong)block));
       /* The requested page is to be read into the block buffer */
       read_block(pagecache, block,
                  (my_bool)(page_st == PAGE_TO_BE_READ));
@@ -3845,6 +3851,7 @@ restart:
   {
     /* Key cache is used */
     int page_st;
+    my_bool need_page_ready_signal= FALSE;
 
     pagecache_pthread_mutex_lock(&pagecache->cache_lock);
     if (!pagecache->can_be_used)
@@ -3859,10 +3866,7 @@ restart:
     reg_request= ((pin == PAGECACHE_PIN_LEFT_UNPINNED) ||
                   (pin == PAGECACHE_PIN));
     block= find_block(pagecache, file, pageno, level,
-                      (write_mode != PAGECACHE_WRITE_DONE &&
-                       lock != PAGECACHE_LOCK_LEFT_WRITELOCKED &&
-                       lock != PAGECACHE_LOCK_WRITE_UNLOCK &&
-                       lock != PAGECACHE_LOCK_WRITE_TO_READ),
+                      TRUE,
                       reg_request, &page_st);
     if (!block)
     {
@@ -3872,6 +3876,21 @@ restart:
       pagecache_pthread_mutex_unlock(&pagecache->cache_lock);
       /* Write to the disk key cache is in resize at the moment*/
       goto no_key_cache;
+    }
+    DBUG_PRINT("info", ("page status: %d", page_st));
+    if (!(block->status & PCBLOCK_ERROR) &&
+        ((page_st == PAGE_TO_BE_READ &&
+          (offset || size < pagecache->block_size)) ||
+         (page_st == PAGE_WAIT_TO_BE_READ)))
+    {
+      /* The requested page is to be read into the block buffer */
+      read_block(pagecache, block,
+                 (my_bool)(page_st == PAGE_TO_BE_READ));
+      DBUG_PRINT("info", ("read is done"));
+    }
+    else if (page_st == PAGE_TO_BE_READ)
+    {
+      need_page_ready_signal= TRUE;
     }
 
     DBUG_ASSERT(block->type == PAGECACHE_EMPTY_PAGE ||
@@ -3958,6 +3977,12 @@ restart:
       if (size == pagecache->block_size)
         block->status&= ~PCBLOCK_ERROR;
     }
+
+#ifdef THREAD
+    if (need_page_ready_signal &&
+        block->wqueue[COND_FOR_REQUESTED].last_thread)
+      wqueue_release_queue(&block->wqueue[COND_FOR_REQUESTED]);
+#endif
 
     if (first_REDO_LSN_for_page)
     {
@@ -4207,11 +4232,11 @@ static int flush_cached_blocks(PAGECACHE *pagecache,
        @todo IO If page is contiguous with next page to flush, group flushes
        in one single my_pwrite().
     */
-    /*
+    /**
       It is important to use block->hash_link->file below and not 'file', as
-      the first one is right and the second may have different content (and
-      this matters for callbacks, bitmap pages and data pages have different
-      ones).
+      the first one is right and the second may have different out-of-date
+      content (see StaleFilePointersInFlush in ma_checkpoint.c).
+      @todo change argument of functions to be File.
     */
     error= pagecache_fwrite(pagecache, &block->hash_link->file,
                             block->buffer,
@@ -4343,8 +4368,8 @@ static int flush_pagecache_blocks_int(PAGECACHE *pagecache,
     us_flusher.flush_queue.last_thread= NULL;
     us_flusher.first_in_switch= FALSE;
     while ((other_flusher= (struct st_file_in_flush *)
-            hash_search(&pagecache->files_in_flush, (uchar *)&file->file,
-                        sizeof(file->file))))
+            my_hash_search(&pagecache->files_in_flush, (uchar *)&file->file,
+                           sizeof(file->file))))
     {
       /*
         File is in flush already: wait, unless FLUSH_KEEP_LAZY. "Flusher"
@@ -4570,7 +4595,7 @@ restart:
     }
 #ifdef THREAD
     /* wake up others waiting to flush this file */
-    hash_delete(&pagecache->files_in_flush, (uchar *)&us_flusher);
+    my_hash_delete(&pagecache->files_in_flush, (uchar *)&us_flusher);
     if (us_flusher.flush_queue.last_thread)
       wqueue_release_queue(&us_flusher.flush_queue);
 #endif
@@ -4711,7 +4736,7 @@ my_bool pagecache_collect_changed_blocks_with_lsn(PAGECACHE *pagecache,
     struct st_file_in_flush *other_flusher;
     for (file_hash= 0;
          (other_flusher= (struct st_file_in_flush *)
-          hash_element(&pagecache->files_in_flush, file_hash)) != NULL &&
+          my_hash_element(&pagecache->files_in_flush, file_hash)) != NULL &&
            !other_flusher->first_in_switch;
          file_hash++)
     {}

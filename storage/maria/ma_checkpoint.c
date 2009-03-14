@@ -1,4 +1,4 @@
-/* Copyright (C) 2006,2007 MySQL AB
+/* Copyright (C) 2006,2007 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -368,7 +368,9 @@ static void flush_all_tables(int what_to_flush)
                                    FLUSH_KEEP, FLUSH_KEEP);
         break;
       case 1:
-        res= _ma_state_info_write(info->s, 1|4);
+        res= _ma_state_info_write(info->s,
+                                  MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET|
+                                  MA_STATE_INFO_WRITE_LOCK);
         DBUG_PRINT("maria_flush_states",
                    ("is_of_horizon: LSN (%lu,0x%lx)",
                     LSN_IN_PARTS(info->s->state.is_of_horizon)));
@@ -651,6 +653,14 @@ pthread_handler_t ma_checkpoint_background(void *arg)
             We use FLUSH_KEEP_LAZY: if a file is already in flush, it's
             smarter to move to the next file than wait for this one to be
             completely flushed, which may take long.
+            StaleFilePointersInFlush: notice how below we use "dfile" which
+            is an OS file descriptor plus some function and MARIA_SHARE
+            pointers; this data dates from a previous checkpoint; since then,
+            the table may have been closed (so MARIA_SHARE* became stale), and
+            the file descriptor reassigned to another table which does not
+            have the same CRC-read-set callbacks: it is thus important that
+            flush_pagecache_blocks_with_filter() does not use the pointers,
+            only the OS file descriptor.
           */
           int res=
             flush_pagecache_blocks_with_filter(maria_pagecache,
@@ -784,10 +794,8 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
         !(share->in_checkpoint & MARIA_CHECKPOINT_SEEN_IN_LOOP))
     {
       /*
-        Why we didn't take intern_lock above: table had in_checkpoint==0 so no
-        thread could set in_checkpoint. And no thread needs to know that we
-        are setting in_checkpoint, because only maria_close() needs it and
-        cannot run now as we hold THR_LOCK_maria.
+        Apart from us, only maria_close() reads/sets in_checkpoint but cannot
+        run now as we hold THR_LOCK_maria.
       */
       /*
         This table is relevant for checkpoint and not already seen. Mark it,
@@ -887,7 +895,10 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
     my_bool ignore_share;
     if (!(share->in_checkpoint & MARIA_CHECKPOINT_LOOKS_AT_ME))
     {
-      /* No need for a mutex to read the above, only us can write this flag */
+      /*
+        No need for a mutex to read the above, only us can write *this* bit of
+        the in_checkpoint bitmap
+      */
       continue;
     }
     /**
@@ -956,6 +967,14 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
 
     /* OS file descriptors are ints which we stored in 4 bytes */
     compile_time_assert(sizeof(int) <= 4);
+    /*
+      Protect against maria_close() (which does some memory freeing in
+      MARIA_FILE_BITMAP) with close_lock. intern_lock is not
+      sufficient as we, as well as maria_close(), are going to unlock
+      intern_lock in the middle of manipulating the table. Serializing us and
+      maria_close() should help avoid problems.
+    */
+    pthread_mutex_lock(&share->close_lock);
     pthread_mutex_lock(&share->intern_lock);
     /*
       Tables in a normal state have their two file descriptors open.
@@ -1037,7 +1056,9 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
           state_copies_horizon;
         if (kfile.file >= 0)
           sync_error|=
-            _ma_state_info_write_sub(kfile.file, &state_copy->state, 1);
+            _ma_state_info_write_sub(share, kfile.file,
+                                     &state_copy->state,
+                                     MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET);
         /*
           We don't set share->changed=0 because it may interfere with a
           concurrent _ma_writeinfo() doing share->changed=1 (cancel its
@@ -1045,6 +1066,20 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
           each checkpoint if the table was once written and then not anymore.
         */
       }
+    }
+    /*
+      _ma_bitmap_flush_all() may wait, so don't keep intern_lock as
+      otherwise this would deadlock with allocate_and_write_block_record()
+      calling _ma_set_share_data_file_length()
+    */
+    pthread_mutex_unlock(&share->intern_lock);
+    
+    if (!ignore_share)
+    {
+      /*
+        share->bitmap is valid because it's destroyed under close_lock which
+        we hold.
+      */
       if (_ma_bitmap_flush_all(share))
       {
         sync_error= 1;
@@ -1057,23 +1092,28 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
       Clean up any unused states.
       TODO: Only do this call if there has been # (10?) ended transactions
       since last call.
+      We had to release intern_lock to respect lock order with LOCK_trn_list.
     */
-    pthread_mutex_unlock(&share->intern_lock);
-    _ma_remove_not_visible_states_with_lock(share);
-    pthread_mutex_lock(&share->intern_lock);
+    _ma_remove_not_visible_states_with_lock(share, FALSE);
 
     if (share->in_checkpoint & MARIA_CHECKPOINT_SHOULD_FREE_ME)
     {
-      /* maria_close() left us to free the share */
-      pthread_mutex_unlock(&share->intern_lock);
+      /*
+        maria_close() left us free the share. When it run it set share->id
+        to 0. As it run before we locked close_lock, we should have seen this
+        and so this assertion should be true:
+      */
+      DBUG_ASSERT(ignore_share);
       pthread_mutex_destroy(&share->intern_lock);
+      pthread_mutex_unlock(&share->close_lock);
+      pthread_mutex_destroy(&share->close_lock);
       my_free((uchar *)share, MYF(0));
     }
     else
     {
       /* share goes back to normal state */
       share->in_checkpoint= 0;
-      pthread_mutex_unlock(&share->intern_lock);
+      pthread_mutex_unlock(&share->close_lock);
     }
 
     /*

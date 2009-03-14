@@ -185,12 +185,16 @@ extern "C" {
     /* 59 used */
 
     /** NDB_MGM_EVENT_CATEGORY_STARTUP */
-    NDB_LE_StartReport = 60
+    NDB_LE_StartReport = 60,
 
     /* 61 (used in upcoming patch) */
     /* 62-67 used */
-    /* 68 unused */
+    /* 68 (used in upcoming patch) */
 
+    /** NDB_MGM_EVENT_SEVERITY_WARNING */
+    NDB_LE_SubscriptionStatus = 69
+
+    /* 70 unused */
   };
 
   /**
@@ -389,6 +393,7 @@ extern "C" {
       } NDBStartCompleted;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
+        unsigned _todo;
       } STTORRYRecieved;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
@@ -433,6 +438,7 @@ extern "C" {
       } NDBStopForced;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
+        unsigned _todo;
       } NDBStopAborted;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
@@ -466,9 +472,11 @@ extern "C" {
       /* NODERESTART */
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
+        unsigned _todo;
       } NR_CopyDict;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
+        unsigned _todo;
       } NR_CopyDistr;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
@@ -514,12 +522,15 @@ extern "C" {
       } ArbitResult;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
+        unsigned _todo;
       } GCP_TakeoverStarted;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
+        unsigned _todo;
       } GCP_TakeoverCompleted;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
+        unsigned _todo;
       } LCP_TakeoverStarted;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
@@ -600,6 +611,7 @@ extern "C" {
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
 	/* TODO */
+        unsigned _todo;
       } WarningEvent;
 
       /* INFO */
@@ -614,6 +626,7 @@ extern "C" {
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
 	/* TODO */
+        unsigned _todo;
       } InfoEvent;
       /** Log event specific data for for corresponding NDB_LE_ log event */
       struct {
@@ -720,6 +733,11 @@ extern "C" {
 	unsigned bitmask_size;
 	unsigned bitmask_data[1];
       } StartReport;
+      /** Log event data @ref NDB_LE_SubscriptionStatus */
+      struct {
+        unsigned report_type;
+	unsigned node_id;
+      } SubscriptionStatus;
 #ifndef DOXYGEN_FIX
     };
 #else

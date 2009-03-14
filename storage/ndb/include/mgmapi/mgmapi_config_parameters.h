@@ -26,6 +26,7 @@
 #define CFG_NODE_HOST                 5
 #define CFG_NODE_SYSTEM               6
 #define CFG_NODE_DATADIR              7
+#define CFG_9                         9         /* used in later version */
 
 /**
  * DB config parameters
@@ -123,11 +124,20 @@
 #define CFG_DB_MICRO_GCP_INTERVAL     170 /* micro gcp */
 #define CFG_DB_MICRO_GCP_TIMEOUT      171
 
+/* 172 - 178 used in 6.3 */
+
+#define CFG_DB_SUBSCRIPTIONS          179
+#define CFG_DB_SUBSCRIBERS            180
+#define CFG_DB_SUB_OPERATIONS         181
+#define CFG_DB_MAX_BUFFERED_EPOCHS    182 /* subscriptions */
+#define CFG_DB_SUMA_HANDOVER_TIMEOUT  183
+
 #define CFG_DB_SGA                    198 /* super pool mem */
 #define CFG_DB_DATA_MEM_2             199 /* used in special build in 5.1 */
 
 #define CFG_NODE_ARBIT_RANK           200
 #define CFG_NODE_ARBIT_DELAY          201
+#define CFG_202                       202       /* used in later version */
 
 #define CFG_MIN_LOGLEVEL          250
 #define CFG_LOGLEVEL_STARTUP      250
@@ -157,6 +167,7 @@
 #define CFG_CONNECTION_HOSTNAME_2     408
 #define CFG_CONNECTION_GROUP          409
 #define CFG_CONNECTION_NODE_ID_SERVER 410
+#define CFG_411                       411       /* used in later version */
 
 #define CFG_TCP_SERVER                452
 #define CFG_TCP_SEND_BUFFER_SIZE      454
@@ -180,9 +191,9 @@
 #define CFG_SCI_SEND_LIMIT            554
 #define CFG_SCI_BUFFER_MEM            555
 
-#define CFG_602                       602 // Removed: was OSE
-#define CFG_603                       603 // Removed: was OSE
-#define CFG_604                       604 // Removed: was OSE
+#define CFG_602                       602 /* Removed: was OSE */
+#define CFG_603                       603 /* Removed: was OSE */
+#define CFG_604                       604 /* Removed: was OSE */
 
 /**
  * API Config variables
@@ -209,6 +220,6 @@
 #define CONNECTION_TYPE_TCP           0
 #define CONNECTION_TYPE_SHM           1
 #define CONNECTION_TYPE_SCI           2
-#define CONNECTION_TYPE_OSE           3 // Removed.
+#define CONNECTION_TYPE_OSE           3 /* Removed. */
 
 #endif

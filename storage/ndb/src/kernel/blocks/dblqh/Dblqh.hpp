@@ -704,10 +704,12 @@ public:
      *       fragment operations on the fragment. 
      *       A maximum of four concurrently active is allowed.
      */
-    typedef Bitmask<4> ScanNumberMask;
+
+    typedef Bitmask<8> ScanNumberMask; // Max 255 KeyInfo20::ScanNo
     ScanNumberMask m_scanNumberMask;
     DLList<ScanRecord>::Head m_activeScans;
     DLFifoList<ScanRecord>::Head m_queuedScans;
+    DLFifoList<ScanRecord>::Head m_queuedTupScans;
 
     Uint16 srLqhLognode[4];
     /**
@@ -944,7 +946,9 @@ public:
   typedef Ptr<GcpRecord> GcpRecordPtr;
 
   struct HostRecord {
-    bool inPackedList;
+    Uint8 inPackedList;
+    Uint8 nodestatus;
+    Uint8 _unused[2];
     UintR noOfPackedWordsLqh;
     UintR packedWordsLqh[30];
     UintR noOfPackedWordsTc;
@@ -2264,7 +2268,8 @@ private:
   void writeFileHeaderOpen(Signal* signal, Uint32 type);
   void writeInitMbyte(Signal* signal);
   void writeSinglePage(Signal* signal, Uint32 pageNo,
-                       Uint32 wordWritten, Uint32 place);
+                       Uint32 wordWritten, Uint32 place,
+                       bool sync = true);
   void buildLinkedLogPageList(Signal* signal);
   void changeMbyte(Signal* signal);
   Uint32 checkIfExecLog(Signal* signal);
@@ -2647,6 +2652,7 @@ private:
 // Configurable
   FragrecordPtr fragptr;
   ArrayPool<Fragrecord> c_fragment_pool;
+  RSS_AP_SNAPSHOT(c_fragment_pool);
 
 #define ZGCPREC_FILE_SIZE 1
   GcpRecord *gcpRecord;

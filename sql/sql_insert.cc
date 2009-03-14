@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -63,6 +63,7 @@
 #include "rpl_mi.h"
 #include "sql_audit.h"
 #include "transaction.h"
+#include "debug_sync.h"
 
 #ifndef EMBEDDED_LIBRARY
 static bool delayed_get_table(THD *thd, TABLE_LIST *table_list);
@@ -1732,6 +1733,7 @@ public:
 
 class Delayed_insert :public ilink {
   uint locks_in_memory;
+  thr_lock_type delayed_lock;
 public:
   THD thd;
   TABLE *table;
@@ -1768,11 +1770,14 @@ public:
     thd.system_thread= SYSTEM_THREAD_DELAYED_INSERT;
     thd.security_ctx->host_or_ip= "";
     bzero((char*) &info,sizeof(info));
-    pthread_mutex_init(&mutex,MY_MUTEX_INIT_FAST);
+    my_pthread_mutex_init(&mutex, MY_MUTEX_INIT_FAST, "Delayed_insert::mutex",
+                          0);
     pthread_cond_init(&cond,NULL);
     pthread_cond_init(&cond_client,NULL);
     pthread_mutex_lock(&LOCK_thread_count);
     delayed_insert_threads++;
+    delayed_lock= global_system_variables.low_priority_updates ?
+                                          TL_WRITE_LOW_PRIORITY : TL_WRITE;
     pthread_mutex_unlock(&LOCK_thread_count);
   }
   ~Delayed_insert()
@@ -2269,7 +2274,8 @@ void kill_delayed_threads(void)
 	  in handle_delayed_insert()
 	*/
 	if (&di->mutex != di->thd.mysys_var->current_mutex)
-	  pthread_mutex_lock(di->thd.mysys_var->current_mutex);
+	  my_pthread_mutex_lock(di->thd.mysys_var->current_mutex, 
+                                MYF_NO_DEADLOCK_DETECTION);
 	pthread_cond_broadcast(di->thd.mysys_var->current_cond);
 	if (&di->mutex != di->thd.mysys_var->current_mutex)
 	  pthread_mutex_unlock(di->thd.mysys_var->current_mutex);
@@ -2348,7 +2354,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   {
     /* Can't use my_error since store_globals has not yet been called */
     thd->stmt_da->set_error_status(thd, ER_OUT_OF_RESOURCES,
-                                  ER(ER_OUT_OF_RESOURCES));
+                                   ER(ER_OUT_OF_RESOURCES), NULL);
     goto end;
   }
   DBUG_ENTER("handle_delayed_insert");
@@ -2357,7 +2363,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   {
     /* Can't use my_error since store_globals has perhaps failed */
     thd->stmt_da->set_error_status(thd, ER_OUT_OF_RESOURCES,
-                                  ER(ER_OUT_OF_RESOURCES));
+                                   ER(ER_OUT_OF_RESOURCES), NULL);
     thd->fatal_error();
     goto err;
   }
@@ -2376,7 +2382,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   thd->lex->set_stmt_unsafe();
   thd->set_current_stmt_binlog_row_based_if_mixed();
 
-  alloc_mdl_locks(&di->table_list, thd->mem_root);
+  alloc_mdl_requests(&di->table_list, thd->mem_root);
 
   if (di->open_and_lock_table())
     goto err;
@@ -2547,12 +2553,13 @@ end:
     clients
   */
 
-  close_thread_tables(thd);			// Free the table
   di->table=0;
   di->dead= 1;                                  // If error
   thd->killed= THD::KILL_CONNECTION;	        // If error
-  pthread_cond_broadcast(&di->cond_client);	// Safety
   pthread_mutex_unlock(&di->mutex);
+
+  close_thread_tables(thd);			// Free the table
+  pthread_cond_broadcast(&di->cond_client);	// Safety
 
   pthread_mutex_lock(&LOCK_delayed_create);	// Because of delayed_get_table
   pthread_mutex_lock(&LOCK_delayed_insert);	
@@ -2610,7 +2617,7 @@ bool Delayed_insert::handle_inserts(void)
   table->use_all_columns();
 
   thd_proc_info(&thd, "upgrading lock");
-  if (thr_upgrade_write_delay_lock(*thd.lock->locks))
+  if (thr_upgrade_write_delay_lock(*thd.lock->locks, delayed_lock))
   {
     /*
       This can happen if thread is killed either by a shutdown
@@ -3558,6 +3565,12 @@ static TABLE *create_table_from_items(THD *thd, HA_CREATE_INFO *create_info,
                                     MYSQL_LOCK_IGNORE_FLUSH, &not_used)) ||
         hooks->postlock(&table, 1))
   {
+    /* purecov: begin tested */
+    /*
+      This can happen in innodb when you get a deadlock when using same table
+      in insert and select
+    */
+    my_error(ER_CANT_LOCK, MYF(0), my_errno);
     if (*lock)
     {
       mysql_unlock_tables(thd, *lock);
@@ -3567,6 +3580,7 @@ static TABLE *create_table_from_items(THD *thd, HA_CREATE_INFO *create_info,
     if (!create_info->table_existed)
       drop_open_table(thd, table, create_table->db, create_table->table_name);
     DBUG_RETURN(0);
+    /* purecov: end */
   }
   DBUG_RETURN(table);
 }

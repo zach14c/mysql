@@ -56,12 +56,13 @@ class ha_myisam: public handler
   ulonglong table_flags() const { return int_table_flags; }
   int index_init(uint idx, bool sorted);
   int index_end();
+  int rnd_end();
+
   ulong index_flags(uint inx, uint part, bool all_parts) const
   {
     return ((table_share->key_info[inx].algorithm == HA_KEY_ALG_FULLTEXT) ?
             0 : HA_READ_NEXT | HA_READ_PREV | HA_READ_RANGE |
-            HA_READ_ORDER | HA_KEYREAD_ONLY | 
-            (keys_with_parts.is_set(inx)?0:HA_DO_INDEX_COND_PUSHDOWN));
+            HA_READ_ORDER | HA_KEYREAD_ONLY | HA_DO_INDEX_COND_PUSHDOWN);
   }
   uint max_supported_keys()          const { return MI_MAX_KEY; }
   uint max_supported_key_length()    const { return HA_MAX_KEY_LENGTH; }
@@ -148,9 +149,6 @@ class ha_myisam: public handler
   {
     return file;
   }
-  int read_range_first(const key_range *start_key, const key_range *end_key,
-                       bool eq_range_arg, bool sorted);
-  int read_range_next();
 public:
   /**
    * Multi Range Read interface
@@ -162,14 +160,13 @@ public:
                                       void *seq_init_param, 
                                       uint n_ranges, uint *bufsz,
                                       uint *flags, COST_VECT *cost);
-  int multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                            uint *bufsz, uint *flags, COST_VECT *cost);
+  ha_rows multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                uint *bufsz, uint *flags, COST_VECT *cost);
   
   /* Index condition pushdown implementation */
   Item *idx_cond_push(uint keyno, Item* idx_cond);
 private:
   DsMrr_impl ds_mrr;
-  key_map keys_with_parts;
   friend my_bool index_cond_func_myisam(void *arg);
 };
 

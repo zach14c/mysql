@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2004-2008 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+   Copyright (C) 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -39,8 +40,8 @@ static uchar *_ma_find_last_pos(MARIA_HA *info, MARIA_KEY *int_key,
                                 uchar *page, uchar **after_key);
 static my_bool _ma_ck_write_tree(register MARIA_HA *info, MARIA_KEY *key);
 static my_bool _ma_ck_write_btree(register MARIA_HA *info, MARIA_KEY *key);
-static int _ma_ck_write_btree_with_log(MARIA_HA *info, MARIA_KEY *key,
-                                       my_off_t *root, uint32 comp_flag);
+static int _ma_ck_write_btree_with_log(MARIA_HA *, MARIA_KEY *, my_off_t *,
+                                       uint32);
 static my_bool _ma_log_split(MARIA_HA *info, my_off_t page, const uchar *buff,
                              uint org_length, uint new_length,
                              const uchar *key_pos,
@@ -181,9 +182,8 @@ int maria_write(MARIA_HA *info, uchar *record)
       else
       {
         while (keyinfo->ck_insert(info,
-                                  (*keyinfo->make_key)(info, &int_key, i,
-                                                       buff, record, filepos,
-                                                       info->trn->trid)))
+                 (*keyinfo->make_key)(info, &int_key, i, buff, record,
+                                      filepos, info->trn->trid)))
         {
           TRN *blocker;
           DBUG_PRINT("error",("Got error: %d on write",my_errno));
@@ -193,10 +193,12 @@ int maria_write(MARIA_HA *info, uchar *record)
             below doesn't work for them.
             Also, filter out non-thread maria use, and table modified in
             the same transaction.
+            At last, filter out non-dup-unique errors.
           */
           if (!local_lock_tree)
             goto err;
-          if (info->dup_key_trid == info->trn->trid)
+          if (info->dup_key_trid == info->trn->trid ||
+              my_errno != HA_ERR_FOUND_DUPP_KEY)
           {
 	    rw_unlock(&keyinfo->root_lock);
             goto err;
@@ -230,9 +232,11 @@ int maria_write(MARIA_HA *info, uchar *record)
             /* running. now we wait */
             WT_RESOURCE_ID rc;
             int res;
+            const char *old_proc_info; 
 
             rc.type= &ma_rc_dup_unique;
-            rc.value= (intptr)blocker; /* TODO savepoint id when we'll have them */
+            /* TODO savepoint id when we'll have them */
+            rc.value= (intptr)blocker;
             res= wt_thd_will_wait_for(info->trn->wt, blocker->wt, & rc);
             if (res != WT_OK)
             {
@@ -240,14 +244,12 @@ int maria_write(MARIA_HA *info, uchar *record)
               my_errno= HA_ERR_LOCK_DEADLOCK;
               goto err;
             }
-            {
-              const char *old_proc_info= proc_info_hook(0,
-                    "waiting for a resource", __func__, __FILE__, __LINE__);
+            old_proc_info= proc_info_hook(0,
+                                          "waiting for a resource",
+                                          __func__, __FILE__, __LINE__);
+            res= wt_thd_cond_timedwait(info->trn->wt, & blocker->state_lock);
+            proc_info_hook(0, old_proc_info, __func__, __FILE__, __LINE__);
 
-              res= wt_thd_cond_timedwait(info->trn->wt, & blocker->state_lock);
-
-              proc_info_hook(0, old_proc_info, __func__, __FILE__, __LINE__);
-            }
             pthread_mutex_unlock(& blocker->state_lock);
             if (res != WT_OK)
             {
@@ -257,6 +259,9 @@ int maria_write(MARIA_HA *info, uchar *record)
             }
           }
           rw_wrlock(&keyinfo->root_lock);
+#ifndef MARIA_CANNOT_ROLLBACK
+          keyinfo->version++;
+#endif
         }
       }
 
@@ -289,6 +294,7 @@ int maria_write(MARIA_HA *info, uchar *record)
   info->update= (HA_STATE_CHANGED | HA_STATE_AKTIV | HA_STATE_WRITTEN |
 		 HA_STATE_ROW_CHANGED);
   share->state.changed|= STATE_NOT_MOVABLE | STATE_NOT_ZEROFILLED;
+  info->state->changed= 1;
 
   info->cur_row.lastpos= filepos;
   (void)(_ma_writeinfo(info, WRITEINFO_UPDATE_KEYFILE));
@@ -319,6 +325,8 @@ err:
   fatal_error= 0;
   if (my_errno == HA_ERR_FOUND_DUPP_KEY ||
       my_errno == HA_ERR_RECORD_FILE_FULL ||
+      my_errno == HA_ERR_LOCK_DEADLOCK ||
+      my_errno == HA_ERR_LOCK_WAIT_TIMEOUT ||
       my_errno == HA_ERR_NULL_IN_SPATIAL ||
       my_errno == HA_ERR_OUT_OF_MEM)
   {
@@ -670,12 +678,14 @@ static int w_search(register MARIA_HA *info, uint32 comp_flag, MARIA_KEY *key,
         When the index will support true versioning - with multiple
         identical values in the UNIQUE index, invisible to each other -
         the following should be changed to "continue inserting keys, at the
-        end (of the row or statement) wait". Until it's done we cannot properly
-        support deadlock timeouts.
+        end (of the row or statement) wait". We need to wait on *all*
+        unique conflicts at once, not one-at-a-time, because we need to
+        know all blockers in advance, otherwise we'll have incomplete wait-for
+        graph.
       */
       /*
-        transaction that has inserted the conflicting key is in progress.
-        wait for it to be committed or aborted.
+        transaction that has inserted the conflicting key may be in progress.
+        the caller will wait for it to be committed or aborted.
       */
       info->dup_key_trid= _ma_trid_from_key(&tmp_key);
       info->dup_key_pos= dup_key_pos;

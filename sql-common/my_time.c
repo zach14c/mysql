@@ -264,8 +264,19 @@ str_to_datetime(const char *str, uint length, MYSQL_TIME *l_time,
   {
     const char *start= str;
     ulong tmp_value= (uint) (uchar) (*str++ - '0');
+
+    /*
+      Internal format means no delimiters; every field has a fixed
+      width. Otherwise, we scan until we find a delimiter and discard
+      leading zeroes -- except for the microsecond part, where leading
+      zeroes are significant, and where we never process more than six
+      digits.
+    */
+    my_bool     scan_until_delim= !is_internal_format &&
+                                  ((i != format_position[6]));
+
     while (str != end && my_isdigit(&my_charset_latin1,str[0]) &&
-           (!is_internal_format || --field_length))
+           (scan_until_delim || --field_length))
     {
       tmp_value=tmp_value*10 + (ulong) (uchar) (*str - '0');
       str++;
@@ -762,19 +773,20 @@ long calc_daynr(uint year,uint month,uint day)
 {
   long delsum;
   int temp;
+  int y= year;                                  /* may be < 0 temporarily */
   DBUG_ENTER("calc_daynr");
 
-  if (year == 0 && month == 0 && day == 0)
+  if (y == 0 && month == 0 && day == 0)
     DBUG_RETURN(0);				/* Skip errors */
-  delsum= (long) (365L * year+ 31*(month-1) +day);
+  delsum= (long) (365L * y+ 31*(month-1) +day);
   if (month <= 2)
-      year--;
+      y--;
   else
     delsum-= (long) (month*4+23)/10;
-  temp=(int) ((year/100+1)*3)/4;
+  temp=(int) ((y/100+1)*3)/4;
   DBUG_PRINT("exit",("year: %d  month: %d  day: %d -> daynr: %ld",
-		     year+(month <= 2),month,day,delsum+year/4-temp));
-  DBUG_RETURN(delsum+(int) year/4-temp);
+		     y+(month <= 2),month,day,delsum+y/4-temp));
+  DBUG_RETURN(delsum+(int) y/4-temp);
 } /* calc_daynr */
 
 

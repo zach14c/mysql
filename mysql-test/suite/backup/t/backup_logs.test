@@ -1,5 +1,5 @@
 #
-# This test includes tests for ensuring the backup progress tables
+# This test includes tests for ensuring the backup progress and history tables
 # are updated.
 #
 
@@ -8,8 +8,17 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 --source include/have_debug.inc
+--source include/have_myisam_or_maria_default.inc
+--source include/blackhole.inc
+
+if (`select @@version_compile_os like 'apple-darwin%'`)
+{
+--skip "Can't run on Mac because of bug#43221"
+}
 
 SET DEBUG_SYNC= 'RESET';
+
+let $MYSQLD_DATADIR= `select @@datadir`;
 
 # bug#33836 backup tables should have charset utf8
 
@@ -40,28 +49,129 @@ ORDER BY column_name;
 #
 --disable_warnings
 DROP DATABASE IF EXISTS backup_logs;
+
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
+
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak;
+remove_file $MYSQLD_BACKUPDIR/backup_logs_orig.bak;
 --enable_warnings
 
 PURGE BACKUP LOGS;
 
-connect (con1,localhost,root,,);
-connect (con2,localhost,root,,);
+--echo Check backup logs when log_backup_output is TABLE and FILE
+SET @@global.log_backup_output = 'TABLE,FILE';
 
-#
-# Test 1 - Check output of backup.
-#
+#Create users and assign privileges
+CREATE USER 'tom'@'localhost' IDENTIFIED BY 'abc';
+GRANT ALL ON *.* TO 'tom'@'localhost' WITH GRANT OPTION;
+
+#Checking the grant privileges
+SHOW GRANTS FOR 'tom'@'localhost';
+SELECT user, host, password FROM mysql.user WHERE user='tom';
+
+# Verify different username entry in backup_history logs.
+
+connect (con1,localhost,tom,abc);
+connect (con2,localhost,tom,abc);
+connect (con3,localhost,root,);
 
 connection con1;
-
+SELECT CURRENT_USER();
 CREATE DATABASE backup_logs;
 
---echo con1: Create table and new users.
+# Test 1: Verifying backupid
 
-CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
+--echo Perform backup
+--echo BACKUP DATABASE backup_logs TO 'backup_logs1.bak'
+
+Let $backup_id=`BACKUP DATABASE backup_logs TO 'backup_logs1.bak'`;
+
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @backup_id_history FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
+
+--echo Verify the result
+--echo LET $result=`SELECT @backup_id_history = backup_id AS are_identical`
+LET $result=`SELECT @backup_id_history = $backup_id AS are_identical`;
+
+--echo
+--echo Verification of backup_id from history table and command is:
+--echo $result
+
+--echo We can notice that, if result is 1 then backup_id
+--echo from backup_history log and from backup_command is same.
+--remove_file $MYSQLD_DATADIR/backup_logs1.bak
+
+#
+# Test 2 - Check output of backup and verify different columns in
+#          backup history and progress logs.
+#
+
+--echo con1: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'after_backup_log_init     SIGNAL started   WAIT_FOR do_run';
+SET DEBUG_SYNC= 'after_backup_start_backup SIGNAL running   WAIT_FOR finish';
+
+--echo Perform backup database operation with database alone.
+send BACKUP DATABASE backup_logs TO 'backup_logs1.bak';
+
+connection default;
+
+--echo con default: Wait for the backup to be started.
+SET DEBUG_SYNC= 'now WAIT_FOR started';
+--echo Let backup step to running state.
+SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR running';
+
+--echo con default: Let backup finish.
+SET DEBUG_SYNC= 'now SIGNAL finish';
+
+connection con1;
+--echo con1: Finish backup command
+--replace_column 1 #
+reap;
+
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
+SELECT operation,num_objects, username, command FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+--remove_file $MYSQLD_DATADIR/backup_logs1.bak
+
+connection con3;
+SELECT CURRENT_USER();
+--echo Perform Backup and verify the username as 'root' in backup history log
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup_logs1.bak';
+
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
+SELECT operation,num_objects, username, command FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+--remove_file $MYSQLD_DATADIR/backup_logs1.bak
+
+--echo
+--echo From the above tables we can notice that num_objects shows '0' if only DB
+--echo is included in backup image(BUG#39109)
+--echo
+
+# BUG#39109: Mysql Online Backup table doesn't show correct num_object count
+# Once BUG#39109 is fixed, all the objects should be listed in the num_object
+# count of backup_history log
+
+--echo Include all objects in database(Databases, tables, procedures and
+--echo functions, views, triggers and events) and perform backup operation.
+
+connection con1;
+--echo con1: Create tables
+
+# Tables are created using Myisam(Native driver), Innodb(Consistent Snapshot
+# driver), Memory(Default driver) and Blackhole(no-data driver). Ensure that
+# drivers column indicates all types of drivers for backup database operation.
+
+CREATE TABLE backup_logs.t1 (a char(30));
 CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
 CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
+CREATE TABLE backup_logs.t4(id INT, name CHAR(20))ENGINE=BLACKHOLE;
 
 INSERT INTO backup_logs.t1 VALUES ("01 Test #1 - progress"); 
 INSERT INTO backup_logs.t1 VALUES ("02 Test #1 - progress"); 
@@ -83,6 +193,43 @@ INSERT INTO backup_logs.t3 VALUES ("02 Test #1 - progress");
 INSERT INTO backup_logs.t3 VALUES ("03 Test #1 - progress"); 
 INSERT INTO backup_logs.t3 VALUES ("04 Test #1 - progress"); 
 
+INSERT INTO backup_logs.t4 VALUES(1,'aa1'),(2,'aa2'),(3,'aa3');
+SELECT * FROM backup_logs.t4;
+
+--echo create all objects like views, procedures, functions, triggers
+--echo and events.
+
+--echo ** create view **
+CREATE VIEW backup_logs.v1 AS SELECT * FROM backup_logs.t1;
+CREATE VIEW backup_logs.vv AS SELECT * FROM backup_logs.v1;
+
+--echo ** create triggers **
+delimiter ||;
+CREATE TRIGGER backup_logs.trg AFTER INSERT ON backup_logs.t1 FOR EACH ROW
+BEGIN
+ INSERT INTO backup_logs.t3 VALUES('Test objects count');
+END;||
+
+--echo ** create procedures **
+CREATE PROCEDURE backup_logs.p1()
+BEGIN
+  SELECT * FROM backup_logs.t1;
+END;
+||
+
+--echo ** create functions **
+CREATE FUNCTION backup_logs.f1() RETURNS INTEGER
+BEGIN
+RETURN (SELECT COUNT(*) FROM backup_logs.t1);
+END;
+||
+delimiter ;||
+
+--echo ** create event **
+CREATE EVENT backup_logs.e1 ON SCHEDULE EVERY 1 YEAR DO
+ DELETE FROM objects.t4 WHERE id=10;
+
+--echo
 --echo Do backup of database
 
 connection con2;
@@ -102,29 +249,47 @@ send BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 
 connection con1;
 
+# Record the time when BACKUP has started.
+# Set the time_zone to +0:00 to have same server timezone as of
+# backup history table.
+
+SET time_zone='+0:00';
+SELECT now() INTO @start_backup;
+
 --echo con1: Wait for the backup to be started.
 SET DEBUG_SYNC= 'now WAIT_FOR started';
 
+--echo
 --echo con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
+--echo backup progress tables will always show start_time, stop_time,total_bytes
+--echo and progress as '0' for all phases of backup operation.
+--echo BUG#39356 Backup progress table details aren't updated properly
+# Correct backup/restore times and progress should be indicated in the backup
+# logs once this bug is fixed
+
+SELECT total_bytes, progress, notes FROM mysql.backup_progress 
+       WHERE backup_id = 500;
 
 --echo con1: Let backup step to running state.
 SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR phase1';
 
 --echo con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
+SELECT total_bytes, progress, notes FROM mysql.backup_progress 
+       WHERE backup_id = 500;
 
 --echo con1: Let backup do the backup phase1.
 SET DEBUG_SYNC= 'now SIGNAL backup WAIT_FOR validated';
 
 --echo con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
+SELECT total_bytes, progress, notes FROM mysql.backup_progress 
+       WHERE backup_id = 500;
 
 --echo con1: Let backup do the backup phase2.
 SET DEBUG_SYNC= 'now SIGNAL do_phase2 WAIT_FOR phase2';
 
 --echo con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
+SELECT total_bytes, progress, notes FROM mysql.backup_progress 
+       WHERE backup_id = 500;
 
 --echo con1: Let backup finish.
 SET DEBUG_SYNC= 'now SIGNAL finish';
@@ -140,11 +305,78 @@ SET SESSION debug="-d";
 
 connection con1;
 
+SET time_zone='+0:00';
+SELECT now() INTO @stop_backup;
+
+--echo We calculate the timedifference between backup start time and stop
+--echo time. If this difference is '0', then backup start time and stop time
+--echo are same.
+
+SELECT timediff(@stop_backup, @start_backup) > 5;
+
+--echo
+--echo Now verify actual start time / stop time of backup and start time /
+--echo stop time from backup_history table. If the both times are same, 
+--echo the timediff will be '0'
+--echo
+
+SELECT timediff(start_time, @start_backup) > 5 from mysql.backup_history
+WHERE backup_id=500;
+
+SELECT timediff(stop_time, @stop_backup) > 5 from mysql.backup_history
+WHERE backup_id=500;
+
+--echo Now verify that start_time <= vp_time <= stop_time
+
+SELECT timediff(validity_point_time, start_time) >= 0, 
+timediff(stop_time, validity_point_time) >=0
+from mysql.backup_history WHERE backup_id=500;
+
+--echo
+--echo From backup_history log we will notice that "drivers" column will show
+--echo Myisam, snapshot, default and no-data drivers
+--echo "error_num" will be '0' as both backup and restore was successful
+--echo "num_objects" count is always 5(as there are 5 tables in database).
+--echo It does not list other objects from the backup image(BUG#39109)
+
 #Show results
+
+SHOW VARIABLES LIKE 'log_backup_output';
 --replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 # 16 #
 --query_vertical SELECT * FROM mysql.backup_history WHERE backup_id = 500;
 --replace_column 1 # 3 # 4 #
 SELECT * FROM mysql.backup_progress WHERE backup_id = 500;
+
+# Check the backup file size and compare it from backup_history
+# logs. Note that total_bytes in backup_progress is always
+# '0' and backup_history shows different file size because of bug#37980
+
+LET FILE_SIZE_HISTORY = `SELECT total_bytes FROM mysql.backup_history WHERE      backup_id = 500`;
+
+perl;
+my $filename = "var/master-data/backup_logs_orig.bak";
+my $filesize = -s $filename;
+
+if ($filesize ne $ENV{FILE_SIZE_HISTORY})
+{
+print "File sizes are not identical\n";
+}
+else
+{
+print "File sizes are identical\n";
+}
+EOF
+
+--echo
+--echo The actual backup file size and from backup_history logs are different
+--echo because of bug#37980. Once this bug is fixed, both should show 
+--echo same bytes.
+
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
+
+#cat_file $MYSQLD_DATADIR/backup_history.log;
+#cat_file $MYSQLD_DATADIR/backup_progress.log;
 
 connection con2;
 
@@ -158,23 +390,29 @@ send RESTORE FROM 'backup_logs_orig.bak' OVERWRITE;
 
 connection con1;
 
+# Record the time when RESTORE has started.
+SELECT now() INTO @start_restore;
+
 --echo con1: Wait for the restore to be started.
 SET DEBUG_SYNC= 'now WAIT_FOR started';
 
 --echo con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 501;
+SELECT total_bytes, progress,notes FROM mysql.backup_progress 
+       WHERE backup_id = 501;
 
 --echo con1: Let restore step to running state.
 SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR running';
 
 --echo con1: Display progress
-SELECT notes FROM mysql.backup_progress WHERE backup_id = 501;
+SELECT total_bytes, progress,notes FROM mysql.backup_progress 
+       WHERE backup_id = 501;
 
 --echo con1: Let restore do its job and finish.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 
 connection con2;
 --echo con2: Finish restore command
+--replace_column 1 #
 reap;
 
 FLUSH BACKUP LOGS;
@@ -185,33 +423,68 @@ connection con1;
 
 SET DEBUG_SYNC= 'now WAIT_FOR complete';
 
+--echo We calculate the time difference between restore start time and stop
+--echo time. If this difference is '0', then restore start time and stop time
+--echo are same.
+
+SELECT timediff(now(),@start_restore) > 5;
+
 #Show results
 --replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 # 16 #
 --query_vertical SELECT * FROM mysql.backup_history WHERE backup_id = 501;
+
+# Correct backup/restore times and progress should be indicated in the backup
+# logs once this bug 39356 is fixed
+
 --replace_column 1 # 3 # 4 #
 SELECT * FROM mysql.backup_progress WHERE backup_id = 501;
 
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
+#cat_file $MYSQLD_DATADIR/backup_history.log;
+#cat_file $MYSQLD_DATADIR/backup_progress.log;
+
 SET DEBUG_SYNC= 'RESET';
 
---remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+#
+# Now test read of backupid with known id using debug insertion
+#
+SET SESSION debug="+d,set_backup_id";
+
+--remove_file $MYSQLD_BACKUPDIR/backup_logs_orig.bak
+
+#
+# The first backup will cause the value to be set to 500 and written to file.
+# The second backup will read the value (500) and increment it.
+#--replace_column 1 #
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+
+SET SESSION debug="-d";
+
+--remove_file $MYSQLD_BACKUPDIR/backup_logs_orig.bak
+--echo The backup id for this command should be 501.
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+
+--remove_file $MYSQLD_BACKUPDIR/backup_logs_orig.bak
 --echo The backup id for this command should be 502.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 
---remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+--remove_file $MYSQLD_BACKUPDIR/backup_logs_orig.bak
 --echo The backup id for this command should be 503.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 
---remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+--remove_file $MYSQLD_DATADIR/backup_logs_orig.bak
 --echo The backup id for this command should be 504.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 
---remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+--remove_file $MYSQLD_DATADIR/backup_logs_orig.bak
 --echo The backup id for this command should be 505.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 
 #
 # Cleanup.
 #
+SET DEBUG_SYNC= 'reset';
 DROP DATABASE backup_logs;
---remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+remove_file $MYSQLD_BACKUPDIR/backup_logs_orig.bak;
 

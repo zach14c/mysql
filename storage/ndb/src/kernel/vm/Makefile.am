@@ -43,9 +43,6 @@ INCLUDES_LOC = -I$(top_srcdir)/storage/ndb/src/mgmapi
 include $(top_srcdir)/storage/ndb/config/common.mk.am
 include $(top_srcdir)/storage/ndb/config/type_kernel.mk.am
 
-# Don't update the files from bitkeeper
-%::SCCS/s.%
-
 windoze-dsp: libkernel.dsp
 
 libkernel.dsp: Makefile \
@@ -56,7 +53,7 @@ libkernel.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-lib.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ $(noinst_LIBRARIES)
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(libkernel_a_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LIB $(LDADD)
 
@@ -65,24 +62,24 @@ ndbd_malloc_impl_test_CXXFLAGS = -DUNIT_TEST
 ndbd_malloc_impl_test_SOURCES = ndbd_malloc_impl.cpp
 ndbd_malloc_impl_test_LDFLAGS = @ndb_bin_am_ldflags@ \
   $(top_builddir)/storage/ndb/src/libndbclient.la \
-  $(top_builddir)/mysys/libmysys.a \
-  $(top_builddir)/dbug/libdbug.a \
-  $(top_builddir)/strings/libmystrings.a
+  $(top_builddir)/mysys/libmysyslt.la \
+  $(top_builddir)/dbug/libdbuglt.la \
+  $(top_builddir)/strings/libmystringslt.la
 
 bench_pool_SOURCES = bench_pool.cpp
 bench_pool_LDFLAGS = @ndb_bin_am_ldflags@\
   libkernel.a ../error/liberror.a \
   $(top_builddir)/storage/ndb/src/libndbclient.la \
-  $(top_builddir)/mysys/libmysys.a \
-  $(top_builddir)/dbug/libdbug.a \
-  $(top_builddir)/strings/libmystrings.a
+  $(top_builddir)/mysys/libmysyslt.la \
+  $(top_builddir)/dbug/libdbuglt.la \
+  $(top_builddir)/strings/libmystringslt.la
 
 testDynArr256_CXXFLAGS = -DUNIT_TEST
 testDynArr256_SOURCES = DynArr256.cpp
 testDynArr256_LDFLAGS = @ndb_bin_am_ldflags@ \
   libkernel.a ../error/liberror.a \
   $(top_builddir)/storage/ndb/src/libndbclient.la \
-  $(top_builddir)/mysys/libmysys.a \
-  $(top_builddir)/dbug/libdbug.a \
-  $(top_builddir)/strings/libmystrings.a
+  $(top_builddir)/mysys/libmysyslt.la \
+  $(top_builddir)/dbug/libdbuglt.la \
+  $(top_builddir)/strings/libmystringslt.la
 

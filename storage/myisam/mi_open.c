@@ -89,6 +89,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   my_off_t key_root[HA_MAX_POSSIBLE_KEY],key_del[MI_MAX_KEY_BLOCK_SIZE];
   ulonglong max_key_file_length, max_data_file_length;
   DBUG_ENTER("mi_open");
+  DBUG_PRINT("myisam", ("open '%s'", name));
 
   LINT_INIT(m_info);
   kfile= -1;
@@ -115,6 +116,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   pthread_mutex_lock(&THR_LOCK_myisam);
   if (!(old_info=test_if_reopen(name_buff)))
   {
+    DBUG_PRINT("myisam", ("open share '%s'", name));
     share= &share_buff;
     bzero((uchar*) &share_buff,sizeof(share_buff));
     share_buff.state.rec_per_key_part=rec_per_key_part;
@@ -164,7 +166,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
     {
       DBUG_PRINT("error",("Wrong header in %s",name_buff));
       DBUG_DUMP("error_dump",(uchar*) share->state.header.file_version,
-		head_length);
+		(size_t)head_length);
       my_errno=HA_ERR_NOT_A_TABLE;
       goto err;
     }
@@ -368,6 +370,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
     share->blocksize=min(IO_SIZE,myisam_block_size);
     {
       HA_KEYSEG *pos=share->keyparts;
+      uint32 ftkey_nr= 1;
       for (i=0 ; i < keys ; i++)
       {
         share->keyinfo[i].share= share;
@@ -449,6 +452,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
             share->ft2_keyinfo.end=pos;
             setup_key_functions(& share->ft2_keyinfo);
           }
+          share->keyinfo[i].ftkey_nr= ftkey_nr++;
 	}
         setup_key_functions(share->keyinfo+i);
 	share->keyinfo[i].end=pos;
@@ -458,6 +462,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 	pos->flag=0;					/* For purify */
 	pos++;
       }
+      
       for (i=0 ; i < uniques ; i++)
       {
 	disk_pos=mi_uniquedef_read(disk_pos, &share->uniqueinfo[i]);
@@ -486,7 +491,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 	pos->flag=0;
 	pos++;
       }
-      share->ftparsers= 0;
+      share->ftkeys= ftkey_nr;
     }
 
     disk_pos_assert(disk_pos + share->base.fields *MI_COLUMNDEF_SIZE, end_pos);
@@ -696,8 +701,8 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   thr_lock_data_init(&share->lock,&m_info->lock,(void*) m_info);
 #endif
   if (mi_log_tables_physical &&
-      hash_search(mi_log_tables_physical, (uchar *)share->unique_file_name,
-                  share->unique_name_length))
+      my_hash_search(mi_log_tables_physical, (uchar *)share->unique_file_name,
+                     share->unique_name_length))
     m_info->s->physical_logging= TRUE; /* set before publishing table */
   m_info->open_list.data=(void*) m_info;
   myisam_open_list=list_add(myisam_open_list,&m_info->open_list);
@@ -1215,7 +1220,7 @@ uchar *mi_keydef_read(uchar *ptr, MI_KEYDEF *keydef)
    keydef->underflow_block_length=keydef->block_length/3;
    keydef->version	= 0;			/* Not saved */
    keydef->parser       = &ft_default_parser;
-   keydef->ftparser_nr  = 0;
+   keydef->ftkey_nr     = 0;
    return ptr;
 }
 

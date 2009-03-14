@@ -20,9 +20,11 @@
 */
 
 #include "mysql_priv.h"
+#include "debug_sync.h"
 #include "sql_select.h"
 #include "sp_head.h"
 #include "sql_trigger.h"
+#include "transaction.h"
 
 /**
   Implement DELETE SQL word.
@@ -50,6 +52,11 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
   SELECT_LEX   *select_lex= &thd->lex->select_lex;
   THD::killed_state killed_status= THD::NOT_KILLED;
   DBUG_ENTER("mysql_delete");
+
+  THD::enum_binlog_query_type query_type=
+    thd->lex->sql_command == SQLCOM_TRUNCATE ?
+    THD::STMT_QUERY_TYPE :
+    THD::ROW_QUERY_TYPE;
 
   if (open_and_lock_tables(thd, table_list))
   {
@@ -139,6 +146,11 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
     DBUG_PRINT("debug", ("Trying to use delete_all_rows()"));
     if (!(error=table->file->ha_delete_all_rows()))
     {
+      /*
+        If delete_all_rows() is used, it is not possible to log the
+        query in row format, so we have to log it in statement format.
+      */
+      query_type= THD::STMT_QUERY_TYPE;
       error= -1;				// ok
       deleted= maybe_deleted;
       goto cleanup;
@@ -380,6 +392,11 @@ cleanup:
   {
     if (mysql_bin_log.is_open())
     {
+      bool const is_trans=
+        thd->lex->sql_command == SQLCOM_TRUNCATE ?
+        FALSE :
+        transactional_table;
+
       if (error < 0)
         thd->clear_error();
       /*
@@ -387,10 +404,13 @@ cleanup:
         storage engine does not inject the rows itself, we replicate
         statement-based; otherwise, 'ha_delete_row()' was used to
         delete specific rows which we might log row-based.
+
+        Note that TRUNCATE TABLE is not transactional and should
+        therefore be treated as a DDL.
       */
-      int log_result= thd->binlog_query(THD::ROW_QUERY_TYPE,
+      int log_result= thd->binlog_query(query_type,
                                         thd->query, thd->query_length,
-                                        transactional_table, FALSE, killed_status);
+                                        is_trans, FALSE, killed_status);
 
       if (log_result && transactional_table)
       {
@@ -967,6 +987,35 @@ bool multi_delete::send_eof()
 ****************************************************************************/
 
 /*
+  Row-by-row truncation if the engine does not support table recreation.
+  Probably a InnoDB table.
+*/
+
+static bool mysql_truncate_by_delete(THD *thd, TABLE_LIST *table_list)
+{
+  bool error, save_binlog_row_based= thd->current_stmt_binlog_row_based;
+  DBUG_ENTER("mysql_truncate_by_delete");
+  table_list->lock_type= TL_WRITE;
+  mysql_init_select(thd->lex);
+  thd->clear_current_stmt_binlog_row_based();
+  /* Delete all rows from table */
+  error= mysql_delete(thd, table_list, NULL, NULL, HA_POS_ERROR, LL(0), TRUE);
+  /*
+    All effects of a TRUNCATE TABLE operation are rolled back if a row by row
+    deletion fails. Otherwise, operation is automatically committed at the end.
+  */
+  if (error)
+  {
+    DBUG_ASSERT(thd->stmt_da->is_error());
+    trans_rollback_stmt(thd);
+    trans_rollback(thd);
+  }
+  thd->current_stmt_binlog_row_based= save_binlog_row_based;
+  DBUG_RETURN(error);
+}
+
+
+/*
   Optimize delete of all rows by doing a full generate of the table
   This will work even if the .ISM and .ISD tables are destroyed
 
@@ -986,7 +1035,8 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
   TABLE *table;
   bool error;
   uint path_length;
-  MDL_LOCK_DATA *mdl_lock_data= 0;
+  MDL_request *mdl_request= NULL;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_truncate");
 
   bzero((char*) &create_info,sizeof(create_info));
@@ -1013,6 +1063,9 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
 					     share->table_name.str, 1,
                                              OTM_OPEN))))
       (void) rm_temporary_table(table_type, path, frm_only);
+    else
+      thd->thread_specific_used= TRUE;
+    
     free_table_share(share);
     my_free((char*) table,MYF(0));
     /*
@@ -1040,18 +1093,20 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
                                       HTON_CAN_RECREATE))
       goto trunc_by_del;
 
+    if (table_type == DB_TYPE_NDBCLUSTER)
+      global_schema_lock_guard.lock();
     /*
       FIXME: Actually code of TRUNCATE breaks meta-data locking protocol since
              tries to get table enging and therefore accesses table in some way
              without holding any kind of meta-data lock.
     */
-    mdl_lock_data= mdl_alloc_lock(0, table_list->db, table_list->table_name,
-                                  thd->mem_root);
-    mdl_set_lock_type(mdl_lock_data, MDL_EXCLUSIVE);
-    mdl_add_lock(&thd->mdl_context, mdl_lock_data);
-    if (mdl_acquire_exclusive_locks(&thd->mdl_context))
+    mdl_request= MDL_request::create(0, table_list->db,
+                                     table_list->table_name, thd->mem_root);
+    mdl_request->set_type(MDL_EXCLUSIVE);
+    thd->mdl_context.add_request(mdl_request);
+    if (thd->mdl_context.acquire_exclusive_locks())
     {
-      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+      thd->mdl_context.remove_request(mdl_request);
       DBUG_RETURN(TRUE);
     }
     pthread_mutex_lock(&LOCK_open);
@@ -1084,38 +1139,23 @@ end:
       write_bin_log(thd, TRUE, thd->query, thd->query_length);
       my_ok(thd);		// This should return record count
     }
-    if (mdl_lock_data)
+    if (mdl_request)
     {
-      mdl_release_lock(&thd->mdl_context, mdl_lock_data);
-      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+      thd->mdl_context.release_lock(mdl_request->ticket);
+      thd->mdl_context.remove_request(mdl_request);
     }
   }
   else if (error)
   {
-    if (mdl_lock_data)
+    if (mdl_request)
     {
-      mdl_release_lock(&thd->mdl_context, mdl_lock_data);
-      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+      thd->mdl_context.release_lock(mdl_request->ticket);
+      thd->mdl_context.remove_request(mdl_request);
     }
   }
   DBUG_RETURN(error);
 
 trunc_by_del:
-  /* Probably InnoDB table */
-  ulonglong save_options= thd->options;
-  bool save_binlog_row_based= thd->current_stmt_binlog_row_based;
-
-  table_list->lock_type= TL_WRITE;
-  thd->options&= ~(OPTION_BEGIN | OPTION_NOT_AUTOCOMMIT);
-  ha_enable_transaction(thd, FALSE);
-  mysql_init_select(thd->lex);
-  thd->clear_current_stmt_binlog_row_based();
-
-  /* Delete all rows from table */
-  error= mysql_delete(thd, table_list, (COND*) 0, (SQL_LIST*) 0,
-                      HA_POS_ERROR, LL(0), TRUE);
-  ha_enable_transaction(thd, TRUE);
-  thd->options= save_options;
-  thd->current_stmt_binlog_row_based= save_binlog_row_based;
+  error= mysql_truncate_by_delete(thd, table_list);
   DBUG_RETURN(error);
 }

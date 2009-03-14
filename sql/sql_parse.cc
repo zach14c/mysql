@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@
 #include "sql_audit.h"
 #include "transaction.h"
 #include "sql_prepare.h"
+#include "debug_sync.h"
 
 #ifdef BACKUP_TEST
 #include "backup/backup_test.h"
@@ -264,8 +265,8 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_SHOW_AUTHORS]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_CONTRIBUTORS]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_PRIVILEGES]= CF_STATUS_COMMAND;
-  sql_command_flags[SQLCOM_SHOW_WARNS]= CF_STATUS_COMMAND;
-  sql_command_flags[SQLCOM_SHOW_ERRORS]= CF_STATUS_COMMAND;
+  sql_command_flags[SQLCOM_SHOW_WARNS]= CF_STATUS_COMMAND | CF_DIAGNOSTIC_STMT;
+  sql_command_flags[SQLCOM_SHOW_ERRORS]= CF_STATUS_COMMAND | CF_DIAGNOSTIC_STMT;
   sql_command_flags[SQLCOM_SHOW_ENGINE_STATUS]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_ENGINE_MUTEX]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_ENGINE_LOGS]= CF_STATUS_COMMAND;
@@ -763,6 +764,7 @@ static my_bool deny_updates_if_read_only_option(THD *thd,
   DBUG_RETURN(FALSE);
 }
 
+
 /**
   Perform one connection-level (COM_XXXX) command.
 
@@ -1122,7 +1124,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       select_lex.table_list.link_in_list((uchar*) &table_list,
                                          (uchar**) &table_list.next_local);
     thd->lex->add_to_query_tables(&table_list);
-    alloc_mdl_locks(&table_list, thd->mem_root);
+    alloc_mdl_requests(&table_list, thd->mem_root);
 
     /* switch on VIEW optimisation: do not fill temporary tables */
     thd->lex->sql_command= SQLCOM_SHOW_FIELDS;
@@ -1550,7 +1552,7 @@ int prepare_schema_table(THD *thd, LEX *lex, Table_ident *table_ident,
       schema_select_lex->table_list.first= NULL;
       db.length= strlen(db.str);
 
-      if (check_db_name(&db))
+      if (check_and_convert_db_name(&db, FALSE))
       {
         my_error(ER_WRONG_DB_NAME, MYF(0), db.str);
         DBUG_RETURN(1);
@@ -1849,10 +1851,15 @@ mysql_execute_command(THD *thd)
     A better approach would be to reset this for any commands
     that is not a SHOW command or a select that only access local
     variables, but for now this is probably good enough.
-    Don't reset warnings when executing a stored routine.
   */
-  if ((all_tables || !lex->is_single_level_stmt()) && !thd->spcont)
-    thd->warning_info->opt_clear_warning_info(thd->query_id);
+  if ((sql_command_flags[lex->sql_command] & CF_DIAGNOSTIC_STMT) != 0)
+    thd->warning_info->set_read_only(TRUE);
+  else
+  {
+    thd->warning_info->set_read_only(FALSE);
+    if (all_tables)
+      thd->warning_info->opt_clear_warning_info(thd->query_id);
+  }
 
 #ifdef HAVE_REPLICATION
   if (unlikely(thd->slave_thread))
@@ -2302,6 +2309,14 @@ mysql_execute_command(THD *thd)
     goto error;
 #else
   {
+    /* 
+       Reset warnings for BACKUP and RESTORE commands. Note: this will
+       cause problems if BACKUP/RESTORE is allowed inside stored
+       routines and events. In that case, warnings should not be
+       cleared.
+    */
+    thd->warning_info->opt_clear_warning_info(thd->query_id);
+
     /*
       Create a string from the backupdir system variable and pass
       to backup system.
@@ -2508,6 +2523,7 @@ mysql_execute_command(THD *thd)
     if (select_lex->item_list.elements)		// With select
     {
       select_result *result;
+      Ha_global_schema_lock_guard global_schema_lock_guard(thd);
 
       select_lex->options|= SELECT_NO_UNLOCK;
       unit->set_limit(select_lex);
@@ -2529,6 +2545,8 @@ mysql_execute_command(THD *thd)
       {
         lex->link_first_table_back(create_table, link_to_local);
         create_table->open_type= TABLE_LIST::OPEN_OR_CREATE;
+        if (!thd->locked_tables_mode)
+          global_schema_lock_guard.lock();
       }
 
       if (!(res= open_and_lock_tables(thd, lex->query_tables)))
@@ -3498,7 +3516,7 @@ ddl_blocker_err:
     if (trans_commit_implicit(thd))
       goto error;
 
-    alloc_mdl_locks(all_tables, thd->locked_tables_list.locked_tables_root());
+    alloc_mdl_requests(all_tables, thd->locked_tables_list.locked_tables_root());
 
     thd->options|= OPTION_TABLE_LOCK;
     thd->in_lock_tables=1;
@@ -3542,7 +3560,7 @@ ddl_blocker_err:
     HA_CREATE_INFO create_info(lex->create_info);
     char *alias;
     if (!(alias=thd->strmake(lex->name.str, lex->name.length)) ||
-        check_db_name(&lex->name))
+        check_and_convert_db_name(&lex->name, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), lex->name.str);
       break;
@@ -3575,7 +3593,7 @@ ddl_blocker_err:
   }
   case SQLCOM_DROP_DB:
   {
-    if (check_db_name(&lex->name))
+    if (check_and_convert_db_name(&lex->name, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), lex->name.str);
       break;
@@ -3624,7 +3642,7 @@ ddl_blocker_err:
       break;
     }
 #endif
-    if (check_db_name(db))
+    if (check_and_convert_db_name(db, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), db->str);
       break;
@@ -3656,7 +3674,7 @@ ddl_blocker_err:
   {
     LEX_STRING *db= &lex->name;
     HA_CREATE_INFO create_info(lex->create_info);
-    if (check_db_name(db))
+    if (check_and_convert_db_name(db, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), db->str);
       break;
@@ -3695,7 +3713,7 @@ ddl_blocker_err:
   {
     DBUG_EXECUTE_IF("4x_server_emul",
                     my_error(ER_UNKNOWN_ERROR, MYF(0)); goto error;);
-    if (check_db_name(&lex->name))
+    if (check_and_convert_db_name(&lex->name, TRUE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), lex->name.str);
       break;
@@ -4072,7 +4090,7 @@ ddl_blocker_err:
       Verify that the database name is allowed, optionally
       lowercase it.
     */
-    if (check_db_name(&lex->sphead->m_db))
+    if (check_and_convert_db_name(&lex->sphead->m_db, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), lex->sphead->m_db.str);
       goto create_sp_error;
@@ -4416,6 +4434,7 @@ create_sp_error:
       case SP_KEY_NOT_FOUND:
 	if (lex->drop_if_exists)
 	{
+          write_bin_log(thd, TRUE, thd->query, thd->query_length);
 	  push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_NOTE,
 			      ER_SP_DOES_NOT_EXIST, ER(ER_SP_DOES_NOT_EXIST),
                               SP_COM_STRING(lex), lex->spname->m_qname.str);
@@ -4638,6 +4657,11 @@ create_sp_error:
     my_ok(thd, 1);
     break;
   }
+  case SQLCOM_SIGNAL:
+  case SQLCOM_RESIGNAL:
+    DBUG_ASSERT(lex->m_stmt != NULL);
+    res= lex->m_stmt->execute(thd);
+    break;
   default:
 #ifndef EMBEDDED_LIBRARY
     DBUG_ASSERT(0);                             /* Impossible */
@@ -5198,9 +5222,15 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
     if ((sctx->master_access & want_access) == want_access &&
         thd->db)
       tables->grant.privilege= want_access;
-    else if (check_access(thd,want_access,tables->get_db_name(),
-                          &tables->grant.privilege,
-                          0, no_errors, 0))
+    else if (tables->db && thd->db && strcmp(tables->db, thd->db) == 0)
+    {
+      if (check_access(thd, want_access, tables->get_db_name(),
+                       &tables->grant.privilege, 0, no_errors, 
+                       test(tables->schema_table)))
+        goto deny;                            // Access denied
+    }
+    else if (check_access(thd, want_access, tables->get_db_name(),
+                          &tables->grant.privilege, 0, no_errors, 0))
       goto deny;
   }
   thd->security_ctx= backup_ctx;
@@ -5368,9 +5398,10 @@ bool check_stack_overrun(THD *thd, long margin,
   if ((stack_used=used_stack(thd->thread_stack,(char*) &stack_used)) >=
       (long) (my_thread_stack_size - margin))
   {
-    sprintf(errbuff[0],ER(ER_STACK_OVERRUN_NEED_MORE),
-            stack_used,my_thread_stack_size,margin);
-    my_message(ER_STACK_OVERRUN_NEED_MORE,errbuff[0],MYF(ME_FATALERROR));
+    char ebuff[MYSQL_ERRMSG_SIZE];
+    my_snprintf(ebuff, sizeof(ebuff), ER(ER_STACK_OVERRUN_NEED_MORE),
+                stack_used, my_thread_stack_size, margin);
+    my_message(ER_STACK_OVERRUN_NEED_MORE, ebuff, MYF(ME_FATALERROR));
     return 1;
   }
 #ifndef DBUG_OFF
@@ -5459,7 +5490,7 @@ void mysql_reset_thd_for_next_command(THD *thd)
     OPTION_STATUS_NO_TRANS_UPDATE | OPTION_KEEP_LOG to not get warnings
     in ha_rollback_trans() about some tables couldn't be rolled back.
   */
-  if (!(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+  if (!thd->in_multi_stmt_transaction())
   {
     thd->options&= ~OPTION_KEEP_LOG;
     thd->transaction.all.modified_non_trans_table= FALSE;
@@ -5983,7 +6014,7 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
   }
 
   if (table->is_derived_table() == FALSE && table->db.str &&
-      check_db_name(&table->db))
+      check_and_convert_db_name(&table->db, FALSE))
   {
     my_error(ER_WRONG_DB_NAME, MYF(0), table->db.str);
     DBUG_RETURN(0);
@@ -6029,7 +6060,19 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
   if (!ptr->derived && !my_strcasecmp(system_charset_info, ptr->db,
                                       INFORMATION_SCHEMA_NAME.str))
   {
-    ST_SCHEMA_TABLE *schema_table= find_schema_table(thd, ptr->table_name);
+    ST_SCHEMA_TABLE *schema_table;
+    if (ptr->updating &&
+        /* Special cases which are processed by commands itself */
+        lex->sql_command != SQLCOM_CHECK &&
+        lex->sql_command != SQLCOM_CHECKSUM)
+    {
+      my_error(ER_DBACCESS_DENIED_ERROR, MYF(0),
+               thd->security_ctx->priv_user,
+               thd->security_ctx->priv_host,
+               INFORMATION_SCHEMA_NAME.str);
+      DBUG_RETURN(0);
+    }
+    schema_table= find_schema_table(thd, ptr->table_name);
     if (!schema_table ||
         (schema_table->hidden && 
          ((sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND) == 0 || 
@@ -6099,9 +6142,9 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
   ptr->next_name_resolution_table= NULL;
   /* Link table in global list (all used tables) */
   lex->add_to_query_tables(ptr);
-  ptr->mdl_lock_data= mdl_alloc_lock(0 , ptr->db, ptr->table_name,
-                                thd->locked_tables_root ?
-                                thd->locked_tables_root : thd->mem_root);
+  ptr->mdl_request=
+    MDL_request::create(0, ptr->db, ptr->table_name, thd->locked_tables_root ?
+                        thd->locked_tables_root : thd->mem_root);
   DBUG_RETURN(ptr);
 }
 
@@ -6663,8 +6706,8 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
       tmp_write_to_binlog= 0;
       if (lock_global_read_lock(thd))
 	return 1;                               // Killed
-      if (close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
-                                  FALSE : TRUE))
+      if (close_cached_tables(thd, tables, FALSE,
+                              (options & REFRESH_FAST) ? FALSE : TRUE))
           result= 1;
       
       if (make_global_read_lock_block_commit(thd)) // Killed
@@ -6703,8 +6746,9 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
         }
       }
 
-      result= close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
-                                  FALSE : TRUE);
+      if (close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
+                              FALSE : TRUE))
+        result= 1;
     }
     my_dbopt_cleanup();
   }

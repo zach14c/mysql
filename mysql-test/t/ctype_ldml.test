@@ -55,6 +55,25 @@ insert into t1 values ('a');
 select * from t1 where c1='b';
 drop table t1;
 
+
+#
+# Bug#41084 full-text index added to custom UCA collation not working
+#
+CREATE TABLE t1 (
+  col1 varchar(100) character set utf8 collate utf8_test_ci
+);
+INSERT INTO t1 (col1) VALUES ('abcd'),('efgh'),('ijkl');
+ALTER TABLE t1 ADD FULLTEXT INDEX (col1);
+SELECT * FROM t1 where match (col1) against ('abcd');
+SELECT * FROM t1 where match (col1) against ('abcd' IN BOOLEAN MODE);
+ALTER TABLE t1 ADD (col2 varchar(100) character set latin1);
+UPDATE t1 SET col2=col1;
+SELECT * FROM t1 WHERE col1=col2 ORDER BY col1;
+DROP TABLE t1;
+
+#
+#  Vietnamese experimental collation
+#
 --echo  Vietnamese experimental collation
 
 show collation like 'ucs2_vn_ci';
@@ -96,7 +115,7 @@ drop table t1;
 
 
 -- echo The following tests check that two-byte collation IDs work
--- The file ../std-data/Index.xml has a number of collations with high IDs.
+# The file ../std-data/Index.xml has a number of collations with high IDs.
 
 # Test that the "ID" column in I_S and SHOW queries can handle two bytes
 select * from information_schema.collations where id>256 order by id;
@@ -111,3 +130,11 @@ set @@character_set_results=NULL;
 select * from t1;
 --disable_metadata
 drop table t1;
+
+#
+# Check maximum collation ID (2047 as of MySQL-6.0.9)
+#
+CREATE TABLE t1 (s1 char(10) character set utf8 collate utf8_maxuserid_ci);
+INSERT INTO t1 VALUES ('a'),('b');
+SELECT * FROM t1 WHERE s1='a' ORDER BY BINARY s1;
+DROP TABLE t1;

@@ -9,13 +9,13 @@ USE db1;
 CREATE TABLE `building` (
 `dir_code` char(4),
 `building` char(6)
-) ENGINE=MYISAM DEFAULT CHARSET=latin1;
+) DEFAULT CHARSET=latin1;
 INSERT INTO `building` VALUES ('N41','1300'),('N01','1453'),('M00','1000'),('N41','1301'),('N41','1305');
 CREATE TABLE `directorate` (
 `dir_code` char(4),
 `dir_name` char(30),
 `dir_head_id` char(9)
-) ENGINE=MYISAM DEFAULT CHARSET=latin1;
+) DEFAULT CHARSET=latin1;
 INSERT INTO `directorate` VALUES ('N41','Development','333445555'),('N01','Human Resources','123654321'),('M00','Management','333444444');
 USE db2;
 CREATE TABLE `staff` (
@@ -26,7 +26,7 @@ CREATE TABLE `staff` (
 `sex` char(1),
 `salary` int(11),
 `mgr_id` char(9)
-) ENGINE=MYISAM DEFAULT CHARSET=latin1;
+) DEFAULT CHARSET=latin1;
 INSERT INTO `staff` VALUES ('333445555','John','Q','Smith','M',30000,'333444444'),('123763153','William','E','Walters','M',25000,'123654321'),('333444444','Alicia','F','St.Cruz','F',25000,NULL),('921312388','Goy','X','Hong','F',40000,'123654321'),('800122337','Rajesh','G','Kardakarna','M',38000,'333445555'),('820123637','Monty','C','Smythe','M',38000,'333445555'),('830132335','Richard','E','Jones','M',38000,'333445555'),('333445665','Edward','E','Engles','M',25000,'333445555'),('123654321','Beware','D','Borg','F',55000,'333444444'),('123456789','Wilma','N','Maxima','F',43000,'333445555');
 CREATE TABLE `tasking` (
 `id` char(9),
@@ -39,8 +39,7 @@ Depending on the driver used, one of the sync points is used,
 and the result differs in PROCESSLIST state and info.
 SET DEBUG_SYNC= 'default_locking_thread_added SIGNAL bup_thread_added
                  WAIT_FOR finish';
-SET DEBUG_SYNC= 'myisam_locking_thread_added SIGNAL bup_thread_added
-                 WAIT_FOR finish';
+SET DEBUG_SYNC= concat(lower(@@storage_engine), '_locking_thread_added SIGNAL bup_thread_added WAIT_FOR finish');
 backup: Send the backup command.
 BACKUP DATABASE db1,db2 TO 'test.ba';
 breakpoints: Wait for BACKUP to reach its synchronization point.
@@ -132,22 +131,41 @@ tasking	CREATE TABLE `tasking` (
   `project_number` char(9) DEFAULT NULL,
   `hours_worked` double(10,2) DEFAULT NULL
 ) ENGINE=BLACKHOLE DEFAULT CHARSET=latin1
-SELECT validity_point_time = @vp_time FROM mysql.backup_history
-WHERE backup_id = @bid;
-validity_point_time = @vp_time
-1
-SELECT binlog_file = @vp_file FROM mysql.backup_history
-WHERE backup_id = @bid;
-binlog_file = @vp_file
-1
-SELECT binlog_pos = @vp_pos FROM mysql.backup_history
-WHERE backup_id = @bid;
+SELECT validity_point_time = @vp_time, 
+binlog_file = @vp_file, 
 binlog_pos = @vp_pos
-1
+FROM mysql.backup_history
+WHERE backup_id = @bid;
+validity_point_time = @vp_time	binlog_file = @vp_file	binlog_pos = @vp_pos
+1	1	1
 DROP DATABASE db1;
 DROP DATABASE db2;
 DROP DATABASE db3;
 SET DEBUG_SYNC= 'RESET';
+CREATE DATABASE db1;
+BACKUP DATABASE db1 TO 'db1.bkp';
+backup_id
+#
+SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
+SELECT validity_point_time FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_time;
+SELECT binlog_file FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_file;
+SELECT binlog_pos FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_pos;
+DROP DATABASE db1;
+RESTORE FROM 'db1.bkp';
+backup_id
+#
+SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
+SELECT validity_point_time = @vp_time,
+binlog_file = @vp_file,
+binlog_pos = @vp_pos
+FROM mysql.backup_history
+WHERE backup_id = @bid;
+validity_point_time = @vp_time	binlog_file = @vp_file	binlog_pos = @vp_pos
+1	1	1
+DROP DATABASE db1;
 DROP DATABASE IF EXISTS bup_default;
 CREATE DATABASE bup_default;
 CREATE TABLE bup_default.wide (
@@ -171,7 +189,7 @@ CREATE TABLE bup_default.wide (
 PRIMARY KEY (`a`)
 ) ENGINE=INNODB DEFAULT CHARSET=latin1;
 CREATE TABLE bup_default.t1 (a int) engine=innodb;
-CREATE TABLE bup_default.t2 (a int) engine=MYISAM;
+CREATE TABLE bup_default.t2 (a int);
 CREATE TABLE bup_default.t1_blob (a int, b text) engine=innodb;
 INSERT INTO bup_default.wide VALUES (
 NULL,

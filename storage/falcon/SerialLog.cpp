@@ -51,6 +51,7 @@ static const char THIS_FILE[]=__FILE__;
 #endif
 
 static const int TRACE_PAGE = 0;
+static const int RECORD_MAX = 100000;
 
 extern uint falcon_gopher_threads;
 extern uint64 falcon_serial_log_file_size;
@@ -118,8 +119,10 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	blocking = false;
 	writeError = false;
 	windowBuffers = MAX(database->configuration->serialLogWindows, SRL_MIN_WINDOWS);
-	tableSpaceInfo = NULL;
+	
 	memset(tableSpaces, 0, sizeof(tableSpaces));
+	tableSpaceInfo = NULL;
+	
 	syncWrite.setName("SerialLog::syncWrite");
 	syncSections.setName("SerialLog::syncSections");
 	syncIndexes.setName("SerialLog::syncIndexes");
@@ -211,6 +214,33 @@ void SerialLog::start()
 		gopher->start();
 }
 
+
+// Setup up tableSpaceManager and open all tablespaces.
+//
+// This function should be called after phase 1 of recovery,
+// At this stage, serial log is inspected and  up-to-date tablespace list
+// is stored in SRLTableSpaces.
+//
+// If no SRLTableSpaces is not found in serial log, it means no changes
+// were done to tablespace list after the last checkpoint and it is  safe 
+// to use TableSpaceManager::bootstrap() that reads from disk
+
+static void openTableSpaces(Database *database)
+{
+	TableSpaceManager *manager = SRLTableSpaces::getTableSpaceManager();
+	
+	if(!manager)
+		{
+		manager = new TableSpaceManager(database);
+		manager->bootstrap(database->dbb->tableSpaceSectionId);
+		}
+	
+	manager->openTableSpaces();
+	
+	database->tableSpaceManager = database->serialLog->tableSpaceManager = 
+		manager;
+
+}
 void SerialLog::recover()
 {
 	Log::log("Recovering database %s ...\n", (const char*) defaultDbb->fileName);
@@ -284,9 +314,9 @@ void SerialLog::recover()
 	SerialLogBlock *recoveryBlock = recoveryWindow->firstBlock();
 	recoveryBlockNumber = recoveryBlock->blockNumber;
 	SerialLogBlock *lastBlock = findLastBlock(recoveryWindow);
-	Log::log("first recovery block is " I64FORMAT "\n", 
+	Log::log("\nFirst recovery block is " I64FORMAT "\n", 
 			(otherWindow) ? otherWindow->firstBlock()->blockNumber : recoveryBlockNumber);
-	Log::log("last recovery block is " I64FORMAT "\n", lastBlock->blockNumber);
+	Log::log("Last recovery block is " I64FORMAT "\n", lastBlock->blockNumber);
 
 	if (otherWindow)
 		{
@@ -306,7 +336,7 @@ void SerialLog::recover()
 	if (readBlockNumber == 0)
 		readBlockNumber = lastBlock->blockNumber;
 		
-	Log::log("recovery read block is " I64FORMAT "\n", readBlockNumber);
+	Log::log("Recovery read block is " I64FORMAT "\n", readBlockNumber);
 	nextBlockNumber = lastBlock->blockNumber + 1;
 	lastWindow->deactivateWindow();
 	SerialLogWindow *window = findWindowGivenBlock(readBlockNumber);
@@ -328,11 +358,20 @@ void SerialLog::recover()
 	recoveryIndexes = new RecoveryObjects(this);
 	recoveryPhase = 1;	// Take Inventory (serialLogTransactions, recoveryObject states, last checkpoint)
 	
-	// Make a first pass finding records, transactions, etc.
+	Log::log("Recovery phase 1...\n");
+
+	unsigned long int recordCount = 0;
 
 	while ( (record = control.nextRecord()) )
+		{
+		if (++recordCount % RECORD_MAX == 0)
+			Log::log("Processed: %8ld\n", recordCount);
+			
 		record->pass1();
+		}
 
+	Log::log("Processed: %8ld\n", recordCount);
+	
 	//control.debug = false;
 	pass1 = false;
 	control.setWindow(window, block, 0);
@@ -340,13 +379,25 @@ void SerialLog::recover()
 	recoveryPages->reset();
 	recoveryIndexes->reset();
 	recoverySections->reset();
-	recoveryPhase = 2;	// Physical operations, skip old incarnations
 
+	recoveryPhase = 2;	// Physical operations, skip old incarnations
 	// Next, make a second pass to reallocate any necessary pages
 
+	Log::log("Recovery phase 2...\n");
+	recordCount = 0;
+	
+	openTableSpaces(database);
+	
 	while ( (record = control.nextRecord()) )
+		{
+		if (++recordCount % RECORD_MAX == 0)
+			Log::log("Processed: %8ld\n", recordCount);
+			
 		if (!isTableSpaceDropped(record->tableSpaceId) || record->type == srlDropTableSpace)
 			record->pass2();
+		}
+
+	Log::log("Processed: %8ld\n", recordCount);
 
 	recoveryPages->reset();
 	recoveryIndexes->reset();
@@ -363,10 +414,19 @@ void SerialLog::recover()
 
 	// Make a third pass doing things
 
+	Log::log("Recovery phase 3...\n");
+	recordCount = 0;
+	
 	while ( (record = control.nextRecord()) )
+		{
+		if (++recordCount % RECORD_MAX == 0)
+			Log::log("Processed: %8ld\n", recordCount);
+			
 		if (!isTableSpaceDropped(record->tableSpaceId))
 			record->redo();
-
+		}
+		
+	Log::log("Processed: %8ld\n", recordCount);
 
 	for (SerialLogTransaction *action, **ptr = &running.first; (action = *ptr);)
 		if (action->completedRecovery())
@@ -1504,7 +1564,10 @@ Dbb* SerialLog::findDbb(int tableSpaceId)
 TableSpaceInfo* SerialLog::getTableSpaceInfo(int tableSpaceId)
 {
 	TableSpaceInfo *info;
-	int slot = tableSpaceId %SLT_HASH_SIZE;
+	
+	// Map reserved tablespace ids from the end of the hash table
+	
+	int slot = (tableSpaceId >= 0) ? (tableSpaceId % SLT_HASH_SIZE) : (SLT_HASH_SIZE + tableSpaceId);
 	
 	for (info = tableSpaces[slot]; info; info = info->collision)
 		if (info->tableSpaceId == tableSpaceId)

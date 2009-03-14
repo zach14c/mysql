@@ -30,22 +30,19 @@ ndb_mgm_SOURCES = main.cpp
 include $(top_srcdir)/storage/ndb/config/common.mk.am
 include $(top_srcdir)/storage/ndb/config/type_ndbapi.mk.am
 
-INCLUDES += -I$(top_srcdir)/storage/ndb/include/mgmapi \
+AM_CPPFLAGS += -I$(top_srcdir)/storage/ndb/include/mgmapi \
             -I$(top_srcdir)/storage/ndb/src/common/mgmcommon
 
 LDADD_LOC = $(noinst_LTLIBRARIES) \
 	    ../common/portlib/libportlib.la \
             @readline_link@ \
             $(top_builddir)/storage/ndb/src/libndbclient.la \
-            $(top_builddir)/dbug/libdbug.a \
-            $(top_builddir)/mysys/libmysys.a \
-            $(top_builddir)/strings/libmystrings.a \
+            $(top_builddir)/dbug/libdbuglt.la \
+            $(top_builddir)/mysys/libmysyslt.la \
+            $(top_builddir)/strings/libmystringslt.la \
             @TERMCAP_LIB@ @NDB_SCI_LIBS@
 
 ndb_mgm_LDFLAGS = @ndb_bin_am_ldflags@
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
 
 windoze-dsp: ndb_mgm.dsp libndbmgmclient.dsp
 
@@ -57,7 +54,7 @@ ndb_mgm.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ $(ndbtools_PROGRAMS)
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_mgm_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -69,6 +66,6 @@ libndbmgmclient.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-lib.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ $(noinst_LTLIBRARIES)
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(libndbmgmclient_la_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LIB

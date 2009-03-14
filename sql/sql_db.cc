@@ -105,8 +105,8 @@ static my_bool lock_db_insert(const char *dbname, uint length)
   
   safe_mutex_assert_owner(&LOCK_lock_db);
 
-  if (!(opt= (my_dblock_t*) hash_search(&lock_db_cache,
-                                        (uchar*) dbname, length)))
+  if (!(opt= (my_dblock_t*) my_hash_search(&lock_db_cache,
+                                           (uchar*) dbname, length)))
   { 
     /* Db is not in the hash, insert it */
     char *tmp_name;
@@ -139,9 +139,9 @@ void lock_db_delete(const char *name, uint length)
 {
   my_dblock_t *opt;
   safe_mutex_assert_owner(&LOCK_lock_db);
-  if ((opt= (my_dblock_t *)hash_search(&lock_db_cache,
-                                       (const uchar*) name, length)))
-    hash_delete(&lock_db_cache, (uchar*) opt);
+  if ((opt= (my_dblock_t *)my_hash_search(&lock_db_cache,
+                                          (const uchar*) name, length)))
+    my_hash_delete(&lock_db_cache, (uchar*) opt);
 }
 
 
@@ -222,14 +222,14 @@ bool my_database_names_init(void)
   if (!dboptions_init)
   {
     dboptions_init= 1;
-    error= hash_init(&dboptions, lower_case_table_names ? 
-                     &my_charset_bin : system_charset_info,
-                     32, 0, 0, (hash_get_key) dboptions_get_key,
-                     free_dbopt,0) ||
-           hash_init(&lock_db_cache, lower_case_table_names ? 
-                     &my_charset_bin : system_charset_info,
-                     32, 0, 0, (hash_get_key) lock_db_get_key,
-                     lock_db_free_element,0);
+    error= my_hash_init(&dboptions, lower_case_table_names ?
+                        &my_charset_bin : system_charset_info,
+                        32, 0, 0, (my_hash_get_key) dboptions_get_key,
+                        free_dbopt,0) ||
+           my_hash_init(&lock_db_cache, lower_case_table_names ?
+                        &my_charset_bin : system_charset_info,
+                        32, 0, 0, (my_hash_get_key) lock_db_get_key,
+                        lock_db_free_element,0);
 
   }
   return error;
@@ -246,9 +246,9 @@ void my_database_names_free(void)
   if (dboptions_init)
   {
     dboptions_init= 0;
-    hash_free(&dboptions);
+    my_hash_free(&dboptions);
     (void) rwlock_destroy(&LOCK_dboptions);
-    hash_free(&lock_db_cache);
+    my_hash_free(&lock_db_cache);
   }
 }
 
@@ -260,11 +260,11 @@ void my_database_names_free(void)
 void my_dbopt_cleanup(void)
 {
   rw_wrlock(&LOCK_dboptions);
-  hash_free(&dboptions);
-  hash_init(&dboptions, lower_case_table_names ? 
-            &my_charset_bin : system_charset_info,
-            32, 0, 0, (hash_get_key) dboptions_get_key,
-            free_dbopt,0);
+  my_hash_free(&dboptions);
+  my_hash_init(&dboptions, lower_case_table_names ? 
+               &my_charset_bin : system_charset_info,
+               32, 0, 0, (my_hash_get_key) dboptions_get_key,
+               free_dbopt,0);
   rw_unlock(&LOCK_dboptions);
 }
 
@@ -290,7 +290,7 @@ static my_bool get_dbopt(const char *dbname, HA_CREATE_INFO *create)
   length= (uint) strlen(dbname);
   
   rw_rdlock(&LOCK_dboptions);
-  if ((opt= (my_dbopt_t*) hash_search(&dboptions, (uchar*) dbname, length)))
+  if ((opt= (my_dbopt_t*) my_hash_search(&dboptions, (uchar*) dbname, length)))
   {
     create->default_table_charset= opt->charset;
     error= 0;
@@ -322,7 +322,8 @@ static my_bool put_dbopt(const char *dbname, HA_CREATE_INFO *create)
   length= (uint) strlen(dbname);
   
   rw_wrlock(&LOCK_dboptions);
-  if (!(opt= (my_dbopt_t*) hash_search(&dboptions, (uchar*) dbname, length)))
+  if (!(opt= (my_dbopt_t*) my_hash_search(&dboptions, (uchar*) dbname,
+                                          length)))
   { 
     /* Options are not in the hash, insert them */
     char *tmp_name;
@@ -362,9 +363,9 @@ void del_dbopt(const char *path)
 {
   my_dbopt_t *opt;
   rw_wrlock(&LOCK_dboptions);
-  if ((opt= (my_dbopt_t *)hash_search(&dboptions, (const uchar*) path,
-                                      strlen(path))))
-    hash_delete(&dboptions, (uchar*) opt);
+  if ((opt= (my_dbopt_t *)my_hash_search(&dboptions, (const uchar*) path,
+                                         strlen(path))))
+    my_hash_delete(&dboptions, (uchar*) opt);
   rw_unlock(&LOCK_dboptions);
 }
 
@@ -616,6 +617,7 @@ int mysql_create_db(THD *thd, char *db, HA_CREATE_INFO *create_info,
   MY_STAT stat_info;
   uint create_options= create_info ? create_info->options : 0;
   uint path_len;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_create_db");
 
   /* do not create 'information_schema' db */
@@ -642,6 +644,8 @@ int mysql_create_db(THD *thd, char *db, HA_CREATE_INFO *create_info,
     error= -1;
     goto exit2;
   }
+
+  global_schema_lock_guard.lock();
 
   pthread_mutex_lock(&LOCK_mysql_create_db);
 
@@ -767,6 +771,7 @@ bool mysql_alter_db(THD *thd, const char *db, HA_CREATE_INFO *create_info)
   char path[FN_REFLEN+16];
   long result=1;
   int error= 0;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_alter_db");
 
   /*
@@ -783,6 +788,8 @@ bool mysql_alter_db(THD *thd, const char *db, HA_CREATE_INFO *create_info)
   */
   if ((error=wait_if_global_read_lock(thd,0,1)))
     goto exit2;
+
+  global_schema_lock_guard.lock();
 
   pthread_mutex_lock(&LOCK_mysql_create_db);
 
@@ -861,6 +868,7 @@ bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent)
   MY_DIR *dirp;
   uint length;
   TABLE_LIST* dropped_tables= 0;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_rm_db");
 
   /*
@@ -880,6 +888,8 @@ bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent)
     error= -1;
     goto exit2;
   }
+
+  global_schema_lock_guard.lock();
 
   pthread_mutex_lock(&LOCK_mysql_create_db);
 
@@ -1588,7 +1598,7 @@ bool mysql_change_db(THD *thd, const LEX_STRING *new_db_name, bool force_switch)
     in this case to be sure.
   */
 
-  if (check_db_name(&new_db_file_name))
+  if (check_and_convert_db_name(&new_db_file_name, FALSE))
   {
     my_error(ER_WRONG_DB_NAME, MYF(0), new_db_file_name.str);
     my_free(new_db_file_name.str, MYF(0));
@@ -1715,8 +1725,8 @@ lock_databases(THD *thd, const char *db1, uint length1,
 {
   pthread_mutex_lock(&LOCK_lock_db);
   while (!thd->killed &&
-         (hash_search(&lock_db_cache,(uchar*) db1, length1) ||
-          hash_search(&lock_db_cache,(uchar*) db2, length2)))
+         (my_hash_search(&lock_db_cache,(uchar*) db1, length1) ||
+          my_hash_search(&lock_db_cache,(uchar*) db2, length2)))
   {
     wait_for_condition(thd, &LOCK_lock_db, &COND_refresh);
     pthread_mutex_lock(&LOCK_lock_db);

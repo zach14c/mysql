@@ -44,7 +44,7 @@ public:
 	Sequence	*collision;
 	Schema		*schema;
 	Database	*database;
-	void rename(const char* newName);
+	void rename(const char *newSchema, const char* newName);
 	Sequence	*recreate(void);
 };
 

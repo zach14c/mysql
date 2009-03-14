@@ -1810,7 +1810,7 @@ static void test_wl4435()
 
       MYSQL_RES *rs_metadata= mysql_stmt_result_metadata(stmt);
 
-      num_fields= mysql_num_fields(rs_metadata);
+      num_fields= mysql_stmt_field_count(stmt);
       fields= mysql_fetch_fields(rs_metadata);
 
       rs_bind= (MYSQL_BIND *) malloc(sizeof (MYSQL_BIND) * num_fields);
@@ -1926,7 +1926,7 @@ static void test_wl4435()
       if (rc > 0)
       {
         printf("Error: %s (errno: %d)\n",
-               mysql_error(mysql), mysql_errno(mysql));
+               mysql_stmt_error(stmt), mysql_stmt_errno(stmt));
         DIE(rc > 0);
       }
 
@@ -2038,6 +2038,66 @@ static void test_wl4435()
     myquery(rc);
   }
 }
+
+static void test_wl4435_2()
+{
+  MYSQL_STMT *stmt;
+  int  i;
+  int  rc;
+  char query[MAX_TEST_QUERY_LENGTH];
+
+  myheader("test_wl4435_2");
+  mct_start_logging("test_wl4435_2");
+
+  /*
+    Do a few iterations so that we catch any problem with incorrect
+    handling/flushing prepared statement results.
+  */
+
+  for (i= 0; i < 10; ++i)
+  {
+    /*
+      Prepare a procedure. That can be moved out of the loop, but it was
+      left in the loop for the sake of having as many statements as
+      possible.
+    */
+
+    rc= mysql_query(mysql, "DROP PROCEDURE IF EXISTS p1");
+    myquery(rc);
+
+    rc= mysql_query(mysql,
+      "CREATE PROCEDURE p1()"
+      "BEGIN "
+      "  SELECT 1; "
+      "  SELECT 2, 3 UNION SELECT 4, 5; "
+      "  SELECT 6, 7, 8; "
+      "END");
+    myquery(rc);
+
+    /* Invoke a procedure, that returns several result sets. */
+
+    strmov(query, "CALL p1()");
+    stmt= mysql_simple_prepare(mysql, query);
+    check_stmt(stmt);
+
+    /* Execute! */
+
+    rc= mysql_stmt_execute(stmt);
+    check_execute(stmt, rc);
+
+    /* Flush all the results. */
+
+    mysql_stmt_close(stmt);
+
+    /* Clean up. */
+    rc= mysql_commit(mysql);
+    myquery(rc);
+
+    rc= mysql_query(mysql, "DROP PROCEDURE p1");
+    myquery(rc);
+  }
+}
+
 
 /* Test simple prepare field results */
 
@@ -8282,26 +8342,26 @@ static void test_explain_bug()
   verify_prepare_field(result, 0, "Field", "COLUMN_NAME",
                        mysql_get_server_version(mysql) <= 50000 ?
                        MYSQL_TYPE_STRING : MYSQL_TYPE_VAR_STRING,
-                       0, 0, "", 64, 0);
+                       0, 0, "information_schema", 64, 0);
 
   verify_prepare_field(result, 1, "Type", "COLUMN_TYPE", MYSQL_TYPE_BLOB,
-                       0, 0, "", 0, 0);
+                       0, 0, "information_schema", 0, 0);
 
   verify_prepare_field(result, 2, "Null", "IS_NULLABLE",
                        mysql_get_server_version(mysql) <= 50000 ?
                        MYSQL_TYPE_STRING : MYSQL_TYPE_VAR_STRING,
-                       0, 0, "", 3, 0);
+                       0, 0, "information_schema", 3, 0);
 
   verify_prepare_field(result, 3, "Key", "COLUMN_KEY",
                        mysql_get_server_version(mysql) <= 50000 ?
                        MYSQL_TYPE_STRING : MYSQL_TYPE_VAR_STRING,
-                       0, 0, "", 3, 0);
+                       0, 0, "information_schema", 3, 0);
 
   if ( mysql_get_server_version(mysql) >= 50027 )
   {
     /*  The patch for bug#23037 changes column type of DEAULT to blob */
     verify_prepare_field(result, 4, "Default", "COLUMN_DEFAULT",
-                         MYSQL_TYPE_BLOB, 0, 0, "", 0, 0);
+                         MYSQL_TYPE_BLOB, 0, 0, "information_schema", 0, 0);
   }
   else
   {
@@ -8310,14 +8370,14 @@ static void test_explain_bug()
                          MYSQL_TYPE_BLOB :
                          mysql_get_server_version(mysql) <= 50000 ?
                          MYSQL_TYPE_STRING : MYSQL_TYPE_VAR_STRING,
-                         0, 0, "",
+                         0, 0, "information_schema",
                          mysql_get_server_version(mysql) >= 50027 ? 0 :64, 0);
   }
 
   verify_prepare_field(result, 5, "Extra", "EXTRA",
                        mysql_get_server_version(mysql) <= 50000 ?
                        MYSQL_TYPE_STRING : MYSQL_TYPE_VAR_STRING,
-                       0, 0, "", 27, 0);
+                       0, 0, "information_schema", 27, 0);
 
   mysql_free_result(result);
   mysql_stmt_close(stmt);
@@ -17124,6 +17184,61 @@ static void test_change_user()
   DBUG_VOID_RETURN;
 }
 
+#ifdef HAVE_SPATIAL
+/**
+  Bug#37956 memory leak and / or crash with geometry and prepared statements! 
+*/
+
+static void test_bug37956(void)
+{
+  const char *query="select point(?,?)";
+  MYSQL_STMT *stmt=NULL;
+  ulong val=0;
+  MYSQL_BIND bind_param[2];
+  unsigned char buff[2]= { 134, 211 };
+  DBUG_ENTER("test_bug37956");
+  myheader("test_bug37956");
+
+  stmt= mysql_simple_prepare(mysql, query);
+  check_stmt(stmt);
+
+  val=1;
+  mysql_stmt_attr_set(stmt, STMT_ATTR_UPDATE_MAX_LENGTH, (void *)&val);
+  val=CURSOR_TYPE_READ_ONLY;
+  mysql_stmt_attr_set(stmt, STMT_ATTR_CURSOR_TYPE, (void *)&val);
+  val=0;
+  mysql_stmt_attr_set(stmt, STMT_ATTR_PREFETCH_ROWS, (void *)&val);
+
+  memset(bind_param, 0, sizeof(bind_param));
+  bind_param[0].buffer_type=MYSQL_TYPE_TINY;
+  bind_param[0].buffer= (void *)buff;
+  bind_param[0].is_null=NULL;
+  bind_param[0].error=NULL;
+  bind_param[0].is_unsigned=1;
+  bind_param[1].buffer_type=MYSQL_TYPE_TINY;
+  bind_param[1].buffer= (void *)(buff+1);
+  bind_param[1].is_null=NULL;
+  bind_param[1].error=NULL;
+  bind_param[1].is_unsigned=1;
+
+  if (mysql_stmt_bind_param(stmt, bind_param))
+  {
+    mysql_stmt_close(stmt);
+    DIE_UNLESS(0);
+  }
+
+  if (mysql_stmt_execute(stmt))
+  {
+    mysql_stmt_close(stmt);
+    DBUG_VOID_RETURN;
+  }
+  /* Should never reach here: execution returns an error. */
+  mysql_stmt_close(stmt);
+  DIE_UNLESS(0);
+  DBUG_VOID_RETURN;
+}
+#endif
+
 /*
   Bug#27592 (stack overrun when storing datetime value using prepared statements)
 */
@@ -18534,6 +18649,61 @@ static void test_bug40365(void)
 }
 
 
+/**
+  Bug#36326: nested transaction and select
+*/
+
+#ifdef HAVE_QUERY_CACHE
+
+static void test_bug36326()
+{
+  int rc;
+
+  DBUG_ENTER("test_bug36326");
+  myheader("test_bug36326");
+
+  rc= mysql_autocommit(mysql, TRUE);
+  myquery(rc);
+  rc= mysql_query(mysql, "DROP TABLE IF EXISTS t1");
+  myquery(rc);
+  rc= mysql_query(mysql, "CREATE  TABLE t1 (a INTEGER)");
+  myquery(rc);
+  rc= mysql_query(mysql, "INSERT INTO t1 VALUES (1)");
+  myquery(rc);
+  rc= mysql_query(mysql, "SET GLOBAL query_cache_type = 1");
+  myquery(rc);
+  rc= mysql_query(mysql, "SET GLOBAL query_cache_size = 1048576");
+  myquery(rc);
+  DIE_UNLESS(!(mysql->server_status & SERVER_STATUS_IN_TRANS));
+  DIE_UNLESS(mysql->server_status & SERVER_STATUS_AUTOCOMMIT);
+  rc= mysql_query(mysql, "BEGIN");
+  myquery(rc);
+  DIE_UNLESS(mysql->server_status & SERVER_STATUS_IN_TRANS);
+  rc= mysql_query(mysql, "SELECT * FROM t1");
+  myquery(rc);
+  rc= my_process_result(mysql);
+  DIE_UNLESS(rc == 1);
+  rc= mysql_rollback(mysql);
+  myquery(rc);
+  rc= mysql_query(mysql, "ROLLBACK");
+  myquery(rc);
+  DIE_UNLESS(!(mysql->server_status & SERVER_STATUS_IN_TRANS));
+  rc= mysql_query(mysql, "SELECT * FROM t1");
+  myquery(rc);
+  DIE_UNLESS(!(mysql->server_status & SERVER_STATUS_IN_TRANS));
+  rc= my_process_result(mysql);
+  DIE_UNLESS(rc == 1);
+  rc= mysql_query(mysql, "DROP TABLE t1");
+  myquery(rc);
+  rc= mysql_query(mysql, "SET GLOBAL query_cache_size = 0");
+  myquery(rc);
+
+  DBUG_VOID_RETURN;
+}
+
+#endif
+
+
 /*
   Read and parse arguments and MySQL options from my.cnf
 */
@@ -18847,9 +19017,16 @@ static struct my_tests_st my_tests[]= {
   { "test_bug36004", test_bug36004 },
   { "test_wl4284_1", test_wl4284_1 },
   { "test_wl4435",   test_wl4435 },
+  { "test_wl4435_2", test_wl4435_2 },
   { "test_bug38486", test_bug38486 },
   { "test_bug33831", test_bug33831 },
   { "test_bug40365", test_bug40365 },
+#ifdef HAVE_SPATIAL
+  { "test_bug37956", test_bug37956 },
+#endif
+#ifdef HAVE_QUERY_CACHE
+  { "test_bug36326", test_bug36326 },
+#endif
   { 0, 0 }
 };
 

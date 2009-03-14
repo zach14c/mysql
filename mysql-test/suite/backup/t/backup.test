@@ -1,4 +1,5 @@
 --source include/have_innodb.inc
+--source include/have_blackhole.inc
 --source include/not_embedded.inc
 --source include/have_debug_sync.inc
 --source include/have_log_bin.inc
@@ -14,8 +15,10 @@ connection backup;
 DROP DATABASE IF EXISTS db1;
 DROP DATABASE IF EXISTS db2;
 DROP DATABASE IF EXISTS db3;
+
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_default.bak
+remove_file $MYSQLD_DATADIR/bup_default.bak;
 --enable_warnings
 
 CREATE DATABASE db1;
@@ -27,7 +30,7 @@ USE db1;
 CREATE TABLE `building` (
   `dir_code` char(4),
   `building` char(6)
-) ENGINE=MYISAM DEFAULT CHARSET=latin1;
+) DEFAULT CHARSET=latin1;
 
 #
 # Dumping data for table `building`
@@ -44,7 +47,7 @@ CREATE TABLE `directorate` (
   `dir_code` char(4),
   `dir_name` char(30),
   `dir_head_id` char(9)
-) ENGINE=MYISAM DEFAULT CHARSET=latin1;
+) DEFAULT CHARSET=latin1;
 
 #
 # Dumping data for table `directorate`
@@ -66,7 +69,7 @@ CREATE TABLE `staff` (
   `sex` char(1),
   `salary` int(11),
   `mgr_id` char(9)
-) ENGINE=MYISAM DEFAULT CHARSET=latin1;
+) DEFAULT CHARSET=latin1;
 
 #
 # Dumping data for table `staff`
@@ -103,8 +106,7 @@ connection backup;
 --echo and the result differs in PROCESSLIST state and info.
 SET DEBUG_SYNC= 'default_locking_thread_added SIGNAL bup_thread_added
                  WAIT_FOR finish';
-SET DEBUG_SYNC= 'myisam_locking_thread_added SIGNAL bup_thread_added
-                 WAIT_FOR finish';
+SET DEBUG_SYNC= concat(lower(@@storage_engine), '_locking_thread_added SIGNAL bup_thread_added WAIT_FOR finish');
 --echo backup: Send the backup command.
 send BACKUP DATABASE db1,db2 TO 'test.ba';
 
@@ -154,7 +156,7 @@ RESTORE FROM 'test.ba';
 # determine id of RESTORE operation
 SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
 
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 
 SHOW CREATE DATABASE db1;
 SHOW CREATE DATABASE db2;
@@ -180,17 +182,61 @@ SHOW CREATE TABLE tasking;
 
 # check that VP info was correctly read and reported
 
-SELECT validity_point_time = @vp_time FROM mysql.backup_history
-WHERE backup_id = @bid; 
-SELECT binlog_file = @vp_file FROM mysql.backup_history
-WHERE backup_id = @bid; 
-SELECT binlog_pos = @vp_pos FROM mysql.backup_history
+SELECT validity_point_time = @vp_time, 
+       binlog_file = @vp_file, 
+       binlog_pos = @vp_pos
+FROM mysql.backup_history
 WHERE backup_id = @bid; 
 
 DROP DATABASE db1;
 DROP DATABASE db2;
 DROP DATABASE db3;
 SET DEBUG_SYNC= 'RESET';
+
+#
+# Check that PTR data (such as VP time and binlog positon) is correctly stored and read
+# when there are no tables to backup (BUG#40262). 
+#
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/db1.bkp
+CREATE DATABASE db1;
+
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'db1.bkp';
+# get backup_id of the BACKUP operation. 
+SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
+
+# store VP time and binlog position
+
+SELECT validity_point_time FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_time;
+SELECT binlog_file FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_file;
+SELECT binlog_pos FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_pos;
+
+DROP DATABASE db1;
+
+# wait few seconds so that restore time != backup time
+--sleep 2
+
+--replace_column 1 #
+RESTORE FROM 'db1.bkp';
+# determine id of RESTORE operation
+SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
+
+# check that VP info was correctly read and reported
+
+SELECT validity_point_time = @vp_time,
+       binlog_file = @vp_file,
+       binlog_pos = @vp_pos
+FROM mysql.backup_history
+WHERE backup_id = @bid; 
+
+DROP DATABASE db1;
+--remove_file $MYSQLD_DATADIR/db1.bkp
+
 
 #
 # This test is for the default and snapshot online backup drivers
@@ -228,7 +274,7 @@ CREATE TABLE bup_default.wide (
 ) ENGINE=INNODB DEFAULT CHARSET=latin1;
 
 CREATE TABLE bup_default.t1 (a int) engine=innodb;
-CREATE TABLE bup_default.t2 (a int) engine=MYISAM;
+CREATE TABLE bup_default.t2 (a int);
 CREATE TABLE bup_default.t1_blob (a int, b text) engine=innodb;
 
 # Insert some data.
@@ -375,7 +421,7 @@ SELECT * FROM bup_default.t2;
 SELECT COUNT(*) FROM bup_default.t1_blob;
 SELECT COUNT(*) FROM bup_default.wide;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_default.bak
+remove_file $MYSQLD_DATADIR/bup_default.bak;
 --replace_column 1 #
 BACKUP DATABASE bup_default TO 'bup_default.bak';
 
@@ -493,9 +539,9 @@ DROP DATABASE IF EXISTS bup_delete;
 DROP DATABASE IF EXISTS bup_default;
 --enable_warnings
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_delete.bak
---remove_file $MYSQLTEST_VARDIR/master-data/bup_default_timestamp.bak
---remove_file $MYSQLTEST_VARDIR/master-data/bup_default.bak
+remove_file $MYSQLD_DATADIR/bup_delete.bak;
+remove_file $MYSQLD_DATADIR/bup_default_timestamp.bak;
+remove_file $MYSQLD_DATADIR/bup_default.bak;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 

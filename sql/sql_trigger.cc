@@ -329,6 +329,7 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
   String stmt_query;
   bool need_start_waiting= FALSE;
   bool lock_upgrade_done= FALSE;
+  MDL_ticket *mdl_ticket= NULL;
 
   DBUG_ENTER("mysql_create_or_drop_trigger");
 
@@ -451,8 +452,6 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
     if (!(tables->table= find_write_locked_table(thd->open_tables, tables->db,
                                                  tables->table_name)))
       goto end;
-    /* Later on we will need it to downgrade the lock */
-    tables->mdl_lock_data= tables->table->mdl_lock_data;
   }
   else
   {
@@ -464,6 +463,9 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
     tables->table->use_all_columns();
   }
   table= tables->table;
+
+  /* Later on we will need it to downgrade the lock */
+  mdl_ticket= table->mdl_ticket;
 
   if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
     goto end;
@@ -511,8 +513,7 @@ end:
     TABLE instance created by open_n_lock_single_table() and metadata lock.
   */
   if (thd->locked_tables_mode && tables && lock_upgrade_done)
-    mdl_downgrade_exclusive_lock(&thd->mdl_context,
-                                 tables->mdl_lock_data);
+    mdl_ticket->downgrade_exclusive_lock();
 
   if (need_start_waiting)
     start_waiting_global_read_lock(thd);
@@ -1370,15 +1371,27 @@ bool Table_triggers_list::check_n_load(THD *thd, const char *db,
 
         if (triggers->on_table_names_list.push_back(on_table_name, &table->mem_root))
           goto err_with_lex_cleanup;
-
+#ifndef DBUG_OFF
         /*
           Let us check that we correctly update trigger definitions when we
           rename tables with triggers.
+          
+          In special cases like "RENAME TABLE `#mysql50#somename` TO `somename`"
+          or "ALTER DATABASE `#mysql50#somename` UPGRADE DATA DIRECTORY NAME"
+          we might be given table or database name with "#mysql50#" prefix (and
+          trigger's definiton contains un-prefixed version of the same name).
+          To remove this prefix we use check_n_cut_mysql50_prefix().
         */
-        DBUG_ASSERT(!my_strcasecmp(table_alias_charset, lex.query_tables->db, db) &&
-                    !my_strcasecmp(table_alias_charset, lex.query_tables->table_name,
-                                   table_name));
 
+        char fname[NAME_LEN + 1];
+        DBUG_ASSERT((!my_strcasecmp(table_alias_charset, lex.query_tables->db, db) ||
+                     (check_n_cut_mysql50_prefix(db, fname, sizeof(fname)) &&
+                      !my_strcasecmp(table_alias_charset, lex.query_tables->db, fname))) &&
+                    (!my_strcasecmp(table_alias_charset, lex.query_tables->table_name,
+                                    table_name) ||
+                     (check_n_cut_mysql50_prefix(table_name, fname, sizeof(fname)) &&
+                      !my_strcasecmp(table_alias_charset, lex.query_tables->table_name, fname))));
+#endif
         if (names_only)
         {
           lex_end(&lex);
@@ -1694,7 +1707,8 @@ end:
   (change name of table in triggers' definitions).
 
   @param thd                 Thread context
-  @param db_name             Database of subject table
+  @param old_db_name         Old database of subject table
+  @param new_db_name         New database of subject table
   @param old_table_name      Old subject table's name
   @param new_table_name      New subject table's name
 
@@ -1706,7 +1720,8 @@ end:
 
 bool
 Table_triggers_list::change_table_name_in_triggers(THD *thd,
-                                                   const char *db_name,
+                                                   const char *old_db_name,
+                                                   const char *new_db_name,
                                                    LEX_STRING *old_table_name,
                                                    LEX_STRING *new_table_name)
 {
@@ -1759,11 +1774,11 @@ Table_triggers_list::change_table_name_in_triggers(THD *thd,
   if (thd->is_fatal_error)
     return TRUE; /* OOM */
 
-  if (save_trigger_file(this, db_name, new_table_name->str))
+  if (save_trigger_file(this, new_db_name, new_table_name->str))
     return TRUE;
-  if (rm_trigger_file(path_buff, db_name, old_table_name->str))
+  if (rm_trigger_file(path_buff, old_db_name, old_table_name->str))
   {
-    (void) rm_trigger_file(path_buff, db_name, new_table_name->str);
+    (void) rm_trigger_file(path_buff, new_db_name, new_table_name->str);
     return TRUE;
   }
   return FALSE;
@@ -1774,7 +1789,8 @@ Table_triggers_list::change_table_name_in_triggers(THD *thd,
   Iterate though Table_triggers_list::names_list list and update
   .TRN files after renaming triggers' subject table.
 
-  @param db_name             Database of subject table
+  @param old_db_name         Old database of subject table
+  @param new_db_name         New database of subject table
   @param new_table_name      New subject table's name
   @param stopper             Pointer to Table_triggers_list::names_list at
                              which we should stop updating.
@@ -1787,7 +1803,8 @@ Table_triggers_list::change_table_name_in_triggers(THD *thd,
 */
 
 LEX_STRING*
-Table_triggers_list::change_table_name_in_trignames(const char *db_name,
+Table_triggers_list::change_table_name_in_trignames(const char *old_db_name,
+                                                    const char *new_db_name,
                                                     LEX_STRING *new_table_name,
                                                     LEX_STRING *stopper)
 {
@@ -1800,7 +1817,7 @@ Table_triggers_list::change_table_name_in_trignames(const char *db_name,
   while ((trigger= it_name++) != stopper)
   {
     trigname_file.length= build_table_filename(trigname_buff, FN_REFLEN-1,
-                                               db_name, trigger->str,
+                                               new_db_name, trigger->str,
                                                TRN_EXT, 0);
     trigname_file.str= trigname_buff;
 
@@ -1809,6 +1826,16 @@ Table_triggers_list::change_table_name_in_trignames(const char *db_name,
     if (sql_create_definition_file(NULL, &trigname_file, &trigname_file_type,
                                    (uchar*)&trigname, trigname_file_parameters))
       return trigger;
+      
+    /* Remove stale .TRN file in case of database upgrade */
+    if (old_db_name)
+    {
+      if (rm_trigname_file(trigname_buff, old_db_name, trigger->str))
+      {
+        (void) rm_trigname_file(trigname_buff, new_db_name, trigger->str);
+        return trigger;
+      }
+    }
   }
 
   return 0;
@@ -1842,6 +1869,7 @@ bool Table_triggers_list::change_table_name(THD *thd, const char *db,
 {
   TABLE table;
   bool result= 0;
+  bool upgrading50to51= FALSE; 
   LEX_STRING *err_trigname;
   DBUG_ENTER("change_table_name");
 
@@ -1854,7 +1882,7 @@ bool Table_triggers_list::change_table_name(THD *thd, const char *db,
     In the future, only an exclusive metadata lock will be enough.
   */
 #ifndef DBUG_OFF
-  if (mdl_is_exclusive_lock_owner(&thd->mdl_context, 0, db, old_table))
+  if (thd->mdl_context.is_exclusive_lock_owner(0, db, old_table))
     safe_mutex_assert_owner(&LOCK_open);
 #endif
 
@@ -1875,14 +1903,27 @@ bool Table_triggers_list::change_table_name(THD *thd, const char *db,
       moving table with them between two schemas raises too many questions.
       (E.g. what should happen if in new schema we already have trigger
        with same name ?).
+       
+      In case of "ALTER DATABASE `#mysql50#db1` UPGRADE DATA DIRECTORY NAME"
+      we will be given table name with "#mysql50#" prefix
+      To remove this prefix we use check_n_cut_mysql50_prefix().
     */
     if (my_strcasecmp(table_alias_charset, db, new_db))
     {
-      my_error(ER_TRG_IN_WRONG_SCHEMA, MYF(0));
-      result= 1;
-      goto end;
+      char dbname[NAME_LEN + 1];
+      if (check_n_cut_mysql50_prefix(db, dbname, sizeof(dbname)) && 
+          !my_strcasecmp(table_alias_charset, dbname, new_db))
+      {
+        upgrading50to51= TRUE;
+      }
+      else
+      {
+        my_error(ER_TRG_IN_WRONG_SCHEMA, MYF(0));
+        result= 1;
+        goto end;
+      }
     }
-    if (table.triggers->change_table_name_in_triggers(thd, db,
+    if (table.triggers->change_table_name_in_triggers(thd, db, new_db,
                                                       &old_table_name,
                                                       &new_table_name))
     {
@@ -1890,7 +1931,8 @@ bool Table_triggers_list::change_table_name(THD *thd, const char *db,
       goto end;
     }
     if ((err_trigname= table.triggers->change_table_name_in_trignames(
-                                         db, &new_table_name, 0)))
+                                         upgrading50to51 ? db : NULL,
+                                         new_db, &new_table_name, 0)))
     {
       /*
         If we were unable to update one of .TRN files properly we will
@@ -1898,16 +1940,17 @@ bool Table_triggers_list::change_table_name(THD *thd, const char *db,
         We assume that we will be able to undo our changes without errors
         (we can't do much if there will be an error anyway).
       */
-      (void) table.triggers->change_table_name_in_trignames(db,
-                                                            &old_table_name,
-                                                            err_trigname);
-      (void) table.triggers->change_table_name_in_triggers(thd, db,
-                                                           &new_table_name,
-                                                           &old_table_name);
+      (void) table.triggers->change_table_name_in_trignames(
+                               upgrading50to51 ? new_db : NULL, db,
+                               &old_table_name, err_trigname);
+      (void) table.triggers->change_table_name_in_triggers(
+                               thd, db, new_db,
+                               &new_table_name, &old_table_name);
       result= 1;
       goto end;
     }
   }
+  
 end:
   delete table.triggers;
   free_root(&table.mem_root, MYF(0));

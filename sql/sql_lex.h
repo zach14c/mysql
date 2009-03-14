@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -122,6 +122,7 @@ enum enum_sql_command {
   SQLCOM_BACKUP_TEST,
 #endif
   SQLCOM_SHOW_PROFILE, SQLCOM_SHOW_PROFILES,
+  SQLCOM_SIGNAL, SQLCOM_RESIGNAL,
 
   /*
     When a command is added here, be sure it's also added in mysqld.cc
@@ -194,6 +195,15 @@ typedef struct st_lex_server_options
   char *server_name, *host, *db, *username, *password, *scheme, *socket, *owner;
 } LEX_SERVER_OPTIONS;
 
+
+/**
+  Structure to hold parameters for CHANGE MASTER or START/STOP SLAVE
+  or SHOW NEW MASTER.
+
+  Remark: this should not be confused with Master_info (and perhaps
+  would better be renamed to st_lex_replication_info).  Some fields,
+  e.g., delay, are saved in Relay_log_info, not in Master_info.
+*/
 typedef struct st_lex_master_info
 {
   char *host, *user, *password, *log_file_name;
@@ -206,10 +216,11 @@ typedef struct st_lex_master_info
     changed variable or if it should be left at old value
    */
   enum {LEX_MI_UNCHANGED, LEX_MI_DISABLE, LEX_MI_ENABLE}
-    ssl, ssl_verify_server_cert, heartbeat_opt;
+    ssl, ssl_verify_server_cert, heartbeat_opt, repl_ignore_server_ids_opt;
   char *ssl_key, *ssl_cert, *ssl_ca, *ssl_capath, *ssl_cipher;
   char *relay_log_name;
   ulong relay_log_pos;
+  DYNAMIC_ARRAY repl_ignore_server_ids; 
 } LEX_MASTER_INFO;
 
 
@@ -663,8 +674,6 @@ public:
     query processing end even if we use temporary table
   */
   bool subquery_in_having;
-  /* TRUE <=> this SELECT is correlated w.r.t. some ancestor select */
-  bool is_correlated;
   /*
     This variable is required to ensure proper work of subqueries and
     stored procedures. Generally, one should use the states of
@@ -820,7 +829,7 @@ public:
   }
 
   void clear_index_hints(void) { index_hints= NULL; }
-
+  bool is_part_of_union() { return master_unit()->is_union(); }
 private:  
   /* current index hint kind. used in filling up index_hints */
   enum index_hint_type current_index_hint_type;
@@ -1513,6 +1522,62 @@ public:
   CHARSET_INFO *m_underscore_cs;
 };
 
+/**
+  Abstract representation of a statement.
+  This class is an interface between the parser and the runtime.
+  The parser builds the appropriate sub classes of SQLCOM_statement
+  to represent a SQL statement in the parsed tree.
+  The execute() method in the sub classes contain the runtime implementation.
+  Note that this interface is used for SQL statement recently implemented,
+  the code for older statements tend to load the LEX structure with more
+  attributes instead.
+  The recommended way to implement new statements is to sub-class
+  SQLCOM_statement, as this improves code modularity (see the 'big switch' in
+  dispatch_command()), and decrease the total size of the LEX structure
+  (therefore saving memory in stored programs).
+*/
+class SQLCOM_statement : public Sql_alloc
+{
+public:
+  /**
+    Execute this SQL statement.
+    @param thd the current thread.
+    @return 0 on success.
+  */
+  virtual int execute(THD *thd) = 0;
+
+protected:
+  /**
+    Constructor.
+    @param lex the LEX structure that represents parts of this statement.
+  */
+  SQLCOM_statement(struct LEX *lex)
+    : m_lex(lex)
+  {}
+
+  /** Destructor. */
+  virtual ~SQLCOM_statement()
+  {
+    /*
+      SQLCOM_statement objects are allocated in thd->mem_root.
+      In MySQL, the C++ destructor is never called, the underlying MEM_ROOT is
+      simply destroyed instead.
+      Do not rely on the destructor for any cleanup.
+    */
+    DBUG_ASSERT(FALSE);
+  }
+
+protected:
+  /**
+    The legacy LEX structure for this statement.
+    The LEX structure contains the existing properties of the parsed tree.
+    TODO: with time, attributes from LEX should move to sub classes of
+    SQLCOM_statement, so that the parser only builds SQLCOM_statement objects
+    with the minimum set of attributes, instead of a LEX structure that
+    contains the collection of every possible attribute.
+  */
+  struct LEX *m_lex;
+};
 
 /* The state of the lex parsing. This is saved in the THD struct */
 
@@ -1617,6 +1682,9 @@ struct LEX: public Query_tables_list
   */
   nesting_map allow_sum_func;
   enum_sql_command sql_command;
+
+  SQLCOM_statement *m_stmt;
+
   /*
     Usually `expr` rule of yacc is quite reused but some commands better
     not support subqueries which comes standard with this rule, like
@@ -1889,6 +1957,36 @@ struct LEX: public Query_tables_list
 
 
 /**
+  Set_signal_information is a container used in the parsed tree to represent
+  the collection of assignments to condition items in the SIGNAL and RESIGNAL
+  statements.
+*/
+class Set_signal_information
+{
+public:
+  /** Constructor. */
+  Set_signal_information();
+
+  /** Copy constructor. */
+  Set_signal_information(const Set_signal_information& set);
+
+  /** Destructor. */
+  ~Set_signal_information()
+  {}
+
+  /** Clear all items. */
+  void clear();
+
+  /**
+    For each contition item assignment, m_item[] contains the parsed tree
+    that represents the expression assigned, if any.
+    m_item[] is an array indexed by Diag_condition_item_name.
+  */
+  Item *m_item[LAST_DIAG_SET_PROPERTY+1];
+};
+
+
+/**
   The internal state of the syntax parser.
   This object is only available during parsing,
   and is private to the syntax parser implementation (sql_yacc.yy).
@@ -1913,6 +2011,12 @@ public:
     my_yyoverflow().
   */
   uchar *yacc_yyvs;
+
+  /**
+    Fragments of parsed tree,
+    used during the parsing of SIGNAL and RESIGNAL.
+  */
+  Set_signal_information m_set_signal_info;
 
   /*
     TODO: move more attributes from the LEX structure here.

@@ -177,8 +177,8 @@ int archive_db_init(void *p)
 
   if (pthread_mutex_init(&archive_mutex, MY_MUTEX_INIT_FAST))
     goto error;
-  if (hash_init(&archive_open_tables, table_alias_charset, 32, 0, 0,
-                (hash_get_key) archive_get_key, 0, 0))
+  if (my_hash_init(&archive_open_tables, table_alias_charset, 32, 0, 0,
+                (my_hash_get_key) archive_get_key, 0, 0))
   {
     pthread_mutex_destroy(&archive_mutex);
   }
@@ -203,7 +203,7 @@ error:
 
 int archive_db_done(void *p)
 {
-  hash_free(&archive_open_tables);
+  my_hash_free(&archive_open_tables);
   pthread_mutex_destroy(&archive_mutex);
 
   return 0;
@@ -293,9 +293,9 @@ ARCHIVE_SHARE *ha_archive::get_share(const char *table_name, int *rc)
   pthread_mutex_lock(&archive_mutex);
   length=(uint) strlen(table_name);
 
-  if (!(share=(ARCHIVE_SHARE*) hash_search(&archive_open_tables,
-                                           (uchar*) table_name,
-                                           length)))
+  if (!(share=(ARCHIVE_SHARE*) my_hash_search(&archive_open_tables,
+                                              (uchar*) table_name,
+                                              length)))
   {
     char *tmp_name;
     azio_stream archive_tmp;
@@ -381,7 +381,7 @@ int ha_archive::free_share()
   pthread_mutex_lock(&archive_mutex);
   if (!--share->use_count)
   {
-    hash_delete(&archive_open_tables, (uchar*) share);
+    my_hash_delete(&archive_open_tables, (uchar*) share);
     thr_lock_delete(&share->lock);
     pthread_mutex_destroy(&share->mutex);
     /* 
@@ -950,7 +950,11 @@ int ha_archive::index_read_idx(uchar *buf, uint index, const uchar *key,
   }
 
   if (found)
+  {
+    /* notify handler that a record has been found */
+    table->status= 0;
     DBUG_RETURN(0);
+  }
 
 error:
   DBUG_RETURN(rc ? rc : HA_ERR_END_OF_FILE);
@@ -1389,8 +1393,8 @@ int ha_archive::info(uint flag)
 
     stats.mean_rec_length= table->s->reclength + buffer.alloced_length();
     stats.data_file_length= file_stat.st_size;
-    stats.create_time= file_stat.st_ctime;
-    stats.update_time= file_stat.st_mtime;
+    stats.create_time= (ulong) file_stat.st_ctime;
+    stats.update_time= (ulong) file_stat.st_mtime;
     stats.max_data_file_length= share->rows_recorded * stats.mean_rec_length;
   }
   stats.delete_length= 0;

@@ -15,11 +15,19 @@
 # Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
 # MA 02111-1307, USA
 
-INCLUDES =              -I$(top_builddir)/include -I$(top_srcdir)/include
-LDADD =                 libdbug.a ../mysys/libmysys.a ../strings/libmystrings.a
-pkglib_LIBRARIES =      libdbug.a
+AM_CPPFLAGS =           -I$(top_srcdir)/include
+LDADD =                 libdbuglt.la $(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/strings/libmystringslt.la ${ZLIB_LIBS}
+pkglib_LTLIBRARIES =	libdbug.la
+libdbug_la_LDFLAGS =   -static
+libdbug_la_SOURCES = 	
+libdbug_la_LIBADD =	libdbuglt.la
+# Force C++ linking - dummy.cxx doesn't have to exist with EXTRA in the name
+nodist_EXTRA_libdbug_la_SOURCES = dummy.cxx
+
+noinst_LTLIBRARIES =	libdbuglt.la
 noinst_HEADERS =        dbug_long.h
-libdbug_a_SOURCES =     dbug.c sanity.c
+libdbuglt_la_SOURCES =     dbug.c sanity.c
 EXTRA_DIST =            CMakeLists.txt example1.c example2.c example3.c \
                         user.r monty.doc dbug_add_tags.pl \
                         my_main.c main.c factorial.c dbug_analyze.c \
@@ -65,6 +73,3 @@ output5.r:      factorial
 # a hack to have executable in builddir, not in srcdir
 tests-t:	tests-t.pl
 		cp -f $(srcdir)/tests-t.pl ./tests-t
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

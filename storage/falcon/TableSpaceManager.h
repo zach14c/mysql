@@ -63,6 +63,8 @@ public:
 	void			reportWrites(void);
 	void			redoCreateTableSpace(int id, int nameLength, const char* name, int fileNameLength, const char* fileName, int type, TableSpaceInit* tsInit);
 	void			initialize(void);
+	int				createTableSpaceId();
+	void			openTableSpaces();
 
 	Database	*database;
 	TableSpace	*tableSpaces;

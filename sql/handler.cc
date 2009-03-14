@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #endif
 
 #include "mysql_priv.h"
+#include "debug_sync.h"
 #include "rpl_filter.h"
 #include <myisampack.h>
 #include "myisam.h"
@@ -32,6 +33,8 @@
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
 #endif
+
+#include "rpl_handler.h"
 
 /*
   While we have legacy_db_type, we have this array to
@@ -408,7 +411,13 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
     reuse an array slot. Otherwise the number of uninstall/install
     cycles would be limited.
   */
-  hton2plugin[hton->slot]= NULL;
+  if (hton->slot != HA_SLOT_UNDEF)
+  {
+    /* Make sure we are not unpluging another plugin */
+    DBUG_ASSERT(hton2plugin[hton->slot] == plugin);
+    DBUG_ASSERT(hton->slot < MAX_HA);
+    hton2plugin[hton->slot]= NULL;
+  }
 
   my_free((uchar*)hton, MYF(0));
 
@@ -433,16 +442,14 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
     not initialized.
    */
   bzero(hton, sizeof(hton));
+  hton->slot= HA_SLOT_UNDEF;
   /* Historical Requirement */
   plugin->data= hton; // shortcut for the future
-  if (plugin->plugin->init)
+  if (plugin->plugin->init && plugin->plugin->init(hton))
   {
-    if (plugin->plugin->init(hton))
-    {
-      sql_print_error("Plugin '%s' init function returned error.",
-                      plugin->name.str);
-      goto err;
-    }
+    sql_print_error("Plugin '%s' init function returned error.",
+                    plugin->name.str);
+    goto err;  
   }
 
   /*
@@ -469,17 +476,13 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
         if (idx == (int) DB_TYPE_DEFAULT)
         {
           sql_print_warning("Too many storage engines!");
-          DBUG_RETURN(1);
+          goto err_deinit;
         }
         if (hton->db_type != DB_TYPE_UNKNOWN)
           sql_print_warning("Storage engine '%s' has conflicting typecode. "
                             "Assigning value %d.", plugin->plugin->name, idx);
         hton->db_type= (enum legacy_db_type) idx;
       }
-      installed_htons[hton->db_type]= hton;
-      tmp= hton->savepoint_offset;
-      hton->savepoint_offset= savepoint_alloc_size;
-      savepoint_alloc_size+= tmp;
 
       /*
         In case a plugin is uninstalled and re-installed later, it should
@@ -500,11 +503,14 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
         {
           sql_print_error("Too many plugins loaded. Limit is %lu. "
                           "Failed on '%s'", (ulong) MAX_HA, plugin->name.str);
-          goto err;
+          goto err_deinit;
         }
         hton->slot= total_ha++;
       }
-
+      installed_htons[hton->db_type]= hton;
+      tmp= hton->savepoint_offset;
+      hton->savepoint_offset= savepoint_alloc_size;
+      savepoint_alloc_size+= tmp;
       hton2plugin[hton->slot]=plugin;
       if (hton->prepare)
         total_ha_2pc++;
@@ -536,7 +542,18 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
   };
 
   DBUG_RETURN(0);
+
+err_deinit:
+  /* 
+    Let plugin do its inner deinitialization as plugin->init() 
+    was successfully called before.
+  */
+  if (plugin->plugin->deinit)
+    (void) plugin->plugin->deinit(NULL);
+          
 err:
+  my_free((uchar*) hton, MYF(0));
+  plugin->data= NULL;
   DBUG_RETURN(1);
 }
 
@@ -1183,6 +1200,7 @@ int ha_commit_trans(THD *thd, bool all)
     if (cookie)
       tc_log->unlog(cookie, xid);
     DBUG_EXECUTE_IF("crash_commit_after", DBUG_ABORT(););
+    RUN_HOOK(transaction, after_commit, (thd, all));
 end:
     if (rw_trans)
       start_waiting_global_read_lock(thd);
@@ -1318,6 +1336,7 @@ int ha_rollback_trans(THD *thd, bool all)
     push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                  ER_WARNING_NOT_COMPLETE_ROLLBACK,
                  ER(ER_WARNING_NOT_COMPLETE_ROLLBACK));
+  RUN_HOOK(transaction, after_rollback, (thd, all));
   DBUG_RETURN(error);
 }
 
@@ -1477,7 +1496,7 @@ static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
         }
         // recovery mode
         if (info->commit_list ?
-            hash_search(info->commit_list, (uchar *)&x, sizeof(x)) != 0 :
+            my_hash_search(info->commit_list, (uchar *)&x, sizeof(x)) != 0 :
             tc_heuristic_recover == TC_HEURISTIC_RECOVER_COMMIT)
         {
 #ifndef DBUG_OFF
@@ -1597,7 +1616,7 @@ bool mysql_xa_recover(THD *thd)
     DBUG_RETURN(1);
 
   pthread_mutex_lock(&LOCK_xid_cache);
-  while ((xs= (XID_STATE*)hash_element(&xid_cache, i++)))
+  while ((xs= (XID_STATE*) my_hash_element(&xid_cache, i++)))
   {
     if (xs->xa_state==XA_PREPARED)
     {
@@ -1862,23 +1881,28 @@ const char *get_canonical_filename(handler *file, const char *path,
 struct Ha_delete_table_error_handler: public Internal_error_handler
 {
 public:
-  virtual bool handle_error(THD *thd,
-                            MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno,
-                            const char *message);
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl);
   char buff[MYSQL_ERRMSG_SIZE];
 };
 
 
 bool
 Ha_delete_table_error_handler::
-handle_error(THD *thd,
-             MYSQL_ERROR::enum_warning_level level,
-             uint sql_errno,
-             const char *message)
+handle_condition(THD *,
+                 uint,
+                 const char*,
+                 MYSQL_ERROR::enum_warning_level,
+                 const char* msg,
+                 MYSQL_ERROR ** cond_hdl)
 {
+  *cond_hdl= NULL;
   /* Grab the error message */
-  strmake(buff, message, sizeof(buff)-1);
+  strmake(buff, msg, sizeof(buff)-1);
   return TRUE;
 }
 
@@ -2663,8 +2687,12 @@ void handler::print_error(int error, myf errflag)
     break;
   case HA_ERR_RECORD_FILE_FULL:
   case HA_ERR_INDEX_FILE_FULL:
+  {
     textno=ER_RECORD_FILE_FULL;
+    /* Write the error message to error log */
+    errflag|= ME_NOREFRESH;
     break;
+  }
   case HA_ERR_LOCK_WAIT_TIMEOUT:
     textno=ER_LOCK_WAIT_TIMEOUT;
     break;
@@ -3877,27 +3905,33 @@ static my_bool binlog_func_foreach(THD *thd, binlog_func_st *bfn)
 {
   hton_list_st hton_list;
   uint i, sz;
+  int res= 0;
 
   hton_list.sz= 0;
   plugin_foreach(thd, binlog_func_list,
                  MYSQL_STORAGE_ENGINE_PLUGIN, &hton_list);
 
   for (i= 0, sz= hton_list.sz; i < sz ; i++)
-    hton_list.hton[i]->binlog_func(hton_list.hton[i], thd, bfn->fn, bfn->arg);
-  return FALSE;
+    res|= hton_list.hton[i]->binlog_func(hton_list.hton[i], thd, bfn->fn, bfn->arg);
+  return res != 0;
 }
 
 int ha_reset_logs(THD *thd)
 {
   binlog_func_st bfn= {BFN_RESET_LOGS, 0};
   binlog_func_foreach(thd, &bfn);
+  if (thd->stmt_da->is_error())
+    return 1;
   return 0;
 }
 
-void ha_reset_slave(THD* thd)
+int ha_reset_slave(THD* thd)
 {
   binlog_func_st bfn= {BFN_RESET_SLAVE, 0};
   binlog_func_foreach(thd, &bfn);
+  if (thd->stmt_da->is_error())
+    return 1;
+  return 0;
 }
 
 void ha_binlog_wait(THD* thd)
@@ -3917,7 +3951,45 @@ int ha_binlog_index_purge_file(THD *thd, const char *file)
 {
   binlog_func_st bfn= {BFN_BINLOG_PURGE_FILE, (void *)file};
   binlog_func_foreach(thd, &bfn);
+  if (thd->stmt_da->is_error())
+    return 1;
   return 0;
+}
+
+static int ha_global_schema_lock(THD *thd, int no_queue)
+{
+  binlog_func_st bfn= {BFN_GLOBAL_SCHEMA_LOCK, (void *)&no_queue};
+  int res= binlog_func_foreach(thd, &bfn);
+  if (res || thd->stmt_da->is_error())
+    return 1;
+  return 0;
+}
+
+static int ha_global_schema_unlock(THD *thd)
+{
+  binlog_func_st bfn= {BFN_GLOBAL_SCHEMA_UNLOCK, 0};
+  binlog_func_foreach(thd, &bfn);
+  if (thd->stmt_da->is_error())
+    return 1;
+  return 0;
+}
+
+Ha_global_schema_lock_guard::Ha_global_schema_lock_guard(THD *thd)
+  : m_thd(thd), m_lock(0)
+{
+}
+
+Ha_global_schema_lock_guard::~Ha_global_schema_lock_guard()
+{
+  if (m_lock)
+    ha_global_schema_unlock(m_thd);
+}
+
+int Ha_global_schema_lock_guard::lock(int no_queue)
+{
+  DBUG_ASSERT(m_lock == 0);
+  m_lock= 1;
+  return ha_global_schema_lock(m_thd, no_queue);
 }
 
 struct binlog_log_query_st
@@ -4137,8 +4209,8 @@ handler::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
     other Error or can't perform the requested scan
 */
 
-int handler::multi_range_read_info(uint keyno, uint n_ranges, uint n_rows,
-                                   uint *bufsz, uint *flags, COST_VECT *cost)
+ha_rows handler::multi_range_read_info(uint keyno, uint n_ranges, uint n_rows,
+                                       uint *bufsz, uint *flags, COST_VECT *cost)
 {
   *bufsz= 0; /* Default implementation doesn't need a buffer */
 
@@ -4302,17 +4374,20 @@ scan_it_again:
   @retval other Error
 */
 
-int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
-                           RANGE_SEQ_IF *seq_funcs, void *seq_init_param,
-                           uint n_ranges, uint mode, HANDLER_BUFFER *buf)
+int DsMrr_impl::dsmrr_init(handler *h_arg, RANGE_SEQ_IF *seq_funcs, 
+                           void *seq_init_param, uint n_ranges, uint mode,
+                           HANDLER_BUFFER *buf)
 {
   uint elem_size;
-  uint keyno;
   Item *pushed_cond= NULL;
-  handler *new_h2;
+  handler *new_h2= 0;
   DBUG_ENTER("DsMrr_impl::dsmrr_init");
-  keyno= h->active_index;
-  DBUG_ASSERT(h2 == NULL);
+
+  /*
+    index_merge may invoke a scan on an object for which dsmrr_info[_const]
+    has not been called, so set the owner handler here as well.
+  */
+  h= h_arg;
   if (mode & HA_MRR_USE_DEFAULT_IMPL || mode & HA_MRR_SORTED)
   {
     use_default_impl= TRUE;
@@ -4320,57 +4395,97 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
                                                   n_ranges, mode, buf));
   }
   rowids_buf= buf->buffer;
-  //psergey-todo: don't add key_length as it is not needed anymore
-  rowids_buf += key->key_length + h->ref_length;
 
   is_mrr_assoc= !test(mode & HA_MRR_NO_ASSOCIATION);
+
+  if (is_mrr_assoc)
+    status_var_increment(table->in_use->status_var.ha_multi_range_read_init_count);
+ 
   rowids_buf_end= buf->buffer_end;
-  
   elem_size= h->ref_length + (int)is_mrr_assoc * sizeof(void*);
   rowids_buf_last= rowids_buf + 
                       ((rowids_buf_end - rowids_buf)/ elem_size)*
                       elem_size;
   rowids_buf_end= rowids_buf_last;
 
-  /* Create a separate handler object to do rndpos() calls. */
-  THD *thd= current_thd;
-
-  /*
-    ::clone() takes up a lot of stack, especially on 64 bit platforms.
-    The constant 5 is an empiric result.
+    /*
+    There can be two cases:
+    - This is the first call since index_init(), h2==NULL
+       Need to setup h2 then.
+    - This is not the first call, h2 is initalized and set up appropriately.
+       The caller might have called h->index_init(), need to switch h to
+       rnd_pos calls.
   */
-  if (check_stack_overrun(thd, 5*STACK_MIN_SIZE, (uchar*) &new_h2))
-    DBUG_RETURN(1);
-  if (!(new_h2= h->clone(thd->mem_root)) || 
-      new_h2->ha_external_lock(thd, F_RDLCK))
+  if (!h2)
   {
-    delete new_h2;
-    DBUG_RETURN(1);
-  }
+    /* Create a separate handler object to do rndpos() calls. */
+    THD *thd= current_thd;
+    /*
+      ::clone() takes up a lot of stack, especially on 64 bit platforms.
+      The constant 5 is an empiric result.
+    */
+    if (check_stack_overrun(thd, 5*STACK_MIN_SIZE, (uchar*) &new_h2))
+      DBUG_RETURN(1);
+    DBUG_ASSERT(h->active_index != MAX_KEY);
+    uint mrr_keyno= h->active_index;
 
-  if (keyno == h->pushed_idx_cond_keyno)
-    pushed_cond= h->pushed_idx_cond;
-  if (h->ha_index_end())
-  {
-    new_h2= h2;
-    goto error;
-  }
+    /* Create a separate handler object to do rndpos() calls. */
+    if (!(new_h2= h->clone(thd->mem_root)) || 
+        new_h2->ha_external_lock(thd, F_RDLCK))
+    {
+      delete new_h2;
+      DBUG_RETURN(1);
+    }
 
-  h2= new_h2;
-  table->prepare_for_position();
-  new_h2->extra(HA_EXTRA_KEYREAD);
+    if (mrr_keyno == h->pushed_idx_cond_keyno)
+      pushed_cond= h->pushed_idx_cond;
 
-  if (h2->ha_index_init(keyno, FALSE) || 
-      h2->handler::multi_range_read_init(seq_funcs, seq_init_param, n_ranges,
-                                         mode, buf))
-    goto error;
-  use_default_impl= FALSE;
+    /*
+      Caution: this call will invoke this->dsmrr_close(). Do not put the
+      created secondary table handler into this->h2 or it will delete it.
+    */
+    if (h->ha_index_end())
+    {
+      h2=new_h2;
+      goto error;
+    }
+
+    h2= new_h2; /* Ok, now can put it into h2 */
+    table->prepare_for_position();
+    h2->extra(HA_EXTRA_KEYREAD);
   
-  if (pushed_cond)
-    h2->idx_cond_push(keyno, pushed_cond);
-  if (dsmrr_fill_buffer(new_h2))
-    goto error;
+    if (h2->ha_index_init(mrr_keyno, FALSE))
+      goto error;
 
+    use_default_impl= FALSE;
+    if (pushed_cond)
+      h2->idx_cond_push(mrr_keyno, pushed_cond);
+  }
+  else
+  {
+    /* 
+      We get here when the access alternates betwen MRR scan(s) and non-MRR
+      scans.
+
+      Calling h->index_end() will invoke dsmrr_close() for this object,
+      which will delete h2. We need to keep it, so save put it away and dont
+      let it be deleted:
+    */
+    handler *save_h2= h2;
+    h2= NULL;
+    int res= (h->inited == handler::INDEX && h->ha_index_end());
+    h2= save_h2;
+    use_default_impl= FALSE;
+    if (res)
+      goto error;
+  }
+
+  if (h2->handler::multi_range_read_init(seq_funcs, seq_init_param, n_ranges,
+                                          mode, buf) || 
+      dsmrr_fill_buffer())
+  {
+    goto error;
+  }
   /*
     If the above call has scanned through all intervals in *seq, then
     adjust *buf to indicate that the remaining buffer space will not be used.
@@ -4378,13 +4493,22 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
   if (dsmrr_eof) 
     buf->end_of_used_area= rowids_buf_last;
 
-  if (h->ha_rnd_init(FALSE))
-    goto error;
+  /*
+     h->inited == INDEX may occur when 'range checked for each record' is
+     used.
+  */
+  if ((h->inited != handler::RND) && 
+      ((h->inited==handler::INDEX? h->ha_index_end(): FALSE) || 
+       (h->ha_rnd_init(FALSE))))
+      goto error;
+
+  use_default_impl= FALSE;
+  h->mrr_funcs= *seq_funcs;
   
   DBUG_RETURN(0);
 error:
   h2->ha_index_or_rnd_end();
-  h2->ha_external_lock(thd, F_UNLCK);
+  h2->ha_external_lock(current_thd, F_UNLCK);
   h2->close();
   delete h2;
   DBUG_RETURN(1);
@@ -4430,7 +4554,7 @@ static int rowid_cmp(void *h, uchar *a, uchar *b)
   @retval other  Error
 */
 
-int DsMrr_impl::dsmrr_fill_buffer(handler *unused)
+int DsMrr_impl::dsmrr_fill_buffer()
 {
   char *range_info;
   int res;
@@ -4440,10 +4564,15 @@ int DsMrr_impl::dsmrr_fill_buffer(handler *unused)
   while ((rowids_buf_cur < rowids_buf_end) && 
          !(res= h2->handler::multi_range_read_next(&range_info)))
   {
+    KEY_MULTI_RANGE *curr_range= &h2->handler::mrr_cur_range;
+    if (h2->mrr_funcs.skip_index_tuple &&
+        h2->mrr_funcs.skip_index_tuple(h2->mrr_iter, curr_range->ptr))
+      continue;
+    
     /* Put rowid, or {rowid, range_id} pair into the buffer */
     h2->position(table->record[0]);
     memcpy(rowids_buf_cur, h2->ref, h2->ref_length);
-    rowids_buf_cur += h->ref_length;
+    rowids_buf_cur += h2->ref_length;
 
     if (is_mrr_assoc)
     {
@@ -4472,43 +4601,53 @@ int DsMrr_impl::dsmrr_fill_buffer(handler *unused)
   DS-MRR implementation: multi_range_read_next() function
 */
 
-int DsMrr_impl::dsmrr_next(handler *h, char **range_info)
+int DsMrr_impl::dsmrr_next(char **range_info)
 {
   int res;
-  
+  uchar *cur_range_info= 0;
+  uchar *rowid;
+
   if (use_default_impl)
     return h->handler::multi_range_read_next(range_info);
-    
-  if (rowids_buf_cur == rowids_buf_last)
+  
+  do
   {
-    if (dsmrr_eof)
+    if (rowids_buf_cur == rowids_buf_last)
+    {
+      if (dsmrr_eof)
+      {
+        res= HA_ERR_END_OF_FILE;
+        goto end;
+      }
+    res= dsmrr_fill_buffer();
+      if (res)
+        goto end;
+    }
+   
+    /* return eof if there are no rowids in the buffer after re-fill attempt */
+    if (rowids_buf_cur == rowids_buf_last)
     {
       res= HA_ERR_END_OF_FILE;
       goto end;
     }
-    res= dsmrr_fill_buffer(h);
-    if (res)
-      goto end;
-  }
-  
-  /* Return EOF if there are no rowids in the buffer after re-fill attempt */
-  if (rowids_buf_cur == rowids_buf_last)
-  {
-    res= HA_ERR_END_OF_FILE;
-    goto end;
-  }
+    rowid= rowids_buf_cur;
 
-  res= h->rnd_pos(table->record[0], rowids_buf_cur);
-  rowids_buf_cur += h->ref_length;
+    if (is_mrr_assoc)
+      memcpy(&cur_range_info, rowids_buf_cur + h->ref_length, sizeof(uchar**));
+
+    rowids_buf_cur += h->ref_length + sizeof(void*) * test(is_mrr_assoc);
+    if (h2->mrr_funcs.skip_record &&
+	h2->mrr_funcs.skip_record(h2->mrr_iter, (char *) cur_range_info, rowid))
+      continue;
+    res= h->rnd_pos(table->record[0], rowid);
+    break;
+  } while (true);
+ 
   if (is_mrr_assoc)
   {
-    memcpy(range_info, rowids_buf_cur, sizeof(void*));
-    rowids_buf_cur += sizeof(void*);
+    memcpy(range_info, rowid + h->ref_length, sizeof(void*));
   }
-
 end:
-  if (res)
-    dsmrr_close();
   return res;
 }
 
@@ -4516,10 +4655,10 @@ end:
 /**
   DS-MRR implementation: multi_range_read_info() function
 */
-int DsMrr_impl::dsmrr_info(uint keyno, uint n_ranges, uint rows, uint *bufsz,
-                           uint *flags, COST_VECT *cost)
+ha_rows DsMrr_impl::dsmrr_info(uint keyno, uint n_ranges, uint rows,
+                               uint *bufsz, uint *flags, COST_VECT *cost)
 {  
-  int res;
+  ha_rows res;
   uint def_flags= *flags;
   uint def_bufsz= *bufsz;
 
@@ -4538,6 +4677,7 @@ int DsMrr_impl::dsmrr_info(uint keyno, uint n_ranges, uint rows, uint *bufsz,
   }
   else
   {
+    /* *flags and *bufsz were set by choose_mrr_impl */
     DBUG_PRINT("info", ("DS-MRR implementation choosen"));
   }
   return 0;
@@ -4579,7 +4719,7 @@ ha_rows DsMrr_impl::dsmrr_info_const(uint keyno, RANGE_SEQ_IF *seq,
   }
   else
   {
-    *flags &= ~HA_MRR_USE_DEFAULT_IMPL;
+    /* *flags and *bufsz were set by choose_mrr_impl */
     DBUG_PRINT("info", ("DS-MRR implementation choosen"));
   }
   return rows;
@@ -4645,10 +4785,8 @@ bool DsMrr_impl::choose_mrr_impl(uint keyno, ha_rows rows, uint *flags,
   COST_VECT dsmrr_cost;
   bool res;
   THD *thd= current_thd;
-  if ((thd->variables.optimizer_use_mrr == 2) || 
-      (*flags & HA_MRR_INDEX_ONLY) || (*flags & HA_MRR_SORTED) ||
-      (keyno == table->s->primary_key && 
-       h->primary_key_is_clustered()) || 
+  if (thd->variables.optimizer_use_mrr == 2 || *flags & HA_MRR_INDEX_ONLY ||
+      (keyno == table->s->primary_key && h->primary_key_is_clustered()) ||
        key_uses_partial_cols(table, keyno))
   {
     /* Use the default implementation */
@@ -5205,8 +5343,6 @@ static int write_locked_table_maps(THD *thd)
   DBUG_ENTER("write_locked_table_maps");
   DBUG_PRINT("enter", ("thd: %p  thd->lock: %p thd->extra_lock: %p",
                        thd, thd->lock, thd->extra_lock));
-
-  DBUG_PRINT("debug", ("get_binlog_table_maps(): %d", thd->get_binlog_table_maps()));
 
   if (thd->get_binlog_table_maps() == 0)
   {

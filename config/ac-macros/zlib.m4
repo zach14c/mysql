@@ -19,7 +19,6 @@ AC_DEFUN([MYSQL_CHECK_ZLIB_DIR], [
 save_CPPFLAGS="$CPPFLAGS"
 save_LIBS="$LIBS"
 CPPFLAGS="$ZLIB_INCLUDES $CPPFLAGS"
-LIBS="$LIBS $ZLIB_LIBS"
 if test X"$with_server" = Xno
 then
   zlibsym=zlibVersion
@@ -27,12 +26,17 @@ else
   zlibsym=zlibCompileFlags
 fi
 AC_CACHE_VAL([mysql_cv_compress],
-  [AC_TRY_LINK([#include <zlib.h>],
-    [return $zlibsym();],
+  [AC_LINK_IFELSE(
+     [AC_LANG_PROGRAM(
+        [[#include <zlib.h>]],
+        [[return $zlibsym();]]
+     )],
     [mysql_cv_compress="yes"
     AC_MSG_RESULT([ok])],
-    [mysql_cv_compress="no"])
-  ])
+     [mysql_cv_compress="no"]
+   )
+  ]
+)
 CPPFLAGS="$save_CPPFLAGS"
 LIBS="$save_LIBS"
 ])
@@ -75,7 +79,7 @@ case $SYSTEM_TYPE in
     ;;
   *)
     AC_ARG_WITH([zlib-dir],
-                AC_HELP_STRING([--with-zlib-dir=no|bundled|DIR],
+                AS_HELP_STRING([--with-zlib-dir=no|bundled|DIR],
                                [Provide MySQL with a custom location of
                                compression library. Given DIR, zlib binary is 
                                assumed to be in $DIR/lib and header files

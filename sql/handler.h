@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -167,14 +167,11 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define HA_FILE_BASED	       (1 << 26)
 #define HA_NO_VARCHAR	       (1 << 27)
 #define HA_CAN_BIT_FIELD       (1 << 28) /* supports bit fields */
-#define HA_NEED_READ_RANGE_BUFFER (1 << 29) /* for read_multi_range */
 #define HA_ANY_INDEX_MAY_BE_UNIQUE (1 << 30)
 #define HA_NO_COPY_ON_ALTER    (LL(1) << 31)
 #define HA_HAS_RECORDS	       (LL(1) << 32) /* records() gives exact count*/
 /* Has it's own method of binlog logging */
 #define HA_HAS_OWN_BINLOGGING  (LL(1) << 33)
-#define HA_MRR_CANT_SORT       (LL(1) << 34)
-
 /*
   Engine is capable of row-format and statement-format logging,
   respectively
@@ -278,6 +275,13 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define MAX_HA 15
 
 /*
+  Use this instead of 0 as the initial value for the slot number of
+  handlerton, so that we can distinguish uninitialized slot number
+  from slot 0.
+*/
+#define HA_SLOT_UNDEF ((uint)-1)
+
+/*
   Parameters for open() (in register form->filestat)
   HA_GET_INFO does an implicit HA_ABORT_IF_LOCKED
 */
@@ -358,7 +362,9 @@ enum enum_binlog_func {
   BFN_RESET_SLAVE=       2,
   BFN_BINLOG_WAIT=       3,
   BFN_BINLOG_END=        4,
-  BFN_BINLOG_PURGE_FILE= 5
+  BFN_BINLOG_PURGE_FILE= 5,
+  BFN_GLOBAL_SCHEMA_LOCK=  6,
+  BFN_GLOBAL_SCHEMA_UNLOCK=7
 };
 
 enum enum_binlog_command {
@@ -997,9 +1003,9 @@ typedef struct {
   ulonglong delete_length;
   ha_rows records;
   ulong mean_rec_length;
-  time_t create_time;
-  time_t check_time;
-  time_t update_time;
+  ulong create_time;
+  ulong check_time;
+  ulong update_time;
   ulonglong check_sum;
 } PARTITION_INFO;
 
@@ -1182,10 +1188,37 @@ typedef struct st_range_seq_if
       1 - No more ranges
   */
   uint (*next) (range_seq_t seq, KEY_MULTI_RANGE *range);
-} RANGE_SEQ_IF;
 
-uint16 &mrr_persistent_flag_storage(range_seq_t seq, uint idx);
-char* &mrr_get_ptr_by_idx(range_seq_t seq, uint idx);
+  /*
+    Check whether range_info orders to skip the next record
+
+    SYNOPSIS
+      skip_record()
+        seq         The value returned by RANGE_SEQ_IF::init()
+        range_info  Information about the next range 
+                    (Ignored if MRR_NO_ASSOCIATION is set)
+        rowid       Rowid of the record to be checked (ignored if set to 0)
+    
+    RETURN
+      1 - Record with this range_info and/or this rowid shall be filtered
+          out from the stream of records returned by multi_range_read_next()
+      0 - The record shall be left in the stream
+  */ 
+  bool (*skip_record) (range_seq_t seq, char *range_info, uchar *rowid);
+
+  /*
+    Check if the record combination matches the index condition
+    SYNOPSIS
+      skip_index_tuple()
+        seq         The value returned by RANGE_SEQ_IF::init()
+        range_info  Information about the next range 
+    
+    RETURN
+      0 - The record combination satisfies the index condition
+      1 - Otherwise
+  */ 
+  bool (*skip_index_tuple) (range_seq_t seq, char *range_info);
+} RANGE_SEQ_IF;
 
 class COST_VECT
 { 
@@ -1237,6 +1270,17 @@ public:
                   add_io_cnt * add_avg_cost) / io_count_sum;
     io_count= io_count_sum;
   }
+
+  /*
+    To be used when we go from old single value-based cost calculations to
+    the new COST_VECT-based.
+  */
+  void convert_from_cost(double cost)
+  {
+    zero();
+    avg_io_cost= 1.0;
+    io_count= cost;
+  }
 };
 
 void get_sweep_read_cost(TABLE *table, ha_rows nrows, bool interrupted, 
@@ -1287,7 +1331,6 @@ void get_sweep_read_cost(TABLE *table, ha_rows nrows, bool interrupted,
 */
 #define HA_MRR_NO_NULL_ENDPOINTS 128
 
-
 class ha_statistics
 {
 public:
@@ -1308,10 +1351,15 @@ public:
   ha_rows records;
   ha_rows deleted;			/* Deleted records */
   ulong mean_rec_length;		/* physical reclength */
-  time_t create_time;			/* When table was created */
-  time_t check_time;
-  time_t update_time;
+  ulong create_time;			/* When table was created */
+  ulong check_time;
+  ulong update_time;
   uint block_size;			/* index block size */
+  
+  /*
+    number of buffer bytes that native mrr implementation needs,
+  */
+  uint mrr_length_per_rec; 
 
   ha_statistics():
     data_file_length(0), max_data_file_length(0),
@@ -1612,8 +1660,8 @@ public:
                                               void *seq_init_param, 
                                               uint n_ranges, uint *bufsz,
                                               uint *flags, COST_VECT *cost);
-  virtual int multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                                    uint *bufsz, uint *flags, COST_VECT *cost);
+  virtual ha_rows multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                        uint *bufsz, uint *flags, COST_VECT *cost);
   virtual int multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                     uint n_ranges, uint mode,
                                     HANDLER_BUFFER *buf);
@@ -2413,14 +2461,15 @@ public:
 
   DsMrr_impl()
     : h2(NULL) {};
-
-  handler *h; /* The "owner" handler object. It is used for scanning the index */
+  
+  /*
+    The "owner" handler object (the one that calls dsmrr_XXX functions.
+    It is used to retrieve full table rows by calling rnd_pos().
+  */
+  handler *h;
   TABLE *table; /* Always equal to h->table */
 private:
-  /*
-    Secondary handler object. It is used to retrieve full table rows by
-    calling rnd_pos().
-  */
+  /* Secondary handler object.  It is used for scanning the index */
   handler *h2;
 
   /* Buffer to store rowids, or (rowid, range_id) pairs */
@@ -2441,15 +2490,14 @@ public:
     h= h_arg; 
     table= table_arg;
   }
-  int dsmrr_init(handler *h, KEY *key, RANGE_SEQ_IF *seq_funcs, 
-                 void *seq_init_param, uint n_ranges, uint mode, 
-                 HANDLER_BUFFER *buf);
+  int dsmrr_init(handler *h, RANGE_SEQ_IF *seq_funcs, void *seq_init_param, 
+                 uint n_ranges, uint mode, HANDLER_BUFFER *buf);
   void dsmrr_close();
-  int dsmrr_fill_buffer(handler *h);
-  int dsmrr_next(handler *h, char **range_info);
+  int dsmrr_fill_buffer();
+  int dsmrr_next(char **range_info);
 
-  int dsmrr_info(uint keyno, uint n_ranges, uint keys, uint *bufsz,
-                 uint *flags, COST_VECT *cost);
+  ha_rows dsmrr_info(uint keyno, uint n_ranges, uint keys, uint *bufsz,
+                     uint *flags, COST_VECT *cost);
 
   ha_rows dsmrr_info_const(uint keyno, RANGE_SEQ_IF *seq, 
                             void *seq_init_param, uint n_ranges, uint *bufsz,
@@ -2571,18 +2619,36 @@ void trans_register_ha(THD *thd, bool all, handlerton *ht);
 #ifdef HAVE_NDB_BINLOG
 int ha_reset_logs(THD *thd);
 int ha_binlog_index_purge_file(THD *thd, const char *file);
-void ha_reset_slave(THD *thd);
+int ha_reset_slave(THD *thd);
 void ha_binlog_log_query(THD *thd, handlerton *db_type,
                          enum_binlog_command binlog_command,
                          const char *query, uint query_length,
                          const char *db, const char *table_name);
 void ha_binlog_wait(THD *thd);
 int ha_binlog_end(THD *thd);
+class Ha_global_schema_lock_guard
+{
+public:
+  Ha_global_schema_lock_guard(THD *thd);
+  ~Ha_global_schema_lock_guard();
+  int lock(int no_queue= 0);
+private:
+  THD *m_thd;
+  int m_lock;
+};
 #else
-#define ha_reset_logs(a) do {} while (0)
-#define ha_binlog_index_purge_file(a,b) do {} while (0)
-#define ha_reset_slave(a) do {} while (0)
+inline int ha_int_dummy() { return 0; }
+#define ha_reset_logs(a) ha_int_dummy()
+#define ha_binlog_index_purge_file(a,b) ha_int_dummy()
+#define ha_reset_slave(a) ha_int_dummy()
 #define ha_binlog_log_query(a,b,c,d,e,f,g) do {} while (0)
 #define ha_binlog_wait(a) do {} while (0)
 #define ha_binlog_end(a)  do {} while (0)
+class Ha_global_schema_lock_guard
+{
+public:
+  Ha_global_schema_lock_guard(THD *thd) {}
+  ~Ha_global_schema_lock_guard() {}
+  int lock(int no_queue= 0) { return 0; }
+};
 #endif

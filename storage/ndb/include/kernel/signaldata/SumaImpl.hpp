@@ -29,7 +29,6 @@ struct SubCreateReq {
   
   friend bool printSUB_CREATE_REQ(FILE *, const Uint32 *, Uint32, Uint16);
   STATIC_CONST( SignalLength = 6 );
-  STATIC_CONST( SignalLength2 = 7 );
   
   enum SubscriptionType {
     SingleTableScan  = 1,  // 
@@ -38,10 +37,10 @@ struct SubCreateReq {
     SelectiveTableSnapshot  = 4,  // User defines tables
     RemoveFlags  = 0xff,
     GetFlags     = 0xff << 16,
-    AddTableFlag = 0x1 << 16,
     RestartFlag  = 0x2 << 16,
     ReportAll    = 0x4 << 16,
-    ReportSubscribe= 0x8 << 16
+    ReportSubscribe= 0x8 << 16,
+    NR_Sub_Dropped = 0x1 << 24   // sub is dropped but needs to be copied
   };
   
   Uint32 senderRef;
@@ -50,7 +49,6 @@ struct SubCreateReq {
   Uint32 subscriptionKey;
   Uint32 subscriptionType;
   Uint32 tableId;
-  Uint32 state;
 };
 
 struct SubCreateRef {
@@ -66,6 +64,15 @@ struct SubCreateRef {
   Uint32 senderRef;
   Uint32 senderData;
   Uint32 errorCode;
+
+  enum ErrorCode
+  {
+    SubscriptionAlreadyExist = 1415
+    ,OutOfSubscriptionRecords = 1422
+    ,OutOfTableRecords = 1423
+    ,TableDropped = 1417
+    ,NF_FakeErrorREF = 11
+  };
 };
 
 struct SubCreateConf {
@@ -96,8 +103,7 @@ struct SubStartReq {
   friend struct Suma;
   
   friend bool printSUB_START_REQ(FILE *, const Uint32 *, Uint32, Uint16);
-  STATIC_CONST( SignalLength = 6 );
-  STATIC_CONST( SignalLength2 = SignalLength+1 );
+  STATIC_CONST( SignalLength = 7 );
 
   Uint32 senderRef;
   Uint32 senderData;
@@ -119,12 +125,21 @@ struct SubStartRef {
     Undefined = 1,
     NF_FakeErrorREF = 11,
     Busy = 701,
-    NotMaster = 702,
-    PartiallyConnected = 1421
+    PartiallyConnected = 1421,
+    NoSuchSubscription = 1407,
+    Locked = 1411,
+    Dropped = 1418,
+    Defining = 1418,
+    OutOfSubscriberRecords = 1412,
+    OutOfSubOpRecords = 1424,
+    NotMaster = 702, // For API/DICT communication
+    BusyWithNR = 1405,
+    NodeDied = 1427
   };
 
   STATIC_CONST( SignalLength = 7 );
   STATIC_CONST( SignalLength2 = SignalLength+1 );
+  STATIC_CONST( SL_MasterNode = 9 );
   
   Uint32 senderRef;
   Uint32 senderData;
@@ -168,8 +183,13 @@ struct SubStopReq {
    */
   friend struct Suma;
   
+  enum RequestInfo
+  {
+    RI_ABORT_START = 0x1
+  };
+
   friend bool printSUB_STOP_REQ(FILE *, const Uint32 *, Uint32, Uint16);
-  STATIC_CONST( SignalLength = 7 );
+  STATIC_CONST( SignalLength = 8 );
   Uint32 senderRef;
   Uint32 senderData;
   Uint32 subscriptionId;
@@ -177,6 +197,7 @@ struct SubStopReq {
   Uint32 part;  // SubscriptionData::Part
   Uint32 subscriberData;
   Uint32 subscriberRef;
+  Uint32 requestInfo;
 };
 
 struct SubStopRef {
@@ -190,11 +211,17 @@ struct SubStopRef {
     Undefined = 1,
     NF_FakeErrorREF = 11,
     Busy = 701,
-    NotMaster = 702
+    NoSuchSubscription = 1407,
+    Locked = 1411,
+    Defining = 1425,
+    OutOfSubOpRecords = 1424,
+    NoSuchSubscriber = 1426,
+    NotMaster = 702,
+    BusyWithNR = 1405
   };
 
   STATIC_CONST( SignalLength = 8 );
-  STATIC_CONST( SignalLength2 = SignalLength+1 );
+  STATIC_CONST( SL_MasterNode = 9 );
   
   Uint32 senderRef;
   Uint32 senderData;
@@ -204,7 +231,6 @@ struct SubStopRef {
   Uint32 subscriberData;
   Uint32 subscriberRef;
   Uint32 errorCode;
-  // with SignalLength2
   Uint32 m_masterNodeId;
 };
 
@@ -262,6 +288,7 @@ struct SubSyncRef {
   Uint32 senderRef;
   Uint32 senderData;
   Uint32 errorCode;
+  Uint32 masterNodeId;
 };
 
 struct SubSyncConf {
@@ -293,7 +320,7 @@ struct SubTableData {
   SECTION( AFTER_VALUES = 1 );
   SECTION( BEFORE_VALUES = 2 );
   
-  enum LogType {
+  enum Flags {
     SCAN = 1, 
     LOG  = 2,
     REMOVE_FLAGS = 0xff
@@ -303,7 +330,7 @@ struct SubTableData {
   Uint32 gci_hi;
   Uint32 tableId;
   Uint32 requestInfo;
-  Uint32 logType;
+  Uint32 flags;
   union {
     Uint32 changeMask;
     Uint32 anyValue;
@@ -343,10 +370,11 @@ struct SubSyncContinueReq {
   friend struct Trix;
   
   friend bool printSUB_SYNC_CONTINUE_REQ(FILE *, const Uint32 *, Uint32, Uint16);
-  STATIC_CONST( SignalLength = 2 );
+  STATIC_CONST( SignalLength = 3 );
 
   Uint32 subscriberData;
   Uint32 noOfRowsSent;
+  Uint32 senderData;
 };
 
 struct SubSyncContinueRef {
@@ -358,10 +386,11 @@ struct SubSyncContinueRef {
   friend struct Trix;
   
   friend bool printSUB_SYNC_CONTINUE_REF(FILE *, const Uint32 *, Uint32, Uint16);
-  STATIC_CONST( SignalLength = 2 );
+  STATIC_CONST( SignalLength = 3 );
 
   Uint32 subscriptionId;
   Uint32 subscriptionKey;
+  Uint32 senderData;
 };
 
 struct SubSyncContinueConf {
@@ -373,10 +402,11 @@ struct SubSyncContinueConf {
   friend struct Trix;
   
   friend bool printSUB_SYNC_CONTINUE_CONF(FILE *, const Uint32 *, Uint32, Uint16);
-  STATIC_CONST( SignalLength = 2 );
+  STATIC_CONST( SignalLength = 3 );
 
   Uint32 subscriptionId;
   Uint32 subscriptionKey;
+  Uint32 senderData;
 };
 
 struct SubGcpCompleteRep {
@@ -393,6 +423,7 @@ struct SubGcpCompleteRep {
   STATIC_CONST( SignalLength = 5 );
   STATIC_CONST( ON_DISK = 1 );
   STATIC_CONST( IN_MEMORY = 2 );
+  STATIC_CONST( MISSING_DATA = 4 );
 
   Uint32 gci_hi;
   Uint32 senderRef;
@@ -438,7 +469,10 @@ struct SubRemoveRef {
   enum ErrorCode {
     Undefined = 1,
     NF_FakeErrorREF = 11,
-    Busy = 701
+    Busy = 701,
+    NoSuchSubscription = 1407,
+    Locked = 1411,
+    AlreadyDropped = 1419
   };
 
   Uint32 senderRef;
@@ -517,6 +551,7 @@ struct SumaStartMeRef {
   Uint32 errorCode;
   enum {
     Busy = 0x1
+    ,NotStarted = 0x2
   };
 };
 
@@ -546,6 +581,11 @@ struct SumaContinueB
     RESEND_BUCKET = 1
     ,RELEASE_GCI = 2
     ,OUT_OF_BUFFER_RELEASE = 3
+    ,API_FAIL_GCI_LIST = 4
+    ,API_FAIL_SUBSCRIBER_LIST = 5
+    ,API_FAIL_SUBSCRIPTION = 6
+    ,SUB_STOP_REQ = 7
+    ,RETRY_DICT_LOCK = 8
   };
 };
 

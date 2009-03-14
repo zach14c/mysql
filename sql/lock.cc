@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -75,6 +75,7 @@
 
 #include "mysql_priv.h"
 #include "transaction.h"
+#include "debug_sync.h"
 #include <hash.h>
 #include <assert.h>
 
@@ -309,7 +310,6 @@ MYSQL_LOCK *mysql_lock_tables(THD *thd, TABLE **tables, uint count,
       reset_lock_data_and_free(&sql_lock);
       break;
     }
-    thd_proc_info(thd, "Table lock");
     DBUG_PRINT("info", ("thd->proc_info %s", thd->proc_info));
     /* Copy the lock data array. thr_multi_lock() reorders its contens. */
     memcpy(sql_lock->locks + sql_lock->lock_count, sql_lock->locks,
@@ -425,6 +425,7 @@ static int lock_external(THD *thd, TABLE **tables, uint count)
       (*tables)->current_lock= lock_type;
     }
   }
+  DEBUG_SYNC(thd, "locked_external");
   DBUG_RETURN(0);
 }
 
@@ -953,7 +954,7 @@ static MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table_ptr, uint count,
    @note This function assumes that no metadata locks were acquired
          before calling it. Also it cannot be called while holding
          LOCK_open mutex. Both these invariants are enforced by asserts
-         in mdl_acquire_exclusive_locks() functions.
+         in MDL_context::acquire_exclusive_locks().
 
    @retval FALSE  Success.
    @retval TRUE   Failure (OOM or thread was killed).
@@ -962,25 +963,25 @@ static MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table_ptr, uint count,
 bool lock_table_names(THD *thd, TABLE_LIST *table_list)
 {
   TABLE_LIST *lock_table;
-  MDL_LOCK_DATA *mdl_lock_data;
+  MDL_request *mdl_request;
 
   DEBUG_SYNC(thd, "before_wait_locked_tname");
   for (lock_table= table_list; lock_table; lock_table= lock_table->next_local)
   {
-    if (!(mdl_lock_data= mdl_alloc_lock(0, lock_table->db,
-                                        lock_table->table_name,
-                                        thd->mem_root)))
+    mdl_request= MDL_request::create(0, lock_table->db, lock_table->table_name,
+                                     thd->mem_root);
+    if (!mdl_request)
       goto end;
-    mdl_set_lock_type(mdl_lock_data, MDL_EXCLUSIVE);
-    mdl_add_lock(&thd->mdl_context, mdl_lock_data);
-    lock_table->mdl_lock_data= mdl_lock_data;
+    mdl_request->set_type(MDL_EXCLUSIVE);
+    thd->mdl_context.add_request(mdl_request);
+    lock_table->mdl_request= mdl_request;
   }
-  if (mdl_acquire_exclusive_locks(&thd->mdl_context))
+  if (thd->mdl_context.acquire_exclusive_locks())
     goto end;
   return 0;
 
 end:
-  mdl_remove_all_locks(&thd->mdl_context);
+  thd->mdl_context.remove_all_requests();
   return 1;
 }
 
@@ -996,8 +997,8 @@ end:
 void unlock_table_names(THD *thd)
 {
   DBUG_ENTER("unlock_table_names");
-  mdl_release_locks(&thd->mdl_context);
-  mdl_remove_all_locks(&thd->mdl_context);
+  thd->mdl_context.release_all_locks();
+  thd->mdl_context.remove_all_requests();
   DBUG_VOID_RETURN;
 }
 
@@ -1181,7 +1182,7 @@ bool lock_global_read_lock(THD *thd)
             redundancy between metadata locks, global read lock and DDL
             blocker (see WL#4399 and WL#4400).
     */
-    if (mdl_acquire_global_shared_lock(&thd->mdl_context))
+    if (thd->mdl_context.acquire_global_shared_lock())
     {
       /* Our thread was killed -- return back to initial state. */
       pthread_mutex_lock(&LOCK_global_read_lock);
@@ -1215,7 +1216,7 @@ void unlock_global_read_lock(THD *thd)
              ("global_read_lock: %u  global_read_lock_blocks_commit: %u",
               global_read_lock, global_read_lock_blocks_commit));
 
-  mdl_release_global_shared_lock(&thd->mdl_context);
+  thd->mdl_context.release_global_shared_lock();
 
   pthread_mutex_lock(&LOCK_global_read_lock);
   tmp= --global_read_lock;

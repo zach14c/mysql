@@ -54,7 +54,8 @@ public:
                      ulonglong last_insert_id_arg,
                      const char *message);
   void set_eof_status(THD *thd);
-  void set_error_status(THD *thd, uint sql_errno_arg, const char *message_arg);
+  void set_error_status(THD *thd, uint sql_errno_arg, const char *message_arg,
+                        const char *sqlstate);
 
   void disable_status();
 
@@ -72,6 +73,9 @@ public:
 
   uint sql_errno() const
   { DBUG_ASSERT(m_status == DA_ERROR); return m_sql_errno; }
+
+  const char* get_sqlstate() const
+  { DBUG_ASSERT(m_status == DA_ERROR); return m_sqlstate; }
 
   uint server_status() const
   {
@@ -101,6 +105,8 @@ private:
     Set by set_error_status.
   */
   uint m_sql_errno;
+
+  char m_sqlstate[SQLSTATE_LENGTH+1];
 
   /**
     Copied from thd->server_status when the diagnostics area is assigned.
@@ -137,33 +143,187 @@ private:
   */
   uint	     m_statement_warn_count;
   enum_diagnostics_status m_status;
-  /**
-    @todo: the following THD members belong here:
-    - warn_list, warn_count,
-  */
 };
+
 ///////////////////////////////////////////////////////////////////////////
 
-class MYSQL_ERROR: public Sql_alloc
+/**
+  Representation of a SQL condition.
+  A SQL condition can be a completion condition (note, warning),
+  or an exception condition (error, not found).
+  @note This class is named MYSQL_ERROR instead of SQL_condition for historical reasons,
+  to facilitate merging code with previous releases.
+*/
+class MYSQL_ERROR : public Sql_alloc
 {
 public:
+  /*
+    Enumeration value describing the severity of the error.
+
+    Note that these enumeration values must correspond to the indices
+    of the sql_print_message_handlers array.
+  */
   enum enum_warning_level
   { WARN_LEVEL_NOTE, WARN_LEVEL_WARN, WARN_LEVEL_ERROR, WARN_LEVEL_END};
+  /**
+    Get the MESSAGE_TEXT of this condition.
+    @return the message text.
+  */
+  const char* get_message_text() const;
 
-  enum_warning_level level;
-  uint code;
-  char *msg;
+  /**
+    Get the MESSAGE_OCTET_LENGTH of this condition.
+    @return the length in bytes of the message text.
+  */
+  int get_message_octet_length() const;
 
-  MYSQL_ERROR(MEM_ROOT *warn_root,
-              enum_warning_level level_arg, uint code_arg, const char *msg_arg)
-    :level(level_arg), code(code_arg)
-  {
-    if (msg_arg)
-      set_msg(warn_root, msg_arg);
-  }
+  /**
+    Get the SQLSTATE of this condition.
+    @return the sql state.
+  */
+  const char* get_sqlstate() const
+  { return m_returned_sqlstate; }
+
+  /**
+    Get the SQL_ERRNO of this condition.
+    @return the sql error number condition item.
+  */
+  uint get_sql_errno() const
+  { return m_sql_errno; }
+
+  /**
+    Get the error level of this condition.
+    @return the error level condition item.
+  */
+  MYSQL_ERROR::enum_warning_level get_level() const
+  { return m_level; }
 
 private:
-  void set_msg(MEM_ROOT *warn_root, const char *msg_arg);
+  /*
+    The interface of MYSQL_ERROR is mostly private, by design,
+    so that only the following code:
+    - various raise_error() or raise_warning() methods in class THD,
+    - the implementation of SIGNAL / RESIGNAL
+    - catch / re-throw of SQL conditions in stored procedures (sp_rcontext)
+    is allowed to create / modify a SQL condition.
+    Enforcing this policy prevents confusion, since the only public
+    interface available to the rest of the server implementation
+    is the interface offered by the THD methods (THD::raise_error()),
+    which should be used.
+  */
+  friend class THD;
+  friend class Warning_info;
+  friend class Abstract_signal;
+  friend class SQLCOM_signal;
+  friend class SQLCOM_resignal;
+  friend class sp_rcontext;
+
+  /**
+    Default constructor.
+    This constructor is usefull when allocating arrays.
+    Note that the init() method should be called to complete the MYSQL_ERROR.
+  */
+  MYSQL_ERROR();
+
+  /**
+    Complete the MYSQL_ERROR initialisation.
+    @param mem_root The memory root to use for the condition items
+    of this condition
+  */
+  void init(MEM_ROOT *mem_root);
+
+  /**
+    Constructor.
+    @param mem_root The memory root to use for the condition items
+    of this condition
+  */
+  MYSQL_ERROR(MEM_ROOT *mem_root);
+
+  /** Destructor. */
+  ~MYSQL_ERROR()
+  {}
+
+  /**
+    Copy optional condition items attributes.
+    @param cond the condition to copy.
+  */
+  void copy_opt_attributes(const MYSQL_ERROR *cond);
+
+  /**
+    Set this condition area with a fixed message text.
+    @param thd the current thread.
+    @param code the error number for this condition.
+    @param str the message text for this condition.
+    @param level the error level for this condition.
+    @param MyFlags additional flags.
+  */
+  void set(uint sql_errno, const char* sqlstate,
+           MYSQL_ERROR::enum_warning_level level,
+           const char* msg);
+
+  /**
+    Set the condition message test.
+    @param str Message text, expressed in the character set derived from
+    the server --language option
+  */
+  void set_builtin_message_text(const char* str);
+
+  /** Set the SQLSTATE of this condition. */
+  void set_sqlstate(const char* sqlstate);
+
+  /**
+    Clear this SQL condition.
+  */
+  void clear();
+
+private:
+  /** SQL CLASS_ORIGIN condition item. */
+  String m_class_origin;
+
+  /** SQL SUBCLASS_ORIGIN condition item. */
+  String m_subclass_origin;
+
+  /** SQL CONSTRAINT_CATALOG condition item. */
+  String m_constraint_catalog;
+
+  /** SQL CONSTRAINT_SCHEMA condition item. */
+  String m_constraint_schema;
+
+  /** SQL CONSTRAINT_NAME condition item. */
+  String m_constraint_name;
+
+  /** SQL CATALOG_NAME condition item. */
+  String m_catalog_name;
+
+  /** SQL SCHEMA_NAME condition item. */
+  String m_schema_name;
+
+  /** SQL TABLE_NAME condition item. */
+  String m_table_name;
+
+  /** SQL COLUMN_NAME condition item. */
+  String m_column_name;
+
+  /** SQL CURSOR_NAME condition item. */
+  String m_cursor_name;
+
+  /** Message text, expressed in the character set implied by --language. */
+  String m_message_text;
+
+  /** MySQL extension, MYSQL_ERRNO condition item. */
+  uint m_sql_errno;
+
+  /**
+    SQL RETURNED_SQLSTATE condition item.
+    This member is always NUL terminated.
+  */
+  char m_returned_sqlstate[SQLSTATE_LENGTH+1];
+
+  /** Severity (error, warning, note) of this condition. */
+  MYSQL_ERROR::enum_warning_level m_level;
+
+  /** Memory root to use to hold condition item values. */
+  MEM_ROOT *m_mem_root;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -225,6 +385,38 @@ public:
       clear_warning_info(query_id);
   }
 
+  void append_warning_info(THD *thd, Warning_info *source)
+  {
+    append_warnings(thd, & source->warn_list());
+  }
+
+  /**
+    Concatenate the list of warnings.
+    It's considered tolerable to lose a warning.
+  */
+  void append_warnings(THD *thd, List<MYSQL_ERROR> *src)
+  {
+    MYSQL_ERROR *err;
+    MYSQL_ERROR *copy;
+    List_iterator_fast<MYSQL_ERROR> it(*src);
+    /*
+      Don't use ::push_warning() to avoid invocation of condition
+      handlers or escalation of warnings to errors.
+    */
+    while ((err= it++))
+    {
+      copy= Warning_info::push_warning(thd, err->get_sql_errno(), err->get_sqlstate(),
+                                       err->get_level(), err->get_message_text());
+      if (copy)
+        copy->copy_opt_attributes(err);
+    }
+  }
+
+  /**
+    Conditional merge of related warning information areas.
+  */
+  void merge_with_routine_info(THD *thd, Warning_info *source);
+
   /**
     Reset between two COM_ commands. Warnings are preserved
     between commands, but statement_warn_count indicates
@@ -262,6 +454,9 @@ public:
     return m_warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_ERROR];
   }
 
+  /** Id of the warning information area. */
+  ulonglong warn_id() const { return m_warn_id; }
+
   /** Do we have any errors and warnings that we can *show*? */
   bool is_empty() const { return m_warn_list.elements == 0; }
 
@@ -274,9 +469,50 @@ public:
 
   ulong statement_warn_count() const { return m_statement_warn_count; }
 
-  /** Add a new warning to the current list. */
-  void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
-                    uint code, const char *msg);
+  /**
+    Reserve some space in the condition area.
+    This is a privileged operation, reserved for the RESIGNAL implementation,
+    as only the RESIGNAL statement is allowed to remove conditions from
+    the condition area.
+    For other statements, new conditions are not added to the condition
+    area once the condition area is full.
+    @param thd The current thread
+    @param count The number of slots to reserve
+  */
+  void reserve_space(THD *thd, uint count);
+
+  /** Add a new condition to the current list. */
+  MYSQL_ERROR *push_warning(THD *thd,
+                            uint sql_errno, const char* sqlstate,
+                            MYSQL_ERROR::enum_warning_level level,
+                            const char* msg);
+
+  /**
+    Set the read only status for this statement area.
+    This is a privileged operation, reserved for the implementation of
+    diagnostics related statements, to enforce that the statement area is
+    left untouched during execution.
+    The diagnostics statements are:
+    - SHOW WARNINGS
+    - SHOW ERRORS
+    - GET DIAGNOSTICS
+    @param read_only the read only property to set
+  */
+  void set_read_only(bool read_only)
+  { m_read_only= read_only; }
+
+  /**
+    Read only status.
+    @return the read only property
+  */
+  bool is_read_only() const
+  { return m_read_only; }
+
+private:
+  /** Read only status. */
+  bool m_read_only;
+
+  friend class SQLCOM_resignal;
 };
 
 ///////////////////////////////////////////////////////////////////////////

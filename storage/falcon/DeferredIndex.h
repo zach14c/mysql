@@ -86,10 +86,8 @@ public:
 	void			detachIndex(void);
 	void			detachTransaction(void);
 	void			scanIndex (IndexKey *lowKey, IndexKey *highKey, int searchFlags, Bitmap *bitmap);
-	void			chill(Dbb *dbb);
+	bool			chill(Dbb *dbb);
 
-	int				checkTail(uint position, DINode* node);
-	int				checkTail(uint position, IndexKey *indexKey);
 	void			validate(void);
 	static char*	format (uint indent, DINode *node, uint bufferLength, char *buffer);
 	void			print();

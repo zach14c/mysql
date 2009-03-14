@@ -1,4 +1,4 @@
-# Copyright (C) 2000-2007 MySQL AB
+# Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,7 +15,16 @@
 # MA  02110-1301  USA.
 
 %define mysql_version		@VERSION@
-%define mysql_vendor    MySQL AB
+
+# NOTE: "vendor" is used in upgrade/downgrade check, so you can't
+# change these, has to be exactly as is.
+%define mysql_old_vendor	MySQL AB
+%define mysql_vendor		Sun Microsystems, Inc.
+
+# NOTE: "vendor" is used in upgrade/downgrade check, so you can't
+# change these, has to be exactly as is.
+%define mysql_old_vendor	MySQL AB
+%define mysql_vendor		Sun Microsystems, Inc.
 
 # use "rpmbuild --with static" or "rpm --define '_with_static 1'" (for RPM 3.x)
 # to enable static linking (off by default)
@@ -27,10 +36,14 @@
 %{?_with_yassl:%define YASSL_BUILD 1}
 %{!?_with_yassl:%define YASSL_BUILD 0}
 
-# use "rpmbuild --with maria" or "rpm --define '_with_maria 1'" (for RPM 3.x)
-# to build with maria support (off by default)
-%{?_with_maria:%define MARIA_BUILD 1}
-%{!?_with_maria:%define MARIA_BUILD 0}
+# use "rpmbuild --with falcon" or "rpm --define '_with_falcon 1'" (for RPM 3.x)
+# to build with falcon support (off by default)
+#
+# Note: No default --with-falcon, as generic RPM is compiled with gcc 3.x.
+# Falcon requires gcc 4.x that requires libstdc++.6 that is not on most
+# "older" Linux systems.
+%{?_with_falcon:%define FALCON_BUILD 1}
+%{!?_with_falcon:%define FALCON_BUILD 0}
 
 # use "rpmbuild --with cluster" or "rpm --define '_with_cluster 1'" (for RPM 3.x)
 # to build with cluster support (off by default)
@@ -42,8 +55,8 @@
 %else
 %define release 0.glibc23
 %endif
-%define license GPL
-%define mysqld_user		mysql
+%define mysql_license	GPL
+%define mysqld_user	mysql
 %define mysqld_group	mysql
 %define server_suffix -standard
 %define mysqldatadir /var/lib/mysql
@@ -76,10 +89,10 @@ Summary:	MySQL: a very fast and reliable SQL database server
 Group:		Applications/Databases
 Version:	@MYSQL_NO_DASH_VERSION@
 Release:	%{release}
-License:	%{license}
+License:	Copyright 2000-2008 MySQL AB, @MYSQL_COPYRIGHT_YEAR@ Sun Microsystems, Inc.  All rights reserved.  Use is subject to license terms.  Under %{mysql_license} license as shown in the Description field.
 Source:		http://www.mysql.com/Downloads/MySQL-@MYSQL_BASE_VERSION@/mysql-%{mysql_version}.tar.gz
 URL:		http://www.mysql.com/
-Packager:	MySQL Production Engineering Team <build@mysql.com>
+Packager:	Sun Microsystems, Inc. Product Engineering Team <build@mysql.com>
 Vendor:		%{mysql_vendor}
 Provides:	msqlormysql MySQL-server mysql
 BuildRequires: ncurses-devel
@@ -95,9 +108,11 @@ The MySQL(TM) software delivers a very fast, multi-threaded, multi-user,
 and robust SQL (Structured Query Language) database server. MySQL Server
 is intended for mission-critical, heavy-load production systems as well
 as for embedding into mass-deployed software. MySQL is a trademark of
-MySQL AB.
+Sun Microsystems, Inc.
 
-Copyright (C) 2000-2007 MySQL AB
+Copyright 2000-2008 MySQL AB, @MYSQL_COPYRIGHT_YEAR@ Sun Microsystems, Inc.  All rights reserved.
+Use is subject to license terms.
+
 This software comes with ABSOLUTELY NO WARRANTY. This is free software,
 and you are welcome to modify and redistribute it under the GPL license.
 
@@ -117,9 +132,11 @@ The MySQL(TM) software delivers a very fast, multi-threaded, multi-user,
 and robust SQL (Structured Query Language) database server. MySQL Server
 is intended for mission-critical, heavy-load production systems as well
 as for embedding into mass-deployed software. MySQL is a trademark of
-MySQL AB.
+Sun Microsystems, Inc.
 
-Copyright (C) 2000-2007 MySQL AB
+Copyright 2000-2008 MySQL AB, @MYSQL_COPYRIGHT_YEAR@ Sun Microsystems, Inc.  All rights reserved.
+Use is subject to license terms.
+
 This software comes with ABSOLUTELY NO WARRANTY. This is free software,
 and you are welcome to modify and redistribute it under the GPL license.
 
@@ -269,7 +286,11 @@ sh -c  "PATH=\"${MYSQL_BUILD_PATH:-$PATH}\" \
             --with-unix-socket-path=/var/lib/mysql/mysql.sock \
 	    --with-pic \
             --prefix=/ \
+%if %{CLUSTER_BUILD}
 	    --with-extra-charsets=all \
+%else
+	    --with-extra-charsets=complex \
+%endif
 %if %{YASSL_BUILD}
 	    --with-ssl \
 %endif
@@ -284,7 +305,27 @@ sh -c  "PATH=\"${MYSQL_BUILD_PATH:-$PATH}\" \
             --mandir=%{_mandir} \
 	    --enable-thread-safe-client \
 	    --with-readline \
-	    "
+	    --with-innodb \
+%if %{CLUSTER_BUILD}
+	    --with-ndbcluster \
+%else
+	    --without-ndbcluster \
+%endif
+	    --with-plugin-archive \
+	    --with-plugin-csv \
+	    --with-plugin-blackhole \
+	    --with-plugin-federated \
+%if %{FALCON_BUILD}
+	    --with-plugin-falcon \
+%else
+	    --without-plugin-falcon \
+%endif
+	    --with-plugin-maria \
+	    --with-maria-tmp-tables \
+	    --with-plugin-partition \
+	    --with-big-tables \
+	    --enable-shared \
+		"
  make
 }
 
@@ -310,6 +351,8 @@ mkdir -p $RBR%{_libdir}/mysql
 #
 PATH=${MYSQL_BUILD_PATH:-/bin:/usr/bin}
 export PATH
+
+# Build the Debug binary.
 
 # Use gcc for C and C++ code (to avoid a dependency on libstdc++ and
 # including exceptions into the code
@@ -342,30 +385,14 @@ CXXFLAGS=`echo " $CXXFLAGS " | \
 cd mysql-debug-%{mysql_version} &&
 CFLAGS="$CFLAGS" \
 CXXFLAGS="$CXXFLAGS" \
-BuildMySQL "--enable-shared \
+BuildMySQL "\
 		--with-debug \
-		--with-innodb \
-%if %{CLUSTER_BUILD}
-		--with-ndbcluster \
-%else
-		--without-ndbcluster \
-%endif
-		--with-archive-storage-engine \
-		--with-csv-storage-engine \
-		--with-blackhole-storage-engine \
-		--with-federated-storage-engine \
-%ifarch i386 x86_64
-		--with-falcon \
-%else
-		--without-falcon \
-%endif
 %if %{MARIA_BUILD}
-		--with-plugin-maria \
-		--with-maria-tmp-tables \
+		--with-comment=\"MySQL Community Server - Debug [Maria] (%{mysql_license})\" \
+%else
+		--with-comment=\"MySQL Community Server - Debug (%{mysql_license})\" \
 %endif
-		--with-partition \
-		--with-big-tables \
-		--with-comment=\"MySQL Community Server - Debug (GPL)\"")
+")
 
 # We might want to save the config log file
 if test -n "$MYSQL_DEBUGCONFLOG_DEST"
@@ -384,30 +411,10 @@ fi
 (cd mysql-release-%{mysql_version} &&
 CFLAGS="$CFLAGS" \
 CXXFLAGS="$CXXFLAGS" \
-BuildMySQL "--enable-shared \
-		--with-innodb \
-%if %{CLUSTER_BUILD}
-		--with-ndbcluster \
-%else
-		--without-ndbcluster \
-%endif
-		--with-archive-storage-engine \
-		--with-csv-storage-engine \
-		--with-blackhole-storage-engine \
-		--with-federated-storage-engine \
-%ifarch i386 x86_64
-		--with-falcon \
-%else
-		--without-falcon \
-%endif
-%if %{MARIA_BUILD}
-		--with-plugin-maria \
-		--with-maria-tmp-tables \
-%endif
-		--with-partition \
+BuildMySQL "\
 		--with-embedded-server \
-		--with-big-tables \
-		--with-comment=\"MySQL Community Server (GPL)\"")
+		--with-comment=\"MySQL Community Server (%{mysql_license})\"")
+
 # We might want to save the config log file
 if test -n "$MYSQL_CONFLOG_DEST"
 then
@@ -485,6 +492,7 @@ installed=`rpm -q --whatprovides mysql-server 2> /dev/null`
 if [ $? -eq 0 -a -n "$installed" ]; then
   vendor=`rpm -q --queryformat='%{VENDOR}' "$installed" 2>&1`
   version=`rpm -q --queryformat='%{VERSION}' "$installed" 2>&1`
+  myoldvendor='%{mysql_old_vendor}'
   myvendor='%{mysql_vendor}'
   myversion='%{mysql_version}'
 
@@ -496,12 +504,12 @@ if [ $? -eq 0 -a -n "$installed" ]; then
   [ -z "$new_family" ] && new_family="<bad package specification: version $myversion>"
 
   error_text=
-  if [ "$vendor" != "$myvendor" ]; then
+  if [ "$vendor" != "$myoldvendor" -a "$vendor" != "$myvendor" ]; then
     error_text="$error_text
 The current MySQL server package is provided by a different
-vendor ($vendor) than $myvendor.  Some files may be installed
-to different locations, including log files and the service
-startup script in %{_sysconfdir}/init.d/.
+vendor ($vendor) than $myoldvendor or $myvendor.
+Some files may be installed to different locations, including log
+files and the service startup script in %{_sysconfdir}/init.d/.
 "
   fi
 
@@ -722,7 +730,6 @@ fi
 %attr(755, root, root) %{_bindir}/msql2mysql
 %attr(755, root, root) %{_bindir}/mysql
 %attr(755, root, root) %{_bindir}/mysql_find_rows
-%attr(755, root, root) %{_bindir}/mysql_upgrade_shell
 %attr(755, root, root) %{_bindir}/mysql_waitpid
 %attr(755, root, root) %{_bindir}/mysqlaccess
 %attr(755, root, root) %{_bindir}/mysqladmin
@@ -866,12 +873,29 @@ fi
 
 - Correct yesterday's fix, so that it also works for the last flag,
   and fix a wrong quoting: un-quoted quote marks must not be escaped.
+  
+* Thu Nov 06 2008 Kent Boortz <kent.boortz@sun.com>
+
+- Removed "mysql_upgrade_shell"
+- Removed some copy/paste between debug and normal build
 
 * Thu Nov 06 2008 Joerg Bruehe <joerg@mysql.com>
 
 - Modify CFLAGS and CXXFLAGS such that a debug build is not optimized.
   This should cover both gcc and icc flags.  Fixes bug#40546.
   
+* Mon Nov 03 2008 Kent Boortz <kent.boortz@sun.com>
+
+  - Added option --with-falcon
+  - Removed option --with-maria, enabled by default
+  - Use same way of defining what engines/plugins to use
+  - Remove some copy/paste between debug and normal build
+
+* Sat Nov 01 2008 Kent Boortz <kent.boortz@sun.com>
+
+  - Removed "mysql_upgrade_shell"
+  - Enabled falcon storage engine for IA64
+
 * Fri Aug 29 2008 Kent Boortz <kent@mysql.com>
 
 - Removed the "Federated" storage engine option, and enabled in all

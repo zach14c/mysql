@@ -22,6 +22,7 @@ let $message= Testcase: 3.5:;
 	create User test_super@localhost;
 	set password for test_super@localhost = password('PWD');
 	grant ALL on *.* to test_super@localhost with grant OPTION;
+        let $MASTER_MYSOCK= query_get_value(SHOW VARIABLES LIKE 'socket', Value, 1);
 	--replace_result $MASTER_MYPORT MASTER_MYPORT $MASTER_MYSOCK MASTER_MYSOCK
 	connect (con1_general,localhost,test_general,PWD,test,$MASTER_MYPORT,$MASTER_MYSOCK);
 	--replace_result $MASTER_MYPORT MASTER_MYPORT $MASTER_MYSOCK MASTER_MYSOCK
@@ -59,7 +60,9 @@ let $message= Testcase 3.5.4.1:;
 	connection con1_super;
 	drop trigger trg1;
 	select trigger_schema, trigger_name, event_object_table
-		from information_schema.triggers order by trigger_name;
+	from information_schema.triggers
+        where trigger_schema = 'db_drop'
+        order by trigger_name;
 	connection con1_general;
 	Insert into t1 values ('Insert no trigger 3.5.4.1');
 	Select * from t1 order by f1;
@@ -159,7 +162,7 @@ let $message= Testcase 3.5.4.4:;
 	Select * from t1;
 	connection con1_super;
 	Drop database db_drop4;
-	Show databases;
+	Show databases like 'db_drop4';
 	select trigger_schema, trigger_name, event_object_table
 		from information_schema.triggers
 		where information_schema.triggers.trigger_name='trg4';

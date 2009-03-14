@@ -18,7 +18,7 @@ if test "x$ac_cv_header_sys_queue_h" = "xyes"; then
 ],	[AC_MSG_RESULT(yes)
 	 AC_DEFINE(HAVE_TAILQFOREACH, 1,
 		[Define if TAILQ_FOREACH is defined in <sys/queue.h>])],
-	AC_MSG_RESULT(no)
+	[AC_MSG_RESULT(no)]
 	)
 fi
 
@@ -32,7 +32,8 @@ if test "x$ac_cv_header_sys_time_h" = "xyes"; then
 #endif
 ],	[ AC_DEFINE(HAVE_TIMERADD, 1,
 		[Define if timeradd is defined in <sys/time.h>])
-	  AC_MSG_RESULT(yes)] ,AC_MSG_RESULT(no)
+	 AC_MSG_RESULT(yes)],
+	[AC_MSG_RESULT(no)]
 )
 fi
 
@@ -46,7 +47,8 @@ if test "x$ac_cv_header_sys_time_h" = "xyes"; then
 #endif
 ],	[ AC_DEFINE(HAVE_TIMERCMP, 1,
 		[Define if timercmp is defined in <sys/time.h>])
-	  AC_MSG_RESULT(yes)] ,AC_MSG_RESULT(no)
+	 AC_MSG_RESULT(yes)],
+	[AC_MSG_RESULT(no)]
 )
 fi
 
@@ -60,7 +62,8 @@ if test "x$ac_cv_header_sys_time_h" = "xyes"; then
 #endif
 ],	[ AC_DEFINE(HAVE_TIMERCLEAR, 1,
 		[Define if timerclear is defined in <sys/time.h>])
-	  AC_MSG_RESULT(yes)] ,AC_MSG_RESULT(no)
+	 AC_MSG_RESULT(yes)],
+	[AC_MSG_RESULT(no)]
 )
 fi
 
@@ -74,7 +77,8 @@ if test "x$ac_cv_header_sys_time_h" = "xyes"; then
 #endif
 ],	[ AC_DEFINE(HAVE_TIMERISSET, 1,
 		[Define if timerisset is defined in <sys/time.h>])
-	  AC_MSG_RESULT(yes)] ,AC_MSG_RESULT(no)
+	 AC_MSG_RESULT(yes)],
+	[AC_MSG_RESULT(no)]
 )
 fi
 
@@ -104,25 +108,27 @@ yes
 #endif
 ],	[ AC_DEFINE(HAVE_SETFD, 1,
 	      [Define if F_SETFD is defined in <fcntl.h>])
-	  AC_MSG_RESULT(yes) ], AC_MSG_RESULT(no))
+	 AC_MSG_RESULT(yes)],
+	[AC_MSG_RESULT(no)]
+	)
 
 needsignal=no
 haveselect=no
-AC_CHECK_FUNCS(select, [haveselect=yes], )
+AC_CHECK_FUNCS(select, [haveselect=yes])
 if test "x$haveselect" = "xyes" ; then
 	AC_LIBOBJ(select)
 	needsignal=yes
 fi
 
 havepoll=no
-AC_CHECK_FUNCS(poll, [havepoll=yes], )
+AC_CHECK_FUNCS(poll, [havepoll=yes])
 if test "x$havepoll" = "xyes" ; then
 	AC_LIBOBJ(poll)
 	needsignal=yes
 fi
 
 haveepoll=no
-AC_CHECK_FUNCS(epoll_ctl, [haveepoll=yes], )
+AC_CHECK_FUNCS(epoll_ctl, [haveepoll=yes])
 if test "x$haveepoll" = "xyes" ; then
 	AC_DEFINE(HAVE_EPOLL, 1,
 		[Define if your system supports the epoll system calls])
@@ -139,46 +145,46 @@ fi
 
 havekqueue=no
 if test "x$ac_cv_header_sys_event_h" = "xyes"; then
-	AC_CHECK_FUNCS(kqueue, [havekqueue=yes], )
+  AC_CHECK_FUNCS(kqueue, [havekqueue=yes])
 	if test "x$havekqueue" = "xyes" ; then
 		AC_MSG_CHECKING(for working kqueue)
-		AC_TRY_RUN(
+    AC_RUN_IFELSE(
+      [AC_LANG_PROGRAM(
+	 [[
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/event.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
-
-int
-main(int argc, char **argv)
-{
+	 ]],
+	 [[
 	int kq;
 	int n;
-	int fd[[2]];
+	   int fd[2];
 	struct kevent ev;
 	struct timespec ts;
-	char buf[[8000]];
+	   char buf[8000];
 
 	if (pipe(fd) == -1)
 		exit(1);
-	if (fcntl(fd[[1]], F_SETFL, O_NONBLOCK) == -1)
+	   if (fcntl(fd[1], F_SETFL, O_NONBLOCK) == -1)
 		exit(1);
 
-	while ((n = write(fd[[1]], buf, sizeof(buf))) == sizeof(buf))
+	   while ((n = write(fd[1], buf, sizeof(buf))) == sizeof(buf))
 		;
 
         if ((kq = kqueue()) == -1)
 		exit(1);
 
-	ev.ident = fd[[1]];
+	   ev.ident = fd[1];
 	ev.filter = EVFILT_WRITE;
 	ev.flags = EV_ADD | EV_ENABLE;
 	n = kevent(kq, &ev, 1, NULL, 0, NULL);
 	if (n == -1)
 		exit(1);
 	
-	read(fd[[0]], buf, sizeof(buf));
+	   read(fd[0], buf, sizeof(buf));
 
 	ts.tv_sec = 0;
 	ts.tv_nsec = 0;
@@ -187,10 +193,15 @@ main(int argc, char **argv)
 		exit(1);
 
 	exit(0);
-}, [AC_MSG_RESULT(yes)
+	 ]]
+      )],
+      [AC_MSG_RESULT(yes)
     AC_DEFINE(HAVE_WORKING_KQUEUE, 1,
 		[Define if kqueue works correctly with pipes])
-    AC_LIBOBJ(kqueue)], AC_MSG_RESULT(no), AC_MSG_RESULT(no))
+       AC_LIBOBJ(kqueue)],
+      [AC_MSG_RESULT(no)],
+      [AC_MSG_RESULT(no)]
+    )
 	fi
 fi
 
@@ -198,7 +209,9 @@ haveepollsyscall=no
 if test "x$ac_cv_header_sys_epoll_h" = "xyes"; then
 	if test "x$haveepoll" = "xno" ; then
 		AC_MSG_CHECKING(for epoll system call)
-		AC_TRY_RUN(
+    AC_RUN_IFELSE(
+      [AC_LANG_PROGRAM(
+	 [[
 #include <stdint.h>
 #include <sys/param.h>
 #include <sys/types.h>
@@ -211,25 +224,28 @@ epoll_create(int size)
 {
 	return (syscall(__NR_epoll_create, size));
 }
-
-int
-main(int argc, char **argv)
-{
+	 ]],
+	 [[
 	int epfd;
 
 	epfd = epoll_create(256);
 	exit (epfd == -1 ? 1 : 0);
-}, [AC_MSG_RESULT(yes)
+	 ]]
+      )],
+      [AC_MSG_RESULT(yes)
     AC_DEFINE(HAVE_EPOLL, 1,
 	[Define if your system supports the epoll system calls])
     needsignal=yes
     AC_LIBOBJ(epoll_sub)
-    AC_LIBOBJ(epoll)], AC_MSG_RESULT(no), AC_MSG_RESULT(no))
+       AC_LIBOBJ(epoll)],
+      [AC_MSG_RESULT(no)],
+      [AC_MSG_RESULT(no)]
+    )
 	fi
 fi
 
 haveeventports=no
-AC_CHECK_FUNCS(port_create, [haveeventports=yes], )
+AC_CHECK_FUNCS(port_create, [haveeventports=yes])
 if test "x$haveeventports" = "xyes" ; then
 	AC_DEFINE(HAVE_EVENT_PORTS, 1,
 		[Define if your system supports event ports])
@@ -248,21 +264,21 @@ fi
 
 AC_TYPE_PID_T
 AC_TYPE_SIZE_T
-AC_CHECK_TYPES([uint64_t, uint32_t, uint16_t, uint8_t], , ,
-[#ifdef HAVE_STDINT_H
+AC_CHECK_TYPES([uint64_t, uint32_t, uint16_t, uint8_t],[],[],
+[[#ifdef HAVE_STDINT_H
 #include <stdint.h>
 #elif defined(HAVE_INTTYPES_H)
 #include <inttypes.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
-#endif])
+#endif]])
 AC_CHECK_SIZEOF(long long)
 AC_CHECK_SIZEOF(long)   
 AC_CHECK_SIZEOF(int)
 AC_CHECK_SIZEOF(short)
-AC_CHECK_TYPES([struct in6_addr], , ,
-[#ifdef WIN32
+AC_CHECK_TYPES([struct in6_addr],[],[],
+[[#ifdef WIN32
 #include <winsock2.h>
 #else
 #include <sys/types.h>
@@ -271,30 +287,38 @@ AC_CHECK_TYPES([struct in6_addr], , ,
 #endif
 #ifdef HAVE_NETINET_IN6_H
 #include <netinet/in6.h>
-#endif])
+#endif]])
 
 AC_MSG_CHECKING([for socklen_t])
-AC_TRY_COMPILE([
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM(
+     [[
  #include <sys/types.h>
- #include <sys/socket.h>],
-  [socklen_t x;],
-  AC_MSG_RESULT([yes]),
+       #include <sys/socket.h>
+     ]],
+     [[
+       socklen_t x;
+     ]]
+  )],
+  [AC_MSG_RESULT([yes])],
   [AC_MSG_RESULT([no])
   AC_DEFINE(socklen_t, unsigned int,
 	[Define to unsigned int if you dont have it])]
 )
 
 AC_MSG_CHECKING([whether our compiler supports __func__])
-AC_TRY_COMPILE([],
- [ const char *cp = __func__; ],
- AC_MSG_RESULT([yes]),
- AC_MSG_RESULT([no])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([],[[const char *cp = __func__;]])],
+  [AC_MSG_RESULT([yes])],
+  [AC_MSG_RESULT([no])
  AC_MSG_CHECKING([whether our compiler supports __FUNCTION__])
- AC_TRY_COMPILE([],
-   [ const char *cp = __FUNCTION__; ],
-   AC_MSG_RESULT([yes])
+   AC_COMPILE_IFELSE(
+     [AC_LANG_PROGRAM([],[[const char *cp = __FUNCTION__;]])],
+     [AC_MSG_RESULT([yes])
    AC_DEFINE(__func__, __FUNCTION__,
-         [Define to appropriate substitue if compiler doesnt have __func__]),
-   AC_MSG_RESULT([no])
+         [Define to appropriate substitue if compiler doesnt have __func__])],
+     [AC_MSG_RESULT([no])
    AC_DEFINE(__func__, __FILE__,
-         [Define to appropriate substitue if compiler doesnt have __func__])))
+         [Define to appropriate substitue if compiler doesnt have __func__])]
+   )]
+)

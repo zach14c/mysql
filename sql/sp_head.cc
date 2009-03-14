@@ -1,4 +1,4 @@
-/* Copyright (C) 2002 MySQL AB
+/* Copyright 2002-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -523,8 +523,9 @@ sp_head::sp_head()
   m_backpatch.empty();
   m_cont_backpatch.empty();
   m_lex.empty();
-  hash_init(&m_sptabs, system_charset_info, 0, 0, 0, sp_table_key, 0, 0);
-  hash_init(&m_sroutines, system_charset_info, 0, 0, 0, sp_sroutine_key, 0, 0);
+  my_hash_init(&m_sptabs, system_charset_info, 0, 0, 0, sp_table_key, 0, 0);
+  my_hash_init(&m_sroutines, system_charset_info, 0, 0, 0, sp_sroutine_key,
+               0, 0);
 
   m_body_utf8.str= NULL;
   m_body_utf8.length= 0;
@@ -773,8 +774,8 @@ sp_head::destroy()
     m_thd->lex= lex;
   }
 
-  hash_free(&m_sptabs);
-  hash_free(&m_sroutines);
+  my_hash_free(&m_sptabs);
+  my_hash_free(&m_sroutines);
   DBUG_VOID_RETURN;
 }
 
@@ -1070,8 +1071,8 @@ sp_head::execute(THD *thd)
   Item_change_list old_change_list;
   String old_packet;
   Reprepare_observer *save_reprepare_observer= thd->m_reprepare_observer;
-
   Object_creation_ctx *saved_creation_ctx;
+  Warning_info *saved_warning_info, warning_info(thd->warning_info->warn_id());
 
   /* Use some extra margin for possible SP recursion and functions */
   if (check_stack_overrun(thd, 8 * STACK_MIN_SIZE, (uchar*)&old_packet))
@@ -1119,6 +1120,11 @@ sp_head::execute(THD *thd)
     ctx->clear_handler();
   thd->is_slave_error= 0;
   old_arena= thd->stmt_arena;
+
+  /* Push a new warning information area. */
+  warning_info.append_warning_info(thd, thd->warning_info);
+  saved_warning_info= thd->warning_info;
+  thd->warning_info= &warning_info;
 
   /*
     Switch query context. This has to be done early as this is sometimes
@@ -1267,7 +1273,9 @@ sp_head::execute(THD *thd)
     */
     if (ctx)
     {
-      switch (ctx->found_handler(&hip)) {
+      uint handler_index;
+
+      switch (ctx->found_handler(& hip, & handler_index)) {
       case SP_HANDLER_NONE:
         break;
       case SP_HANDLER_CONTINUE:
@@ -1276,16 +1284,20 @@ sp_head::execute(THD *thd)
         ctx->push_hstack(i->get_cont_dest());
         /* Fall through */
       default:
+        if (ctx->end_partial_result_set)
+          thd->protocol->end_partial_result_set(thd);
         ip= hip;
         err_status= FALSE;
         ctx->clear_handler();
-        ctx->enter_handler(hip);
+        ctx->enter_handler(hip, handler_index);
         thd->clear_error();
         thd->is_fatal_error= 0;
         thd->killed= THD::NOT_KILLED;
         thd->mysys_var->abort= 0;
         continue;
       }
+
+      ctx->end_partial_result_set= FALSE;
     }
   } while (!err_status && !thd->killed && !thd->is_fatal_error);
 
@@ -1320,6 +1332,10 @@ sp_head::execute(THD *thd)
 
   thd->stmt_arena= old_arena;
   state= EXECUTED;
+
+  /* Restore the caller's original warning information area. */
+  saved_warning_info->merge_with_routine_info(thd, thd->warning_info);
+  thd->warning_info= saved_warning_info;
 
  done:
   DBUG_PRINT("info", ("err_status: %d  killed: %d  is_slave_error: %d  report_error: %d",
@@ -3489,9 +3505,9 @@ sp_instr_copen::execute(THD *thd, uint *nextp)
     */
     if (!res)
     {
-      uint dummy1;
+      uint dummy1, dummy2;
 
-      if (thd->spcont->found_handler(&dummy1))
+      if (thd->spcont->found_handler(&dummy1, &dummy2))
         res= -1;
     }
     /* TODO: Assert here that we either have an error or a cursor */
@@ -3807,7 +3823,7 @@ sp_head::merge_table_list(THD *thd, TABLE_LIST *table, LEX *lex_for_tmp_check)
 
   for (uint i= 0 ; i < m_sptabs.records ; i++)
   {
-    tab= (SP_TABLE *)hash_element(&m_sptabs, i);
+    tab= (SP_TABLE*) my_hash_element(&m_sptabs, i);
     tab->query_lock_count= 0;
   }
 
@@ -3841,8 +3857,8 @@ sp_head::merge_table_list(THD *thd, TABLE_LIST *table, LEX *lex_for_tmp_check)
         (and therefore should not be prelocked). Otherwise we will erroneously
         treat table with same name but with different alias as non-temporary.
       */
-      if ((tab= (SP_TABLE *)hash_search(&m_sptabs, (uchar *)tname, tlen)) ||
-          ((tab= (SP_TABLE *)hash_search(&m_sptabs, (uchar *)tname,
+      if ((tab= (SP_TABLE*) my_hash_search(&m_sptabs, (uchar *)tname, tlen)) ||
+          ((tab= (SP_TABLE*) my_hash_search(&m_sptabs, (uchar *)tname,
                                         tlen - alen - 1)) &&
            tab->temp))
       {
@@ -3933,7 +3949,7 @@ sp_head::add_used_tables_to_table_list(THD *thd,
   {
     char *tab_buff, *key_buff;
     TABLE_LIST *table;
-    SP_TABLE *stab= (SP_TABLE *)hash_element(&m_sptabs, i);
+    SP_TABLE *stab= (SP_TABLE*) my_hash_element(&m_sptabs, i);
     if (stab->temp)
       continue;
 
@@ -3959,10 +3975,10 @@ sp_head::add_used_tables_to_table_list(THD *thd,
       table->prelocking_placeholder= 1;
       table->belong_to_view= belong_to_view;
       table->trg_event_map= stab->trg_event_map;
-      table->mdl_lock_data= mdl_alloc_lock(0, table->db, table->table_name,
-                                           thd->locked_tables_root ?
-                                           thd->locked_tables_root :
-                                           thd->mem_root);
+      table->mdl_request= MDL_request::create(0, table->db, table->table_name,
+                                              thd->locked_tables_root ?
+                                              thd->locked_tables_root :
+                                              thd->mem_root);
 
       /* Everyting else should be zeroed */
 
@@ -4006,9 +4022,10 @@ sp_add_to_query_tables(THD *thd, LEX *lex,
   table->lock_transactional= 1; /* allow transactional locks */
   table->select_lex= lex->current_select;
   table->cacheable_table= 1;
-  table->mdl_lock_data= mdl_alloc_lock(0, table->db, table->table_name,
-                                       thd->locked_tables_root ?
-                                       thd->locked_tables_root : thd->mem_root);
+  table->mdl_request= MDL_request::create(0, table->db, table->table_name,
+                                          thd->locked_tables_root ?
+                                          thd->locked_tables_root :
+                                          thd->mem_root);
 
   lex->add_to_query_tables(table);
   return table;

@@ -29,11 +29,10 @@ int write_table_data(THD*, backup::Logger&, Backup_info&,
 */
 class Backup_info: public backup::Image_info
 {
- public:
+public:
 
-  Backup_restore_ctx &m_ctx;
+  backup::Logger &m_log;  ///< Pointer to logger class.
 
-  Backup_info(Backup_restore_ctx&);
   ~Backup_info();
 
   bool is_valid();
@@ -46,11 +45,19 @@ class Backup_info: public backup::Image_info
   Iterator* get_global() const;
   Iterator* get_perdb()  const;
 
- private:
+private:
+
+  /*
+    Note: constructor is private because instances of this class are supposed
+    to be created only with Backup_restore_ctx::prepare_for_backup() method.
+  */
+  Backup_info(backup::Logger&, THD*);
 
   // Prevent copying/assignments
   Backup_info(const Backup_info&);
   Backup_info& operator=(const Backup_info&);
+
+  THD *m_thd;
 
   class Global_iterator; ///< Iterates over global items (for which meta-data is stored).
   class Perdb_iterator;  ///< Iterates over all per-database objects (except tables).
@@ -169,6 +176,7 @@ class Backup_info: public backup::Image_info
   friend int ::bcat_get_item_create_query(st_bstream_image_header *catalogue,
                                struct st_bstream_item_info *item,
                                bstream_blob *stmt);
+  friend class Backup_restore_ctx;  // Needs access to the constructor.
 };
 
 /// Check if instance is correctly created.

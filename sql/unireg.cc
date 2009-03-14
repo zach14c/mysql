@@ -56,10 +56,12 @@ static bool make_empty_rec(THD *thd, int file, enum legacy_db_type table_type,
 
 struct Pack_header_error_handler: public Internal_error_handler
 {
-  virtual bool handle_error(THD *thd,
-                            MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno,
-                            const char *message);
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl);
   bool is_handled;
   Pack_header_error_handler() :is_handled(FALSE) {}
 };
@@ -67,11 +69,14 @@ struct Pack_header_error_handler: public Internal_error_handler
 
 bool
 Pack_header_error_handler::
-handle_error(THD * /* thd */,
-             MYSQL_ERROR::enum_warning_level /* level */,
-             uint sql_errno,
-             const char * /* message */)
+handle_condition(THD *,
+                 uint sql_errno,
+                 const char*,
+                 MYSQL_ERROR::enum_warning_level,
+                 const char*,
+                 MYSQL_ERROR ** cond_hdl)
 {
+  *cond_hdl= NULL;
   is_handled= (sql_errno == ER_TOO_MANY_FIELDS);
   return is_handled;
 }
@@ -92,8 +97,8 @@ handle_error(THD * /* thd */,
     db_file		Handler to use. May be zero, in which case we use
 			create_info->db_type
   RETURN
-    0  ok
-    1  error
+    false  ok
+    true   error
 */
 
 bool mysql_create_frm(THD *thd, const char *file_name,
@@ -195,6 +200,24 @@ bool mysql_create_frm(THD *thd, const char *file_name,
     create_fields.elements;
   create_info->extra_size+= format_section_len;
 
+  /*
+    This gives us the byte-position of the character at
+    (character-position, not byte-position) TABLE_COMMENT_MAXLEN.
+    The trick here is that character-positions start at 0, so the last
+    character in a maximum-allowed length string would be at char-pos
+    MAXLEN-1; charpos MAXLEN will be the position of the terminator.
+    Consequently, bytepos(charpos(MAXLEN)) should be equal to
+    comment[length] (which should also be the terminator, or at least
+    the first byte after the payload in the strict sense). If this is
+    not so (bytepos(charpos(MAXLEN)) comes /before/ the end of the
+    string), the string is too long.
+
+    For additional credit, realise that UTF-8 has 1-3 bytes before 6.0,
+    and 1-4 bytes in 6.0 (6.0 also has UTF-32). This means that the
+    inlined COMMENT supposedly does not exceed 60 (3-byte) character
+    plus terminator, vulgo, 181 bytes.
+  */
+
   tmp_len= system_charset_info->cset->charpos(system_charset_info,
                                               create_info->comment.str,
                                               create_info->comment.str +
@@ -222,7 +245,6 @@ bool mysql_create_frm(THD *thd, const char *file_name,
   /*
     If table comment is longer than TABLE_COMMENT_INLINE_MAXLEN bytes,
     store the comment in an extra segment (up to TABLE_COMMENT_MAXLEN bytes).
-    Pre 6.0, the limit was 60 characters, with no extra segment-handling.
   */
   if (create_info->comment.length > TABLE_COMMENT_INLINE_MAXLEN)
   {
@@ -233,15 +255,6 @@ bool mysql_create_frm(THD *thd, const char *file_name,
     strmake((char*) forminfo+47, create_info->comment.str ?
             create_info->comment.str : "", create_info->comment.length);
     forminfo[46]=(uchar) create_info->comment.length;
-#ifdef EXTRA_DEBUG
-    /*
-      EXTRA_DEBUG causes strmake() to initialize its buffer behind the
-      payload with a magic value to detect wrong buffer-sizes. We
-      explicitly zero that segment again.
-    */
-    memset((char*) forminfo+47 + forminfo[46], 0,
-           TABLE_COMMENT_INLINE_MAXLEN + 1 - forminfo[46]);
-#endif
   }
 
   if ((file=create_frm(thd, file_name, db, table, reclength, fileinfo,

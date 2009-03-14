@@ -61,8 +61,6 @@
 
 static NDB_TICKS startTime;
 
-static const Uint32 BACKUP_SEQUENCE = 0x1F000000;
-
 #ifdef VM_TRACE
 #define DEBUG_OUT(x) ndbout << x << endl
 #else
@@ -170,7 +168,7 @@ Backup::createSequence(Signal* signal)
   UtilSequenceReq * req = (UtilSequenceReq*)signal->getDataPtrSend();
   
   req->senderData  = RNIL;
-  req->sequenceId  = BACKUP_SEQUENCE;
+  req->sequenceId  = NDB_BACKUP_SEQUENCE;
   req->requestType = UtilSequenceReq::Create;
   
   sendSignal(DBUTIL_REF, GSN_UTIL_SEQUENCE_REQ, 
@@ -360,7 +358,7 @@ Backup::execCONTINUEB(Signal* signal)
     return;
   }
   case BackupContinueB::ZDELAY_SCAN_NEXT:
-    if (ERROR_INSERTED(10036))
+    if (ERROR_INSERTED(10039))
     {
       jam();
       sendSignalWithDelay(BACKUP_REF, GSN_CONTINUEB, signal, 300, 
@@ -1078,20 +1076,24 @@ Backup::execBACKUP_REQ(Signal* signal)
   const Uint32 dataLen32 = req->backupDataLen; // In 32 bit words
   const Uint32 flags = signal->getLength() > 2 ? req->flags : 2;
 
-  if(getOwnNodeId() != getMasterNodeId()) {
+  if (getOwnNodeId() != getMasterNodeId())
+  {
     jam();
-    sendBackupRef(senderRef, flags, signal, senderData, BackupRef::IAmNotMaster);
+    sendBackupRef(senderRef, flags, signal, senderData,
+                  BackupRef::IAmNotMaster);
     return;
   }//if
 
   if (c_defaults.m_diskless)
   {
+    jam();
     sendBackupRef(senderRef, flags, signal, senderData, 
 		  BackupRef::CannotBackupDiskless);
     return;
   }
   
-  if(dataLen32 != 0) {
+  if (dataLen32 != 0)
+  {
     jam();
     sendBackupRef(senderRef, flags, signal, senderData, 
 		  BackupRef::BackupDefinitionNotImplemented);
@@ -1106,9 +1108,11 @@ Backup::execBACKUP_REQ(Signal* signal)
    */
   BackupRecordPtr ptr;
   c_backups.seize(ptr);
-  if(ptr.i == RNIL) {
+  if (ptr.i == RNIL)
+  {
     jam();
-    sendBackupRef(senderRef, flags, signal, senderData, BackupRef::OutOfBackupRecord);
+    sendBackupRef(senderRef, flags, signal, senderData,
+                  BackupRef::OutOfBackupRecord);
     return;
   }//if
 
@@ -1127,34 +1131,71 @@ Backup::execBACKUP_REQ(Signal* signal)
   ptr.p->backupDataLen = 0;
   ptr.p->masterData.errorCode = 0;
 
+  ptr.p->masterData.sequence.retriesLeft = 3;
+  sendUtilSequenceReq(signal, ptr);
+}
+
+void
+Backup::sendUtilSequenceReq(Signal* signal, BackupRecordPtr ptr, Uint32 delay)
+{
+  jam();
+
   UtilSequenceReq * utilReq = (UtilSequenceReq*)signal->getDataPtrSend();
-    
   ptr.p->masterData.gsn = GSN_UTIL_SEQUENCE_REQ;
   utilReq->senderData  = ptr.i;
-  utilReq->sequenceId  = BACKUP_SEQUENCE;
+  utilReq->sequenceId  = NDB_BACKUP_SEQUENCE;
   utilReq->requestType = UtilSequenceReq::NextVal;
-  sendSignal(DBUTIL_REF, GSN_UTIL_SEQUENCE_REQ, 
-	     signal, UtilSequenceReq::SignalLength, JBB);
+
+  if (delay == 0)
+  {
+    jam();
+    sendSignal(DBUTIL_REF, GSN_UTIL_SEQUENCE_REQ,
+               signal, UtilSequenceReq::SignalLength, JBB);
+  }
+  else
+  {
+    jam();
+    sendSignalWithDelay(DBUTIL_REF, GSN_UTIL_SEQUENCE_REQ,
+                        signal, delay, UtilSequenceReq::SignalLength);
+  }
 }
 
 void
 Backup::execUTIL_SEQUENCE_REF(Signal* signal)
 {
-  BackupRecordPtr ptr LINT_SET_PTR;
   jamEntry();
+  BackupRecordPtr ptr LINT_SET_PTR;
   UtilSequenceRef * utilRef = (UtilSequenceRef*)signal->getDataPtr();
   ptr.i = utilRef->senderData;
   c_backupPool.getPtr(ptr);
   ndbrequire(ptr.p->masterData.gsn == GSN_UTIL_SEQUENCE_REQ);
+
+  if (utilRef->errorCode == UtilSequenceRef::TCError)
+  {
+    jam();
+    if (ptr.p->masterData.sequence.retriesLeft > 0)
+    {
+      jam();
+      infoEvent("BACKUP: retrying sequence on error %u",
+                utilRef->TCErrorCode);
+      ptr.p->masterData.sequence.retriesLeft--;
+      sendUtilSequenceReq(signal, ptr, 300);
+      return;
+    }
+  }
+  warningEvent("BACKUP: aborting due to sequence error (%u, %u)",
+               utilRef->errorCode,
+               utilRef->TCErrorCode);
+
   sendBackupRef(signal, ptr, BackupRef::SequenceFailure);
 }//execUTIL_SEQUENCE_REF()
-
 
 void
 Backup::sendBackupRef(Signal* signal, BackupRecordPtr ptr, Uint32 errorCode)
 {
   jam();
-  sendBackupRef(ptr.p->clientRef, ptr.p->flags, signal, ptr.p->clientData, errorCode);
+  sendBackupRef(ptr.p->clientRef, ptr.p->flags, signal,
+                ptr.p->clientData, errorCode);
   cleanup(signal, ptr);
 }
 
@@ -1165,6 +1206,7 @@ Backup::sendBackupRef(BlockReference senderRef, Uint32 flags, Signal *signal,
   jam();
   if (SEND_BACKUP_STARTED_FLAG(flags))
   {
+    jam();
     BackupRef* ref = (BackupRef*)signal->getDataPtrSend();
     ref->senderData = senderData;
     ref->errorCode = errorCode;
@@ -1172,7 +1214,9 @@ Backup::sendBackupRef(BlockReference senderRef, Uint32 flags, Signal *signal,
     sendSignal(senderRef, GSN_BACKUP_REF, signal, BackupRef::SignalLength, JBB);
   }
 
-  if(errorCode != BackupRef::IAmNotMaster){
+  if (errorCode != BackupRef::IAmNotMaster)
+  {
+    jam();
     signal->theData[0] = NDB_LE_BackupFailedToStart;
     signal->theData[1] = senderRef;
     signal->theData[2] = errorCode;
@@ -2322,7 +2366,7 @@ Backup::stopBackupReply(Signal* signal, BackupRecordPtr ptr, Uint32 nodeId)
 
   sendAbortBackupOrd(signal, ptr, AbortBackupOrd::BackupComplete);
   
-  if(!ptr.p->checkError())
+  if(!ptr.p->checkError() &&  ptr.p->masterData.errorCode == 0)
   {
     if (SEND_BACKUP_COMPLETED_FLAG(ptr.p->flags))
     {
@@ -2367,9 +2411,8 @@ Backup::stopBackupReply(Signal* signal, BackupRecordPtr ptr, Uint32 nodeId)
 void
 Backup::initReportStatus(Signal *signal, BackupRecordPtr ptr)
 {
-  struct timeval the_time;
-  gettimeofday(&the_time, 0);
-  ptr.p->m_next_report = the_time.tv_sec + m_backup_report_frequency;
+  Uint64 now = NdbTick_CurrentMillisecond() / 1000;
+  ptr.p->m_next_report = now + m_backup_report_frequency;
 }
 
 void
@@ -2378,12 +2421,11 @@ Backup::checkReportStatus(Signal *signal, BackupRecordPtr ptr)
   if (m_backup_report_frequency == 0)
     return;
 
-  struct timeval the_time;
-  gettimeofday(&the_time, 0);
-  if (the_time.tv_sec > ptr.p->m_next_report)
+  Uint64 now = NdbTick_CurrentMillisecond() / 1000;
+  if (now > ptr.p->m_next_report)
   {
     reportStatus(signal, ptr);
-    ptr.p->m_next_report = the_time.tv_sec + m_backup_report_frequency;
+    ptr.p->m_next_report = now + m_backup_report_frequency;
   }
 }
 
@@ -2813,6 +2855,8 @@ Backup::backupAllData(Signal* signal, BackupRecordPtr ptr)
   req->senderRef = reference();
   req->senderData = ptr.i;
   req->requestData = 0;
+  req->tableId = 0;
+  req->tableType = 0;
   sendSignal(DBDICT_REF, GSN_LIST_TABLES_REQ, signal, 
 	     ListTablesReq::SignalLength, JBB);
 }
@@ -2821,56 +2865,68 @@ void
 Backup::execLIST_TABLES_CONF(Signal* signal)
 {
   jamEntry();
-  
+  Uint32 fragInfo = signal->header.m_fragmentInfo;
   ListTablesConf* conf = (ListTablesConf*)signal->getDataPtr();
+  Uint32 noOfTables = conf->noOfTables;
 
   BackupRecordPtr ptr LINT_SET_PTR;
   c_backupPool.getPtr(ptr, conf->senderData);
-  
-  const Uint32 len = signal->length() - ListTablesConf::HeaderLength;
-  for(unsigned int i = 0; i<len; i++) {
-    jam();
-    Uint32 tableId = ListTablesConf::getTableId(conf->tableData[i]);
-    Uint32 tableType = ListTablesConf::getTableType(conf->tableData[i]);
-    Uint32 state= ListTablesConf::getTableState(conf->tableData[i]);
 
-    if (! (DictTabInfo::isTable(tableType) ||
-	   DictTabInfo::isIndex(tableType) ||
-	   DictTabInfo::isFilegroup(tableType) ||
-	   DictTabInfo::isFile(tableType)))
-    {
-      jam();
-      continue;
-    }
-    
-    if (state != DictTabInfo::StateOnline)
-    {
-      jam();
-      continue;
-    }
-    
-    TablePtr tabPtr;
-    ptr.p->tables.seize(tabPtr);
-    if(tabPtr.i == RNIL) {
-      jam();
-      defineBackupRef(signal, ptr, DefineBackupRef::FailedToAllocateTables);
-      return;
-    }//if
-    tabPtr.p->tableId = tableId;
-    tabPtr.p->tableType = tableType;
-  }//for
-  
-  if(len == ListTablesConf::DataLength) {
-    jam();
-    /**
-     * Not finished...
-     */
-    return;
-  }//if
+  if (noOfTables > 0)
+  {
+    ndbassert(signal->getNoOfSections() > 0);
+    ListTablesData ltd;
+    const Uint32 listTablesDataSizeInWords = (sizeof(ListTablesData) + 3) / 4;
+    SegmentedSectionPtr tableDataPtr;
+    signal->getSection(tableDataPtr, ListTablesConf::TABLE_DATA);
+    SimplePropertiesSectionReader
+      tableDataReader(tableDataPtr, getSectionSegmentPool());
 
-  /**
-   * All tables fetched
+    tableDataReader.reset();
+    for(unsigned int i = 0; i<noOfTables; i++) {
+      jam();
+      tableDataReader.getWords((Uint32 *)&ltd, listTablesDataSizeInWords);
+      Uint32 tableId = ltd.getTableId();
+      Uint32 tableType = ltd.getTableType();
+      Uint32 state= ltd.getTableState();
+
+      if (! (DictTabInfo::isTable(tableType) ||
+             DictTabInfo::isIndex(tableType) ||
+             DictTabInfo::isFilegroup(tableType) ||
+             DictTabInfo::isFile(tableType)))
+      {
+        jam();
+        continue;
+      }
+
+      if (state != DictTabInfo::StateOnline)
+      {
+        jam();
+        continue;
+      }
+
+      TablePtr tabPtr;
+      ptr.p->tables.seize(tabPtr);
+      if(tabPtr.i == RNIL) {
+        jam();
+        defineBackupRef(signal, ptr, DefineBackupRef::FailedToAllocateTables);
+        releaseSections(signal);
+        return;
+      }//if
+      tabPtr.p->tableId = tableId;
+      tabPtr.p->tableType = tableType;
+    }//for
+    releaseSections(signal);
+  }
+
+  /*
+    If first or not last signal
+    then keep accumulating table data
    */
+  if ((fragInfo == 1) || (fragInfo == 2))
+  {
+    return;
+  }
   openFiles(signal, ptr);
 }
 
@@ -4140,7 +4196,7 @@ Backup::checkScan(Signal* signal, BackupFilePtr filePtr)
     req->batch_size_rows= 16;
     req->batch_size_bytes= 0;
 
-    if (ERROR_INSERTED(10036) && 
+    if (ERROR_INSERTED(10039) && 
 	filePtr.p->tableId >= 2 &&
 	filePtr.p->operation.noOfRecords > 0)
     {
@@ -4898,6 +4954,7 @@ Backup::execABORT_BACKUP_ORD(Signal* signal)
   default:
 #endif
     ptr.p->setErrorCode(requestType);
+    ptr.p->masterData.errorCode = requestType;
     ok= true;
   }
   ndbrequire(ok);

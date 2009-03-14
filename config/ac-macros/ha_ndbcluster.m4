@@ -2,9 +2,10 @@ dnl ---------------------------------------------------------------------------
 dnl Macro: MYSQL_CHECK_NDBCLUSTER
 dnl ---------------------------------------------------------------------------
 
-NDB_MYSQL_VERSION_MAJOR=`echo $MYSQL_NUMERIC_VERSION | cut -d. -f1`
-NDB_MYSQL_VERSION_MINOR=`echo $MYSQL_NUMERIC_VERSION | cut -d. -f2`
-NDB_MYSQL_VERSION_BUILD=`echo $MYSQL_NUMERIC_VERSION | cut -d. -f3`
+NDB_MYSQL_VERSION_MAJOR=`echo $VERSION | cut -d. -f1`
+NDB_MYSQL_VERSION_MINOR=`echo $VERSION | cut -d. -f2`
+NDB_MYSQL_VERSION_BUILD=`echo $VERSION | cut -d. -f3 | cut -d- -f1`
+
 TEST_NDBCLUSTER=""
 
 dnl for build ndb docs
@@ -20,7 +21,7 @@ AC_SUBST(MAKEINDEX)
 
 AC_DEFUN([MYSQL_CHECK_NDB_OPTIONS], [
   AC_ARG_WITH([ndb-sci],
-              AC_HELP_STRING([--with-ndb-sci=DIR],
+              AS_HELP_STRING([--with-ndb-sci=DIR],
                              [Provide MySQL with a custom location of
                              sci library. Given DIR, sci library is 
                              assumed to be in $DIR/lib and header files
@@ -52,38 +53,38 @@ AC_DEFUN([MYSQL_CHECK_NDB_OPTIONS], [
   esac
 
   AC_ARG_WITH([ndb-test],
-              [
-  --with-ndb-test       Include the NDB Cluster ndbapi test programs],
+              [AS_HELP_STRING([--with-ndb-test],
+                              [Include the NDB Cluster ndbapi test programs])],
               [ndb_test="$withval"],
               [ndb_test=no])
   AC_ARG_WITH([ndb-docs],
-              [
-  --with-ndb-docs       Include the NDB Cluster ndbapi and mgmapi documentation],
+              [AS_HELP_STRING([--with-ndb-docs],
+              [Include the NDB Cluster ndbapi and mgmapi documentation])],
               [ndb_docs="$withval"],
               [ndb_docs=no])
   AC_ARG_WITH([ndb-port],
-              [
-  --with-ndb-port       Port for NDB Cluster management server],
+              [AS_HELP_STRING([--with-ndb-port],
+                              [Port for NDB Cluster management server])],
               [ndb_port="$withval"],
               [ndb_port="default"])
   AC_ARG_WITH([ndb-port-base],
-              [
-  --with-ndb-port-base  Base port for NDB Cluster transporters],
+              [AS_HELP_STRING([--with-ndb-port-base],
+                              [Base port for NDB Cluster transporters])],
               [ndb_port_base="$withval"],
               [ndb_port_base="default"])
   AC_ARG_WITH([ndb-debug],
-              [
-  --without-ndb-debug   Disable special ndb debug features],
+              [AS_HELP_STRING([--without-ndb-debug],
+                              [Disable special ndb debug features])],
               [ndb_debug="$withval"],
               [ndb_debug="default"])
   AC_ARG_WITH([ndb-ccflags],
-              AC_HELP_STRING([--with-ndb-ccflags=CFLAGS],
-                           [Extra CFLAGS for ndb compile]),
+              [AS_HELP_STRING([--with-ndb-ccflags=CFLAGS],
+                              [Extra CFLAGS for ndb compile])],
               [ndb_ccflags=${withval}],
               [ndb_ccflags=""])
   AC_ARG_WITH([ndb-binlog],
-              [
-  --without-ndb-binlog       Disable ndb binlog],
+              [AS_HELP_STRING([--without-ndb-binlog],
+                              [Disable ndb binlog])],
               [ndb_binlog="$withval"],
               [ndb_binlog="default"])
 
@@ -139,13 +140,19 @@ AC_DEFUN([MYSQL_CHECK_NDB_OPTIONS], [
       ;;
   esac
 
+
   AC_MSG_RESULT([done.])
 ])
 
 AC_DEFUN([NDBCLUSTER_WORKAROUNDS], [
+  AC_REQUIRE([AC_PROG_CC])	dnl Make sure $GCC is set if GNU C
+  if test "$GCC" != "yes"
+  then
+    GCC=no		# Doc doesn't say what set to if not "yes"
+  fi
 
   #workaround for Sun Forte/x86 see BUG#4681
-  case $SYSTEM_TYPE-$MACHINE_TYPE-$ac_cv_prog_gcc in
+  case $SYSTEM_TYPE-$MACHINE_TYPE-$GCC in
     *solaris*-i?86-no)
       CFLAGS="$CFLAGS -DBIG_TABLES"
       CXXFLAGS="$CXXFLAGS -DBIG_TABLES"
@@ -155,7 +162,7 @@ AC_DEFUN([NDBCLUSTER_WORKAROUNDS], [
   esac
 
   # workaround for Sun Forte compile problem for ndb
-  case $SYSTEM_TYPE-$ac_cv_prog_gcc in
+  case $SYSTEM_TYPE-$GCC in
     *solaris*-no)
       ndb_cxxflags_fix="$ndb_cxxflags_fix -instances=static"
       ;;
@@ -165,7 +172,7 @@ AC_DEFUN([NDBCLUSTER_WORKAROUNDS], [
 
   # ndb fail for whatever strange reason to link Sun Forte/x86
   # unless using incremental linker
-  case $SYSTEM_TYPE-$MACHINE_TYPE-$ac_cv_prog_gcc-$have_ndbcluster in
+  case $SYSTEM_TYPE-$MACHINE_TYPE-$GCC-$have_ndbcluster in
     *solaris*-i?86-no-yes)
       CXXFLAGS="$CXXFLAGS -xildon"
       ;;
@@ -202,7 +209,7 @@ AC_DEFUN([MYSQL_SETUP_NDBCLUSTER], [
     NDB_DEFS="-DNDB_DEBUG -DVM_TRACE -DERROR_INSERT -DARRAY_GUARD"
   elif test "$have_ndb_debug" = "full"
   then
-    NDB_DEFS="-DNDB_DEBUG_FULL -DVM_TRACE -DERROR_INSERT -DARRAY_GUARD"
+    NDB_DEFS="-DNDB_DEBUG_FULL -DVM_TRACE -DERROR_INSERT -DARRAY_GUARD -DAPI_TRACE"
   else
     # no extra ndb debug but still do asserts if debug version
     if test "$with_debug" = "yes" -o "$with_debug" = "full"
@@ -374,6 +381,7 @@ AC_DEFUN([MYSQL_SETUP_NDBCLUSTER], [
    storage/ndb/test/run-test/Makefile dnl
    storage/ndb/include/ndb_version.h storage/ndb/include/ndb_global.h dnl
    storage/ndb/include/ndb_types.h dnl
+   storage/ndb/swig/Makefile dnl
   )
 ])
 

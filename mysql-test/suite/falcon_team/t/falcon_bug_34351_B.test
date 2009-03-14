@@ -1,5 +1,5 @@
 --source include/have_falcon.inc
-#--disable_abort_on_error
+
 #
 # Bug #34351_B: Update Conflict on non-overlapping transactions
 #
@@ -46,6 +46,7 @@ SET @conn1_uuid = UUID();
 SELECT t1_autoinc FROM t1 ORDER BY t1_autoinc;
 INSERT INTO t1 (t1_uuid) VALUES (@conn1_uuid);
 SELECT t1_autoinc FROM t1 ORDER BY t1_autoinc;
+--real_sleep 1
 --send DELETE FROM t1 WHERE t1_uuid = (@conn1_uuid)
 
 --echo # Switch to connection default

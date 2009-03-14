@@ -30,7 +30,7 @@
 #include "dbtup/Dbtup.hpp"
 
 #include <EventLogger.hpp>
-extern EventLogger g_eventLogger;
+extern EventLogger * g_eventLogger;
 
 #include <record_types.hpp>
 
@@ -1380,11 +1380,13 @@ Lgman::flush_log(Signal* signal, Ptr<Logfile_group> ptr, Uint32 force)
 
       if (ptr.p->m_log_buffer_waiters.isEmpty() || ptr.p->m_outstanding_fs)
       {
+        jam();
 	force =  0;
       }
       
       if (force < 2)
       {
+        jam();
 	signal->theData[0] = LgmanContinueB::FLUSH_LOG;
 	signal->theData[1] = ptr.i;
 	signal->theData[2] = force + 1;
@@ -1394,6 +1396,7 @@ Lgman::flush_log(Signal* signal, Ptr<Logfile_group> ptr, Uint32 force)
       }
       else
       {
+        jam();
 	Buffer_idx pos= producer.m_current_pos;
 	GlobalPage *page = m_shared_page_pool.getPtr(pos.m_ptr_i);
 	
@@ -1417,7 +1420,7 @@ Lgman::flush_log(Signal* signal, Ptr<Logfile_group> ptr, Uint32 force)
 	ndbrequire(ptr.p->m_free_buffer_words > free);
 	ptr.p->m_free_file_words -= free;
 	ptr.p->m_free_buffer_words -= free;
-	
+         
 	validate_logfile_group(ptr, "force_log_flush");
 	
 	next_page(ptr.p, PRODUCER);
@@ -1438,17 +1441,25 @@ Lgman::flush_log(Signal* signal, Ptr<Logfile_group> ptr, Uint32 force)
   Uint32 tot= 0;
   while(!(consumer.m_current_page == producer.m_current_page) && !full)
   {
+    jam();
     validate_logfile_group(ptr, "before flush log");
 
     Uint32 cnt; // pages written
     Uint32 page= consumer.m_current_pos.m_ptr_i;
     if(consumer.m_current_page.m_ptr_i == producer.m_current_page.m_ptr_i)
     {
-      if(consumer.m_current_page.m_idx > producer.m_current_page.m_idx)
+      /**
+       * In same range
+       */
+      jam();
+
+      if(producer.m_current_pos.m_ptr_i > page)
       {
+        /**
+         * producer ahead of consumer in same chunk
+         */
 	jam();
-	Uint32 tmp= 
-	  consumer.m_current_page.m_idx - producer.m_current_page.m_idx;
+	Uint32 tmp= producer.m_current_pos.m_ptr_i - page;
 	cnt= write_log_pages(signal, ptr, page, tmp);
 	assert(cnt <= tmp);
 	
@@ -1458,8 +1469,9 @@ Lgman::flush_log(Signal* signal, Ptr<Logfile_group> ptr, Uint32 force)
       }
       else
       {
-	// Only 1 chunk
-	ndbrequire(ptr.p->m_buffer_pages.getSize() == 2); 
+        /**
+         * consumer ahead of producer in same chunk
+         */
 	Uint32 tmp= consumer.m_current_page.m_idx + 1;
 	cnt= write_log_pages(signal, ptr, page, tmp);
 	assert(cnt <= tmp);
@@ -1552,8 +1564,9 @@ Lgman::process_log_buffer_waiters(Signal* signal, Ptr<Logfile_group> ptr)
   bool removed= false;
   Ptr<Log_waiter> waiter;
   list.first(waiter);
+  Uint32 sz  = waiter.p->m_size;
   Uint32 logfile_group_id = ptr.p->m_logfile_group_id;
-  if(waiter.p->m_size + 2*File_formats::UNDO_PAGE_WORDS < free_buffer)
+  if(sz + 2*File_formats::UNDO_PAGE_WORDS < free_buffer)
   {
     removed= true;
     Uint32 block = waiter.p->m_block;
@@ -2058,7 +2071,6 @@ Logfile_client::add_entry(const Change* src, Uint32 cnt)
 	}
 	* (dst - 1) |= File_formats::Undofile::UNDO_NEXT_LSN << 16;
 	ptr.p->m_free_file_words += 2;
-	ptr.p->m_free_buffer_words += 2;
 	m_lgman->validate_logfile_group(ptr);
       }
       else
@@ -2434,9 +2446,9 @@ Lgman::find_log_head_in_file(Signal* signal,
     infoEvent("Undo head - %s page: %d lsn: %lld",
 	      fs->get_filename(file_ptr.p->m_fd), 
 	      tail, file_ptr.p->m_online.m_lsn);
-    g_eventLogger.info("Undo head - %s page: %d lsn: %lld",
-		       fs->get_filename(file_ptr.p->m_fd), 
-		       tail, file_ptr.p->m_online.m_lsn);
+    g_eventLogger->info("Undo head - %s page: %d lsn: %lld",
+                        fs->get_filename(file_ptr.p->m_fd),
+                        tail, file_ptr.p->m_online.m_lsn);
     
     for(files.prev(file_ptr); !file_ptr.isNull(); files.prev(file_ptr))
     {
@@ -2444,9 +2456,9 @@ Lgman::find_log_head_in_file(Signal* signal,
 		fs->get_filename(file_ptr.p->m_fd), 
 		file_ptr.p->m_online.m_lsn);
 
-      g_eventLogger.info("   - next - %s(%lld)", 
-			 fs->get_filename(file_ptr.p->m_fd), 
-			 file_ptr.p->m_online.m_lsn);
+      g_eventLogger->info("   - next - %s(%lld)", 
+                          fs->get_filename(file_ptr.p->m_fd),
+                          file_ptr.p->m_online.m_lsn);
     }
   }
   
@@ -3001,17 +3013,17 @@ Lgman::stop_run_undo_log(Signal* signal)
 	m_file_pool.getPtr(tf, tail.m_ptr_i);
 	m_file_pool.getPtr(hf,  ptr.p->m_file_pos[HEAD].m_ptr_i);
 	infoEvent("Logfile group: %d ", ptr.p->m_logfile_group_id);
-	g_eventLogger.info("Logfile group: %d ", ptr.p->m_logfile_group_id);
+        g_eventLogger->info("Logfile group: %d ", ptr.p->m_logfile_group_id);
 	infoEvent("  head: %s page: %d",
-		  fs->get_filename(hf.p->m_fd), 
-		  ptr.p->m_file_pos[HEAD].m_idx);
-	g_eventLogger.info("  head: %s page: %d",
-			   fs->get_filename(hf.p->m_fd), 
-			   ptr.p->m_file_pos[HEAD].m_idx);
+                  fs->get_filename(hf.p->m_fd),
+                  ptr.p->m_file_pos[HEAD].m_idx);
+        g_eventLogger->info("  head: %s page: %d",
+                            fs->get_filename(hf.p->m_fd),
+                            ptr.p->m_file_pos[HEAD].m_idx);
 	infoEvent("  tail: %s page: %d",
 		  fs->get_filename(tf.p->m_fd), tail.m_idx);
-	g_eventLogger.info("  tail: %s page: %d",
-			   fs->get_filename(tf.p->m_fd), tail.m_idx);
+        g_eventLogger->info("  tail: %s page: %d",
+                            fs->get_filename(tf.p->m_fd), tail.m_idx);
       }
     }
     
@@ -3033,7 +3045,7 @@ Lgman::stop_run_undo_log(Signal* signal)
   }
   
   infoEvent("Flushing page cache after undo completion");
-  g_eventLogger.info("Flushing page cache after undo completion");
+  g_eventLogger->info("Flushing page cache after undo completion");
 
   /**
    * Start flushing pages (local, LCP)
@@ -3098,7 +3110,7 @@ Lgman::execEND_LCP_CONF(Signal* signal)
     ptr.p->m_last_synced_lsn = last_lsn;
   
   infoEvent("Flushing complete");
-  g_eventLogger.info("Flushing complete");
+  g_eventLogger->info("Flushing complete");
 
   signal->theData[0] = reference();
   sendSignal(DBLQH_REF, GSN_START_RECCONF, signal, 1, JBB);

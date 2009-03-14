@@ -12,6 +12,7 @@ let $default_checksum=`select @@global.maria_page_checksum`;
 set global storage_engine=maria;
 set session storage_engine=maria;
 set global maria_page_checksum=0;
+let $default_log_file_size=`select @@global.maria_log_file_size`;
 set global maria_log_file_size=4294967295;
 
 # Initialise
@@ -1407,8 +1408,9 @@ CREATE TABLE t1 (
   KEY (c1),
   KEY (c2)
 ) ENGINE=maria DEFAULT CHARSET=utf8 PACK_KEYS=0;
---replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
---exec $MARIA_CHK -d $MYSQLTEST_VARDIR/master-data/test/t1
+let $MYSQLD_DATADIR= `select @@datadir`;
+--replace_result $MYSQLD_DATADIR MYSQLD_DATADIR
+--exec $MARIA_CHK -d $MYSQLD_DATADIR/test/t1
 DROP TABLE t1;
 
 # Test warnings with transactional=1 with MyISAM
@@ -1470,31 +1472,6 @@ insert into t2 values (repeat('x',28)), (repeat('p',21)), (repeat('k',241)),
 
 check table t2 extended;
 drop table t2;
-
-#
-# an example of a deadlock
-#
-create table t1 (a int unique) transactional=1;
-insert t1 values (1);
-lock table t1 write concurrent;
-insert t1 values (2);
-connect(con_d,localhost,root,,);
-lock table t1 write concurrent;
-insert t1 values (3);
-send insert t1 values (2);
-connection default;
-let $wait_condition=select count(*) = 1 from information_schema.processlist where state="waiting for a resource";
---source include/wait_condition.inc
---error ER_LOCK_DEADLOCK
-insert t1 values (3);
-unlock tables;
-connection con_d;
---error ER_DUP_ENTRY
-reap;
-unlock tables;
-disconnect con_d;
-connection default;
-drop table t1;
 
 CREATE TABLE t1 (
 col0 float DEFAULT NULL,
@@ -1882,16 +1859,6 @@ ALTER TABLE t1 CHANGE c d varchar(10);
 drop table t1;
 
 #
-# Bug #39227 Maria: crash with ALTER TABLE PARTITION
-#
-
-create table t1 (s1 int);
-insert into t1 values (1);
---error ER_NO_PARTITION_FOR_GIVEN_VALUE
-alter table t1 partition by list (s1) (partition p1 values in (2));
-drop table t1;
-
-#
 # Bug #39226 Maria: crash with FLUSH TABLES WITH READ LOCK after LOCK TABLES
 #
 
@@ -1905,10 +1872,23 @@ unlock tables;
 drop table t1, t2;
 
 #
+# Bug #40311
+# Crash when aborting inserting of row with 2 blobs where first is short
+#
+
+create table t1(a int primary key, b blob, c blob) engine=maria;
+insert into t1 values(1,repeat('a',100), repeat('b',657860));
+--error ER_DUP_ENTRY
+insert into t1 values(1,repeat('a',100), repeat('b',657860));
+check table t1;
+drop table t1;
+
 # Set defaults back
 #
 --disable_result_log
 --disable_query_log
-eval set global storage_engine=$default_engine, maria_page_checksum=$default_checksum;
+eval set global storage_engine=$default_engine,
+maria_page_checksum=$default_checksum,
+maria_log_file_size=$default_log_file_size;
 --enable_result_log
 --enable_query_log

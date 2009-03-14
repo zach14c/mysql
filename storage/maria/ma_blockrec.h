@@ -122,6 +122,7 @@ static inline MARIA_RECORD_POS ma_recordpos(pgcache_page_no_t page,
                                             uint dir_entry)
 {
   DBUG_ASSERT(dir_entry <= 255);
+  DBUG_ASSERT(page > 0); /* page 0 is bitmap, not data page */
   return (MARIA_RECORD_POS) (((ulonglong) page << 8) | dir_entry);
 }
 
@@ -236,7 +237,11 @@ uint _ma_apply_redo_free_blocks(MARIA_HA *info, LSN lsn,
 uint _ma_apply_redo_free_head_or_tail(MARIA_HA *info, LSN lsn,
                                       const uchar *header);
 uint _ma_apply_redo_insert_row_blobs(MARIA_HA *info, LSN lsn,
-                                     const uchar *header, LSN redo_lsn);
+                                     const uchar *header, LSN redo_lsn,
+                                     uint * const number_of_blobs,
+                                     uint * const number_of_ranges,
+                                     pgcache_page_no_t * const first_page,
+                                     pgcache_page_no_t * const last_page);
 my_bool _ma_apply_redo_bitmap_new_page(MARIA_HA *info, LSN lsn,
                                        const uchar *header);
 my_bool _ma_apply_undo_row_insert(MARIA_HA *info, LSN undo_lsn,
@@ -271,6 +276,9 @@ my_bool write_hook_for_undo_bulk_insert(enum translog_record_type type,
 my_bool write_hook_for_file_id(enum translog_record_type type,
                                TRN *trn, MARIA_HA *tbl_info, LSN *lsn,
                                void *hook_arg);
+my_bool write_hook_for_commit(enum translog_record_type type,
+                              TRN *trn, MARIA_HA *tbl_info, LSN *lsn,
+                              void *hook_arg);
 void _ma_block_get_status(void* param, my_bool concurrent_insert);
 void _ma_block_update_status(void *param);
 void _ma_block_restore_status(void *param);

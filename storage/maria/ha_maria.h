@@ -1,4 +1,5 @@
-/* Copyright (C) 2006,2004 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006,2004 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,6 +28,10 @@
 #define HA_RECOVER_BACKUP       2       /* Make a backupfile on recover */
 #define HA_RECOVER_FORCE        4       /* Recover even if we loose rows */
 #define HA_RECOVER_QUICK        8       /* Don't check rows in data file */
+
+C_MODE_START
+my_bool index_cond_func_maria(void *arg);
+C_MODE_END
 
 extern ulong maria_sort_buffer_size;
 extern TYPELIB maria_recover_typelib;
@@ -62,7 +67,7 @@ public:
   {
     return ((table_share->key_info[inx].algorithm == HA_KEY_ALG_FULLTEXT) ?
             0 : HA_READ_NEXT | HA_READ_PREV | HA_READ_RANGE |
-            HA_READ_ORDER | HA_KEYREAD_ONLY);
+            HA_READ_ORDER | HA_KEYREAD_ONLY | HA_DO_INDEX_COND_PUSHDOWN);
   }
   uint max_supported_keys() const
   { return MARIA_MAX_KEY; }
@@ -104,6 +109,8 @@ public:
                                 key->charset(), table->record[0]);
   }
   int ft_read(uchar * buf);
+  int index_init(uint idx, bool sorted);
+  int index_end();
   int rnd_init(bool scan);
   int rnd_end(void);
   int rnd_next(uchar * buf);
@@ -112,6 +119,7 @@ public:
   int restart_rnd_next(uchar * buf);
   void position(const uchar * record);
   int info(uint);
+  int info(uint, my_bool);
   int extra(enum ha_extra_function operation);
   int extra_opt(enum ha_extra_function operation, ulong cache_size);
   int reset(void);
@@ -139,15 +147,12 @@ public:
   int repair(THD * thd, HA_CHECK_OPT * check_opt);
   bool check_and_repair(THD * thd);
   bool is_crashed() const;
+  bool is_changed() const;
   bool auto_repair() const { return 1; }
   int optimize(THD * thd, HA_CHECK_OPT * check_opt);
   int assign_to_keycache(THD * thd, HA_CHECK_OPT * check_opt);
   int preload_keys(THD * thd, HA_CHECK_OPT * check_opt);
   bool check_if_incompatible_data(HA_CREATE_INFO * info, uint table_changes);
-#ifdef HAVE_REPLICATION
-  int dump(THD * thd, int fd);
-  int net_read_dump(NET * net);
-#endif
 #ifdef HAVE_QUERY_CACHE
   my_bool register_query_cache_table(THD *thd, char *table_key,
                                      uint key_length,
@@ -160,4 +165,27 @@ public:
     return file;
   }
   static int implicit_commit(THD *thd, bool new_trn);
+  /**
+   * Multi Range Read interface
+   */
+  int multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
+                            uint n_ranges, uint mode, HANDLER_BUFFER *buf);
+  int multi_range_read_next(char **range_info);
+  ha_rows multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
+                                      void *seq_init_param, 
+                                      uint n_ranges, uint *bufsz,
+                                      uint *flags, COST_VECT *cost);
+  ha_rows multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                uint *bufsz, uint *flags, COST_VECT *cost);
+  
+  /* Index condition pushdown implementation */
+  Item *idx_cond_push(uint keyno, Item* idx_cond);
+private:
+  DsMrr_impl ds_mrr;
+  friend my_bool index_cond_func_maria(void *arg);
 };
+
+#if !defined(EMBEDDED_LIBRARY) && defined(HAVE_MARIA_PHYSICAL_LOGGING)
+// If embedded, there is no online backup
+Backup_result_t maria_backup_engine(handlerton *self, Backup_engine* &be);
+#endif

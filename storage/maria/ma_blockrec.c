@@ -453,7 +453,7 @@ my_bool _ma_once_end_block_record(MARIA_SHARE *share)
   {
     /*
       We de-assign the id even though index has not been flushed, this is ok
-      as intern_lock serializes us with a Checkpoint looking at our share.
+      as close_lock serializes us with a Checkpoint looking at our share.
     */
     translog_deassign_id_from_share(share);
   }
@@ -2408,11 +2408,23 @@ static my_bool free_full_page_range(MARIA_HA *info, pgcache_page_no_t page,
                                     uint count)
 {
   my_bool res= 0;
+  uint delete_count;
   MARIA_SHARE *share= info->s;
   DBUG_ENTER("free_full_page_range");
 
-  if (pagecache_delete_pages(share->pagecache, &info->dfile,
-                             page, count, PAGECACHE_LOCK_WRITE, 0))
+  delete_count= count;
+  if (share->state.state.data_file_length ==
+      (page + count) * share->block_size)
+  {
+    /*
+      Don't delete last page from pagecache as this will make the file
+      shorter than expected if the last operation extended the file
+    */
+    delete_count--;
+  }
+  if (delete_count &&
+      pagecache_delete_pages(share->pagecache, &info->dfile,
+                             page, delete_count, PAGECACHE_LOCK_WRITE, 0))
     res= 1;
 
   if (share->now_transactional)
@@ -3134,8 +3146,8 @@ static my_bool write_block_record(MARIA_HA *info,
 
           log_pos= store_page_range(log_pos, tmp_block, block_size,
                                     blob_length, &extents);
-          tmp_block+= tmp_block->sub_blocks;
         }
+        tmp_block+= tmp_block->sub_blocks;
       }
     }
 
@@ -3489,23 +3501,26 @@ my_bool _ma_write_abort_block_record(MARIA_HA *info)
   for (block= blocks->block + 1, end= block + blocks->count - 1; block < end;
        block++)
   {
-    if (block->used & BLOCKUSED_TAIL)
+    if (block->used & BLOCKUSED_USED)
     {
-      /*
-        block->page_count is set to the tail directory entry number in
-        write_block_record()
-      */
-      if (delete_head_or_tail(info, block->page, block->page_count & ~TAIL_BIT,
-                              0, 0))
-        res= 1;
-    }
-    else if (block->used & BLOCKUSED_USED)
-    {
-      if (free_full_page_range(info, block->page, block->page_count))
-        res= 1;
+      if (block->used & BLOCKUSED_TAIL)
+      {
+        /*
+          block->page_count is set to the tail directory entry number in
+          write_block_record()
+        */
+        if (delete_head_or_tail(info, block->page,
+                                block->page_count & ~TAIL_BIT,
+                                0, 0))
+          res= 1;
+      }
+      else
+      {
+        if (free_full_page_range(info, block->page, block->page_count))
+          res= 1;
+      }
     }
   }
-
   if (share->now_transactional)
   {
     if (_ma_write_clr(info, info->cur_row.orig_undo_lsn,
@@ -5914,7 +5929,7 @@ my_bool write_hook_for_file_id(enum translog_record_type type
                                TRN *trn
                                __attribute__ ((unused)),
                                MARIA_HA *tbl_info,
-                               LSN *lsn __attribute__ ((unused)),
+                               LSN *lsn,
                                void *hook_arg
                                __attribute__ ((unused)))
 {
@@ -5922,6 +5937,44 @@ my_bool write_hook_for_file_id(enum translog_record_type type
   tbl_info->s->lsn_of_file_id= *lsn;
   return 0;
 }
+
+
+/**
+   Updates transaction's rec_lsn when committing.
+
+   A transaction writes its commit record before being committed in trnman, so
+   if Checkpoint happens just between the COMMIT record log write and the
+   commit in trnman, it will record that transaction is not committed. Assume
+   the transaction (trn1) did an INSERT; after the checkpoint, a second
+   transaction (trn2) does a DELETE of what trn1 has inserted. Then crash,
+   Checkpoint record says that trn1 was not committed, and REDO phase starts
+   from Checkpoint record's LSN. So it will not find the COMMIT record of
+   trn1, will want to roll back trn1, which will fail because the row/key
+   which it wants to delete does not exist anymore.
+   To avoid this, Checkpoint needs to know that the REDO phase must start
+   before this COMMIT record, so transaction sets its rec_lsn to the COMMIT's
+   record LSN, and as Checkpoint reads the transaction's rec_lsn, Checkpoint
+   will know.
+
+   @note so after commit trn->rec_lsn is a "commit LSN", which could be of
+   use later.
+
+   @return Operation status, always 0 (success)
+*/
+
+my_bool write_hook_for_commit(enum translog_record_type type
+                              __attribute__ ((unused)),
+                              TRN *trn,
+                              MARIA_HA *tbl_info
+                              __attribute__ ((unused)),
+                              LSN *lsn,
+                              void *hook_arg
+                              __attribute__ ((unused)))
+{
+  trn->rec_lsn= *lsn;
+  return 0;
+}
+
 
 /***************************************************************************
   Applying of REDO log records
@@ -6129,6 +6182,7 @@ err:
                              PAGECACHE_UNPIN, LSN_IMPOSSIBLE,
                              LSN_IMPOSSIBLE, 0, FALSE);
   _ma_mark_file_crashed(share);
+  DBUG_ASSERT(0); /* catch recovery errors early */
   DBUG_RETURN((my_errno= error));
 }
 
@@ -6227,6 +6281,7 @@ err:
                            PAGECACHE_UNPIN, LSN_IMPOSSIBLE,
                            LSN_IMPOSSIBLE, 0, FALSE);
   _ma_mark_file_crashed(share);
+  DBUG_ASSERT(0);
   DBUG_RETURN((my_errno= error));
 
 }
@@ -6284,6 +6339,7 @@ uint _ma_apply_redo_free_blocks(MARIA_HA *info,
     if (res)
     {
       _ma_mark_file_crashed(share);
+      DBUG_ASSERT(0);
       DBUG_RETURN(res);
     }
   }
@@ -6367,6 +6423,7 @@ uint _ma_apply_redo_free_head_or_tail(MARIA_HA *info, LSN lsn,
 
 err:
   _ma_mark_file_crashed(share);
+  DBUG_ASSERT(0);
   DBUG_RETURN(1);
 }
 
@@ -6378,6 +6435,10 @@ err:
    @parma  lsn             LSN to put on pages
    @param  header          Header (with FILEID)
    @param  redo_lsn        REDO record's LSN
+   @param[out] number_of_blobs Number of blobs found in log record
+   @param[out] number_of_ranges Number of ranges found
+   @param[out] first_page  First page touched
+   @param[out] last_page   Last page touched
 
    @note Write full pages (full head & blob pages)
 
@@ -6388,13 +6449,18 @@ err:
 
 uint _ma_apply_redo_insert_row_blobs(MARIA_HA *info,
                                      LSN lsn, const uchar *header,
-                                     LSN redo_lsn)
+                                     LSN redo_lsn,
+                                     uint * const number_of_blobs,
+                                     uint * const number_of_ranges,
+                                     pgcache_page_no_t * const first_page,
+                                     pgcache_page_no_t * const last_page)
 {
   MARIA_SHARE *share= info->s;
   const uchar *data;
   uint      data_size= FULL_PAGE_SIZE(share->block_size);
   uint      blob_count, ranges;
   uint16    sid;
+  pgcache_page_no_t first_page2= ULONGLONG_MAX, last_page2= 0;
   DBUG_ENTER("_ma_apply_redo_insert_row_blobs");
 
   share->state.changed|= (STATE_CHANGED | STATE_NOT_ZEROFILLED |
@@ -6402,9 +6468,9 @@ uint _ma_apply_redo_insert_row_blobs(MARIA_HA *info,
 
   sid= fileid_korr(header);
   header+= FILEID_STORE_SIZE;
-  ranges= pagerange_korr(header);
+  *number_of_ranges= ranges= pagerange_korr(header);
   header+= PAGERANGE_STORE_SIZE;
-  blob_count= pagerange_korr(header);
+  *number_of_blobs= blob_count= pagerange_korr(header);
   header+= PAGERANGE_STORE_SIZE;
   DBUG_ASSERT(ranges >= blob_count);
 
@@ -6442,6 +6508,8 @@ uint _ma_apply_redo_insert_row_blobs(MARIA_HA *info,
         enum pagecache_page_pin unpin_method;
         uint length;
 
+        set_if_smaller(first_page2, page);
+        set_if_bigger(last_page2, page);
         if (_ma_redo_not_needed_for_page(sid, redo_lsn, page, FALSE))
           continue;
 
@@ -6492,15 +6560,22 @@ uint _ma_apply_redo_insert_row_blobs(MARIA_HA *info,
           }
           else
           {
+#ifndef DBUG_OFF
+            uchar found_page_type= (buff[PAGE_TYPE_OFFSET] & PAGE_TYPE_MASK);
+#endif
             if (lsn_korr(buff) >= lsn)
             {
               /* Already applied */
+              DBUG_PRINT("info", ("already applied %llu >= %llu",
+                                  lsn_korr(buff), lsn));
               pagecache_unlock_by_link(share->pagecache, page_link.link,
                                        PAGECACHE_LOCK_WRITE_UNLOCK,
                                        PAGECACHE_UNPIN, LSN_IMPOSSIBLE,
                                        LSN_IMPOSSIBLE, 0, FALSE);
               continue;
             }
+            DBUG_ASSERT((found_page_type == (uchar) BLOB_PAGE) ||
+                        (found_page_type == (uchar) UNALLOCATED_PAGE));
           }
           unlock_method= PAGECACHE_LOCK_WRITE_UNLOCK;
           unpin_method=  PAGECACHE_UNPIN;
@@ -6542,10 +6617,13 @@ uint _ma_apply_redo_insert_row_blobs(MARIA_HA *info,
         goto err;
     }
   }
+  *first_page= first_page2;
+  *last_page=  last_page2;
   DBUG_RETURN(0);
 
 err:
   _ma_mark_file_crashed(share);
+  DBUG_ASSERT(0);
   DBUG_RETURN(1);
 }
 
@@ -7037,7 +7115,10 @@ my_bool _ma_apply_undo_bulk_insert(MARIA_HA *info, LSN undo_lsn)
   error= (maria_delete_all_rows(info) ||
           maria_enable_indexes(info) ||
           /* we enabled indices so need '2' below */
-          _ma_state_info_write(info->s, 1|2|4) ||
+          _ma_state_info_write(info->s,
+                               MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET |
+                               MA_STATE_INFO_WRITE_FULL_INFO |
+                               MA_STATE_INFO_WRITE_LOCK) ||
           _ma_write_clr(info, undo_lsn, LOGREC_UNDO_BULK_INSERT,
                         FALSE, 0, &lsn, NULL));
   DBUG_RETURN(error);

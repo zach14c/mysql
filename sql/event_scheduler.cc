@@ -97,10 +97,11 @@ Event_worker_thread::print_warnings(THD *thd, Event_job_data *et)
     /* set it to 0 or we start adding at the end. That's the trick ;) */
     err_msg.length(0);
     err_msg.append(prefix);
-    err_msg.append(err->msg, strlen(err->msg), system_charset_info);
-    DBUG_ASSERT(err->level < 3);
-    (sql_print_message_handlers[err->level])("%*s", err_msg.length(),
-                                              err_msg.c_ptr());
+    err_msg.append(err->get_message_text(),
+                   err->get_message_octet_length(), system_charset_info);
+    DBUG_ASSERT(err->get_level() < 3);
+    (sql_print_message_handlers[err->get_level()])("%*s", err_msg.length(),
+                                                   err_msg.c_ptr());
   }
   DBUG_VOID_RETURN;
 }
@@ -336,6 +337,14 @@ Event_scheduler::Event_scheduler(Event_queue *queue_arg)
 {
   pthread_mutex_init(&LOCK_scheduler_state, MY_MUTEX_INIT_FAST);
   pthread_cond_init(&COND_state, NULL);
+
+#ifdef SAFE_MUTEX
+  /* Ensure right mutex order */
+  pthread_mutex_lock(&LOCK_scheduler_state);
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  pthread_mutex_unlock(&LOCK_global_system_variables);
+  pthread_mutex_unlock(&LOCK_scheduler_state);
+#endif
 }
 
 

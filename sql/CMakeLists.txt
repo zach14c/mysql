@@ -14,12 +14,19 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 INCLUDE("${PROJECT_SOURCE_DIR}/win/mysql_manifest.cmake")
 
+IF(MSVC)
+    #Innodb plugin needs linker-generated map file to locate server exports
+    #see bug#42001
+    SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /MAP /MAPINFO:EXPORTS")
+ENDIF(MSVC)
+
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include 
                     ${CMAKE_SOURCE_DIR}/extra/yassl/include 
                     ${CMAKE_SOURCE_DIR}/sql 
                     ${CMAKE_SOURCE_DIR}/regex 
                     ${CMAKE_SOURCE_DIR}/zlib
                     ${CMAKE_SOURCE_DIR}/sql/backup
+                    ${CMAKE_SOURCE_DIR}/extra/libevent
 )
 
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_SOURCE_DIR}/sql/sql_yacc.h 
@@ -54,9 +61,10 @@ ADD_EXECUTABLE(mysqld
                sp_rcontext.cc spatial.cc sql_acl.cc sql_analyse.cc sql_base.cc 
                sql_cache.cc sql_class.cc sql_client.cc sql_crypt.cc sql_crypt.h 
                sql_cursor.cc sql_db.cc sql_delete.cc sql_derived.cc sql_do.cc 
-               sql_error.cc sql_handler.cc sql_help.cc sql_insert.cc sql_lex.cc 
-               sql_list.cc sql_load.cc sql_manager.cc sql_map.cc sql_parse.cc 
-               sql_partition.cc sql_plugin.cc sql_prepare.cc sql_rename.cc 
+               sql_error.cc sql_handler.cc sql_help.cc sql_insert.cc
+               sql_join_cache.cc sql_lex.cc sql_list.cc sql_load.cc sql_manager.cc
+               sql_map.cc sql_parse.cc  sql_partition.cc sql_plugin.cc
+               sql_prepare.cc sql_rename.cc 
                debug_sync.cc
                sql_repl.cc sql_select.cc sql_show.cc sql_state.c sql_string.cc 
                sql_table.cc sql_test.cc sql_trigger.cc sql_udf.cc sql_union.cc
@@ -69,8 +77,8 @@ ADD_EXECUTABLE(mysqld
                rpl_rli.cc rpl_mi.cc sql_servers.cc sql_audit.cc
                sql_connect.cc scheduler.cc transaction.cc
                ddl_blocker.cc si_objects.cc si_logs.cc
-               sql_profile.cc event_parse_data.cc mdl.cc
-               rpl_handler.cc
+               sql_profile.cc event_parse_data.cc mdl.cc rpl_handler.cc
+               sql_signal.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.h
                ${PROJECT_SOURCE_DIR}/include/mysqld_error.h
@@ -81,8 +89,9 @@ ADD_EXECUTABLE(mysqld
                ${PROJECT_SOURCE_DIR}/sql/lex_hash.h)
 
 TARGET_LINK_LIBRARIES(mysqld
-                      heap myisam myisammrg mysys yassl zlib dbug yassl 
+                      heap myisam myisammrg mysys yassl zlib dbug yassl libevent
                       taocrypt strings vio regex)
+
 
 TARGET_LINK_LIBRARIES(mysqld backup)
 

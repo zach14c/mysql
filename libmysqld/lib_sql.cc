@@ -139,7 +139,7 @@ emb_advanced_command(MYSQL *mysql, enum enum_server_command command,
   return result;
 }
 
-static void emb_flush_use_result(MYSQL *mysql)
+static void emb_flush_use_result(MYSQL *mysql, my_bool)
 {
   THD *thd= (THD*) mysql->thd;
   if (thd->cur_data)
@@ -1031,7 +1031,7 @@ bool Protocol_binary::write()
 void
 net_send_ok(THD *thd,
             uint server_status, uint statement_warn_count,
-            ha_rows affected_rows, ulonglong id, const char *message)
+            ulonglong affected_rows, ulonglong id, const char *message)
 {
   DBUG_ENTER("emb_net_send_ok");
   MYSQL_DATA *data;
@@ -1069,14 +1069,15 @@ net_send_eof(THD *thd, uint server_status, uint statement_warn_count)
 }
 
 
-void net_send_error_packet(THD *thd, uint sql_errno, const char *err)
+void net_send_error_packet(THD *thd, uint sql_errno, const char *err,
+                           const char* sqlstate)
 {
   MYSQL_DATA *data= thd->cur_data ? thd->cur_data : thd->alloc_new_dataset();
   struct embedded_query_result *ei= data->embedded_info;
 
   ei->last_errno= sql_errno;
   strmake(ei->info, err, sizeof(ei->info)-1);
-  strmov(ei->sqlstate, mysql_errno_to_sqlstate(sql_errno));
+  strmov(ei->sqlstate, sqlstate);
   ei->server_status= thd->server_status;
   thd->cur_data= 0;
 }

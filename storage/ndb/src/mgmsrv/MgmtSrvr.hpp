@@ -444,7 +444,7 @@ public:
 
   int connect_to_self(const char* bindaddress = 0);
 
-  void transporter_connect(NDB_SOCKET_TYPE sockfd);
+  bool transporter_connect(NDB_SOCKET_TYPE sockfd);
 
   ConfigRetriever *get_config_retriever() { return m_config_retriever; };
 
@@ -492,6 +492,10 @@ private:
   int getBlockNumber(const BaseString &blockName);
 
   int alloc_node_id_req(NodeId free_node_id, enum ndb_mgm_node_type type);
+
+  int check_nodes_starting();
+  int check_nodes_stopping();
+
   //**************************************************************************
   
   int _blockNumber;

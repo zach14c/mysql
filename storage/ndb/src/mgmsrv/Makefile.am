@@ -40,9 +40,9 @@ INCLUDES_LOC = -I$(top_srcdir)/storage/ndb/src/ndbapi \
 
 LDADD_LOC = $(top_builddir)/storage/ndb/src/mgmclient/CommandInterpreter.lo \
             $(top_builddir)/storage/ndb/src/libndbclient.la \
-            $(top_builddir)/dbug/libdbug.a \
-            $(top_builddir)/mysys/libmysys.a \
-            $(top_builddir)/strings/libmystrings.a \
+            $(top_builddir)/dbug/libdbuglt.la \
+            $(top_builddir)/mysys/libmysyslt.la \
+            $(top_builddir)/strings/libmystringslt.la \
             @readline_link@ \
             @NDB_SCI_LIBS@ \
 	    @TERMCAP_LIB@
@@ -57,9 +57,6 @@ include $(top_srcdir)/storage/ndb/config/type_ndbapi.mk.am
 
 ndb_mgmd_LDFLAGS = @ndb_bin_am_ldflags@
 
-# Don't update the files from bitkeeper
-%::SCCS/s.%
-
 windoze-dsp: ndb_mgmd.dsp
 
 ndb_mgmd.dsp: Makefile \
@@ -70,6 +67,6 @@ ndb_mgmd.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ $(ndbbin_PROGRAMS)
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_mgmd_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)

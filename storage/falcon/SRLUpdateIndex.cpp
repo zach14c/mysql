@@ -40,20 +40,27 @@ SRLUpdateIndex::~SRLUpdateIndex(void)
 
 void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 {
-	Sync syncDI(&deferredIndex->syncObject, "SRLUpdateIndex::append(DI)");
-	syncDI.lock(Shared);
-
-	if (!deferredIndex->index)
-		return;
-
-	uint indexId = deferredIndex->index->indexId;
-	int idxVersion = deferredIndex->index->indexVersion;
-	int tableSpaceId = deferredIndex->index->dbb->tableSpaceId;
-
-	syncDI.unlock();
+	// To ensure coordination with a concurrent SRLDeleteIndex, grab syncIndexes
+	// before getting the index id from the DeferredIndex.
 
 	Sync syncIndexes(&log->syncIndexes, "SRLUpdateIndex::append(Indexes)");
 	syncIndexes.lock(Shared);
+	
+	Sync syncDI(&deferredIndex->syncObject, "SRLUpdateIndex::append(DI)");
+	syncDI.lock(Shared);
+
+	Index* index = deferredIndex->index;
+
+	// A null index or indexId == -1 means that the index has been deleted
+	
+	if (!index || index->indexId == -1)
+		return;
+	
+	int idxId = index->indexId;
+	int idxVersion = index->indexVersion;
+	int tableSpaceId = index->dbb->tableSpaceId;
+
+	syncDI.unlock();
 
 	Transaction *transaction = deferredIndex->transaction;
 	DeferredIndexWalker walker(deferredIndex, NULL);
@@ -70,7 +77,7 @@ void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 		if (virtualOffset == 0)
 			virtualOffset = log->startRecordVirtualOffset;
 
-		log->updateIndexUseVector(indexId, tableSpaceId, 1);
+		log->updateIndexUseVector(idxId, tableSpaceId, 1);
 		SerialLogTransaction *srlTrans = log->getTransaction(transaction->transactionId);
 		srlTrans->setTransaction(transaction);
 		ASSERT(transaction->writePending);
@@ -79,7 +86,7 @@ void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 		
 		putInt(tableSpaceId);
 		putInt(transaction->transactionId);
-		putInt(indexId);
+		putInt(idxId);
 		putInt(idxVersion);
 		
 		// Initialize the length field, adjust with correct length later.
@@ -105,7 +112,7 @@ void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 			}
 		
 		int len = (int) (log->writePtr - start);
-		//printf("SRLUpdateIndex::append tid %d, index %d, length %d, ptr %x (%x)\n",  transaction->transactionId, indexId, len, lengthPtr, org);
+		//printf("SRLUpdateIndex::append tid %d, index %d, length %d, ptr %x (%x)\n",  transaction->transactionId, idxId, len, lengthPtr, org);
 		ASSERT(len >= 0);
 
 		// Update the length field

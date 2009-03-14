@@ -52,7 +52,6 @@ extern "C" {
   The following defines can be increased if necessary.
   But beware the dependency of MI_MAX_POSSIBLE_KEY_BUFF and MI_MAX_KEY_LENGTH.
 */
-#define MI_MAX_KEY_LENGTH           1332            /* Max length in bytes */
 #define MI_MAX_KEY_SEG              16              /* Max segments for key */
 
 #define MI_MAX_POSSIBLE_KEY_BUFF    HA_MAX_POSSIBLE_KEY_BUFF
@@ -66,6 +65,8 @@ extern "C" {
 #define MI_KEY_BLOCK_LENGTH	1024	/* default key block length */
 #define MI_MIN_KEY_BLOCK_LENGTH	1024	/* Min key block length */
 #define MI_MAX_KEY_BLOCK_LENGTH	16384
+
+#define mi_portable_sizeof_char_ptr 8
 
 /*
   In the following macros '_keyno_' is 0 .. keys-1.
@@ -189,7 +190,7 @@ typedef struct st_mi_keydef		/* Key definition with open & info */
   uint16 maxlength;			/* max length of (packed) key (auto) */
   uint16 block_size_index;		/* block_size (auto) */
   uint32 version;			/* For concurrent read/write */
-  uint32 ftparser_nr;                   /* distinct ftparser number */
+  uint32 ftkey_nr;                      /* full-text index number */
 
   HA_KEYSEG *seg,*end;
   struct st_mysql_ftparser *parser;     /* Fulltext [pre]parser */

@@ -84,6 +84,3 @@ EXTRA_DIST =		FINISH.sh \
 			compile-sparc \
 			compile-sparc-debug \
 			compile-sparc-debug-max-no-ndb
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

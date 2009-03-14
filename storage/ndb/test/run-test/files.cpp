@@ -116,6 +116,11 @@ setup_files(atrt_config& config, int setup, int sshx)
   BaseString mycnf;
   mycnf.assfmt("%s/my.cnf", g_basedir);
   
+  if (!create_directory(g_basedir))
+  {
+    return false;
+  }
+
   if (mycnf != g_my_cnf)
   {
     struct stat sbuf;
@@ -270,21 +275,23 @@ setup_files(atrt_config& config, int setup, int sshx)
       }
       free(env);
       
-      tmp.assfmt("%s/ssh-login.sh", proc.m_proc.m_cwd.c_str());
-      FILE* fenv = fopen(tmp.c_str(), "w+");
-      if (fenv == 0)
       {
-	g_logger.error("Failed to open %s for writing", tmp.c_str());
-	return false;
+        tmp.assfmt("%s/ssh-login.sh", proc.m_proc.m_cwd.c_str());
+        FILE* fenv = fopen(tmp.c_str(), "w+");
+        if (fenv == 0)
+        {
+          g_logger.error("Failed to open %s for writing", tmp.c_str());
+          return false;
+        }
+        fprintf(fenv, "#!/bin/sh\n");
+        fprintf(fenv, "cd %s\n", proc.m_proc.m_cwd.c_str());
+        fprintf(fenv, "[ -f /etc/profile ] && . /etc/profile\n");
+        fprintf(fenv, ". env.sh\n");
+        fprintf(fenv, "ulimit -Sc unlimited\n");
+        fprintf(fenv, "bash -i");
+        fflush(fenv);
+        fclose(fenv);
       }
-      fprintf(fenv, "#!/bin/sh\n");
-      fprintf(fenv, "cd %s\n", proc.m_proc.m_cwd.c_str());
-      fprintf(fenv, "[ -f /etc/profile ] && . /etc/profile\n");
-      fprintf(fenv, ". env.sh\n");
-      fprintf(fenv, "ulimit -Sc unlimited\n");
-      fprintf(fenv, "bash -i");
-      fflush(fenv);
-      fclose(fenv);
     }
   }
   

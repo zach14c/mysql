@@ -82,7 +82,7 @@ void print_cached_tables(void)
 
   for (idx=unused=0 ; idx < table_def_cache.records ; idx++)
   {
-    share= (TABLE_SHARE*) hash_element(&table_def_cache, idx);
+    share= (TABLE_SHARE*) my_hash_element(&table_def_cache, idx);
 
     I_P_List_iterator<TABLE, TABLE_share> it(share->used_tables);
     while ((entry= it++))
@@ -121,7 +121,7 @@ void print_cached_tables(void)
     printf("Unused_links (%d) doesn't match table_def_cache: %d\n", count,
            unused);
   printf("\nCurrent refresh version: %ld\n",refresh_version);
-  if (hash_check(&table_def_cache))
+  if (my_hash_check(&table_def_cache))
     printf("Error: Table definition hash table is corrupted\n");
   fflush(stdout);
   pthread_mutex_unlock(&LOCK_open);
@@ -247,6 +247,7 @@ void print_keyuse(KEYUSE *keyuse)
 }
 
 
+/* purecov: begin inspected */
 void print_keyuse_array(DYNAMIC_ARRAY *keyuse_array)
 {
   DBUG_LOCK_FILE;
@@ -317,7 +318,7 @@ print_plan(JOIN* join, uint idx, double record_count, double read_time,
     pos = join->positions[i];
     table= pos.table->table;
     if (table)
-      fputs(table->s->table_name.str, DBUG_FILE);
+      fputs(table->alias, DBUG_FILE);
     fputc(' ', DBUG_FILE);
   }
   fputc('\n', DBUG_FILE);
@@ -334,7 +335,7 @@ print_plan(JOIN* join, uint idx, double record_count, double read_time,
       pos= join->best_positions[i];
       table= pos.table->table;
       if (table)
-        fputs(table->s->table_name.str, DBUG_FILE);
+        fputs(table->alias, DBUG_FILE);
       fputc(' ', DBUG_FILE);
     }
   }
@@ -357,6 +358,26 @@ print_plan(JOIN* join, uint idx, double record_count, double read_time,
   DBUG_UNLOCK_FILE;
 }
 
+
+void print_sjm(SJ_MATERIALIZATION_INFO *sjm)
+{
+  DBUG_LOCK_FILE;
+  fprintf(DBUG_FILE, "\nsemi-join nest{\n");
+  fprintf(DBUG_FILE, "  tables { \n");
+  for (uint i= 0;i < sjm->tables; i++)
+  {
+    fprintf(DBUG_FILE, "    %s%s\n", 
+            sjm->positions[i].table->table->alias,
+            (i == sjm->tables -1)? "": ",");
+  }
+  fprintf(DBUG_FILE, "  }\n");
+  fprintf(DBUG_FILE, "  materialize_cost= %g\n",
+          sjm->materialization_cost.total_cost());
+  fprintf(DBUG_FILE, "  rows= %g\n", sjm->rows);
+  fprintf(DBUG_FILE, "}\n");
+  DBUG_UNLOCK_FILE;
+}
+/* purecov: end */
 #endif
 
 typedef struct st_debug_lock
@@ -561,7 +582,7 @@ Next alarm time: %lu\n",
   fprintf(stdout,"\nBegin safemalloc memory dump:\n"); // tag needed for test suite
   TERMINATE(stdout, 1);				// Write malloc information
   fprintf(stdout,"\nEnd safemalloc memory dump.\n");  
-
+  fflush(stdout);
 #ifdef HAVE_MALLINFO
   struct mallinfo info= mallinfo();
   printf("\nMemory status:\n\

@@ -176,7 +176,8 @@ private:
   friend class Ndb;
   friend class Ndb_cluster_connection_impl;
   friend class NdbTransaction;
-  
+  friend class NdbDictInterface;
+
   int sendSignalUnCond(NdbApiSignal *, NodeId nodeId);
 
   bool isConnected(NodeId aNodeId);
@@ -322,7 +323,9 @@ TransporterFacade::unlock_mutex()
 inline
 unsigned Ndb_cluster_connection_impl::get_connect_count() const
 {
-  return m_transporter_facade->theClusterMgr->m_connect_count;
+  if (m_transporter_facade->theClusterMgr)
+    return m_transporter_facade->theClusterMgr->m_connect_count;
+  return 0;
 }
 
 inline
@@ -350,9 +353,12 @@ TransporterFacade::getNodeGrp(NodeId n) const {
 inline
 bool
 TransporterFacade::get_node_alive(NodeId n) const {
-
-  const ClusterMgr::Node & node = theClusterMgr->getNodeInfo(n);
-  return node.m_alive;
+  if (theClusterMgr)
+  {
+    const ClusterMgr::Node & node = theClusterMgr->getNodeInfo(n);
+    return node.m_alive;
+  }
+  return 0;
 }
 
 inline

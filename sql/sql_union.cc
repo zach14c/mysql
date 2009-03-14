@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -500,11 +500,6 @@ bool st_select_lex_unit::exec()
           (select_limit_cnt == HA_POS_ERROR || sl->braces) ?
           sl->options & ~OPTION_FOUND_ROWS : sl->options | found_rows_for_union;
 
-        /* dump_TABLE_LIST_struct(select_lex, select_lex->leaf_tables); */
-        if (sl->join->flatten_subqueries())
-          DBUG_RETURN(TRUE);
-
-        /* dump_TABLE_LIST_struct(select_lex, select_lex->leaf_tables); */
 	saved_error= sl->join->optimize();
       }
       if (!saved_error)

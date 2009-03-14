@@ -10,14 +10,22 @@
 connect (backup,localhost,root,,);
 connect (breakpoints,localhost,root,,);
 
+# Suppress warning about expected backup/restore errors
+disable_query_log;
+call mtr.add_suppression("Backup:");
+call mtr.add_suppression("Restore:");
+enable_query_log;
+
 ##############################################################
 --echo
 --echo starting the test for backup
 --echo
 ##############################################################
 
+
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview.bak
+remove_file $MYSQLD_DATADIR/bup_objectview.bak;
 
 #Create Database and object view for this test.
 
@@ -205,14 +213,14 @@ DROP DATABASE bup_db2;
 
 --echo restore database with view dependency to other, non-existing db
 
---error ER_BACKUP_CANT_RESTORE_VIEW
+--error ER_NO_SUCH_TABLE
 RESTORE FROM 'bup_objectview1.bak';
 
 # An incomplete bup_db1 was created by the failing restore operation.
 # Remove it before trying restore of bup_db2.
 DROP DATABASE bup_db1;
 
---error ER_BACKUP_CANT_RESTORE_VIEW
+--error ER_NO_SUCH_TABLE
 RESTORE FROM 'bup_objectview2.bak';
 
 # An incomplete bup_db2 was created by the failing restore operation.
@@ -374,14 +382,7 @@ DROP TABLE bup_db2.t2;
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview.bak
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview1.bak
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview2.bak
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview3.bak
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_shouldfail1.bak
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_shouldfail2.bak
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_alterview.bak
-
+remove_file $MYSQLD_DATADIR/bup_objectview.bak;
+remove_file $MYSQLD_DATADIR/bup_objectview1.bak;
+remove_file $MYSQLD_DATADIR/bup_objectview2.bak;
+remove_file $MYSQLD_DATADIR/bup_objectview3.bak;

@@ -70,6 +70,19 @@ public:
 	virtual int		index_end(void);
 	virtual int		index_first(uchar* buf);
 	virtual int		index_next(uchar *buf);
+
+	// Multi Range Read interface
+	virtual int		multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
+										  uint n_ranges, uint mode, HANDLER_BUFFER *buf);
+	virtual int		multi_range_read_next(char **range_info);
+	virtual ha_rows	multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
+												void *seq_init_param, 
+												uint n_ranges, uint *bufsz,
+												uint *flags, COST_VECT *cost);
+	virtual ha_rows	multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+										  uint *bufsz, uint *flags, COST_VECT *cost);
+	// Multi Range Read interface ends
+
 	virtual int		index_next_same(uchar *buf, const uchar *key, uint key_len);
 
 	virtual ha_rows	records_in_range(uint index,
@@ -113,25 +126,29 @@ public:
 	int				dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
 
 	void			getDemographics(void);
-	int				createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
-	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId, bool online);
-	void			getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexInfo);
+	int				createIndex(const char *schemaName, const char *tableName, TABLE *srvTable, int indexId);
+	int				dropIndex(const char *schemaName, const char *tableName, TABLE *srvTable, int indexId, bool online);
+	void			getKeyDesc(TABLE *srvTable, int indexId, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
 	int				threadSwitchError(void);
 	int				error(int storageError);
 	void			freeActiveBlobs(void);
-	int				setIndex(TABLE *table, int indexId);
-	int				setIndexes(TABLE *table);
-	int				remapIndexes(TABLE *table);
-	bool			validateIndexes(TABLE *table, bool exclusiveLock = false);
-	int				genTable(TABLE* table, CmdGen* gen);
+	int				setIndex(TABLE *srvTable, int indexId);
+	int				setIndexes(TABLE *srvTable);
+	int				remapIndexes(TABLE *srvTable);
+	bool			validateIndexes(TABLE *srvTable, bool exclusiveLock = false);
+	int				genTable(TABLE* srvTable, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);
 	void			genKeyFields(KEY *key, CmdGen *gen);
 	void			encodeRecord(uchar *buf, bool updateFlag);
 	void			decodeRecord(uchar *buf);
 	void			unlockTable(void);
 	void			checkBinLog(void);
+	int			scanRange(const key_range *startKey,
+					  const key_range *endKey,
+					  bool eqRange);
+	int			fillMrrBitmap();
 	void			mapFields(TABLE *table);
 	void			unmapFields(void);
 
@@ -200,6 +217,7 @@ public:
 	key_range			endKey;
 	uint64				insertCount;
 	ulonglong			tableFlags;
+	bool				useDefaultMrrImpl;
 };
 
 class NfsPluginHandler

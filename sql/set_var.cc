@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -73,6 +73,7 @@ extern ulong ndb_extra_logging;
 #ifdef HAVE_NDB_BINLOG
 extern ulong ndb_report_thresh_binlog_epoch_slip;
 extern ulong ndb_report_thresh_binlog_mem_usage;
+extern my_bool ndb_log_binlog_index;
 #endif
 
 extern CHARSET_INFO *character_set_filesystem;
@@ -301,6 +302,11 @@ static sys_var_const    sys_ft_query_expansion_limit(&vars,
 static sys_var_const    sys_ft_stopword_file(&vars, "ft_stopword_file",
                                              OPT_GLOBAL, SHOW_CHAR_PTR,
                                              (uchar*) &ft_stopword_file);
+
+static sys_var_const    sys_ignore_builtin_innodb(&vars, "ignore_builtin_innodb",
+                                                  OPT_GLOBAL, SHOW_BOOL,
+                                                  (uchar*) &opt_ignore_builtin_innodb);
+
 sys_var_str             sys_init_connect(&vars, "init_connect", 0,
                                          sys_update_init_connect,
                                          sys_default_init_connect,0);
@@ -314,6 +320,8 @@ static sys_var_thd_ulong	sys_interactive_timeout(&vars, "interactive_timeout",
 						&SV::net_interactive_timeout);
 static sys_var_thd_ulong	sys_join_buffer_size(&vars, "join_buffer_size",
 					     &SV::join_buff_size);
+static sys_var_thd_ulong	sys_join_cache_level(&vars, "join_cache_level",
+					             &SV::join_cache_level);
 static sys_var_key_buffer_size	sys_key_buffer_size(&vars, "key_buffer_size");
 static sys_var_key_cache_long  sys_key_cache_block_size(&vars, "key_cache_block_size",
 						 offsetof(KEY_CACHE,
@@ -708,6 +716,8 @@ sys_ndb_report_thresh_binlog_epoch_slip(&vars, "ndb_report_thresh_binlog_epoch_s
 static sys_var_long_ptr
 sys_ndb_report_thresh_binlog_mem_usage(&vars, "ndb_report_thresh_binlog_mem_usage",
                                        &ndb_report_thresh_binlog_mem_usage);
+static sys_var_bool_ptr
+sys_ndb_log_binlog_index(&vars, "ndb_log_binlog_index", &ndb_log_binlog_index);
 #endif
 static sys_var_thd_bool
 sys_ndb_use_exact_count(&vars, "ndb_use_exact_count", &SV::ndb_use_exact_count);
@@ -1512,6 +1522,22 @@ static bool get_unsigned(THD *thd, set_var *var)
 }
 
 
+bool sys_var_int_ptr::check(THD *thd, set_var *var)
+{
+  return get_unsigned(thd, var);
+}
+
+bool sys_var_int_ptr::update(THD *thd, set_var *var)
+{
+  *value= (uint) var->save_result.ulonglong_value;
+  return 0;
+}
+
+void sys_var_int_ptr::set_default(THD *thd, enum_var_type type)
+{
+  *value= (uint) option_limits->def_value;
+}
+
 sys_var_long_ptr::
 sys_var_long_ptr(sys_var_chain *chain, const char *name_arg, ulong *value_ptr_arg,
                  sys_after_update_func after_update_arg)
@@ -1625,14 +1651,14 @@ bool sys_var_thd_ulong::update(THD *thd, set_var *var)
   ulonglong tmp= var->save_result.ulonglong_value;
 
   /* Don't use bigger value than given with --maximum-variable-name=.. */
-  if ((ulong) tmp > max_system_variables.*offset)
+  if (tmp > max_system_variables.*offset)
   {
     throw_bounds_warning(thd, TRUE, TRUE, name, (longlong) tmp);
     tmp= max_system_variables.*offset;
   }
 
   if (option_limits)
-    tmp= (ulong) fix_unsigned(thd, tmp, option_limits);
+    tmp= fix_unsigned(thd, tmp, option_limits);
 #if SIZEOF_LONG < SIZEOF_LONG_LONG
   else if (tmp > ULONG_MAX)
   {
@@ -1641,6 +1667,7 @@ bool sys_var_thd_ulong::update(THD *thd, set_var *var)
   }
 #endif
 
+  DBUG_ASSERT(tmp <= ULONG_MAX);
   if (var->type == OPT_GLOBAL)
     global_system_variables.*offset= (ulong) tmp;
   else
@@ -1813,7 +1840,7 @@ bool sys_var::check_enum(THD *thd, set_var *var, const TYPELIB *enum_names)
     if (!(res=var->value->val_str(&str)) ||
 	((long) (var->save_result.ulong_value=
 		 (ulong) find_type(enum_names, res->ptr(),
-				   res->length(),1)-1)) < 0)
+				   res->length(), FALSE) - 1)) < 0)
     {
       value= res ? res->c_ptr() : "NULL";
       goto err;
@@ -2454,13 +2481,11 @@ end:
 bool sys_var_log_state::update(THD *thd, set_var *var)
 {
   bool res;
-
   if (this == &sys_var_log)
     WARN_DEPRECATED(thd, 7,0, "@@log", "'@@general_log'");
   else if (this == &sys_var_log_slow)
     WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
 
-  pthread_mutex_lock(&LOCK_global_system_variables);
   if (!var->save_result.ulong_value)
   {
     logger.deactivate_log_handler(thd, log_type);
@@ -2468,7 +2493,6 @@ bool sys_var_log_state::update(THD *thd, set_var *var)
   }
   else
     res= logger.activate_log_handler(thd, log_type);
-  pthread_mutex_unlock(&LOCK_global_system_variables);
   return res;
 }
 
@@ -2479,7 +2503,6 @@ void sys_var_log_state::set_default(THD *thd, enum_var_type type)
   else if (this == &sys_var_log_slow)
     WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
 
-  pthread_mutex_lock(&LOCK_global_system_variables);
   /*
     Default for general and slow log is OFF.
     Default for backup logs is ON.
@@ -2489,7 +2512,6 @@ void sys_var_log_state::set_default(THD *thd, enum_var_type type)
     logger.activate_log_handler(thd, log_type);
   else
     logger.deactivate_log_handler(thd, log_type);
-  pthread_mutex_unlock(&LOCK_global_system_variables);
 }
 
 
@@ -2624,7 +2646,6 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
     goto err;
   }
 
-  pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
 
   /*
@@ -2647,10 +2668,6 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   default:
     assert(0);                                  // Impossible
   }
-  old_value= var_str->value;
-  var_str->value= res;
-  var_str->value_length= str_length;
-  my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
   if ((file_log && log_state) ||
       (backup_log && log_state))
   {
@@ -2659,19 +2676,19 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
     */
     switch (log_type) {
     case QUERY_LOG_SLOW:
-      file_log->open_slow_log(sys_var_slow_log_path.value);
+      file_log->open_slow_log(res);
       break;
     case QUERY_LOG_GENERAL:
-      file_log->open_query_log(sys_var_general_log_path.value);
+      file_log->open_query_log(res);
       break;
     /*
       Open the backup logs if specified.
     */
     case BACKUP_HISTORY_LOG:
-      backup_log->open_backup_history_log(sys_var_backup_history_log_path.value);
+      backup_log->open_backup_history_log(res);
       break;
     case BACKUP_PROGRESS_LOG:
-      backup_log->open_backup_progress_log(sys_var_backup_progress_log_path.value);
+      backup_log->open_backup_progress_log(res);
       break;
     default:
       DBUG_ASSERT(0);
@@ -2679,6 +2696,13 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   }
 
   logger.unlock();
+
+  /* update global variable */
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  old_value= var_str->value;
+  var_str->value= res;
+  var_str->value_length= str_length;
+  my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
   pthread_mutex_unlock(&LOCK_global_system_variables);
 
 err:
@@ -2775,26 +2799,22 @@ static void sys_default_slow_log_path(THD *thd, enum_var_type type)
 
 bool sys_var_log_output::update(THD *thd, set_var *var)
 {
-  pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
   logger.init_slow_log(var->save_result.ulong_value);
   logger.init_general_log(var->save_result.ulong_value);
   *value= var->save_result.ulong_value;
   logger.unlock();
-  pthread_mutex_unlock(&LOCK_global_system_variables);
   return 0;
 }
 
 
 void sys_var_log_output::set_default(THD *thd, enum_var_type type)
 {
-  pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
   logger.init_slow_log(LOG_FILE);
   logger.init_general_log(LOG_FILE);
   *value= LOG_FILE;
   logger.unlock();
-  pthread_mutex_unlock(&LOCK_global_system_variables);
 }
 
 
@@ -3103,40 +3123,60 @@ bool sys_var_insert_id::update(THD *thd, set_var *var)
 
 
 /**
-  Get value.
+  Get value of backup_wait_timeout.
 
   Returns the value for the backup_wait_timeout session variable.
 
-  @param[IN] thd    Thread object
-  @param[IN] type   Type of variable
-  @param[IN] base   Not used 
+  The variable is of type SHOW_LONG.
 
-  @returns value of variable
+  @param[IN] thd    Thread object
+  @param[IN] type   Type of variable (unused)
+  @param[IN] base   base name (unused)
+
+  @returns value of variable as address to ulong
 */
-uchar *sys_var_backup_wait_timeout::value_ptr(THD *thd, enum_var_type type,
-				   LEX_STRING *base)
+
+uchar *sys_var_backup_wait_timeout::value_ptr(THD *thd, enum_var_type type
+                                              __attribute__((unused)),
+                                              LEX_STRING *base
+                                              __attribute__((unused)))
 {
-  thd->sys_var_tmp.ulong_value= thd->backup_wait_timeout;
-  return (uchar*) &thd->sys_var_tmp.ulonglong_value;
+  return (uchar*) &thd->backup_wait_timeout;
 }
 
 
 /**
-  Update value.
+  Update value of backup_wait_timeout.
 
   Set the backup_wait_timeout variable.
+
+  The variable is of type SHOW_LONG.
 
   @param[IN] thd    Thread object
   @param[IN] var    Pointer to value from command.
 
   @returns 0
 */
+
 bool sys_var_backup_wait_timeout::update(THD *thd, set_var *var)
 {
-  if (var->save_result.ulong_value > (LONG_MAX/1000))
-    thd->backup_wait_timeout= LONG_MAX/1000;
+  /*
+    The default sys_var::check() method sets ulonglong_value.
+    This can corrupt other values on some platforms.
+    Since we don't redefine check() for backup_wait_timeout,
+    we need to use ulonglong_value. Since we assign to an ulong
+    variable, we better check the value and limit it.
+  */
+  if (var->save_result.ulonglong_value > ULONG_MAX)
+    thd->backup_wait_timeout= ULONG_MAX;
   else
-    thd->backup_wait_timeout= var->save_result.ulong_value;
+  {
+    /*
+      This cast is required for the Windows compiler. The assignment is
+      safe because we checked the range of the value above.
+    */
+    thd->backup_wait_timeout= (ulong) var->save_result.ulonglong_value;
+  }
   return 0;
 }
 
@@ -3144,16 +3184,16 @@ bool sys_var_backup_wait_timeout::update(THD *thd, set_var *var)
 /**
   Set default value.
 
-  Set the backup_wait_timeout variable to the default value.
+  Set the backup_wait_timeout variable to their default value.
 
   @param[IN] thd    Thread object
-  @param[IN] type   Type of variable
-
-  @returns 0
+  @param[IN] type   Type of variable (unused)
 */
-void sys_var_backup_wait_timeout::set_default(THD *thd, enum_var_type type)
-{ 
-  thd->backup_wait_timeout= BACKUP_WAIT_TIMEOUT_DEFAULT; 
+
+void sys_var_backup_wait_timeout::set_default(THD *thd, enum_var_type type
+                                              __attribute__((unused)))
+{
+  thd->backup_wait_timeout= BACKUP_WAIT_TIMEOUT_DEFAULT;
 }
 
 
@@ -3654,7 +3694,7 @@ int mysql_add_sys_var_chain(sys_var *first, struct my_option *long_options)
 
 error:
   for (; first != var; first= first->next)
-    hash_delete(&system_variable_hash, (uchar*) first);
+    my_hash_delete(&system_variable_hash, (uchar*) first);
   return 1;
 }
  
@@ -3678,7 +3718,7 @@ int mysql_del_sys_var_chain(sys_var *first)
   /* A write lock should be held on LOCK_system_variables_hash */
    
   for (sys_var *var= first; var; var= var->next)
-    result|= hash_delete(&system_variable_hash, (uchar*) var);
+    result|= my_hash_delete(&system_variable_hash, (uchar*) var);
 
   return result;
 }
@@ -3715,7 +3755,7 @@ SHOW_VAR* enumerate_sys_vars(THD *thd, bool sorted)
 
     for (i= 0; i < count; i++)
     {
-      sys_var *var= (sys_var*) hash_element(&system_variable_hash, i);
+      sys_var *var= (sys_var*) my_hash_element(&system_variable_hash, i);
       show->name= var->name;
       show->value= (char*) var;
       show->type= SHOW_SYS;
@@ -3750,10 +3790,10 @@ int set_var_init()
   uint count= 0;
   DBUG_ENTER("set_var_init");
   
-  for (sys_var *var=vars.first; var; var= var->next, count++);
+  for (sys_var *var=vars.first; var; var= var->next, count++) {}
 
-  if (hash_init(&system_variable_hash, system_charset_info, count, 0,
-                0, (hash_get_key) get_sys_var_length, 0, HASH_UNIQUE))
+  if (my_hash_init(&system_variable_hash, system_charset_info, count, 0,
+                   0, (my_hash_get_key) get_sys_var_length, 0, HASH_UNIQUE))
     goto error;
 
   vars.last->next= NULL;
@@ -3778,7 +3818,7 @@ error:
 
 void set_var_free()
 {
-  hash_free(&system_variable_hash);
+  my_hash_free(&system_variable_hash);
 }
 
 
@@ -3804,7 +3844,7 @@ sys_var *intern_find_sys_var(const char *str, uint length, bool no_error)
     This function is only called from the sql_plugin.cc.
     A lock on LOCK_system_variable_hash should be held
   */
-  var= (sys_var*) hash_search(&system_variable_hash,
+  var= (sys_var*) my_hash_search(&system_variable_hash,
 			      (uchar*) str, length ? length : strlen(str));
   if (!(var || no_error))
     my_error(ER_UNKNOWN_SYSTEM_VARIABLE, MYF(0), (char*) str);
@@ -4050,6 +4090,7 @@ int set_var_password::check(THD *thd)
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   if (!user->host.str)
   {
+    DBUG_ASSERT(thd->security_ctx->priv_host);
     if (*thd->security_ctx->priv_host != 0)
     {
       user->host.str= (char *) thd->security_ctx->priv_host;
@@ -4060,6 +4101,12 @@ int set_var_password::check(THD *thd)
       user->host.str= (char *)"%";
       user->host.length= 1;
     }
+  }
+  if (!user->user.str)
+  {
+    DBUG_ASSERT(thd->security_ctx->priv_user);
+    user->user.str= (char *) thd->security_ctx->priv_user;
+    user->user.length= strlen(thd->security_ctx->priv_user);
   }
   /* Returns 1 as the function sends error to client */
   return check_change_password(thd, user->host.str, user->user.str,
@@ -4511,10 +4558,10 @@ bool sys_var_opt_readonly::update(THD *thd, set_var *var)
     can cause to wait on a read lock, it's required for the client application
     to unlock everything, and acceptable for the server to wait on all locks.
   */
-  if (result= close_cached_tables(thd, NULL, FALSE, TRUE))
+  if ((result= close_cached_tables(thd, NULL, FALSE, TRUE)))
     goto end_with_read_lock;
 
-  if (result= make_global_read_lock_block_commit(thd))
+  if ((result= make_global_read_lock_block_commit(thd)))
     goto end_with_read_lock;
 
   /* Change the opt_readonly system variable, safe because the lock is held */

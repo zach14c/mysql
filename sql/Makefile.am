@@ -20,9 +20,9 @@ MYSQLSHAREdir =		$(pkgdatadir)
 MYSQLBASEdir=		$(prefix)
 MYSQLLIBdir=            $(pkglibdir)
 pkgplugindir =		$(pkglibdir)/plugin
-INCLUDES =		@ZLIB_INCLUDES@ \
-			-I$(top_builddir)/include -I$(top_srcdir)/include \
-			-I$(top_srcdir)/regex -I$(srcdir) $(openssl_includes) \
+AM_CPPFLAGS =		@ZLIB_INCLUDES@ \
+			-I$(top_srcdir)/include \
+			-I$(top_srcdir)/regex $(openssl_includes) \
 			$(libevent_includes)
 WRAPLIBS=		@WRAPLIBS@
 SUBDIRS =		share backup
@@ -51,10 +51,12 @@ noinst_LTLIBRARIES=	libndb.la \
 			udf_example.la
 
 SUPPORTING_LIBS =	$(top_builddir)/vio/libvio.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
+			$(top_builddir)/mysys/libmysyswrap.la \
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
 			$(top_builddir)/regex/libregex.a \
-			$(top_builddir)/strings/libmystrings.a
+			$(top_builddir)/strings/libmystringsextra.la \
+			$(top_builddir)/strings/libmystringslt.la
 mysqld_DEPENDENCIES=	@mysql_plugin_libs@ $(SUPPORTING_LIBS) backup/libbackup.la libndb.la
 LDADD = $(SUPPORTING_LIBS) @ZLIB_LIBS@ @NDB_SCI_LIBS@
 mysqld_LDADD =		libndb.la \
@@ -77,6 +79,7 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			ha_ndbcluster.h ha_ndbcluster_cond.h \
 			ha_ndbcluster_binlog.h ha_ndbcluster_tables.h \
 			ha_ndbcluster_connection.h ha_ndbcluster_connection.h \
+			ha_ndbcluster_lock_ext.h \
 			ha_partition.h rpl_constants.h \
 			opt_range.h protocol.h rpl_tblmap.h rpl_utility.h \
 			rpl_reporting.h \
@@ -99,7 +102,8 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			probes.h sql_audit.h transaction.h \
 			contributors.h sql_servers.h ddl_blocker.h \
 			si_objects.h si_logs.h sql_plist.h mdl.h records.h \
-			rpl_handler.h replication.h sql_prepare.h
+			sql_signal.h \
+			rpl_handler.h replication.h sql_prepare.h debug_sync.h
 
 mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			item.cc item_sum.cc item_buff.cc item_func.cc \
@@ -113,6 +117,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			mysqld.cc password.c hash_filo.cc hostname.cc \
 			sql_connect.cc scheduler.cc sql_parse.cc \
 			set_var.cc sql_yacc.yy \
+                        sql_join_cache.cc \
 			sql_base.cc table.cc sql_select.cc sql_insert.cc \
 			sql_profile.cc \
 			sql_prepare.cc sql_error.cc sql_locale.cc \
@@ -147,6 +152,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_servers.cc sql_audit.cc sha2.cc \
 			ddl_blocker.cc si_objects.cc si_logs.cc \
 			event_parse_data.cc mdl.cc transaction.cc \
+			sql_signal.cc \
 			rpl_handler.cc
 
 if HAVE_DTRACE
@@ -155,7 +161,7 @@ endif
 
 nodist_mysqld_SOURCES =	mini_client_errors.c pack.c client.c my_time.c my_user.c 
 
-libndb_la_CPPFLAGS=	@ndbcluster_includes@
+libndb_la_CPPFLAGS=	@ndbcluster_includes@ $(AM_CPPFLAGS)
 libndb_la_SOURCES=	ha_ndbcluster.cc \
 			ha_ndbcluster_binlog.cc \
 			ha_ndbcluster_connection.cc \
@@ -234,6 +240,3 @@ SUFFIXES : .d
 	$(DTRACE) $(DTRACEFLAGS) -G -s $< $(DTRACEFILES)
 
 probes.o : $(DTRACEFILES)
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

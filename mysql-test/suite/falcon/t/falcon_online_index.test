@@ -42,7 +42,7 @@ CREATE TABLE t1 (
 # Populate t1, 20 rows
 let $i=20;
 let $r=0;
-while ($i < 20)
+while ($i)
 {
   eval INSERT INTO t1 VALUES ($r, 'TestRow$r', $r*2, 'Char$r');
   dec $i;
@@ -194,16 +194,11 @@ SHOW INDEXES FROM t1;
 
 --echo #-------- ONLINE: ALTER ADD/DROP PRIMARY KEY --------#
 
-# Adding/dropping PRIMARY KEY is not supposed to work ONLINE
---error ER_NOT_SUPPORTED_YET
 ALTER ONLINE TABLE t1 DROP PRIMARY KEY;
-# Now drop primary key (offline) on 'a' temporarily in order to try adding one online
-ALTER TABLE t1 DROP PRIMARY KEY;
---error ER_NOT_SUPPORTED_YET
-ALTER ONLINE TABLE t1 ADD PRIMARY KEY (c);
 SHOW INDEXES FROM t1;
 # Re-set primary key on 'a'
-ALTER TABLE t1 ADD PRIMARY KEY (a);
+ALTER ONLINE TABLE t1 ADD PRIMARY KEY (a);
+SHOW INDEXES FROM t1;
 
 ##
 ## Testing some statement variations using ADD/DROP INDEX

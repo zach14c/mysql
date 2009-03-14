@@ -109,8 +109,8 @@ static int tina_init_func(void *p)
 
   tina_hton= (handlerton *)p;
   pthread_mutex_init(&tina_mutex,MY_MUTEX_INIT_FAST);
-  (void) hash_init(&tina_open_tables,system_charset_info,32,0,0,
-                   (hash_get_key) tina_get_key,0,0);
+  (void) my_hash_init(&tina_open_tables,system_charset_info,32,0,0,
+                      (my_hash_get_key) tina_get_key,0,0);
   tina_hton->state= SHOW_OPTION_YES;
   tina_hton->db_type= DB_TYPE_CSV_DB;
   tina_hton->create= tina_create_handler;
@@ -121,7 +121,7 @@ static int tina_init_func(void *p)
 
 static int tina_done_func(void *p)
 {
-  hash_free(&tina_open_tables);
+  my_hash_free(&tina_open_tables);
   pthread_mutex_destroy(&tina_mutex);
 
   return 0;
@@ -146,9 +146,9 @@ static TINA_SHARE *get_share(const char *table_name, TABLE *table)
     If share is not present in the hash, create a new share and
     initialize its members.
   */
-  if (!(share=(TINA_SHARE*) hash_search(&tina_open_tables,
-                                        (uchar*) table_name,
-                                       length)))
+  if (!(share=(TINA_SHARE*) my_hash_search(&tina_open_tables,
+                                           (uchar*) table_name,
+                                           length)))
   {
     if (!my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
                          &share, sizeof(*share),
@@ -376,7 +376,7 @@ static int free_share(TINA_SHARE *share)
       share->tina_write_opened= FALSE;
     }
 
-    hash_delete(&tina_open_tables, (uchar*) share);
+    my_hash_delete(&tina_open_tables, (uchar*) share);
     thr_lock_delete(&share->lock);
     pthread_mutex_destroy(&share->mutex);
     my_free((uchar*) share, MYF(0));
@@ -613,6 +613,33 @@ int ha_tina::find_current_row(uchar *buf)
 
   memset(buf, 0, table->s->null_bytes);
 
+  /*
+    Parse the line obtained using the following algorithm
+   
+    BEGIN
+      1) Store the EOL (end of line) for the current row
+      2) Until all the fields in the current query have not been 
+         filled
+         2.1) If the current character is a quote
+              2.1.1) Until EOL has not been reached
+                     a) If end of current field is reached, move
+                        to next field and jump to step 2.3
+                     b) If current character is a \\ handle
+                        \\n, \\r, \\, \\"
+                     c) else append the current character into the buffer
+                        before checking that EOL has not been reached.
+          2.2) If the current character does not begin with a quote
+               2.2.1) Until EOL has not been reached
+                      a) If the end of field has been reached move to the
+                         next field and jump to step 2.3
+                      b) If current character begins with \\ handle
+                        \\n, \\r, \\, \\"
+                      c) else append the current character into the buffer
+                         before checking that EOL has not been reached.
+          2.3) Store the current field value and jump to 2)
+    TERMINATE
+  */
+  
   for (Field **field=table->field ; *field ; field++)
   {
     char curr_char;
@@ -621,19 +648,23 @@ int ha_tina::find_current_row(uchar *buf)
     if (curr_offset >= end_offset)
       goto err;
     curr_char= file_buff->get_value(curr_offset);
+    /* Handle the case where the first character is a quote */
     if (curr_char == '"')
     {
-      curr_offset++; // Incrementpast the first quote
+      /* Increment past the first quote */
+      curr_offset++;
 
-      for(; curr_offset < end_offset; curr_offset++)
+      /* Loop through the row to extract the values for the current field */
+      for( ; curr_offset < end_offset; curr_offset++)
       {
         curr_char= file_buff->get_value(curr_offset);
-        // Need to convert line feeds!
+        /* check for end of the current field */
         if (curr_char == '"' &&
             (curr_offset == end_offset - 1 ||
              file_buff->get_value(curr_offset + 1) == ','))
         {
-          curr_offset+= 2; // Move past the , and the "
+          /* Move past the , and the " */
+          curr_offset+= 2;
           break;
         }
         if (curr_char == '\\' && curr_offset != (end_offset - 1))
@@ -655,7 +686,7 @@ int ha_tina::find_current_row(uchar *buf)
         else // ordinary symbol
         {
           /*
-            We are at final symbol and no last quote was found =>
+            If we are at final symbol and no last quote was found =>
             we are working with a damaged file.
           */
           if (curr_offset == end_offset - 1)
@@ -666,15 +697,41 @@ int ha_tina::find_current_row(uchar *buf)
     }
     else 
     {
-      for(; curr_offset < end_offset; curr_offset++)
+      for( ; curr_offset < end_offset; curr_offset++)
       {
         curr_char= file_buff->get_value(curr_offset);
+        /* Move past the ,*/
         if (curr_char == ',')
         {
-          curr_offset++;       // Skip the ,
+          curr_offset++;
           break;
         }
-        buffer.append(curr_char);
+        if (curr_char == '\\' && curr_offset != (end_offset - 1))
+        {
+          curr_offset++;
+          curr_char= file_buff->get_value(curr_offset);
+          if (curr_char == 'r')
+            buffer.append('\r');
+          else if (curr_char == 'n' )
+            buffer.append('\n');
+          else if (curr_char == '\\' || curr_char == '"')
+            buffer.append(curr_char);
+          else  /* This could only happed with an externally created file */
+          {
+            buffer.append('\\');
+            buffer.append(curr_char);
+          }
+        }
+        else
+        {
+          /*
+             We are at the final symbol and a quote was found for the
+             unquoted field => We are working with a damaged field.
+          */
+          if (curr_offset == end_offset - 1 && curr_char == '"')
+            goto err;
+          buffer.append(curr_char);
+        }
       }
     }
 
@@ -1449,6 +1506,17 @@ int ha_tina::repair(THD* thd, HA_CHECK_OPT* check_opt)
     a file, which descriptor is still open. EACCES will be returned
     when trying to delete the "to"-file in my_rename().
   */
+  if (share->tina_write_opened)
+  {
+    /*
+      Data file might be opened twice, on table opening stage and
+      during write_row execution. We need to close both instances
+      to satisfy Win.
+    */
+    if (my_close(share->tina_write_filedes, MYF(0)))
+      DBUG_RETURN(my_errno ? my_errno : -1);
+    share->tina_write_opened= FALSE;
+  }
   if (my_close(data_file,MYF(0)) || my_close(repair_file, MYF(0)) ||
       my_rename(repaired_fname, share->data_file_name, MYF(0)))
     DBUG_RETURN(-1);
@@ -1618,10 +1686,10 @@ int ha_tina::check(THD* thd, HA_CHECK_OPT* check_opt)
 bool ha_tina::check_if_incompatible_data(HA_CREATE_INFO *info,
 					   uint table_changes)
 {
-  if (table_changes == IS_EQUAL_NO)  
+  if (table_changes == IS_EQUAL_NO)
     return COMPATIBLE_DATA_NO;
   else
-    return COMPATIBLE_DATA_YES;    
+    return COMPATIBLE_DATA_YES;
 }
 
 struct st_mysql_storage_engine csv_storage_engine=

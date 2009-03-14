@@ -33,7 +33,8 @@ int init_strvar_from_file(char *var, int max_size, IO_CACHE *f,
 Relay_log_info::Relay_log_info()
   :Slave_reporting_capability("SQL"),
    no_storage(FALSE), replicate_same_server_id(::replicate_same_server_id),
-   info_fd(-1), cur_log_fd(-1), save_temporary_tables(0),
+   info_fd(-1), cur_log_fd(-1), relay_log(&sync_relaylog_period),
+   save_temporary_tables(0),
    cur_log_old_open_count(0), group_relay_log_pos(0), event_relay_log_pos(0),
 #if HAVE_purify
    is_fake(FALSE),
@@ -156,6 +157,7 @@ int init_relay_log_info(Relay_log_info* rli,
       sql_print_error("Failed in open_log() called from init_relay_log_info()");
       DBUG_RETURN(1);
     }
+    rli->relay_log.is_relay_log= TRUE;
   }
 
   /* if file does not exist */
@@ -1185,7 +1187,7 @@ void Relay_log_info::clear_tables_to_lock()
     meta-data locks are stored. So we want to be sure that we don't have
     any references to this memory left.
   */
-  DBUG_ASSERT(!mdl_has_locks(&(current_thd->mdl_context)));
+  DBUG_ASSERT(!current_thd->mdl_context.has_locks());
 
   while (tables_to_lock)
   {

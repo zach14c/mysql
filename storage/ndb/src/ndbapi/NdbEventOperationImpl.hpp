@@ -139,7 +139,17 @@ public:
   };
   struct Gci_ops                // 2
   {
+    Gci_ops()
+      : m_gci(0),
+        m_consistent(true),
+        m_gci_op_list(NULL),
+        m_next(NULL),
+        m_gci_op_count(0)
+      {};
+    ~Gci_ops() {};
+
     Uint64 m_gci;
+    bool m_consistent;
     Gci_op *m_gci_op_list;
     Gci_ops *m_next;
     Uint32 m_gci_op_count;
@@ -160,7 +170,7 @@ public:
     Uint32 m_is_not_multi_list;  // 2
   };
   Gci_ops *first_gci_ops();
-  Gci_ops *next_gci_ops();
+  Gci_ops *delete_next_gci_ops();
   // case 1 above; add Gci_op to single list
   void add_gci_op(Gci_op g);
 private:
@@ -198,7 +208,7 @@ EventBufData_list::~EventBufData_list()
   {
     Gci_ops *op = first_gci_ops();
     while (op)
-      op = next_gci_ops();
+      op = delete_next_gci_ops();
   }
   DBUG_VOID_RETURN_EVENT;
 }
@@ -271,7 +281,7 @@ EventBufData_list::first_gci_ops()
 }
 
 inline EventBufData_list::Gci_ops *
-EventBufData_list::next_gci_ops()
+EventBufData_list::delete_next_gci_ops()
 {
   assert(!m_is_not_multi_list);
   Gci_ops *first = m_gci_ops_list;
@@ -320,8 +330,10 @@ struct Gci_container
 {
   enum State 
   {
-    GC_COMPLETE = 0x1 // GCI is complete, but waiting for out of order
+    GC_COMPLETE     = 0x1, // GCI is complete, but waiting for out of order
+    GC_INCONSISTENT = 0x2  // GCI might be missing event data
   };
+
   
   Uint16 m_state;
   Uint16 m_gcp_complete_rep_count; // Remaining SUB_GCP_COMPLETE_REP until done
@@ -412,8 +424,7 @@ public:
     and added to all event ops listed as active or pending delete
     in m_dropped_ev_op using insertDataL, includeing the blob
     event ops referenced by a regular event op.
-    - NdbEventBuffer::report_node_failure
-    - NdbEventBuffer::completeClusterFailed
+    - NdbEventBuffer::report_node_failure_completed
 
     TE_ACTIVE is sent from the kernel on initial execute/start of the
     event op, but is also internally generetad on node connect like
@@ -516,12 +527,12 @@ public:
   int insertDataL(NdbEventOperationImpl *op,
 		  const SubTableData * const sdata, Uint32 len,
 		  LinearSectionPtr ptr[3]);
-  void execSUB_GCP_COMPLETE_REP(const SubGcpCompleteRep * const, Uint32 len);
+  void execSUB_GCP_COMPLETE_REP(const SubGcpCompleteRep * const, Uint32 len,
+                                int complete_cluster_failure= 0);
   void complete_outof_order_gcis();
   
   void report_node_connected(Uint32 node_id);
-  void report_node_failure(Uint32 node_id);
-  void completeClusterFailed();
+  void report_node_failure_completed(Uint32 node_id);
 
   // used by user thread 
   Uint64 getLatestGCI();
@@ -530,6 +541,9 @@ public:
   int pollEvents(int aMillisecondNumber, Uint64 *latestGCI= 0);
   int flushIncompleteEvents(Uint64 gci);
   NdbEventOperation *nextEvent();
+  bool isConsistent(Uint64& gci);
+  bool isConsistentGCI(Uint64 gci);
+
   NdbEventOperationImpl* getGCIEventOperations(Uint32* iter,
                                                Uint32* event_types);
   void deleteUsedEventOperations();
@@ -649,6 +663,8 @@ private:
   void complete_bucket(Gci_container*);
   bool find_max_known_gci(Uint64 * res) const;
   void resize_known_gci();
+
+  Bitmask<(unsigned int)_NDB_NODE_BITMASK_SIZE> m_alive_node_bit_mask;
 };
 
 inline

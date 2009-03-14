@@ -72,25 +72,22 @@ bool String::realloc(uint32 alloc_length)
     char *new_ptr;
     if (alloced)
     {
-      if ((new_ptr= (char*) my_realloc(Ptr,len,MYF(MY_WME))))
-      {
-	Ptr=new_ptr;
-	Alloced_length=len;
-      }
-      else
-	return TRUE;				// Signal error
+      if (!(new_ptr= (char*) my_realloc(Ptr,len,MYF(MY_WME))))
+        return TRUE;				// Signal error
     }
     else if ((new_ptr= (char*) my_malloc(len,MYF(MY_WME))))
     {
+      if (str_length > len - 1)
+        str_length= 0;
       if (str_length)				// Avoid bugs in memcpy on AIX
 	memcpy(new_ptr,Ptr,str_length);
       new_ptr[str_length]=0;
-      Ptr=new_ptr;
-      Alloced_length=len;
       alloced=1;
     }
     else
       return TRUE;			// Signal error
+    Ptr= new_ptr;
+    Alloced_length= len;
   }
   Ptr[alloc_length]=0;			// This make other funcs shorter
   return FALSE;
@@ -120,82 +117,19 @@ bool String::set(ulonglong num, CHARSET_INFO *cs)
 
 bool String::set(double num,uint decimals, CHARSET_INFO *cs)
 {
-  char buff[331];
+  char buff[FLOATING_POINT_BUFFER];
   uint dummy_errors;
-
+  size_t len;
+  
   str_charset=cs;
   if (decimals >= NOT_FIXED_DEC)
   {
-    uint32 len= my_sprintf(buff,(buff, "%.14g",num));// Enough for a DATETIME
+    len= my_gcvt(num, MY_GCVT_ARG_DOUBLE, sizeof(buff) - 1, buff, NULL);
     return copy(buff, len, &my_charset_latin1, cs, &dummy_errors);
   }
-#ifdef HAVE_FCONVERT
-  int decpt,sign;
-  char *pos,*to;
-
-  (void) fconvert(num,(int) decimals,&decpt,&sign,buff+1);
-  if (!my_isdigit(&my_charset_latin1, buff[1]))
-  {						// Nan or Inf
-    pos=buff+1;
-    if (sign)
-    {
-      buff[0]='-';
-      pos=buff;
-    }
-    uint dummy_errors;
-    return copy(pos,(uint32) strlen(pos), &my_charset_latin1, cs, &dummy_errors);
-  }
-  if (alloc((uint32) ((uint32) decpt+3+decimals)))
-    return TRUE;
-  to=Ptr;
-  if (sign)
-    *to++='-';
-
-  pos=buff+1;
-  if (decpt < 0)
-  {					/* value is < 0 */
-    *to++='0';
-    if (!decimals)
-      goto end;
-    *to++='.';
-    if ((uint32) -decpt > decimals)
-      decpt= - (int) decimals;
-    decimals=(uint32) ((int) decimals+decpt);
-    while (decpt++ < 0)
-      *to++='0';
-  }
-  else if (decpt == 0)
-  {
-    *to++= '0';
-    if (!decimals)
-      goto end;
-    *to++='.';
-  }
-  else
-  {
-    while (decpt-- > 0)
-      *to++= *pos++;
-    if (!decimals)
-      goto end;
-    *to++='.';
-  }
-  while (decimals--)
-    *to++= *pos++;
-
-end:
-  *to=0;
-  str_length=(uint32) (to-Ptr);
-  return FALSE;
-#else
-#ifdef HAVE_SNPRINTF
-  buff[sizeof(buff)-1]=0;			// Safety
-  snprintf(buff,sizeof(buff)-1, "%.*f",(int) decimals,num);
-#else
-  sprintf(buff,"%.*f",(int) decimals,num);
-#endif
-  return copy(buff,(uint32) strlen(buff), &my_charset_latin1, cs,
+  len= my_fcvt(num, decimals, buff, NULL);
+  return copy(buff, (uint32) len, &my_charset_latin1, cs,
               &dummy_errors);
-#endif
 }
 
 

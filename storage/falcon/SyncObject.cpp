@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -102,7 +102,7 @@ int cas_emulation (volatile int *state, int compare, int exchange)
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-SyncObject::SyncObject()
+SyncObject::SyncObject() : mutex("SyncObject::mutex")
 {
 	readers = 0;
 	waiters = 0;
@@ -306,7 +306,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	DEBUG_FREEZE;
 }
 
-#else	// FAST_SHARED
+#else	// else not FAST_SHARED
 
 // Old (aka working) version
 
@@ -499,7 +499,7 @@ void SyncObject::unlock(Sync *sync, LockType type)
 	DEBUG_FREEZE;
 }
 
-#else // FAST_SHARED
+#else // else not FAST_SHARED
 void SyncObject::unlock(Sync *sync, LockType type)
 {
 #if defined TRACE_SYNC_OBJECTS && defined USE_FALCON_SYNC_HANDLER
@@ -621,7 +621,7 @@ void SyncObject::wait(LockType type, Thread *thread, Sync *sync, int timeout)
 
 	thread->queue = NULL;
 	thread->lockType = type;
-	*ptr = thread;
+	*ptr = thread;				// Add this thread to the SyncObject queue
 	thread->lockGranted = false;
 	thread->lockPending = sync;
 	++thread->activeLocks;
@@ -638,17 +638,21 @@ void SyncObject::wait(LockType type, Thread *thread, Sync *sync, int timeout)
 				return;
 				}
 			
-			for (ptr = &queue; *ptr; ptr = &(*ptr)->queue)
-				if (*ptr == thread)
-					{
-					*ptr = thread->queue;
-					--waiters;
-					break;
-					}
-			
 			if (!wokeup)
 				{
+				// A timeout occured.
+				// Take this thread off the queue and throw an exception
+
+				for (ptr = &queue; *ptr; ptr = &(*ptr)->queue)
+					if (*ptr == thread)
+						{
+						*ptr = thread->queue;
+						--waiters;
+						break;
+						}
+
 				mutex.release();
+				thread->lockPending = NULL;
 				timedout(timeout);
 				}
 			}
@@ -828,7 +832,7 @@ void SyncObject::grantLocks(void)
 	mutex.release();
 }
 
-#else // FAST_SHARED
+#else // else not FAST_SHARED
 
 void SyncObject::grantLocks(void)
 {
@@ -964,7 +968,7 @@ void SyncObject::unlock(void)
 		ASSERT(false);
 }
 
-#else //FAST_SHARED
+#else // else not FAST_SHARED
 
 void SyncObject::unlock(void)
 {
@@ -1107,7 +1111,7 @@ int SyncObject::getCollisionCount(void)
 void SyncObject::backoff(Thread* thread)
 {
 	//thread->sleep(1);
-    int a = 0;
+	int a = 0;
 
 	for (int n = 0; n < thread->backoff; ++n)
 		++a;

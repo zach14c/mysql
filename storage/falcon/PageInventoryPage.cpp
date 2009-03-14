@@ -33,6 +33,7 @@
 #include "SQLError.h"
 #include "SerialLog.h"
 #include "Database.h"
+#include "SerialLogControl.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -76,6 +77,10 @@ Bdb* PageInventoryPage::createInventoryPage(Dbb * dbb, int32 pageNumber, TransId
 
 	for (int n = 0; n < dbb->pipSlots; ++n)
 		page->freePages [n] = -1;
+
+	if (dbb->database->serialLog && !dbb->database->serialLog->recovering
+		&& (pageNumber != PIP_PAGE))
+		dbb->database->serialLog->logControl->inventoryPage.append(dbb, pageNumber);
 
 	return bdb;
 }
@@ -328,7 +333,7 @@ void PageInventoryPage::validateInventory(Dbb *dbb, Validation *validation)
 							else
 								freePage(dbb, pageNumber, NO_TRANSACTION);
 								
-							pipBdb = dbb->fetchPage (pageNumber, PAGE_any, Shared);
+							pipBdb = dbb->fetchPage (pageNumber, PAGE_any, Exclusive);
 							BDB_HISTORY(pipBdb);
 							page = (PageInventoryPage*) pipBdb->buffer;
 							}

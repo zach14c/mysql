@@ -70,6 +70,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 {
 	//openTraceFile();
 	database = db;
+	shuttingDown = false;
 	panicShutdown = false;
 	pageSize = pageSz;
 	hashSize = hashSz;
@@ -380,7 +381,7 @@ void Cache::flush(int64 arg)
 	Sync sync(&syncDirty, "Cache::flush(2)");
 	flushLock.lock(Exclusive);
 	
-	if (flushing)
+	if (flushing || shuttingDown)
 		return;
 
 	syncWait.lock(NULL, Exclusive);
@@ -937,8 +938,8 @@ void Cache::ioThread(void)
 				int pages = flushPages;
 				int delta = (int) (database->timestamp - flushStart);
 				flushing = false;
-				flushLock.unlock();
 				syncWait.unlock();
+				flushLock.unlock();
 				
 				if (writes > 0 && Log::isActive(LogInfo))
 					Log::log(LogInfo, "%d: Cache flush: %d pages, %d writes in %d seconds (%d pps)\n",
@@ -956,16 +957,37 @@ void Cache::ioThread(void)
 				}
 			else
 				flushLock.unlock();
-			
-			if (thread->shutdownInProgress)
-				break;
 
-			thread->sleep();
+			// Check if there is another pending flush command already.
+			// If not then we should check if we have been requested to
+			// shutdown or to sleep until a new request arrives
+
 			flushLock.lock(Exclusive);
+			if (!flushing) 
+				{
+				// Check whether we have been requested to exit the IO thread.
+				// Note that this is neccessary to hold the flush lock when
+				// checking the shutdown status to avoid that a new 
+				// flush request arriving just before the shutdown command is
+				// overlooked.
+
+				if (thread->shutdownInProgress)
+					{
+					flushLock.unlock();
+					break;
+					}
+				flushLock.unlock();
+
+				// No pending flush request so lets sleep
+
+				thread->sleep();				
+
+				flushLock.lock(Exclusive);
+				}
 			}
 		}
 	
-	delete [] rawBuffer;			
+	delete [] rawBuffer;
 }
 
 bool Cache::continueWrite(Bdb* startingBdb)
@@ -995,8 +1017,15 @@ bool Cache::continueWrite(Bdb* startingBdb)
 
 void Cache::shutdown(void)
 {
+	// To avoid new flush requests we set status to shuttingDown
+
+	Sync flushLock(&syncFlush, "Cache::shutdown(1)");
+	flushLock.lock(Exclusive);
+	shuttingDown = true;
+	flushLock.unlock();
+
 	shutdownThreads();
-	Sync sync (&syncDirty, "Cache::shutdown");
+	Sync sync (&syncDirty, "Cache::shutdown(2)");
 	sync.lock (Exclusive);
 
 	for (Bdb *bdb = firstDirty; bdb; bdb = bdb->nextDirty)
@@ -1013,7 +1042,7 @@ void Cache::shutdownThreads(void)
 {
 	for (int n = 0; n < numberIoThreads; ++n)
 		{
-		ioThreads[n]->shutdown();
+		database->threads->shutdown(ioThreads[n]);
 		ioThreads[n] = 0;
 		}
 	

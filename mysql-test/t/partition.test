@@ -10,9 +10,20 @@
 #
 --source include/have_partition.inc
 
+SET @old_general_log= @@global.general_log;
+
 --disable_warnings
 drop table if exists t1, t2;
 --enable_warnings
+
+#
+# Bug#36001: Partitions: spelling and using some error messages
+#
+
+--error ER_FOREIGN_KEY_ON_PARTITIONED
+CREATE TABLE t1 (a INT, FOREIGN KEY (a) REFERENCES t0 (a))
+ENGINE=MyISAM
+PARTITION BY HASH (a);
 
 #
 # Bug#40954: Crash if range search and order by.
@@ -1959,3 +1970,6 @@ select count(*) from t1;
 drop table t1;
 
 --echo End of 5.1 tests
+
+
+SET @@global.general_log= @old_general_log;

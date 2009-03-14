@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -65,7 +65,7 @@ void Scavenger::scavenge()
 
 void Scavenger::execute(Scheduler * scheduler)
 {
-	scavenge();
+	database->signalScavenger();
 	getNextEvent();
 	scheduler->addEvent (this);
 }

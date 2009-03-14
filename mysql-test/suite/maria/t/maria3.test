@@ -7,6 +7,7 @@ let $default_checksum=`select @@global.maria_page_checksum`;
 set global storage_engine=maria;
 set session storage_engine=maria;
 set global maria_page_checksum=0;
+let $default_log_file_size=`select @@global.maria_log_file_size`;
 set global maria_log_file_size=4294967295;
 
 # Initialise
@@ -232,8 +233,6 @@ update t1 set s1=2 where seq=1;
 check table t1 extended;
 drop table t1;
 
-# Fix if we are using safemalloc
---replace_result 8388572 8388600
 show variables like 'maria%';
 --replace_column 2 #
 show status like 'maria%';
@@ -483,6 +482,8 @@ drop table t1, t2;
 
 --disable_result_log
 --disable_query_log
-eval set global storage_engine=$default_engine, maria_page_checksum=$default_checksum;
+eval set global storage_engine=$default_engine,
+maria_page_checksum=$default_checksum,
+maria_log_file_size=$default_log_file_size;
 --enable_result_log
 --enable_query_log

@@ -88,7 +88,7 @@ use mysqltest_db1;
 ** SELECT FROM INFORMATION_SCHEMA.STATISTICS will succeed because any privileges will do (authentication is enough).
 SELECT * FROM INFORMATION_SCHEMA.STATISTICS WHERE table_name='t5';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	NON_UNIQUE	INDEX_SCHEMA	INDEX_NAME	SEQ_IN_INDEX	COLUMN_NAME	COLLATION	CARDINALITY	SUB_PART	PACKED	NULLABLE	INDEX_TYPE	COMMENT	INDEX_COMMENT
-NULL	mysqltest_db1	t5	1	mysqltest_db1	i	1	s1	A	NULL	NULL	NULL	YES	BTREE		
+def	mysqltest_db1	t5	1	mysqltest_db1	i	1	s1	A	NULL	NULL	NULL	YES	BTREE		
 ** SHOW INDEX FROM t5 will fail because we don't have any privileges on any column combination.
 SHOW INDEX FROM t5;
 ERROR 42000: SELECT command denied to user 'mysqltest_u1'@'localhost' for table 't5'
@@ -120,3 +120,4 @@ SHOW CREATE VIEW v3;
 View	Create View	character_set_client	collation_connection
 v3	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v3` AS select `t_select_priv`.`a` AS `a`,`t_select_priv`.`b` AS `b` from `t_select_priv`	latin1	latin1_swedish_ci
 drop database mysqltest_db1;
+drop user mysqltest_u1@localhost;

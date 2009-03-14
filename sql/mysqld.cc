@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright (C) 2000-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@
 #include "events.h"
 #include "ddl_blocker.h"
 #include "sql_audit.h"
+#include "debug_sync.h"
 #include <waiting_threads.h>
 
 #include "../storage/myisam/ha_myisam.h"
@@ -261,6 +262,12 @@ int backup_init();
 void backup_shutdown();
 #endif
 
+#if defined(__linux__)
+#define ENABLE_TEMP_POOL 1
+#else
+#define ENABLE_TEMP_TOOL 0
+#endif
+
 /* Constants */
 
 const char *show_comp_option_name[]= {"YES", "NO", "DISABLED"};
@@ -329,7 +336,7 @@ TYPELIB sql_mode_typelib= { array_elements(sql_mode_names)-1,"",
 
 static const char *optimizer_switch_names[]=
 {
-  "no_materialization", "no_semijoin", "no_loosescan",
+  "no_materialization", "no_semijoin", "no_loosescan", "no_firstmatch",
   NullS
 };
 
@@ -339,6 +346,7 @@ static const unsigned int optimizer_switch_names_len[]=
   /*no_materialization*/          18,
   /*no_semijoin*/                 11,
   /*no_loosescan*/                12,
+  /*no_firstmatch*/               13
 };
 
 TYPELIB optimizer_switch_typelib= { array_elements(optimizer_switch_names)-1,"",
@@ -405,7 +413,6 @@ static bool volatile ready_to_exit;
 static my_bool opt_debugging= 0, opt_external_locking= 0, opt_console= 0;
 static my_bool opt_short_log_format= 0;
 static uint kill_cached_threads, wake_thread;
-static ulong killed_threads;
 static ulong max_used_connections;
 static volatile ulong cached_thread_count= 0;
 static const char *sql_mode_str= "OFF";
@@ -427,7 +434,7 @@ static pthread_cond_t COND_thread_cache, COND_flush_thread_cache;
 /* Global variables */
 
 extern DDL_blocker_class *DDL_blocker;
-bool opt_update_log, opt_bin_log;
+bool opt_update_log, opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log;
 my_bool opt_backup_history_log;
 my_bool opt_backup_progress_log;
@@ -481,9 +488,11 @@ ulong ndb_extra_logging;
 #ifdef HAVE_NDB_BINLOG
 ulong ndb_report_thresh_binlog_epoch_slip;
 ulong ndb_report_thresh_binlog_mem_usage;
+my_bool ndb_log_binlog_index;
 my_bool opt_ndb_log_update_as_write;
 my_bool opt_ndb_log_updated_only;
 my_bool opt_ndb_log_orig;
+my_bool opt_ndb_log_bin;
 #endif
 
 extern const char *ndb_distribution_names[];
@@ -540,6 +549,8 @@ ulong query_buff_size, slow_launch_time, slave_open_temp_tables;
 ulong open_files_limit, max_binlog_size, max_relay_log_size;
 ulong slave_net_timeout, slave_trans_retries;
 my_bool slave_allow_batching;
+my_bool allow_slave_start= TRUE;
+LEX_CSTRING reason_slave_blocked;
 ulong slave_exec_mode_options;
 const char *slave_exec_mode_str= "STRICT";
 ulong thread_cache_size=0, thread_pool_size= 0;
@@ -572,7 +583,8 @@ ulong max_prepared_stmt_count;
 */
 ulong prepared_stmt_count=0;
 ulong thread_id=1L,current_pid;
-ulong slow_launch_threads = 0, sync_binlog_period;
+ulong slow_launch_threads = 0;
+uint sync_binlog_period= 0, sync_relaylog_period= 0;
 ulong expire_logs_days = 0;
 ulong rpl_recovery_rank=0;
 const char *log_output_str= "FILE";
@@ -671,6 +683,7 @@ MY_BITMAP temp_pool;
 CHARSET_INFO *system_charset_info, *files_charset_info ;
 CHARSET_INFO *national_charset_info, *table_alias_charset;
 CHARSET_INFO *character_set_filesystem;
+CHARSET_INFO *error_message_charset_info;
 
 MY_LOCALE *my_default_lc_time_names;
 
@@ -690,7 +703,7 @@ pthread_mutex_t LOCK_mysql_create_db, LOCK_open, LOCK_thread_count,
 		LOCK_crypt,
 	        LOCK_global_system_variables,
                 LOCK_user_conn, LOCK_slave_list, LOCK_active_mi,
-                LOCK_connection_count;
+                LOCK_connection_count, LOCK_slave_start;
 
 /**
   The below lock protects access to two global server variables:
@@ -747,7 +760,6 @@ struct my_rnd_struct sql_rand; ///< used by sql_class.cc:THD::THD()
 #ifndef EMBEDDED_LIBRARY
 struct passwd *user_info;
 static pthread_t select_thread;
-static uint thr_kill_signal;
 #endif
 
 /* OS specific variables */
@@ -780,6 +792,8 @@ bool mysqld_embedded=0;
 #else
 bool mysqld_embedded=1;
 #endif
+
+static my_bool plugins_are_initialized= FALSE;
 
 #ifndef DBUG_OFF
 static const char* default_dbug_option;
@@ -860,6 +874,7 @@ static ulong find_bit_type_or_exit(const char *x, TYPELIB *bit_lib,
                                    const char *option);
 static void clean_up(bool print_message);
 static int test_if_case_insensitive(const char *dir_name);
+static void register_mutex_order();
 
 #ifndef EMBEDDED_LIBRARY
 static void usage(void);
@@ -990,18 +1005,30 @@ static void close_connections(void)
 
     tmp->killed= THD::KILL_CONNECTION;
     thread_scheduler.post_kill_notification(tmp);
+    pthread_mutex_lock(&tmp->LOCK_delete);
     if (tmp->mysys_var)
     {
       tmp->mysys_var->abort=1;
       pthread_mutex_lock(&tmp->mysys_var->mutex);
       if (tmp->mysys_var->current_cond)
       {
-	pthread_mutex_lock(tmp->mysys_var->current_mutex);
-	pthread_cond_broadcast(tmp->mysys_var->current_cond);
-	pthread_mutex_unlock(tmp->mysys_var->current_mutex);
+        uint i;
+        for (i=0; i < 2; i++)
+        {
+          int ret= pthread_mutex_trylock(tmp->mysys_var->current_mutex);
+          pthread_cond_broadcast(tmp->mysys_var->current_cond);
+          if (!ret)
+          {
+            /* Thread has surely got the signal, unlock and abort */
+            pthread_mutex_unlock(tmp->mysys_var->current_mutex);
+            break;
+          }
+          sleep(1);
+        }
       }
       pthread_mutex_unlock(&tmp->mysys_var->mutex);
     }
+    pthread_mutex_unlock(&tmp->LOCK_delete);
   }
   (void) pthread_mutex_unlock(&LOCK_thread_count); // For unlink from list
 
@@ -1272,10 +1299,10 @@ extern "C" void unireg_abort(int exit_code)
 {
   DBUG_ENTER("unireg_abort");
 
+  if (opt_help)
+    usage();
   if (exit_code)
     sql_print_error("Aborting\n");
-  else if (opt_help)
-    usage();
   clean_up(!opt_help && (exit_code || !opt_bootstrap)); /* purecov: inspected */
   DBUG_PRINT("quit",("done with cleanup in unireg_abort"));
   mysqld_exit(exit_code);
@@ -1352,6 +1379,7 @@ void clean_up(bool print_message)
   wt_end();
   delete_elements(&key_caches, (void (*)(const char*, uchar*)) free_key_cache);
   multi_keycache_free();
+  sp_cache_end();
   free_status_vars();
   end_thr_alarm(1);			/* Free allocated memory */
   my_free_open_file_info();
@@ -1381,6 +1409,7 @@ void clean_up(bool print_message)
   free_max_user_conn();
 #ifdef HAVE_REPLICATION
   end_slave_list();
+  end_slave_start();
 #endif
   delete binlog_filter;
   delete rpl_filter;
@@ -1449,6 +1478,7 @@ static void wait_for_signal_thread_to_end()
 
 static void clean_up_mutexes()
 {
+  DBUG_ENTER("clean_up_mutexes");
   (void) pthread_mutex_destroy(&LOCK_mysql_create_db);
   (void) pthread_mutex_destroy(&LOCK_lock_db);
   (void) rwlock_destroy(&LOCK_grant);
@@ -1477,6 +1507,8 @@ static void clean_up_mutexes()
   (void) pthread_mutex_destroy(&LOCK_rpl_status);
   (void) pthread_cond_destroy(&COND_rpl_status);
 #endif
+  (void) pthread_mutex_destroy(&LOCK_server_started);
+  (void) pthread_cond_destroy(&COND_server_started);
   (void) pthread_mutex_destroy(&LOCK_active_mi);
   (void) rwlock_destroy(&LOCK_sys_init_connect);
   (void) rwlock_destroy(&LOCK_sys_init_slave);
@@ -1492,9 +1524,33 @@ static void clean_up_mutexes()
   (void) pthread_cond_destroy(&COND_flush_thread_cache);
   (void) pthread_cond_destroy(&COND_manager);
   DDL_blocker_class::destroy_DDL_blocker_class_instance();
+  DBUG_VOID_RETURN;
 }
 
 #endif /*EMBEDDED_LIBRARY*/
+
+
+/**
+   Register order of mutex for wrong mutex deadlock detector
+
+   By aquiring all mutex in order here, the mutex order detector in
+   mysys/thr_mutex.c, will give a warning on first wrong mutex usage!
+*/
+
+static void register_mutex_order()
+{
+#ifdef SAFE_MUTEX
+  /*
+    We must have LOCK_open before LOCK_global_system_variables because
+    LOCK_open is hold while sql_plugin.c::intern_sys_var_ptr() is called.
+  */
+  pthread_mutex_lock(&LOCK_open);
+  pthread_mutex_lock(&LOCK_global_system_variables);
+
+  pthread_mutex_unlock(&LOCK_global_system_variables);
+  pthread_mutex_unlock(&LOCK_open);
+#endif
+}
 
 
 /****************************************************************************
@@ -1903,7 +1959,7 @@ void close_connection(THD *thd, uint errcode, bool lock)
   if ((vio= thd->net.vio) != 0)
   {
     if (errcode)
-      net_send_error(thd, errcode, ER(errcode)); /* purecov: inspected */
+      net_send_error(thd, errcode, ER(errcode), NULL); /* purecov: inspected */
     vio_close(vio);			/* vio is freed in delete thd */
   }
   if (lock)
@@ -1914,17 +1970,12 @@ void close_connection(THD *thd, uint errcode, bool lock)
 #endif /* EMBEDDED_LIBRARY */
 
 
-/** Called when a thread is aborted. */
+/** Called when mysqld is aborted with ^C */
 /* ARGSUSED */
-extern "C" sig_handler end_thread_signal(int sig __attribute__((unused)))
+extern "C" sig_handler end_mysqld_signal(int sig __attribute__((unused)))
 {
-  THD *thd=current_thd;
-  DBUG_ENTER("end_thread_signal");
-  if (thd && ! thd->bootstrap)
-  {
-    statistic_increment(killed_threads, &LOCK_status);
-    thread_scheduler.end_thread(thd,0);		/* purecov: inspected */
-  }
+  DBUG_ENTER("end_mysqld_signal");
+  kill_mysql();                                 // Take down mysqld nicely 
   DBUG_VOID_RETURN;				/* purecov: deadcode */
 }
 
@@ -2032,6 +2083,8 @@ bool one_thread_per_connection_end(THD *thd, bool put_in_cache)
 {
   DBUG_ENTER("one_thread_per_connection_end");
   unlink_thd(thd);
+  /* Mark that current_thd is not valid anymore */
+  my_pthread_setspecific_ptr(THR_THD,  0);
   if (put_in_cache)
     put_in_cache= cache_thread();
   pthread_mutex_unlock(&LOCK_thread_count);
@@ -2719,11 +2772,9 @@ static void init_signals(void)
     sigaddset(&set,THR_SERVER_ALARM);
   if (test_flags & TEST_SIGINT)
   {
-    // May be SIGINT
-    sigdelset(&set, thr_kill_signal);
+    /* Allow SIGINT to break mysqld. This is for debugging with --gdb */
+    my_sigset(SIGINT, end_mysqld_signal);
     sigdelset(&set, SIGINT);
-    my_sigset(thr_kill_signal, end_thread_signal);
-    my_sigset(SIGINT, end_thread_signal);
   }
   else
     sigaddset(&set,SIGINT);
@@ -2787,10 +2838,11 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
   */
   init_thr_alarm(thread_scheduler.max_threads +
 		 global_system_variables.max_insert_delayed_threads + 10);
-  if (thd_lib_detected != THD_LIB_LT && (test_flags & TEST_SIGINT))
+  if (test_flags & TEST_SIGINT)
   {
-    (void) sigemptyset(&set);			// Setup up SIGINT for debug
-    (void) sigaddset(&set,SIGINT);		// For debugging
+    /* Allow SIGINT to break mysqld. This is for debugging with --gdb */
+    (void) sigemptyset(&set);
+    (void) sigaddset(&set,SIGINT);
     (void) pthread_sigmask(SIG_UNBLOCK,&set,NULL);
   }
   (void) sigemptyset(&set);			// Setup up SIGINT for debug
@@ -2936,8 +2988,6 @@ extern "C" void my_message_sql(uint error, const char *str, myf MyFlags);
 void my_message_sql(uint error, const char *str, myf MyFlags)
 {
   THD *thd;
-  MYSQL_ERROR::enum_warning_level level;
-  sql_print_message_func func;
   DBUG_ENTER("my_message_sql");
   DBUG_PRINT("error", ("error: %u  message: '%s'", error, str));
 
@@ -2951,110 +3001,49 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
     TODO:
     DBUG_ASSERT(error != 0);
   */
-  if (MyFlags & ME_JUST_INFO)
-  {
-    level= MYSQL_ERROR::WARN_LEVEL_NOTE;
-    func= sql_print_information;
-  }
-  else if (MyFlags & ME_JUST_WARNING)
-  {
-    level= MYSQL_ERROR::WARN_LEVEL_WARN;
-    func= sql_print_warning;
-  }
-  else
-  {
-    level= MYSQL_ERROR::WARN_LEVEL_ERROR;
-    func= sql_print_error;
-  }
-
-
   if (error == 0)
   {
     /* At least, prevent new abuse ... */
-    DBUG_ASSERT(strncmp(str, "MyISAM table", 12) == 0);
+    DBUG_ASSERT(strncmp(str, "MyISAM table", 12) == 0 ||
+                strncmp(str, "MARIA table", 11) == 0);
     error= ER_UNKNOWN_ERROR;
+  }
+
+  /*
+    TODO: ME_JUST_INFO and ME_JUST_WARNING are back doors used in
+    storage/maria to print to the server log files.
+    my_error/my_message_sql should not be used for this, since we
+    don't want the exception handlers / SIGNAL / RESIGNAL to interfere
+    with the error handling in this case.
+    Instead, the server should expose a clean interface to the storage
+    engines for printing into the server logs (sql/log.cc),
+    and the storage engine should call that interface (see ma_message_end_user)
+    See Bug#38781
+  */
+
+  if (MyFlags & ME_JUST_INFO)
+  {
+    sql_print_information("%s: %s", my_progname, str);
+    DBUG_VOID_RETURN;
+  }
+
+  if (MyFlags & ME_JUST_WARNING)
+  {
+    sql_print_warning("%s: %s", my_progname, str);
+    DBUG_VOID_RETURN;
   }
 
   if ((thd= current_thd))
   {
     if (MyFlags & ME_FATALERROR)
       thd->is_fatal_error= 1;
-
-#ifdef BUG_36098_FIXED
-    mysql_audit_general(thd,MYSQL_AUDIT_GENERAL_ERROR,error,my_time(0),
-                        0,0,str,str ? strlen(str) : 0,
-                        thd->query,thd->query_length,
-                        thd->variables.character_set_client,
-                        thd->row_count);
-#endif
-
-
-    /*
-      TODO: There are two exceptions mechanism (THD and sp_rcontext),
-      this could be improved by having a common stack of handlers.
-    */
-    if (thd->handle_error(level, error, str))
-      DBUG_VOID_RETURN;
-
-    if (level == MYSQL_ERROR::WARN_LEVEL_WARN)
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, error, str);
-    if (level != MYSQL_ERROR::WARN_LEVEL_ERROR)
-      goto to_error_log;
-
-    thd->is_slave_error=  1; // needed to catch query errors during replication
-
-    /*
-      thd->lex->current_select == 0 if lex structure is not inited
-      (not query command (COM_QUERY))
-    */
-    if (thd->lex->current_select &&
-	thd->lex->current_select->no_error && !thd->is_fatal_error)
-    {
-      DBUG_PRINT("error",
-                 ("Error converted to warning: current_select: no_error %d  "
-                  "fatal_error: %d",
-                  (thd->lex->current_select ?
-                   thd->lex->current_select->no_error : 0),
-                  (int) thd->is_fatal_error));
-    }
-    else
-    {
-      if (! thd->stmt_da->is_error())            // Return only first message
-      {
-        thd->stmt_da->set_error_status(thd, error, str);
-      }
-      query_cache_abort(&thd->query_cache_tls);
-    }
-    /*
-      If a continue handler is found, the error message will be cleared
-      by the stored procedures code.
-    */
-    if (!thd->is_fatal_error && thd->spcont &&
-        ! (MyFlags & ME_NO_SP_HANDLER) &&
-        thd->spcont->handle_error(thd, MYSQL_ERROR::WARN_LEVEL_ERROR, error))
-    {
-      /*
-        Do not push any warnings, a handled error must be completely
-        silenced.
-      */
-      DBUG_VOID_RETURN;
-    }
-
-    if (!thd->is_fatal_error && !thd->no_warnings_for_error &&
-        !(MyFlags & ME_NO_WARNING_FOR_ERROR))
-    {
-      /*
-        Suppress infinite recursion if there a memory allocation error
-        inside push_warning.
-      */
-      thd->no_warnings_for_error= TRUE;
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR, error, str);
-      thd->no_warnings_for_error= FALSE;
-    }
+    (void) thd->raise_condition(error,
+                                NULL,
+                                MYSQL_ERROR::WARN_LEVEL_ERROR,
+                                str);
   }
-to_error_log:
-  if (!thd || (MyFlags & ME_NOREFRESH))
-    (*func)("%s: %s", my_progname_short, str); /* purecov: inspected */
+  if (!thd || MyFlags & ME_NOREFRESH)
+    sql_print_error("%s: %s", my_progname, str); /* purecov: inspected */
   DBUG_VOID_RETURN;
 }
 
@@ -3223,6 +3212,7 @@ SHOW_VAR com_status_vars[]= {
   {"replace",              (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REPLACE]), SHOW_LONG_STATUS},
   {"replace_select",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REPLACE_SELECT]), SHOW_LONG_STATUS},
   {"reset",                (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RESET]), SHOW_LONG_STATUS},
+  {"resignal",             (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RESIGNAL]), SHOW_LONG_STATUS},
   {"restore",              (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RESTORE]), SHOW_LONG_STATUS},
   {"revoke",               (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REVOKE]), SHOW_LONG_STATUS},
   {"revoke_all",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REVOKE_ALL]), SHOW_LONG_STATUS},
@@ -3231,6 +3221,7 @@ SHOW_VAR com_status_vars[]= {
   {"savepoint",            (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SAVEPOINT]), SHOW_LONG_STATUS},
   {"select",               (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SELECT]), SHOW_LONG_STATUS},
   {"set_option",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SET_OPTION]), SHOW_LONG_STATUS},
+  {"signal",               (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SIGNAL]), SHOW_LONG_STATUS},
   {"show_authors",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_AUTHORS]), SHOW_LONG_STATUS},
   {"show_binlog_events",   (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOG_EVENTS]), SHOW_LONG_STATUS},
   {"show_binlogs",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOGS]), SHOW_LONG_STATUS},
@@ -3564,48 +3555,54 @@ static int init_common_variables(const char *conf_file_name, int argc,
   sys_init_slave.is_os_charset= TRUE;
 
   /* check log options and issue warnings if needed */
-  if (opt_log && opt_logname && !(log_output_options & LOG_FILE) &&
-      !(log_output_options & LOG_NONE))
+  if (opt_log && opt_logname && *opt_logname &&
+      !(log_output_options & (LOG_FILE | LOG_NONE)))
     sql_print_warning("Although a path was specified for the "
                       "--log option, log tables are used. "
                       "To enable logging to files use the --log-output option.");
 
-  if (opt_slow_log && opt_slow_logname && !(log_output_options & LOG_FILE)
-      && !(log_output_options & LOG_NONE))
+  if (opt_slow_log && opt_slow_logname && *opt_slow_logname &&
+      !(log_output_options & (LOG_FILE | LOG_NONE)))
     sql_print_warning("Although a path was specified for the "
                       "--log-slow-queries option, log tables are used. "
                       "To enable logging to files use the --log-output=file option.");
 
-  if (opt_backup_history_log && opt_backup_history_logname
-     && !(log_backup_output_options & LOG_FILE) && !(log_backup_output_options & LOG_NONE))
+  if (opt_backup_history_log && opt_backup_history_logname &&
+      *opt_backup_history_logname &&
+      !(log_backup_output_options & (LOG_FILE | LOG_NONE)))
     sql_print_warning("Although a path was specified for the "
                       "--log-backup-history option, log tables are used. "
                       "To enable logging to files use the --log-backup-output option.");
 
-  if (opt_backup_progress_log && opt_backup_progress_logname
-     && !(log_backup_output_options & LOG_FILE) && !(log_backup_output_options & LOG_NONE))
+  if (opt_backup_progress_log && opt_backup_progress_logname &&
+      *opt_backup_progress_logname &&
+      !(log_backup_output_options & (LOG_FILE | LOG_NONE)))
     sql_print_warning("Although a path was specified for the "
                       "--log-backup-progress option, log tables are used. "
                       "To enable logging to files use the --log-backup-output option.");
 
-  s= opt_logname ? opt_logname : make_default_log_name(buff, ".log");
+  s= (opt_logname && *opt_logname) ? opt_logname :
+    make_default_log_name(buff, ".log");
   sys_var_general_log_path.value= my_strdup(s, MYF(0));
   sys_var_general_log_path.value_length= strlen(s);
 
   /*
     Set defaults for history and progress log paths.
   */
-  s= opt_backup_history_logname ? opt_backup_history_logname : 
+  s= (opt_backup_history_logname && *opt_backup_history_logname) ?
+    opt_backup_history_logname : 
     make_backup_log_name(buff, BACKUP_HISTORY_LOG_NAME.str, ".log");
   sys_var_backup_history_log_path.value= my_strdup(s, MYF(0));
   sys_var_backup_history_log_path.value_length= BACKUP_HISTORY_LOG_NAME.length;
 
-  s= opt_backup_progress_logname ? opt_backup_progress_logname : 
+  s= (opt_backup_progress_logname && *opt_backup_progress_logname) ?
+    opt_backup_progress_logname : 
     make_backup_log_name(buff, BACKUP_PROGRESS_LOG_NAME.str, ".log");
   sys_var_backup_progress_log_path.value= my_strdup(s, MYF(0));
   sys_var_backup_progress_log_path.value_length= BACKUP_PROGRESS_LOG_NAME.length;
 
-  s= opt_slow_logname ? opt_slow_logname : make_default_log_name(buff, "-slow.log");
+  s= (opt_slow_logname && *opt_slow_logname) ? opt_slow_logname :
+    make_default_log_name(buff, "-slow.log");
   sys_var_slow_log_path.value= my_strdup(s, MYF(0));
   sys_var_slow_log_path.value_length= strlen(s);
 
@@ -3615,8 +3612,13 @@ static int init_common_variables(const char *conf_file_name, int argc,
     return 1; /* purecov: tested */
 #endif /* defined(ENABLED_DEBUG_SYNC) */
 
+#if (ENABLE_TEMP_POOL)
   if (use_temp_pool && bitmap_init(&temp_pool,0,1024,1))
     return 1;
+#else
+  use_temp_pool= 0;
+#endif
+
   if (my_database_names_init())
     return 1;
 
@@ -3745,6 +3747,7 @@ static int init_thread_environment()
     sql_print_error("Can't create thread-keys");
     return 1;
   }
+  register_mutex_order();
   return 0;
 }
 
@@ -3874,8 +3877,6 @@ static int init_server_components()
   if (table_def_init() | hostname_cache_init())
     unireg_abort(1);
 
-  wt_init();
-
   query_cache_result_size_limit(query_cache_limit);
   query_cache_set_min_res_unit(query_cache_min_res_unit);
   query_cache_init();
@@ -3886,7 +3887,9 @@ static int init_server_components()
   my_uuid_init((ulong) (my_rnd(&sql_rand))*12345,12345);
 #ifdef HAVE_REPLICATION
   init_slave_list();
+  init_slave_start();
 #endif
+  wt_init();
 
   /* Setup logs */
 
@@ -4069,12 +4072,15 @@ server.");
   if (ha_init_errors())
     DBUG_RETURN(1);
 
-  if (plugin_init(&defaults_argc, defaults_argv,
-                  (opt_noacl ? PLUGIN_INIT_SKIP_PLUGIN_TABLE : 0) |
-                  (opt_help ? PLUGIN_INIT_SKIP_INITIALIZATION : 0)))
-  {
-    sql_print_error("Failed to initialize plugins.");
-    unireg_abort(1);
+  { 
+    if (plugin_init(&defaults_argc, defaults_argv,
+		    (opt_noacl ? PLUGIN_INIT_SKIP_PLUGIN_TABLE : 0) |
+		    (opt_help ? PLUGIN_INIT_SKIP_INITIALIZATION : 0)))
+    {
+      sql_print_error("Failed to initialize plugins.");
+      unireg_abort(1);
+    }
+    plugins_are_initialized= TRUE;  /* Don't separate from init function */
   }
 
 #ifndef EMBEDDED_LIBRARY
@@ -4345,6 +4351,13 @@ static void handle_connections_methods()
     sql_print_error("TCP/IP, --shared-memory, or --named-pipe should be configured on NT OS");
     unireg_abort(1);				// Will not return
   }
+  if((hPipe != INVALID_HANDLE_VALUE || opt_enable_shared_memory) &&
+    global_system_variables.thread_handling == SCHEDULER_POOL_OF_THREADS)
+  {
+    sql_print_error("thread_handling=pool-of-threads cannot be used with "
+     "shared memory or named pipe protocols");
+    unireg_abort(1);
+  }
 #endif
 
   pthread_mutex_lock(&LOCK_thread_count);
@@ -4405,6 +4418,44 @@ void decrement_handler_count()
 
 
 #ifndef EMBEDDED_LIBRARY
+#ifndef DBUG_OFF
+/*
+  Debugging helper function to keep the locale database
+  (see sql_locale.cc) and max_month_name_length and
+  max_day_name_length variable values in consistent state.
+*/
+static void test_lc_time_sz()
+{
+  DBUG_ENTER("test_lc_time_sz");
+  for (MY_LOCALE **loc= my_locales; *loc; loc++)
+  {
+    uint max_month_len= 0;
+    uint max_day_len = 0;
+    for (const char **month= (*loc)->month_names->type_names; *month; month++)
+    {
+      set_if_bigger(max_month_len,
+                    my_numchars_mb(&my_charset_utf8_general_ci,
+                                   *month, *month + strlen(*month)));
+    }
+    for (const char **day= (*loc)->day_names->type_names; *day; day++)
+    {
+      set_if_bigger(max_day_len,
+                    my_numchars_mb(&my_charset_utf8_general_ci,
+                                   *day, *day + strlen(*day)));
+    }
+    if ((*loc)->max_month_name_length != max_month_len ||
+        (*loc)->max_day_name_length != max_day_len)
+    {
+      DBUG_PRINT("Wrong max day name(or month name) length for locale:",
+                 ("%s", (*loc)->name));
+      DBUG_ASSERT(0);
+    }
+  }
+  DBUG_VOID_RETURN;
+}
+#endif//DBUG_OFF
+
+
 #ifdef __WIN__
 int win_main(int argc, char **argv)
 #else
@@ -4413,13 +4464,6 @@ int main(int argc, char **argv)
 {
   MY_INIT(argv[0]);		// init my_sys library & pthreads
   /* nothing should come before this line ^^^ */
-
-  /* Set signal used to kill MySQL */
-#if defined(SIGUSR2)
-  thr_kill_signal= thd_lib_detected == THD_LIB_LT ? SIGINT : SIGUSR2;
-#else
-  thr_kill_signal= SIGINT;
-#endif
 
   /* Initialize audit interface globals. Audit plugins are inited later. */
   mysql_audit_initialize();
@@ -4504,6 +4548,10 @@ int main(int argc, char **argv)
 #ifdef HAVE_LIBWRAP
   libwrapName= my_progname+dirname_length(my_progname);
   openlog(libwrapName, LOG_PID, LOG_AUTH);
+#endif
+
+#ifndef DBUG_OFF
+  test_lc_time_sz();
 #endif
 
   /*
@@ -5000,7 +5048,7 @@ void create_thread_to_handle_connection(THD *thd)
       /* Can't use my_error() since store_globals has not been called. */
       my_snprintf(error_message_buff, sizeof(error_message_buff),
                   ER(ER_CANT_CREATE_THREAD), error);
-      net_send_error(thd, ER_CANT_CREATE_THREAD, error_message_buff);
+      net_send_error(thd, ER_CANT_CREATE_THREAD, error_message_buff, NULL);
       (void) pthread_mutex_lock(&LOCK_thread_count);
       close_connection(thd,0,0);
       delete thd;
@@ -5691,8 +5739,8 @@ enum options_mysqld
   OPT_NDB_REPORT_THRESH_BINLOG_MEM_USAGE,
   OPT_NDB_USE_COPYING_ALTER_TABLE,
   OPT_NDB_LOG_UPDATE_AS_WRITE, OPT_NDB_LOG_UPDATED_ONLY,
-  OPT_NDB_LOG_ORIG,
-  OPT_SKIP_SAFEMALLOC,
+  OPT_NDB_LOG_ORIG, OPT_NDB_LOG_BIN, OPT_NDB_LOG_BINLOG_INDEX,
+  OPT_SKIP_SAFEMALLOC, OPT_MUTEX_DEADLOCK_DETECTOR,
   OPT_TEMP_POOL, OPT_TX_ISOLATION, OPT_COMPLETION_TYPE,
   OPT_SKIP_STACK_TRACE, OPT_SKIP_SYMLINKS,
   OPT_MAX_BINLOG_DUMP_EVENTS, OPT_SPORADIC_BINLOG_DUMP_FAIL,
@@ -5712,7 +5760,7 @@ enum options_mysqld
   OPT_DELAYED_INSERT_LIMIT, OPT_DELAYED_QUEUE_SIZE,
   OPT_FLUSH_TIME, OPT_FT_MIN_WORD_LEN, OPT_FT_BOOLEAN_SYNTAX,
   OPT_FT_MAX_WORD_LEN, OPT_FT_QUERY_EXPANSION_LIMIT, OPT_FT_STOPWORD_FILE,
-  OPT_INTERACTIVE_TIMEOUT, OPT_JOIN_BUFF_SIZE,
+  OPT_INTERACTIVE_TIMEOUT, OPT_JOIN_BUFF_SIZE, OPT_JOIN_CACHE_LEVEL,
   OPT_KEY_BUFFER_SIZE, OPT_KEY_CACHE_BLOCK_SIZE,
   OPT_KEY_CACHE_DIVISION_LIMIT, OPT_KEY_CACHE_AGE_THRESHOLD,
   OPT_LONG_QUERY_TIME,
@@ -5813,14 +5861,16 @@ enum options_mysqld
 #endif
   OPT_DEBUG_CRC, OPT_DEBUG_ON,
   OPT_SLAVE_EXEC_MODE,
-  OPT_GENERAL_LOG_FILE,
-  OPT_SLOW_QUERY_LOG_FILE,
   OPT_DEADLOCK_SEARCH_DEPTH_SHORT,
   OPT_DEADLOCK_SEARCH_DEPTH_LONG,
   OPT_DEADLOCK_TIMEOUT_SHORT,
   OPT_DEADLOCK_TIMEOUT_LONG,
+  OPT_GENERAL_LOG_FILE,
+  OPT_SLOW_QUERY_LOG_FILE,
+  OPT_SYNC_RELAY_LOG,
   OPT_BACKUP_HISTORY_LOG_FILE,
-  OPT_BACKUP_PROGRESS_LOG_FILE
+  OPT_BACKUP_PROGRESS_LOG_FILE,
+  OPT_IGNORE_BUILTIN_INNODB
 };
 
 
@@ -6055,6 +6105,9 @@ Disable with --skip-large-pages.",
    (uchar**) &opt_large_pages, (uchar**) &opt_large_pages, 0, GET_BOOL, NO_ARG, 0, 0, 0,
    0, 0, 0},
 #endif
+  {"ignore-builtin-innodb", OPT_IGNORE_BUILTIN_INNODB ,
+   "Disable initialization of builtin InnoDB plugin",
+   0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"init-connect", OPT_INIT_CONNECT, "Command(s) that are executed for each new connection",
    (uchar**) &opt_init_connect, (uchar**) &opt_init_connect, 0, GET_STR_ALLOC,
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
@@ -6229,6 +6282,13 @@ thread is in the master's binlogs.",
 #endif /* HAVE_REPLICATION */
   {"memlock", OPT_MEMLOCK, "Lock mysqld in memory.", (uchar**) &locked_in_memory,
    (uchar**) &locked_in_memory, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+#ifdef SAFE_MUTEX
+  {"mutex-deadlock-detector", OPT_MUTEX_DEADLOCK_DETECTOR,
+   "Enable checking of wrong mutex usage.",
+   (uchar**) &safe_mutex_deadlock_detector,
+   (uchar**) &safe_mutex_deadlock_detector,
+   0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0, 0},
+#endif
   {"myisam-recover", OPT_MYISAM_RECOVER,
    "Syntax: myisam-recover[=option[,option...]], where option can be DEFAULT, BACKUP, FORCE or QUICK.",
    (uchar**) &myisam_recover_options_str, (uchar**) &myisam_recover_options_str, 0,
@@ -6269,7 +6329,7 @@ thread is in the master's binlogs.",
    "Turn on more logging in the error log.",
    (uchar**) &ndb_extra_logging,
    (uchar**) &ndb_extra_logging,
-   0, GET_INT, OPT_ARG, 0, 0, 0, 0, 0, 0},
+   0, GET_ULONG, OPT_ARG, 1, 0, 0, 0, 0, 0},
 #ifdef HAVE_NDB_BINLOG
   {"ndb-report-thresh-binlog-epoch-slip", OPT_NDB_REPORT_THRESH_BINLOG_EPOCH_SLIP,
    "Threshold on number of epochs to be behind before reporting binlog status. "
@@ -6308,6 +6368,16 @@ thread is in the master's binlogs.",
    (uchar**) &opt_ndb_log_orig,
    (uchar**) &opt_ndb_log_orig,
    0, GET_BOOL, OPT_ARG, 0, 0, 0, 0, 0, 0},
+  {"ndb-log-bin", OPT_NDB_LOG_BIN,
+   "Log ndb tables in the binary log. Option only has meaning if "
+   "the binary log has been turned on for the server.",
+   (uchar**) &opt_ndb_log_bin, (uchar**) &opt_ndb_log_bin,
+   0, GET_BOOL, OPT_ARG, 1, 0, 0, 0, 0, 0},
+  {"ndb-log-binlog-index", OPT_NDB_LOG_BINLOG_INDEX,
+   "Insert mapping between epochs and binlog positions into the "
+   "ndb_binlog_index table.",
+   (uchar**) &ndb_log_binlog_index, (uchar**) &ndb_log_binlog_index,
+   0, GET_BOOL, OPT_ARG, 1, 0, 0, 0, 0, 0},
 #endif
   {"ndb-use-exact-count", OPT_NDB_USE_EXACT_COUNT,
    "Use exact records count during query planning and for fast "
@@ -6628,9 +6698,14 @@ log and this option does nothing anymore.",
    0, GET_UINT, OPT_ARG, 0, 0, UINT_MAX, 0, 0, 0},
 #endif /* defined(ENABLED_DEBUG_SYNC) */
   {"temp-pool", OPT_TEMP_POOL,
+#if (ENABLE_TEMP_POOL)
    "Using this option will cause most temporary files created to use a small set of names, rather than a unique name for each new file.",
+#else
+   "This option is ignored on this OS.",
+#endif
    (uchar**) &use_temp_pool, (uchar**) &use_temp_pool, 0, GET_BOOL, NO_ARG, 1,
    0, 0, 0, 0, 0},
+
   {"timed_mutexes", OPT_TIMED_MUTEXES,
    "Specify whether to time mutexes (only InnoDB mutexes are currently supported)",
    (uchar**) &timed_mutexes, (uchar**) &timed_mutexes, 0, GET_BOOL, NO_ARG, 0,
@@ -6755,8 +6830,13 @@ log and this option does nothing anymore.",
    "The size of the buffer that is used for full joins.",
    (uchar**) &global_system_variables.join_buff_size,
    (uchar**) &max_system_variables.join_buff_size, 0, GET_ULONG,
-   REQUIRED_ARG, 128*1024L, IO_SIZE*2+MALLOC_OVERHEAD, (longlong) ULONG_MAX,
-   MALLOC_OVERHEAD, IO_SIZE, 0},
+   REQUIRED_ARG, 128*1024L, 128+MALLOC_OVERHEAD, (longlong) ULONG_MAX,
+   MALLOC_OVERHEAD, 128, 0},
+   {"join_cache_level", OPT_JOIN_CACHE_LEVEL,
+   "Controls what join operations can be executed with join buffers. Odd numbers are used for plain join buffers while even numbers are used for linked buffers",
+   (uchar**) &global_system_variables.join_cache_level,
+   (uchar**) &max_system_variables.join_cache_level,
+   0, GET_ULONG, REQUIRED_ARG, 1, 0, 8, 0, 1, 0},
   {"keep_files_on_create", OPT_KEEP_FILES_ON_CREATE,
    "Don't overwrite stale .MYD and .MYI even if no directory is specified.",
    (uchar**) &global_system_variables.keep_files_on_create,
@@ -7098,8 +7178,13 @@ The minimum value for this variable is 4096.",
   {"sync-binlog", OPT_SYNC_BINLOG,
    "Synchronously flush binary log to disk after every #th event. "
    "Use 0 (default) to disable synchronous flushing.",
-   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_ULONG,
-   REQUIRED_ARG, 0, 0, (longlong) ULONG_MAX, 0, 1, 0},
+   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
+  {"sync-relay-log", OPT_SYNC_RELAY_LOG,
+   "Synchronously flush relay log to disk after every #th event. "
+   "Use 0 (default) to disable synchronous flushing.",
+   (uchar**) &sync_relaylog_period, (uchar**) &sync_relaylog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
   {"sync-frm", OPT_SYNC_FRM, "Sync .frm to disk on create. Enabled by default.",
    (uchar**) &opt_sync_frm, (uchar**) &opt_sync_frm, 0, GET_BOOL, NO_ARG, 1, 0,
    0, 0, 0, 0},
@@ -7179,6 +7264,15 @@ The minimum value for this variable is 4096.",
    0, 1, 0},
   {0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
+
+
+static int show_queries(THD *thd, SHOW_VAR *var, char *buff)
+{
+  var->type= SHOW_LONGLONG;
+  var->value= (char *)&thd->query_id;
+  return 0;
+}
+
 
 static int show_net_compression(THD *thd, SHOW_VAR *var, char *buff)
 {
@@ -7589,6 +7683,7 @@ SHOW_VAR status_vars[]= {
   {"Handler_commit",           (char*) offsetof(STATUS_VAR, ha_commit_count), SHOW_LONG_STATUS},
   {"Handler_delete",           (char*) offsetof(STATUS_VAR, ha_delete_count), SHOW_LONG_STATUS},
   {"Handler_discover",         (char*) offsetof(STATUS_VAR, ha_discover_count), SHOW_LONG_STATUS},
+  {"Handler_mrr_init",         (char*) offsetof(STATUS_VAR, ha_multi_range_read_init_count),  SHOW_LONG_STATUS},
   {"Handler_prepare",          (char*) offsetof(STATUS_VAR, ha_prepare_count),  SHOW_LONG_STATUS},
   {"Handler_read_first",       (char*) offsetof(STATUS_VAR, ha_read_first_count), SHOW_LONG_STATUS},
   {"Handler_read_key",         (char*) offsetof(STATUS_VAR, ha_read_key_count), SHOW_LONG_STATUS},
@@ -7629,6 +7724,7 @@ SHOW_VAR status_vars[]= {
   {"Qcache_queries_in_cache",  (char*) &query_cache.queries_in_cache, SHOW_LONG_NOFLUSH},
   {"Qcache_total_blocks",      (char*) &query_cache.total_blocks, SHOW_LONG_NOFLUSH},
 #endif /*HAVE_QUERY_CACHE*/
+  {"Queries",                  (char*) &show_queries,            SHOW_FUNC},
   {"Questions",                (char*) offsetof(STATUS_VAR, questions), SHOW_LONG_STATUS},
 #ifdef HAVE_REPLICATION
   {"Rpl_status",               (char*) &show_rpl_status,          SHOW_FUNC},
@@ -7718,7 +7814,7 @@ static void usage(void)
     default_collation_name= (char*) default_charset_info->name;
   print_version();
   puts("\
-Copyright (C) 2000 MySQL AB, by Monty and others\n\
+Copyright (C) 2000-2008 MySQL AB, Monty and others, 2008-2009 Sun Microsystems, Inc.\n\
 This software comes with ABSOLUTELY NO WARRANTY. This is free software,\n\
 and you are welcome to modify and redistribute it under the GPL license\n\n\
 Starts the MySQL database server\n");
@@ -7747,6 +7843,13 @@ Starts the MySQL database server\n");
 
   /* Print out all the options including plugin supplied options */
   my_print_help_inc_plugins(my_long_options, sizeof(my_long_options)/sizeof(my_option));
+
+  if (! plugins_are_initialized)
+  {
+    puts("\n\
+Plugins have parameters that are not reflected in this list\n\
+because execution stopped before plugins were initialized.");
+  }
 
   puts("\n\
 To see what values a running MySQL server is using, type\n\
@@ -7787,6 +7890,7 @@ static int mysql_init_variables(void)
   log_backup_output_options= find_bit_type(log_backup_output_str, &log_output_typelib);
   opt_bin_log= 0;
   opt_disable_networking= opt_skip_show_db=0;
+  opt_ignore_builtin_innodb= 0;
   opt_logname= opt_update_logname= opt_binlog_index_name= opt_slow_logname= 0;
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
@@ -7923,6 +8027,7 @@ static int mysql_init_variables(void)
   max_system_variables.ndb_index_stat_cache_entries=~0L;
   global_system_variables.ndb_index_stat_update_freq=20;
   max_system_variables.ndb_index_stat_update_freq=~0L;
+
 #ifdef HAVE_OPENSSL
   have_ssl=SHOW_OPTION_YES;
 #else
@@ -8107,6 +8212,9 @@ mysqld_get_one_option(int optid,
     break;
   case (int) OPT_BIG_TABLES:
     thd_startup_options|=OPTION_BIG_TABLES;
+    break;
+  case (int) OPT_IGNORE_BUILTIN_INNODB:
+    opt_ignore_builtin_innodb= 1;
     break;
   case (int) OPT_ISAM_LOG:
     opt_myisam_logical_log=1;

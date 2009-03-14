@@ -15,15 +15,17 @@
 #  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 if HAVE_NETWARE
-INCLUDES =			-I$(top_builddir)/include -I$(top_srcdir)/include -I..
-LDADD =				@CLIENT_EXTRA_LDFLAGS@ ../mysys/libmysys.a \
-				../dbug/libdbug.a ../strings/libmystrings.a
+AM_CPPFLAGS =			-I$(top_srcdir)/include
+LDADD =				@CLIENT_EXTRA_LDFLAGS@ \
+				$(top_builddir)/mysys/libmysyslt.la \
+				$(top_builddir)/dbug/libdbuglt.la \
+				$(top_builddir)/strings/libmystringslt.la
 bin_PROGRAMS =			mysqld_safe mysql_install_db mysql_test_run libmysql
 mysqld_safe_SOURCES=		mysqld_safe.c my_manage.c
 mysql_install_db_SOURCES=	mysql_install_db.c my_manage.c
 mysql_test_run_SOURCES=		mysql_test_run.c my_manage.c
 libmysql_SOURCES=		libmysqlmain.c
-libmysql_LDADD =		../libmysql/.libs/libmysqlclient.a \
+libmysql_LDADD =		$(top_builddir)/libmysql/.libs/libmysqlclient.a \
 				@openssl_libs@ @yassl_libs@
 
 netware_build_files =           client/mysql.def client/mysqladmin.def \
@@ -94,7 +96,7 @@ EXTRA_DIST=	$(BUILT_SOURCES) comp_err.def install_test_db.ncf \
 		BUILD/compile-netware-standard BUILD/create-patch \
 		BUILD/cron-build BUILD/crontab BUILD/knetware.imp \
 		BUILD/mwasmnlm BUILD/mwccnlm BUILD/mwenv BUILD/mwldnlm \
-		BUILD/nwbootstrap BUILD/openssl.imp BUILD/save-patch
+		BUILD/nwbuild BUILD/openssl.imp BUILD/save-patch
 
 endif
 
@@ -115,6 +117,3 @@ test_db.sql: init_db.sql $(top_srcdir)/scripts/mysql_test_data_timezone.sql
 	@echo "Building $@";
 	@cat init_db.sql \
 	     $(top_srcdir)/scripts/mysql_test_data_timezone.sql  > $@;
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

@@ -44,7 +44,6 @@
 #include <NdbTick.h>
 
 #include <EventLogger.hpp>
-extern EventLogger g_eventLogger;
 
 /******************************************************************************
  * int init( int aNrOfCon, int aNrOfOp );
@@ -270,13 +269,7 @@ Ndb::report_node_failure_completed(Uint32 node_id)
   {
     // node failed
     // eventOperations in the ndb object should be notified
-    theEventBuffer->report_node_failure(node_id);
-    if(!theImpl->m_transporter_facade->theClusterMgr->isClusterAlive())
-    {
-      // cluster is unavailable, 
-      // eventOperations in the ndb object should be notified
-      theEventBuffer->completeClusterFailed();
-    }
+    theEventBuffer->report_node_failure_completed(node_id);
   }
   
   abortTransactionsAfterNodeFailure(node_id);
@@ -315,7 +308,7 @@ Ndb::abortTransactionsAfterNodeFailure(Uint16 aNodeId)
         localCon->theCompletionStatus = NdbTransaction::CompletedSuccess;
       } else {
 #ifdef VM_TRACE
-        printState("abortTransactionsAfterNodeFailure %x", this);
+        printState("abortTransactionsAfterNodeFailure %lx", (long)this);
         abort();
 #endif
       }
@@ -743,8 +736,8 @@ Ndb::handleReceivedSignal(NdbApiSignal* aSignal, LinearSectionPtr ptr[3])
 
     if (unlikely(op == 0 || op->m_magic_number != NDB_EVENT_OP_MAGIC_NUMBER))
     {
-      g_eventLogger.error("dropped GSN_SUB_TABLE_DATA due to wrong magic "
-			  "number");
+      g_eventLogger->error("dropped GSN_SUB_TABLE_DATA due to wrong magic "
+                           "number");
       return ;
     }
 
@@ -906,6 +899,9 @@ Ndb::handleReceivedSignal(NdbApiSignal* aSignal, LinearSectionPtr ptr[3])
     goto InvalidSignal;
     return;
   } 
+  case GSN_TAKE_OVERTCCONF:
+    abortTransactionsAfterNodeFailure(tFirstData); // theData[0]
+    break;
   default:
     goto InvalidSignal;
   }//swich

@@ -64,7 +64,7 @@ public:
 	int					renameTable(StorageConnection* storageConnection, Table* table, const char* newName, const char *schemaName);
 	Bitmap*				indexScan(Index* index, StorageKey *lower, StorageKey *upper, int searchFlags, StorageConnection* storageConnection, Bitmap *bitmap);
 	IndexWalker*		indexPosition(Index* index, StorageKey* lower, StorageKey* upper, int searchFlags, StorageConnection* storageConnection);
-	int					makeKey(StorageIndexDesc* index, const UCHAR* key, int keyLength, StorageKey* storageKey);
+	int					makeKey(StorageIndexDesc* index, const UCHAR* key, int keyLength, StorageKey* storageKey, bool highKey);
 	int					storeBlob(Connection* connection, Table* table, StorageBlob* blob);
 	void				getBlob(Table* table, int recordNumber, StorageBlob* blob);
 	void				addRef(void);
@@ -81,7 +81,6 @@ public:
 	int					nextIndexed(StorageTable *storageTable, void* recordBitmap, int recordNumber, bool lockForUpdate);
 	int					nextIndexed(StorageTable* storageTable, IndexWalker* indexWalker, bool lockForUpdate);
 	int					fetch(StorageConnection* storageConnection, StorageTable* storageTable, int recordNumber, bool lockForUpdate);
-//	RecordVersion*		lockRecord(StorageConnection* storageConnection, Table *table, Record* record);
 	
 	int					updateRow(StorageConnection* storageConnection, Table* table, Record *oldRecord, Stream* stream);
 	int					getSegmentValue(StorageSegment* segment, const UCHAR* ptr, Value* value, Field *field);

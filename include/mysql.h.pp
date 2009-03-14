@@ -42,24 +42,25 @@ typedef struct st_net {
   void *extension;
 } NET;
 enum enum_field_types { MYSQL_TYPE_DECIMAL, MYSQL_TYPE_TINY,
-   MYSQL_TYPE_SHORT, MYSQL_TYPE_LONG,
-   MYSQL_TYPE_FLOAT, MYSQL_TYPE_DOUBLE,
-   MYSQL_TYPE_NULL, MYSQL_TYPE_TIMESTAMP,
-   MYSQL_TYPE_LONGLONG,MYSQL_TYPE_INT24,
-   MYSQL_TYPE_DATE, MYSQL_TYPE_TIME,
-   MYSQL_TYPE_DATETIME, MYSQL_TYPE_YEAR,
-   MYSQL_TYPE_NEWDATE, MYSQL_TYPE_VARCHAR,
-   MYSQL_TYPE_BIT,
+                        MYSQL_TYPE_SHORT, MYSQL_TYPE_LONG,
+                        MYSQL_TYPE_FLOAT, MYSQL_TYPE_DOUBLE,
+                        MYSQL_TYPE_NULL, MYSQL_TYPE_TIMESTAMP,
+                        MYSQL_TYPE_LONGLONG,MYSQL_TYPE_INT24,
+                        MYSQL_TYPE_DATE, MYSQL_TYPE_TIME,
+                        MYSQL_TYPE_DATETIME, MYSQL_TYPE_YEAR,
+                        MYSQL_TYPE_NEWDATE, MYSQL_TYPE_VARCHAR,
+                        MYSQL_TYPE_BIT,
                         MYSQL_TYPE_NEWDECIMAL=246,
-   MYSQL_TYPE_ENUM=247,
-   MYSQL_TYPE_SET=248,
-   MYSQL_TYPE_TINY_BLOB=249,
-   MYSQL_TYPE_MEDIUM_BLOB=250,
-   MYSQL_TYPE_LONG_BLOB=251,
-   MYSQL_TYPE_BLOB=252,
-   MYSQL_TYPE_VAR_STRING=253,
-   MYSQL_TYPE_STRING=254,
-   MYSQL_TYPE_GEOMETRY=255
+                        MYSQL_TYPE_ENUM=247,
+                        MYSQL_TYPE_SET=248,
+                        MYSQL_TYPE_TINY_BLOB=249,
+                        MYSQL_TYPE_MEDIUM_BLOB=250,
+                        MYSQL_TYPE_LONG_BLOB=251,
+                        MYSQL_TYPE_BLOB=252,
+                        MYSQL_TYPE_VAR_STRING=253,
+                        MYSQL_TYPE_STRING=254,
+                        MYSQL_TYPE_GEOMETRY=255,
+                        MAX_NO_FIELD_TYPES
 };
 enum mysql_enum_shutdown_level {
   SHUTDOWN_DEFAULT = 0,
@@ -557,7 +558,7 @@ typedef struct st_mysql_methods
   MYSQL_RES * (*use_result)(MYSQL *mysql);
   void (*fetch_lengths)(unsigned long *to,
    MYSQL_ROW column, unsigned int field_count);
-  void (*flush_use_result)(MYSQL *mysql);
+  void (*flush_use_result)(MYSQL *mysql, my_bool flush_all_results);
   MYSQL_FIELD * (*list_fields)(MYSQL *mysql);
   my_bool (*read_prepare_result)(MYSQL *mysql, MYSQL_STMT *stmt);
   int (*stmt_execute)(MYSQL_STMT *stmt);

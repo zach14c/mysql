@@ -270,8 +270,28 @@ bb-1	NULL	cc-2	NULL-4
 bb-1	NULL	cc-2	NULL-3
 bb-1	NULL	cc-2	NULL-2
 bb-1	NULL	cc-2	NULL-1
-set storage_engine= @save_storage_engine;
 drop table t1, t2, t3, t4;
+create table t1 (a int, b int not null,unique key (a,b),index(b));
+insert ignore into t1 values (1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(null,7),(9,9),(8,8),(7,7),(null,9),(null,9),(6,6);
+create table t2 like t1;
+insert into t2 select * from t1;
+alter table t1 modify b blob not null, add c int not null, drop key a, add unique key (a,b(20),c), drop key b, add key (b(10));
+select * from t1 where a is null;
+a	b	c
+NULL	7	0
+NULL	9	0
+NULL	9	0
+select * from t1 where (a is null or a > 0 and a < 3) and b > 7 limit 3;
+a	b	c
+NULL	9	0
+NULL	9	0
+select * from t1 where a is null and b=9 or a is null and b=7 limit 3;
+a	b	c
+NULL	7	0
+NULL	9	0
+NULL	9	0
+drop table t1, t2;
+set storage_engine= @save_storage_engine;
 set @read_rnd_buffer_size_save= @@read_rnd_buffer_size;
 set read_rnd_buffer_size=64;
 create table t1(a int);
@@ -350,4 +370,33 @@ select pk from t1 WHERE `int_nokey` IS NULL OR  `varchar_key` > 'kr' group by pk
 pk
 1
 5
+drop table t1;
+#
+# BUG#39447: Error with NOT NULL condition and LIMIT 1
+#
+CREATE TABLE t1 (                 
+id int(11) NOT NULL,                
+parent_id int(11) DEFAULT NULL,     
+name varchar(10) DEFAULT NULL,      
+PRIMARY KEY (id),                   
+KEY ind_parent_id (parent_id)     
+) ENGINE=InnoDB;
+insert into t1 (id, parent_id, name) values
+(10,NULL,'A'),
+(20,10,'B'),
+(30,10,'C'),
+(40,NULL,'D'),
+(50,40,'E'),
+(60,40,'F'),
+(70,NULL,'J');
+SELECT id FROM t1 WHERE parent_id IS NOT NULL ORDER BY id DESC LIMIT 1;
+id
+60
+This must show type=index, extra=Using where
+explain SELECT * FROM t1 WHERE parent_id IS NOT NULL ORDER BY id DESC LIMIT 1;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	index	ind_parent_id	PRIMARY	4	NULL	2	Using where
+SELECT * FROM t1 WHERE parent_id IS NOT NULL ORDER BY id DESC LIMIT 1;
+id	parent_id	name
+60	40	F
 drop table t1;

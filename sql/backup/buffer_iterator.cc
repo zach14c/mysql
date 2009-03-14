@@ -15,28 +15,28 @@
 */
 
 /**
- * @file
- *
- * @brief Contains a buffering class for breaking large data into parts.
- *
- * This file contains a buffering class for buffering large chunks of
- * data. It can be used to store a large chunk of data and iterate
- * through windows of a specified size until all the data is read.
- * It can also be used to recombine the data from smaller windows.
-  */
+  @file
+ 
+  @brief Contains a buffering class for breaking large data into parts.
+ 
+  This file contains a buffering class for buffering large chunks of
+  data. It can be used to store a large chunk of data and iterate
+  through windows of a specified size until all the data is read.
+  It can also be used to recombine the data from smaller windows.
+*/
 
 #include "../mysql_priv.h"
 #include "buffer_iterator.h"
 
 /**
- * @brief Create a buffer iterator.
- *
- * Given a pointer to a block of data, its maximum size, and
- * window size, start iterator for reading or writing data.
- *
- * @param  buff_ptr (in) a pointer to a block of memory
- * @param  size     (in) the maximum size of the data
- */
+  @brief Create a buffer iterator.
+ 
+  Given a pointer to a block of data, its maximum size, and
+  window size, start iterator for reading or writing data.
+ 
+  @param  buff_ptr (in) a pointer to a block of memory
+  @param  size     (in) the maximum size of the data
+*/
 int Buffer_iterator::initialize(byte *buff_ptr, size_t size)
 {
   DBUG_ENTER("buffer_iterator::initialize(buff_ptr, size, window)");
@@ -50,13 +50,13 @@ int Buffer_iterator::initialize(byte *buff_ptr, size_t size)
 }
 
 /**
- * @brief Create a buffer iterator.
- *
- * Given the maximum size of a block of data and the
- * window size, start iterator for reading or writing data.
- *
- * @param  size     (in) the maximum size of the data
- */
+  @brief Create a buffer iterator.
+ 
+  Given the maximum size of a block of data and the
+  window size, start iterator for reading or writing data.
+ 
+  @param  size     (in) the maximum size of the data
+*/
 int Buffer_iterator::initialize(size_t size)
 {
   DBUG_ENTER("buffer_iterator::initialize(size, window)");
@@ -70,10 +70,10 @@ int Buffer_iterator::initialize(size_t size)
 }
 
 /**
- * @brief Reset buffer iterator.
- *
- * Destroy any memory used.
- */
+  @brief Reset buffer iterator.
+ 
+  Destroy any memory used.
+*/
 int Buffer_iterator::reset()
 {
   DBUG_ENTER("buffer_iterator::reset()");
@@ -85,18 +85,18 @@ int Buffer_iterator::reset()
 }
 
 /**
- * @brief Get the next window of data in the iterator.
- *
- * This method retrieves the next window in the iterator. It
- * returns the number of bytes read (may be less if last
- * window is smaller than the max window size), and updates
- * the pointer passed as an argument.
- *
- * @param  buff_ptr  (in) a pointer to the window to be read
- * @param  window    (in) the size of the window
- * 
- * @retval the size of the window
- */
+  @brief Get the next window of data in the iterator.
+ 
+  This method retrieves the next window in the iterator. It
+  returns the number of bytes read (may be less if last
+  window is smaller than the max window size), and updates
+  the pointer passed as an argument.
+ 
+  @param  buff_ptr  (in) a pointer to the window to be read
+  @param  window    (in) the size of the window
+  
+  @retval the size of the window
+*/
 size_t Buffer_iterator::get_next(byte **buff_ptr, size_t window)
 {
   size_t bytes_read;
@@ -126,19 +126,19 @@ size_t Buffer_iterator::get_next(byte **buff_ptr, size_t window)
 }
 
 /**
- * @brief Insert the next window of data into the iterator.
- *
- * This method inserts the next window into the iterator. It
- * uses the pointer passed as an argument to copy data from 
- * that location to the internal buffer based on the size of
- * the window passed as an argument.
- *
- * @param  buff_ptr (in/out) a pointer to the window to be written
- * @param  size     (in) the size of the window to be written
- * 
- * @retval 0  success
- * @retval 1  window size exceeds maximum size of the block of data
- */
+  @brief Insert the next window of data into the iterator.
+ 
+  This method inserts the next window into the iterator. It
+  uses the pointer passed as an argument to copy data from 
+  that location to the internal buffer based on the size of
+  the window passed as an argument.
+ 
+  @param  buff_ptr (in/out) a pointer to the window to be written
+  @param  size     (in) the size of the window to be written
+  
+  @retval 0  success
+  @retval 1  window size exceeds maximum size of the block of data
+*/
 int Buffer_iterator::put_next(byte *buff_ptr, size_t size)
 {
   DBUG_ENTER("buffer_iterator::put_next()");
@@ -154,18 +154,18 @@ int Buffer_iterator::put_next(byte *buff_ptr, size_t size)
 }
 
 /**
- * @brief Determines the number of windows left to read.
- *
- * This method calculates how many windows are left to read in
- * the iterator. Use this method following initialize() to
- * determine the maximum windows you can write to the buffer or
- * use this method to determine how many more windows are 
- * remaining to be read.
- * 
- * @param  size     (in) the size of the window 
- *
- * @retval the number of windows left to read
- */
+  @brief Determines the number of windows left to read.
+ 
+  This method calculates how many windows are left to read in
+  the iterator. Use this method following initialize() to
+  determine the maximum windows you can write to the buffer or
+  use this method to determine how many more windows are 
+  remaining to be read.
+  
+  @param  size     (in) the size of the window 
+ 
+  @retval the number of windows left to read
+*/
 int Buffer_iterator::num_windows(size_t size)
 {
   int num_windows;
@@ -178,20 +178,20 @@ int Buffer_iterator::num_windows(size_t size)
 }
 
 /**
- * @brief Retrieve the pointer to the block of data.
- *
- * This method gets the base pointer to the block of data and 
- * returns it to the caller. This method can be used after writing
- * a series of windows to a buffer. When called, the method turns
- * off the free() mechanism for freeing the base memory allocated.
- * This was included to allow callers to reuse the memory. For 
- * example, this method is used in the default algorithm to read
- * and write blob data. On write, the pointer to the blob data (the
- * data in the buffer) is needed to write to the storage engine. Thus,
- * when this method is called the memory is not freed on destruction.
- * 
- * @retval the pointer to the buffer
- */
+  @brief Retrieve the pointer to the block of data.
+ 
+  This method gets the base pointer to the block of data and 
+  returns it to the caller. This method can be used after writing
+  a series of windows to a buffer. When called, the method turns
+  off the free() mechanism for freeing the base memory allocated.
+  This was included to allow callers to reuse the memory. For 
+  example, this method is used in the default algorithm to read
+  and write blob data. On write, the pointer to the blob data (the
+  data in the buffer) is needed to write to the storage engine. Thus,
+  when this method is called the memory is not freed on destruction.
+  
+  @retval the pointer to the buffer
+*/
 byte *Buffer_iterator::get_base_ptr()
 {
   byte *ptr;

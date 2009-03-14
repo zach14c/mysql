@@ -1,6 +1,12 @@
 --source include/not_embedded.inc
 --source include/have_debug.inc
 --source include/not_embedded.inc
+--source include/have_myisam_or_maria_default.inc
+
+disable_query_log;
+call mtr.add_suppression("Backup:");
+call mtr.add_suppression("Cannot create backup engine for storage engine");
+enable_query_log;
 
 #
 # This test script tests the behaviour reported in BUG#34721
@@ -21,13 +27,16 @@
 
 --disable_warnings
 DROP DATABASE IF EXISTS db1;
+
+let $MYSQLD_DATADIR= `select @@datadir`;
+
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/db1.bak
+remove_file $MYSQLD_DATADIR/db1.bak;
 --enable_warnings
 
 CREATE DATABASE db1;
 USE db1;
-CREATE TABLE t1 (a int) ENGINE=Myisam;
+CREATE TABLE t1 (a int);
 INSERT INTO t1 VALUES (1),(2),(3);
 
 # First check the normal behaviour when server is not modified.
@@ -65,7 +74,7 @@ SELECT @@debug;
 # avoid showing message codes (which change sometimes)
 
 --disable_warnings
---remove_file $MYSQLTEST_VARDIR/master-data/db1.bak
+remove_file $MYSQLD_DATADIR/db1.bak;
 --replace_column 1 #
 BACKUP DATABASE db1 TO 'db1.bak';
 --enable_warnings
@@ -92,4 +101,4 @@ SHOW TABLES IN db1;
 
 DROP DATABASE db1;
 SET GLOBAL debug="-d,";
---remove_file $MYSQLTEST_VARDIR/master-data/db1.bak
+--remove_file $MYSQLD_DATADIR/db1.bak

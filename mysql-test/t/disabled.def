@@ -9,12 +9,11 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-innodb                            : Bug#41299 2008-12-08 alik
-federated_transactions            : Bug#29523 Transactions do not work
-lowercase_table3                  : Bug#32667 lowercase_table3.test reports to error log
-ctype_create                      : Bug#32965 main.ctype_create fails
-query_cache_wlock_invalidate_func : Bug#37962 2008-12-08 Test contains sleeps/race conditions
-csv_alter_table                   : Bug#33696 2008-01-21 pcrews no .result file - bug allows NULL columns in CSV tables
-cast                              : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
-thread_cache_size_func            : Bug#40575 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
-log_output_basic                  : Bug#40988 log_output_basic.test succeeded though syntactically false.
+ctype_create         : Bug#32965 main.ctype_create fails
+csv_alter_table      : Bug#42831 main.csv_alter_table is disabled 
+cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
+events_bugs          : Bug#37774 Bug#39569 Bug#39863 Bug#39848 2008-10-08 alik
+innodb               : Bug#41299 2008-12-08 alik
+user_limits          : Bug#42384 thread_handling = pool-of-threads, wrong handling of max_questions user limit
+query_cache_28249    : Bug#41098 Query Cache returns wrong result with concurrent insert
+innodb_bug39438      : BUG#42383 2009-01-28 lsoares "This fails in embedded and on windows.  Note that this test is not run on windows and on embedded in PB for main trees currently"

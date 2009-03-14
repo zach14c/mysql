@@ -18,10 +18,12 @@
  class anyway.
  */
 
+/// A null string external reference.
 extern const String my_null_string;
 
 namespace backup {
 
+/// Definition of byte type.
 typedef unsigned char byte;
 
 /**
@@ -30,8 +32,10 @@ typedef unsigned char byte;
   @see @c Backup_driver::get_data and @c Restore_driver::send_data
  */
 
+/// Enumeration for result values.
 enum result_t { OK=0, READY, PROCESSING, BUSY, DONE, ERROR };
 
+/// Definition of version_t which is used as reference to version of backup interfaces.
 typedef uint  version_t;
 
 //@{
@@ -66,89 +70,111 @@ class Db_ref
 {
   const String *m_name;
 
- public:
+public:
 
-  // Construct invalid reference
+  /// Construct invalid reference
   Db_ref() :m_name(NULL)
   {}
 
+  /// Determine if class is valid (must contain a name).
   bool is_valid() const
   { return m_name != NULL; }
 
+  /// Return the name of the database reference.
   const String& name() const
   { return *m_name; }
 
+  /// Return the catalog name.
   const String& catalog() const
   { return my_null_string; }
 
+  /// The equal comparison operator.
   bool operator==(const Db_ref &db) const
   { return stringcmp(m_name, &db.name()) == 0; }
 
+  /// The not equal comparison operator.
   bool operator!=(const Db_ref &db) const
   { return ! this->operator == (db); }
 
- protected:
+protected:
 
   // Constructors are made protected as clients of this class are
   // not supposed to create instances (see comment inside Table_ref)
 
+  /**
+    Constructor
+
+    @param[in]  name  Name of the database.
+  */
   Db_ref(const String &name) :m_name(&name)
   {}
 
-  friend class Table_ref;
+  friend class Table_ref; ///< Pointer to a table reference class.
 };
 
 
+/**
+  @class Table_ref
+
+  This class is an encapsulation to allow easier access to table information.
+*/
 class Table_ref
 {
-  const Db_ref  m_db;
-  const String  *m_name;
+  const Db_ref  m_db;     ///< The database for the table.
+  const String  *m_name;  ///< The name of the table.
 
- public:
+public:
 
   // Construct invalid reference
   Table_ref() :m_name(NULL)
   {}
 
+  /// Determine if object is valid (it has a name).
   bool is_valid() const
   { return m_name != NULL; }
 
+  /// Return database reference.
   const Db_ref& db() const
   { return m_db; }
 
+  /// Return the name.
   const String& name() const
   { return *m_name; }
 
+  /// Comparison for equal operator.
   bool operator==(const Table_ref &t) const
   {
     return m_db == t.db() &&
            stringcmp(m_name, &t.name()) == 0;
   }
 
+  /// Comparison for not equal operator.
   bool operator!=(const Table_ref &db) const
   { return ! this->operator==(db); }
 
+  /// Definition of a name buffer for the table name.
   typedef char name_buf[FN_REFLEN];
 
-  // Produce string identifying the table (e.g. for error reporting)
+  /// Produce string identifying the table (e.g. for error reporting)
   const char* describe(char *buf, size_t len) const;
+  /// Produce string identifying the table (e.g. for error reporting)
   const char* describe(name_buf &buf) const
   { return describe(buf, sizeof(buf)); }
 
-  // Produce string identifying the table in internal format. 
+  /// Produce string identifying the table in internal format. 
   const char* internal_name(char *buf, size_t len) const;
+  /// Produce string identifying the table in internal format. 
   const char* internal_name(name_buf &buf) const
   { return internal_name(buf, sizeof(buf)); };
   
- protected:
+protected:
 
-  /*
+  /**
     Constructor is made protected as it should not be used by
     clients of this class -- they obtain already constructed
     instances from the backup kernel via Table_list object passed
     when creating backup/restore driver.
   */
-
   Table_ref(const String &db, const String &name)
     :m_db(db), m_name(&name)
   {}
@@ -181,7 +207,7 @@ class Table_ref
 
 class Table_list
 {
-  public:
+public:
 
     virtual ~Table_list() {}
 
@@ -262,6 +288,11 @@ struct Buffer
   Buffer() :size(0), table_num(0), last(FALSE), data(NULL)
   {}
 
+  /**
+    Reset the buffer size.
+
+    @param[in]  len  The new length.
+  */
   void reset(size_t len)
   {
     size= len;
@@ -277,8 +308,11 @@ class Restore_driver;
 
 } // backup namespace
 
+/// Definition of backup result value types.
 typedef backup::result_t Backup_result_t;
+/// Definition of backup engine class type.
 typedef backup::Engine   Backup_engine;
+/// Definition of backup factory class type.
 typedef Backup_result_t backup_factory(::handlerton *, Backup_engine*&);
 
 #endif

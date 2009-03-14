@@ -1,4 +1,4 @@
-/* Copyright (C) 2006, 2007 MySQL AB
+/* Copyright (C) 2006, 2007 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -98,6 +98,7 @@ prototype_redo_exec_hook(UNDO_KEY_DELETE);
 prototype_redo_exec_hook(UNDO_KEY_DELETE_WITH_ROOT);
 prototype_redo_exec_hook(COMMIT);
 prototype_redo_exec_hook(CLR_END);
+prototype_redo_exec_hook(DEBUG_INFO);
 prototype_undo_exec_hook(UNDO_ROW_INSERT);
 prototype_undo_exec_hook(UNDO_ROW_DELETE);
 prototype_undo_exec_hook(UNDO_ROW_UPDATE);
@@ -171,7 +172,8 @@ void maria_recover_error_handler_hook(uint error, const char *str,
   (*save_error_handler_hook)(error, str, flags);
 }
 
-#define ALERT_USER() DBUG_ASSERT(0)
+/* Define this if you want gdb to break in some interesting situations */
+#define ALERT_USER()
 
 static void print_preamble()
 {
@@ -434,7 +436,7 @@ err:
     delete_all_transactions();
 end:
   error_handler_hook= save_error_handler_hook;
-  hash_free(&all_dirty_pages);
+  my_hash_free(&all_dirty_pages);
   bzero(&all_dirty_pages, sizeof(all_dirty_pages));
   my_free(dirty_pages_pool, MYF(MY_ALLOW_ZERO_PTR));
   dirty_pages_pool= NULL;
@@ -487,6 +489,11 @@ static void display_record_position(const LOG_DESC *log_desc,
          number ? "" : "   ", number, LSN_IN_PARTS(rec->lsn),
          rec->short_trid, log_desc->name, rec->type,
          (ulong)rec->record_length);
+  if (rec->type == LOGREC_DEBUG_INFO)
+  {
+    /* Print some extra information */
+    (*log_desc->record_execute_in_redo_phase)(rec);
+  }
 }
 
 
@@ -554,8 +561,9 @@ static void new_transaction(uint16 sid, TrID long_id, LSN undo_lsn,
   char llbuf[22];
   all_active_trans[sid].long_trid= long_id;
   llstr(long_id, llbuf);
-  tprint(tracef, "Transaction long_trid %s short_trid %u starts\n",
-         llbuf, sid);
+  tprint(tracef, "Transaction long_trid %s short_trid %u starts,"
+         " undo_lsn (%lu,0x%lx) first_undo_lsn (%lu,0x%lx)\n",
+         llbuf, sid, LSN_IN_PARTS(undo_lsn), LSN_IN_PARTS(first_undo_lsn));
   all_active_trans[sid].undo_lsn= undo_lsn;
   all_active_trans[sid].first_undo_lsn= first_undo_lsn;
   set_if_bigger(max_long_trid, long_id);
@@ -1410,6 +1418,9 @@ prototype_redo_exec_hook(REDO_INSERT_ROW_BLOBS)
 {
   int error= 1;
   uchar *buff;
+  uint number_of_blobs, number_of_ranges;
+  pgcache_page_no_t first_page, last_page;
+  char llbuf1[22], llbuf2[22];
   MARIA_HA *info= get_MARIA_HA_from_REDO_record(rec);
   if (info == NULL)
     return 0;
@@ -1424,11 +1435,19 @@ prototype_redo_exec_hook(REDO_INSERT_ROW_BLOBS)
   }
   buff= log_record_buffer.str;
   if (_ma_apply_redo_insert_row_blobs(info, current_group_end_lsn,
-                                      buff, rec->lsn))
+                                      buff, rec->lsn, &number_of_blobs,
+                                      &number_of_ranges,
+                                      &first_page, &last_page))
     goto end;
+  llstr(first_page, llbuf1);
+  llstr(last_page, llbuf2);
+  tprint(tracef, " %u blobs %u ranges, first page %s last %s",
+         number_of_blobs, number_of_ranges, llbuf1, llbuf2);
+
   error= 0;
 
 end:
+  tprint(tracef, " \n");
   return error;
 }
 
@@ -1991,6 +2010,37 @@ prototype_redo_exec_hook(CLR_END)
 
 
 /**
+   Hock to print debug information (like MySQL query)
+*/
+
+prototype_redo_exec_hook(DEBUG_INFO)
+{
+  uchar *data;
+  enum translog_debug_info_type debug_info;
+
+  enlarge_buffer(rec);
+  if (log_record_buffer.str == NULL ||
+      translog_read_record(rec->lsn, 0, rec->record_length,
+                           log_record_buffer.str, NULL) !=
+      rec->record_length)
+  {
+    eprint(tracef, "Failed to read record debug record");
+    return 1;
+  }
+  debug_info= (enum translog_debug_info_type) log_record_buffer.str[0];
+  data= log_record_buffer.str + 1;
+  switch (debug_info) {
+  case LOGREC_DEBUG_INFO_QUERY:
+    tprint(tracef, "Query: %s\n", (char*) data);
+    break;
+  default:
+    DBUG_ASSERT(0);
+  }
+  return 0;
+}
+
+
+/**
   In some cases we have to skip execution of an UNDO record during the UNDO
   phase.
 */
@@ -2348,6 +2398,7 @@ static int run_redo_phase(LSN lsn, enum maria_apply_log_way apply)
   install_redo_exec_hook(UNDO_BULK_INSERT);
   install_undo_exec_hook(UNDO_BULK_INSERT);
   install_redo_exec_hook(IMPORTED_TABLE);
+  install_redo_exec_hook(DEBUG_INFO);
 
   current_group_end_lsn= LSN_IMPOSSIBLE;
 #ifndef DBUG_OFF
@@ -2532,7 +2583,7 @@ static uint end_of_redo_phase(my_bool prepare_for_undo_phase)
   char llbuf[22];
   LSN addr;
 
-  hash_free(&all_dirty_pages);
+  my_hash_free(&all_dirty_pages);
   /*
     hash_free() can be called multiple times probably, but be safe if that
     changes
@@ -2758,7 +2809,8 @@ static void prepare_table_for_close(MARIA_HA *info, TRANSLOG_ADDRESS horizon)
       cmp_translog_addr(share->lsn_of_file_id, horizon) < 0)
   {
     share->state.is_of_horizon= horizon;
-    _ma_state_info_write_sub(share->kfile.file, &share->state, 1);
+    _ma_state_info_write_sub(share, share->kfile.file, &share->state,
+                             MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET);
   }
 
   /*
@@ -2967,6 +3019,8 @@ static LSN parse_checkpoint_record(LSN lsn)
   ptr= log_record_buffer.str;
   start_address= lsn_korr(ptr);
   ptr+= LSN_STORE_SIZE;
+  tprint(tracef, "Checkpoint record has start_horizon at (%lu,0x%lx)\n",
+         LSN_IN_PARTS(start_address));
 
   /* transactions */
   nb_active_transactions= uint2korr(ptr);
@@ -2982,6 +3036,9 @@ static LSN parse_checkpoint_record(LSN lsn)
     line. It may make start_address slightly decrease (only by the time it
     takes to write one or a few rows, roughly).
   */
+  tprint(tracef, "Checkpoint record has min_rec_lsn of active transactions"
+         " at (%lu,0x%lx)\n",
+         LSN_IN_PARTS(minimum_rec_lsn_of_active_transactions));
   set_if_smaller(start_address, minimum_rec_lsn_of_active_transactions);
 
   for (i= 0; i < nb_active_transactions; i++)
@@ -3036,10 +3093,10 @@ static LSN parse_checkpoint_record(LSN lsn)
 
   ptr+= 8;
   tprint(tracef, "%lu dirty pages\n", (ulong) nb_dirty_pages);
-  if (hash_init(&all_dirty_pages, &my_charset_bin, (ulong)nb_dirty_pages,
-                offsetof(struct st_dirty_page, file_and_page_id),
-                sizeof(((struct st_dirty_page *)NULL)->file_and_page_id),
-                NULL, NULL, 0))
+  if (my_hash_init(&all_dirty_pages, &my_charset_bin, (ulong)nb_dirty_pages,
+                   offsetof(struct st_dirty_page, file_and_page_id),
+                   sizeof(((struct st_dirty_page *)NULL)->file_and_page_id),
+                   NULL, NULL, 0))
     return LSN_ERROR;
   dirty_pages_pool=
     (struct st_dirty_page *)my_malloc((size_t)nb_dirty_pages *
@@ -3085,6 +3142,8 @@ static LSN parse_checkpoint_record(LSN lsn)
   */
   start_address= checkpoint_start=
     translog_next_LSN(start_address, LSN_IMPOSSIBLE);
+  tprint(tracef, "Checkpoint record start_horizon now adjusted to"
+         " LSN (%lu,0x%lx)\n", LSN_IN_PARTS(start_address));
   if (checkpoint_start == LSN_IMPOSSIBLE)
   {
     /*
@@ -3094,6 +3153,8 @@ static LSN parse_checkpoint_record(LSN lsn)
     return LSN_ERROR;
   }
   /* now, where the REDO phase should start reading log: */
+  tprint(tracef, "Checkpoint has min_rec_lsn of dirty pages at"
+         " LSN (%lu,0x%lx)\n", LSN_IN_PARTS(minimum_rec_lsn_of_dirty_pages));
   set_if_smaller(start_address, minimum_rec_lsn_of_dirty_pages);
   DBUG_PRINT("info",
              ("checkpoint_start: (%lu,0x%lx) start_address: (%lu,0x%lx)",
@@ -3243,6 +3304,7 @@ void _ma_tmp_disable_logging_for_table(MARIA_HA *info,
    */
   share->state.common= *info->state;
   info->state= &share->state.common;
+  info->switched_transactional= TRUE;
 
   /*
     Some code in ma_blockrec.c assumes a trn even if !now_transactional but in
@@ -3264,6 +3326,11 @@ void _ma_tmp_disable_logging_for_table(MARIA_HA *info,
 /**
    Re-enables logging for a table which had it temporarily disabled.
 
+   Only the thread which disabled logging is allowed to reenable it. Indeed,
+   re-enabling logging affects all open instances, one must have exclusive
+   access to the table to do that. In practice, the one which disables has
+   such access.
+
    @param  info            table
    @param  flush_pages     if function needs to flush pages first
 */
@@ -3273,8 +3340,10 @@ my_bool _ma_reenable_logging_for_table(MARIA_HA *info, my_bool flush_pages)
   MARIA_SHARE *share= info->s;
   DBUG_ENTER("_ma_reenable_logging_for_table");
 
-  if (share->now_transactional == share->base.born_transactional)
+  if (share->now_transactional == share->base.born_transactional ||
+      !info->switched_transactional)
     DBUG_RETURN(0);
+  info->switched_transactional= FALSE;
 
   if ((share->now_transactional= share->base.born_transactional))
   {
@@ -3299,7 +3368,9 @@ my_bool _ma_reenable_logging_for_table(MARIA_HA *info, my_bool flush_pages)
       */
       if (_ma_flush_table_files(info, MARIA_FLUSH_DATA | MARIA_FLUSH_INDEX,
                                 FLUSH_RELEASE, FLUSH_RELEASE) ||
-          _ma_state_info_write(share, 1|4) ||
+          _ma_state_info_write(share,
+                               MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET |
+                               MA_STATE_INFO_WRITE_LOCK) ||
           _ma_sync_table_files(info))
         DBUG_RETURN(1);
     }
@@ -3375,6 +3446,7 @@ static void print_redo_phase_progress(TRANSLOG_ADDRESS addr)
     procent_printed= 1;
   }
 }
+
 
 #ifdef MARIA_EXTERNAL_LOCKING
 #error Marias Checkpoint and Recovery are really not ready for it

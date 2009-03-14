@@ -15,6 +15,7 @@ set @my_max_heap_table_size       =@@global.max_heap_table_size;
 set @my_max_insert_delayed_threads=@@global.max_insert_delayed_threads;
 set @my_max_join_size             =@@global.max_join_size;
 set @my_myisam_data_pointer_size  =@@global.myisam_data_pointer_size;
+set @my_myisam_max_sort_file_size =@@global.myisam_max_sort_file_size;
 set @my_net_buffer_length         =@@global.net_buffer_length;
 set @my_net_write_timeout         =@@global.net_write_timeout;
 set @my_net_read_timeout          =@@global.net_read_timeout;
@@ -25,6 +26,7 @@ set @my_server_id                 =@@global.server_id;
 set @my_slow_launch_time          =@@global.slow_launch_time;
 set @my_storage_engine            =@@global.storage_engine;
 set @my_thread_cache_size         =@@global.thread_cache_size;
+set @my_max_allowed_packet        =@@global.max_allowed_packet;
 set @`test`=1;
 select @test, @`test`, @TEST, @`TEST`, @"teSt";
 @test	@`test`	@TEST	@`TEST`	@"teSt"
@@ -973,7 +975,7 @@ set global delayed_queue_size        =@my_delayed_queue_size;
 set global flush                     =@my_flush;
 set global flush_time                =@my_flush_time;
 set global key_buffer_size           =@my_key_buffer_size;
-set global max_binlog_cache_size     =default;
+set global max_binlog_cache_size     =@my_max_binlog_cache_size;
 set global max_binlog_size           =@my_max_binlog_size;
 set global max_connect_errors        =@my_max_connect_errors;
 set global max_connections           =@my_max_connections;
@@ -984,6 +986,7 @@ set global max_join_size             =@my_max_join_size;
 set global max_user_connections      =default;
 set global max_write_lock_count      =default;
 set global myisam_data_pointer_size  =@my_myisam_data_pointer_size;
+set global myisam_max_sort_file_size =@my_myisam_max_sort_file_size;
 set global net_buffer_length         =@my_net_buffer_length;
 set global net_write_timeout         =@my_net_write_timeout;
 set global net_read_timeout          =@my_net_read_timeout;
@@ -994,6 +997,7 @@ set global server_id                 =@my_server_id;
 set global slow_launch_time          =@my_slow_launch_time;
 set global storage_engine            =@my_storage_engine;
 set global thread_cache_size         =@my_thread_cache_size;
+set global max_allowed_packet        =@my_max_allowed_packet;
 show global variables where Variable_name='table_definition_cache' or
 Variable_name='table_lock_wait_timeout';
 Variable_name	Value
@@ -1337,3 +1341,168 @@ SET @@session.thread_stack= 7;
 ERROR HY000: Variable 'thread_stack' is a read only variable
 SET @@global.thread_stack= 7;
 ERROR HY000: Variable 'thread_stack' is a read only variable
+
+#
+# Bug#34828: OF is taken as OFF and a value of 0 is set for variable SQL_notes.
+#
+
+# Checking sql_notes...
+SET @sql_notes_saved = @@sql_notes;
+
+SET @@sql_notes = ON;
+SELECT @@sql_notes;
+@@sql_notes
+1
+
+SET @@sql_notes = OF;
+ERROR 42000: Variable 'sql_notes' can't be set to the value of 'OF'
+SELECT @@sql_notes;
+@@sql_notes
+1
+
+SET @@sql_notes = OFF;
+SELECT @@sql_notes;
+@@sql_notes
+0
+
+SET @@sql_notes = @sql_notes_saved;
+
+# Checking delay_key_write...
+SET @delay_key_write_saved = @@delay_key_write;
+
+SET GLOBAL delay_key_write = ON;
+SELECT @@delay_key_write;
+@@delay_key_write
+ON
+
+SET GLOBAL delay_key_write = OF;
+ERROR 42000: Variable 'delay_key_write' can't be set to the value of 'OF'
+SELECT @@delay_key_write;
+@@delay_key_write
+ON
+
+SET GLOBAL delay_key_write = AL;
+ERROR 42000: Variable 'delay_key_write' can't be set to the value of 'AL'
+SELECT @@delay_key_write;
+@@delay_key_write
+ON
+
+SET GLOBAL delay_key_write = OFF;
+SELECT @@delay_key_write;
+@@delay_key_write
+OFF
+
+SET GLOBAL delay_key_write = ALL;
+SELECT @@delay_key_write;
+@@delay_key_write
+ALL
+
+SET GLOBAL delay_key_write = @delay_key_write_saved;
+
+# Checking sql_safe_updates...
+SET @sql_safe_updates_saved = @@sql_safe_updates;
+
+SET @@sql_safe_updates = ON;
+SELECT @@sql_safe_updates;
+@@sql_safe_updates
+1
+
+SET @@sql_safe_updates = OF;
+ERROR 42000: Variable 'sql_safe_updates' can't be set to the value of 'OF'
+SELECT @@sql_safe_updates;
+@@sql_safe_updates
+1
+
+SET @@sql_safe_updates = OFF;
+SELECT @@sql_safe_updates;
+@@sql_safe_updates
+0
+
+SET @@sql_safe_updates = @sql_safe_updates_saved;
+
+# Checking foreign_key_checks...
+SET @foreign_key_checks_saved = @@foreign_key_checks;
+
+SET @@foreign_key_checks = ON;
+SELECT @@foreign_key_checks;
+@@foreign_key_checks
+1
+
+SET @@foreign_key_checks = OF;
+ERROR 42000: Variable 'foreign_key_checks' can't be set to the value of 'OF'
+SELECT @@foreign_key_checks;
+@@foreign_key_checks
+1
+
+SET @@foreign_key_checks = OFF;
+SELECT @@foreign_key_checks;
+@@foreign_key_checks
+0
+
+SET @@foreign_key_checks = @foreign_key_checks_saved;
+
+# Checking unique_checks...
+SET @unique_checks_saved = @@unique_checks;
+
+SET @@unique_checks = ON;
+SELECT @@unique_checks;
+@@unique_checks
+1
+
+SET @@unique_checks = OF;
+ERROR 42000: Variable 'unique_checks' can't be set to the value of 'OF'
+SELECT @@unique_checks;
+@@unique_checks
+1
+
+SET @@unique_checks = OFF;
+SELECT @@unique_checks;
+@@unique_checks
+0
+
+SET @@unique_checks = @unique_checks_saved;
+
+# Checking sql_buffer_result...
+SET @sql_buffer_result_saved = @@sql_buffer_result;
+
+SET @@sql_buffer_result = ON;
+SELECT @@sql_buffer_result;
+@@sql_buffer_result
+1
+
+SET @@sql_buffer_result = OF;
+ERROR 42000: Variable 'sql_buffer_result' can't be set to the value of 'OF'
+SELECT @@sql_buffer_result;
+@@sql_buffer_result
+1
+
+SET @@sql_buffer_result = OFF;
+SELECT @@sql_buffer_result;
+@@sql_buffer_result
+0
+
+SET @@sql_buffer_result = @sql_buffer_result_saved;
+
+# Checking sql_quote_show_create...
+SET @sql_quote_show_create_saved = @@sql_quote_show_create;
+
+SET @@sql_quote_show_create = ON;
+SELECT @@sql_quote_show_create;
+@@sql_quote_show_create
+1
+
+SET @@sql_quote_show_create = OF;
+ERROR 42000: Variable 'sql_quote_show_create' can't be set to the value of 'OF'
+SELECT @@sql_quote_show_create;
+@@sql_quote_show_create
+1
+
+SET @@sql_quote_show_create = OFF;
+SELECT @@sql_quote_show_create;
+@@sql_quote_show_create
+0
+
+SET @@sql_quote_show_create = @sql_quote_show_create_saved;
+
+# End of Bug#34828.
+

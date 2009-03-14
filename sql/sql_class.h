@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright (C) 2000-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -263,6 +263,41 @@ struct Query_cache_tls
   Query_cache_tls() :first_query_block(NULL) {}
 };
 
+/* SIGNAL / RESIGNAL / GET DIAGNOSTICS */
+
+/**
+  This enumeration list all the condition item names of a condition in the
+  SQL condition area.
+*/
+typedef enum enum_diag_condition_item_name
+{
+  /*
+    Conditions that can be set by the user (SIGNAL/RESIGNAL),
+    and by the server implementation.
+  */
+
+  DIAG_CLASS_ORIGIN= 0,
+  FIRST_DIAG_SET_PROPERTY= DIAG_CLASS_ORIGIN,
+  DIAG_SUBCLASS_ORIGIN= 1,
+  DIAG_CONSTRAINT_CATALOG= 2,
+  DIAG_CONSTRAINT_SCHEMA= 3,
+  DIAG_CONSTRAINT_NAME= 4,
+  DIAG_CATALOG_NAME= 5,
+  DIAG_SCHEMA_NAME= 6,
+  DIAG_TABLE_NAME= 7,
+  DIAG_COLUMN_NAME= 8,
+  DIAG_CURSOR_NAME= 9,
+  DIAG_MESSAGE_TEXT= 10,
+  DIAG_MYSQL_ERRNO= 11,
+  LAST_DIAG_SET_PROPERTY= DIAG_MYSQL_ERRNO
+} Diag_condition_item_name;
+
+/**
+  Name of each diagnostic condition item.
+  This array is indexed by Diag_condition_item_name.
+*/
+extern const LEX_STRING Diag_condition_item_names[];
+
 #include "sql_lex.h"				/* Must be here */
 
 class Delayed_insert;
@@ -300,6 +335,7 @@ struct system_variables
   ulong auto_increment_increment, auto_increment_offset;
   ulong bulk_insert_buff_size;
   ulong join_buff_size;
+  ulong join_cache_level;
   ulong max_allowed_packet;
   ulong max_error_count;
   ulong max_length_for_sort_data;
@@ -428,6 +464,12 @@ typedef struct system_status_var
   ulong ha_read_prev_count;
   ulong ha_read_rnd_count;
   ulong ha_read_rnd_next_count;
+  /*
+    This number doesn't include calls to the default implementation and
+    calls made by range access. The intent is to count only calls made by
+    BatchedKeyAccess.
+  */
+  ulong ha_multi_range_read_init_count;
   ulong ha_rollback_count;
   ulong ha_update_count;
   ulong ha_write_count;
@@ -717,8 +759,8 @@ public:
   Statement *find_by_name(LEX_STRING *name)
   {
     Statement *stmt;
-    stmt= (Statement*)hash_search(&names_hash, (uchar*)name->str,
-                                  name->length);
+    stmt= (Statement*)my_hash_search(&names_hash, (uchar*)name->str,
+                                     name->length);
     return stmt;
   }
 
@@ -727,7 +769,7 @@ public:
     if (last_found_statement == 0 || id != last_found_statement->id)
     {
       Statement *stmt;
-      stmt= (Statement *) hash_search(&st_hash, (uchar *) &id, sizeof(id));
+      stmt= (Statement *) my_hash_search(&st_hash, (uchar *) &id, sizeof(id));
       if (stmt && stmt->name.str)
         return NULL;
       last_found_statement= stmt;
@@ -756,6 +798,8 @@ struct st_savepoint {
   char                *name;
   uint                 length;
   Ha_trx_info         *ha_list;
+  /** Last acquired lock before this savepoint was set. */
+  MDL_ticket     *mdl_savepoint;
 };
 
 enum xa_states {XA_NOTR=0, XA_ACTIVE, XA_IDLE, XA_PREPARED, XA_ROLLBACK_ONLY};
@@ -957,8 +1001,8 @@ public:
   */
   uint state_flags;
 
-  MDL_CONTEXT mdl_context;
-  MDL_CONTEXT handler_mdl_context;
+  MDL_context mdl_context;
+  MDL_context handler_mdl_context;
 
   /**
      This constructor initializes Open_tables_state instance which can only
@@ -989,8 +1033,8 @@ public:
     locked_tables_mode= LTM_NONE;
     state_flags= 0U;
     m_reprepare_observer= NULL;
-    mdl_context_init(&mdl_context, thd);
-    mdl_context_init(&handler_mdl_context, thd);
+    mdl_context.init(thd);
+    handler_mdl_context.init(thd);
   }
 };
 
@@ -1041,6 +1085,7 @@ show_system_thread(enum_thread_type thread)
 {
 #define RETURN_NAME_AS_STRING(NAME) case (NAME): return #NAME
   switch (thread) {
+    static char buf[64];
     RETURN_NAME_AS_STRING(NON_SYSTEM_THREAD);
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_DELAYED_INSERT);
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_SLAVE_IO);
@@ -1049,9 +1094,11 @@ show_system_thread(enum_thread_type thread)
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_EVENT_SCHEDULER);
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_EVENT_WORKER);
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_BACKUP);
+  default:
+    sprintf(buf, "<UNKNOWN SYSTEM THREAD: %d>", thread);
+    return buf;
   }
 #undef RETURN_NAME_AS_STRING
-  return "UNKNOWN"; /* keep gcc happy */
 }
 
 /**
@@ -1067,12 +1114,12 @@ protected:
 
 public:
   /**
-    Handle an error condition.
+    Handle a sql condition.
     This method can be implemented by a subclass to achieve any of the
     following:
-    - mask an error internally, prevent exposing it to the user,
-    - mask an error and throw another one instead.
-    When this method returns true, the error condition is considered
+    - mask a warning/error internally, prevent exposing it to the user,
+    - mask a warning/error and throw another one instead.
+    When this method returns true, the sql condition is considered
     'handled', and will not be propagated to upper layers.
     It is the responsability of the code installing an internal handler
     to then check for trapped conditions, and implement logic to recover
@@ -1086,15 +1133,17 @@ public:
     before removing it from the exception stack with
     <code>THD::pop_internal_handler()</code>.
 
-    @param sql_errno the error number
-    @param level the error level
     @param thd the calling thread
-    @return true if the error is handled
+    @param cond the condition raised.
+    @return true if the condition is handled
   */
-  virtual bool handle_error(THD *thd,
-                            MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno,
-                            const char *message) = 0;
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl) = 0;
+
 };
 
 /**
@@ -1176,6 +1225,7 @@ struct Ha_data
   Ha_data() :ha_ptr(NULL) {}
 };
 
+extern "C" void my_message_sql(uint error, const char *str, myf MyFlags);
 
 /**
   @class THD
@@ -1405,7 +1455,7 @@ public:
     THD_TRANS stmt;			// Trans for current statement
     bool on;                            // see ha_enable_transaction()
     XID_STATE xid_state;
-    WT_THD wt;
+    WT_THD wt;                          ///< for deadlock detection
     Rows_log_event *m_pending_rows_event;
 
     /*
@@ -1626,9 +1676,7 @@ public:
   table_map  used_tables;
   USER_CONN *user_connect;
   CHARSET_INFO *db_charset;
-  Warning_info main_warning_info;
   Warning_info *warning_info;
-  Diagnostics_area main_da;
   Diagnostics_area *stmt_da;
 #if defined(ENABLED_PROFILING)
   PROFILING  profiling;
@@ -1946,6 +1994,21 @@ public:
   {
     return server_status & SERVER_STATUS_IN_TRANS;
   }
+  /**
+    Returns TRUE if session is in a multi-statement transaction mode.
+
+    OPTION_NOT_AUTOCOMMIT: When autocommit is off, a multi-statement
+    transaction is implicitly started on the first statement after a
+    previous transaction has been ended.
+
+    OPTION_BEGIN: Regardless of the autocommit status, a multi-statement
+    transaction can be explicitly started with the statements "START
+    TRANSACTION", "BEGIN [WORK]", "[COMMIT | ROLLBACK] AND CHAIN", etc.
+  */
+  inline bool in_multi_stmt_transaction()
+  {
+    return options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN);
+  }
   inline bool fill_derived_tables()
   {
     return !stmt_arena->is_stmt_prepare() && !lex->only_view_structure();
@@ -2126,8 +2189,8 @@ public:
       Don't reset binlog format for NDB binlog injector thread.
     */
     DBUG_PRINT("debug",
-               ("temporary_tables: %p, in_sub_stmt: %d, system_thread: %s",
-                temporary_tables, in_sub_stmt,
+               ("temporary_tables: %s, in_sub_stmt: %s, system_thread: %s",
+                YESNO(temporary_tables), YESNO(in_sub_stmt),
                 show_system_thread(system_thread)));
     if ((temporary_tables == NULL) && (in_sub_stmt == 0) &&
         (system_thread != SYSTEM_THREAD_NDBCLUSTER_BINLOG))
@@ -2217,18 +2280,105 @@ public:
   void push_internal_handler(Internal_error_handler *handler);
 
   /**
-    Handle an error condition.
-    @param sql_errno the error number
-    @param level the error level
-    @return true if the error is handled
+    Handle a sql condition.
+    @param sql_errno the condition error number
+    @param sqlstate the condition sqlstate
+    @param level the condition level
+    @param msg the condition message text
+    @param[out] cond_hdl the sql condition raised, if any
+    @return true if the condition is handled
   */
-  virtual bool handle_error(MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno, const char *message);
+  virtual bool handle_condition(uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl);
 
   /**
     Remove the error handler last pushed.
   */
   void pop_internal_handler();
+
+  /**
+    Raise an exception condition.
+    @param code the MYSQL_ERRNO error code of the error
+  */
+  void raise_error(uint code);
+
+  /**
+    Raise an exception condition, with a formatted message.
+    @param code the MYSQL_ERRNO error code of the error
+  */
+  void raise_error_printf(uint code, ...);
+
+  /**
+    Raise a completion condition (warning).
+    @param code the MYSQL_ERRNO error code of the warning
+  */
+  void raise_warning(uint code);
+
+  /**
+    Raise a completion condition (warning), with a formatted message.
+    @param code the MYSQL_ERRNO error code of the warning
+  */
+  void raise_warning_printf(uint code, ...);
+
+  /**
+    Raise a completion condition (note), with a fixed message.
+    @param code the MYSQL_ERRNO error code of the note
+  */
+  void raise_note(uint code);
+
+  /**
+    Raise an completion condition (note), with a formatted message.
+    @param code the MYSQL_ERRNO error code of the note
+  */
+  void raise_note_printf(uint code, ...);
+
+private:
+  /*
+    Only the implementation of the SIGNAL and RESIGNAL statements
+    is permitted to raise SQL conditions in a generic way,
+    or to raise them by bypassing handlers (RESIGNAL).
+    To raise a SQL condition, the code should use the public
+    raise_error() or raise_warning() methods provided by class THD.
+  */
+  friend class Abstract_signal;
+  friend class SQLCOM_signal;
+  friend class SQLCOM_resignal;
+  friend void push_warning(THD*, MYSQL_ERROR::enum_warning_level, uint, const char*);
+  friend void my_message_sql(uint, const char *, myf);
+
+  /**
+    Raise a generic SQL condition.
+    @param sql_errno the condition error number
+    @param sqlstate the condition SQLSTATE
+    @param level the condition level
+    @param msg the condition message text
+    @return The condition raised, or NULL
+  */
+  MYSQL_ERROR*
+  raise_condition(uint sql_errno,
+                  const char* sqlstate,
+                  MYSQL_ERROR::enum_warning_level level,
+                  const char* msg);
+
+  /**
+    Raise a generic SQL condition, without activation any SQL condition
+    handlers.
+    This method is necessary to support the RESIGNAL statement,
+    which is allowed to bypass SQL exception handlers.
+    @param sql_errno the condition error number
+    @param sqlstate the condition SQLSTATE
+    @param level the condition level
+    @param msg the condition message text
+    @return The condition raised, or NULL
+  */
+  MYSQL_ERROR*
+  raise_condition_no_handler(uint sql_errno,
+                             const char* sqlstate,
+                             MYSQL_ERROR::enum_warning_level level,
+                             const char* msg);
 
 private:
   /** The current internal error handler for this thread, or NULL. */
@@ -2249,13 +2399,15 @@ private:
     tree itself is reused between executions and thus is stored elsewhere.
   */
   MEM_ROOT main_mem_root;
+  Warning_info main_warning_info;
+  Diagnostics_area main_da;
 };
 
 
 /** A short cut for thd->stmt_da->set_ok_status(). */
 
 inline void
-my_ok(THD *thd, ha_rows affected_rows= 0, ulonglong id= 0,
+my_ok(THD *thd, ulonglong affected_rows= 0, ulonglong id= 0,
         const char *message= NULL)
 {
   thd->stmt_da->set_ok_status(thd, affected_rows, id, message);
@@ -2662,6 +2814,67 @@ public:
   bool send_data(List<Item> &items);
 };
 
+struct st_table_ref;
+
+
+/*
+  Optimizer and executor structure for the materialized semi-join info. This
+  structure contains
+   - The sj-materialization temporary table
+   - Members needed to make index lookup or a full scan of the temptable.
+*/
+class SJ_MATERIALIZATION_INFO : public Sql_alloc
+{
+public:
+  /* Optimal join sub-order */
+  struct st_position *positions;
+
+  uint tables; /* Number of tables in the sj-nest */
+
+  /* Expected #rows in the materialized table */
+  double rows;
+
+  /* 
+    Cost to materialize - execute the sub-join and write rows into temp.table
+  */
+  COST_VECT materialization_cost;
+
+  /* Cost to make one lookup in the temptable */
+  COST_VECT lookup_cost;
+  
+  /* Cost of scanning the materialized table */
+  COST_VECT scan_cost;
+
+  /* --- Execution structures ---------- */
+  
+  /*
+    TRUE <=> This structure is used for execution. We don't necessarily pick
+    sj-materialization, so some of SJ_MATERIALIZATION_INFO structures are not
+    used by materialization
+  */
+  bool is_used;
+  
+  bool materialized; /* TRUE <=> materialization already performed */
+  /*
+    TRUE  - the temptable is read with full scan
+    FALSE - we use the temptable for index lookups
+  */
+  bool is_sj_scan; 
+  
+  /* The temptable and its related info */
+  TMP_TABLE_PARAM sjm_table_param;
+  List<Item> sjm_table_cols;
+  TABLE *table;
+
+  /* Structure used to make index lookups */
+  struct st_table_ref *tab_ref;
+  Item *in_equality; /* See create_subq_in_equalities() */
+
+  Item *join_cond; /* See comments in make_join_select() */
+  Copy_field *copy_field; /* Needed for SJ_Materialization scan */
+};
+
+
 /* Structs used when sorting */
 
 typedef struct st_sort_field {
@@ -2955,6 +3168,16 @@ public:
   modifies our currently non-transactional system tables.
 */
 #define CF_AUTO_COMMIT_TRANS  (CF_IMPLICT_COMMIT_BEGIN | CF_IMPLICIT_COMMIT_END)
+
+/**
+  Diagnostic statement.
+  Diagnostic statements:
+  - SHOW WARNING
+  - SHOW ERROR
+  - GET DIAGNOSTICS (WL#2111)
+  do not modify the diagnostics area during execution.
+*/
+#define CF_DIAGNOSTIC_STMT        (1U << 8)
 
 /* Bits in server_command_flags */
 

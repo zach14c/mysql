@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -41,6 +41,8 @@ typedef struct {
     thus the pointer to data is (void*)(slist_element_ptr+1)
   */
 } LF_SLIST;
+
+const int LF_HASH_OVERHEAD= sizeof(LF_SLIST);
 
 /*
   a structure to pass the context (pointers two the three successive elements
@@ -281,8 +283,9 @@ static inline const uchar* hash_key(const LF_HASH *hash,
 }
 
 /*
-  compute the hash key value from the raw key.
-  note, that the hash value is limited to 2^31, because we need one
+  Compute the hash key value from the raw key.
+
+  @note, that the hash value is limited to 2^31, because we need one
   bit to distinguish between normal and dummy nodes.
 */
 static inline uint calc_hash(LF_HASH *hash, const uchar *key, uint keylen)
@@ -300,7 +303,7 @@ static int initialize_bucket(LF_HASH *, LF_SLIST * volatile*, uint, LF_PINS *);
 /*
   Initializes lf_hash, the arguments are compatible with hash_init
 
-  @@note element_size sets both the size of allocated memory block for
+  @note element_size sets both the size of allocated memory block for
   lf_alloc and a size of memcpy'ed block size in lf_hash_insert. Typically
   they are the same, indeed. But LF_HASH::element_size can be decreased
   after lf_hash_init, and then lf_alloc will allocate larger block that
@@ -311,10 +314,9 @@ static int initialize_bucket(LF_HASH *, LF_SLIST * volatile*, uint, LF_PINS *);
   See wt_init() for example.
 */
 void lf_hash_init(LF_HASH *hash, uint element_size, uint flags,
-                  uint key_offset, uint key_length, hash_get_key get_key,
+                  uint key_offset, uint key_length, my_hash_get_key get_key,
                   CHARSET_INFO *charset)
 {
-  compile_time_assert(sizeof(LF_SLIST) == LF_HASH_OVERHEAD);
   lf_alloc_init(&hash->alloc, sizeof(LF_SLIST)+element_size,
                 offsetof(LF_SLIST, key));
   lf_dynarray_init(&hash->array, sizeof(LF_SLIST *));

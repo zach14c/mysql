@@ -194,11 +194,12 @@ int StorageTable::setCurrentIndex(int indexId)
 		indexesLocked = true;
 		}
 	
-	if (!(currentIndex = share->getIndex(indexId)))
-		{
-		clearCurrentIndex();
-		return StorageErrorNoIndex;
-		}
+	currentIndex = share->getIndex(indexId);
+
+	int ret = checkCurrentIndex();
+	
+	if (ret)
+		return ret;
 		
 	upperBound = lowerBound = NULL;
 	searchFlags = 0;
@@ -219,6 +220,22 @@ int StorageTable::clearCurrentIndex()
 	return 0;
 }
 
+int StorageTable::checkCurrentIndex()
+{
+	if (!currentIndex)
+		{
+		clearCurrentIndex();
+		
+		// Use a more benign error until the server protects online alter
+		// with a DDL lock.
+		
+		// return StorageErrorNoIndex;
+		return StorageErrorRecordNotFound;
+		}
+	
+	return 0;
+}
+
 int StorageTable::setIndex(StorageIndexDesc* indexDesc)
 {
 	return share->setIndex(indexDesc);
@@ -226,11 +243,10 @@ int StorageTable::setIndex(StorageIndexDesc* indexDesc)
 
 int StorageTable::indexScan(int indexOrder)
 {
-	if (!currentIndex)
-		{
-		clearCurrentIndex();
-		return StorageErrorNoIndex;
-		}
+	int ret = checkCurrentIndex();
+
+	if (ret)
+		return ret;
 	
 	int numberSegments = (upperBound) ?  upperBound->numberSegments : (lowerBound) ? lowerBound->numberSegments : 0;
 	
@@ -267,16 +283,15 @@ void StorageTable::indexEnd(void)
 
 int StorageTable::setIndexBound(const unsigned char* key, int keyLength, int which)
 {
-	if (!currentIndex)
-		{
-		clearCurrentIndex();
-		return StorageErrorNoIndex;
-		}
+	int ret = checkCurrentIndex();
+
+	if (ret)
+		return ret;
 
 	if (which & LowerBound)
 		{
 		lowerBound = &lowerKey;
-		int ret = storageDatabase->makeKey(currentIndex, key, keyLength, lowerBound);
+		ret = storageDatabase->makeKey(currentIndex, key, keyLength, lowerBound, false);
 		
 		if (ret)
 			return ret;
@@ -287,7 +302,14 @@ int StorageTable::setIndexBound(const unsigned char* key, int keyLength, int whi
 	else if (which & UpperBound)
 		{
 		upperBound = &upperKey;
-		int ret = storageDatabase->makeKey(currentIndex, key, keyLength, upperBound);
+
+		// Because this is an upper bound search key, we pass 
+		// 'true' as the final argument to makeKey. This way a 
+		// pad byte (if needed) will be appended to the key to 
+		// ensure that values below the pad character sort correctly.
+		// See bug#23692 for a more detailed explanation
+
+		ret = storageDatabase->makeKey(currentIndex, key, keyLength, upperBound, true);
 
 		if (ret)
 			return ret;
@@ -373,6 +395,11 @@ const UCHAR* StorageTable::getEncoding(int fieldIndex)
 const char* StorageTable::getSchemaName(void)
 {
 	return share->schemaName;
+}
+
+const char* StorageTable::getTableSpaceName(void)
+{
+	return share->tableSpace;
 }
 
 void StorageTable::setConnection(StorageConnection* newStorageConn)
@@ -608,7 +635,7 @@ void StorageTable::unlockRow(void)
 {
 	if (recordLocked)
 		{
-		share->table->unlockRecord(record->recordNumber);
+		share->table->unlockRecord(record->recordNumber, storageConnection->verbMark);
 		recordLocked = false;
 		}
 }
