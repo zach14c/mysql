@@ -178,8 +178,8 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 	catch (SQLException& exception)
 		{
 
-		if (record && record != candidate)
-			record->release(REC_HISTORY);
+		// 'record' must be NULL if an exception has been thrown.
+		// fetchForUpdate releases the 'candidate' on error
 
 		if (candidate && !lockForUpdate)
 			candidate->release(REC_HISTORY);
