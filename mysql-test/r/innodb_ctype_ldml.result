@@ -11,7 +11,7 @@ Collation	Charset	Id	Default	Compiled	Sortlen
 utf8_test_ci	utf8	353			8
 create table t1 (c1 char(1) character set utf8 collate utf8_test_ci)
 engine=innodb;
-ERROR HY000: Can't create table 'test.t1' (errno: 1005)
+ERROR HY000: In InnoDB, charset-collation codes must be below 256. Unsupported code 353.
 show warnings;
 Level	Code	Message
 Error	1005	In InnoDB, charset-collation codes must be below 256. Unsupported code 353.
@@ -21,7 +21,7 @@ Collation	Charset	Id	Default	Compiled	Sortlen
 ucs2_test_ci	ucs2	358			8
 create table t1 (c1 char(1) character set ucs2 collate ucs2_test_ci)
 engine=innodb;
-ERROR HY000: Can't create table 'test.t1' (errno: 1005)
+ERROR HY000: In InnoDB, charset-collation codes must be below 256. Unsupported code 358.
 show warnings;
 Level	Code	Message
 Error	1005	In InnoDB, charset-collation codes must be below 256. Unsupported code 358.
@@ -31,7 +31,7 @@ Collation	Charset	Id	Default	Compiled	Sortlen
 utf16_test_ci	utf16	327			8
 create table t1 (c1 char(1) character set utf16 collate utf16_test_ci)
 engine=innodb;
-ERROR HY000: Can't create table 'test.t1' (errno: 1005)
+ERROR HY000: In InnoDB, charset-collation codes must be below 256. Unsupported code 327.
 show warnings;
 Level	Code	Message
 Error	1005	In InnoDB, charset-collation codes must be below 256. Unsupported code 327.
@@ -41,7 +41,7 @@ Collation	Charset	Id	Default	Compiled	Sortlen
 utf32_test_ci	utf32	391			8
 create table t1 (c1 char(1) character set utf32 collate utf32_test_ci)
 engine=innodb;
-ERROR HY000: Can't create table 'test.t1' (errno: 1005)
+ERROR HY000: In InnoDB, charset-collation codes must be below 256. Unsupported code 391.
 show warnings;
 Level	Code	Message
 Error	1005	In InnoDB, charset-collation codes must be below 256. Unsupported code 391.
@@ -52,7 +52,7 @@ Collation	Charset	Id	Default	Compiled	Sortlen
 ucs2_vn_ci	ucs2	359			8
 create table t1 (c1 char(1) character set ucs2 collate ucs2_vn_ci)
 engine=innodb;
-ERROR HY000: Can't create table 'test.t1' (errno: 1005)
+ERROR HY000: In InnoDB, charset-collation codes must be below 256. Unsupported code 359.
 show warnings;
 Level	Code	Message
 Error	1005	In InnoDB, charset-collation codes must be below 256. Unsupported code 359.
@@ -78,7 +78,7 @@ Collation	Charset	Id	Default	Compiled	Sortlen
 ucs2_vn_ci	ucs2	359			8
 create table t1 (c1 char(1) character set ucs2 collate ucs2_vn_ci)
 engine=innodb;
-ERROR HY000: Can't create table 'test.t1' (errno: 1005)
+ERROR HY000: In InnoDB, charset-collation codes must be below 256. Unsupported code 359.
 show warnings;
 Level	Code	Message
 Error	1005	In InnoDB, charset-collation codes must be below 256. Unsupported code 359.
