@@ -156,6 +156,7 @@ void Logger::report_stats_pre(const Image_info &info)
 {
   DBUG_ASSERT(m_state == RUNNING);
   backup_log->num_objects(info.object_count());
+
   // Compose list of databases.
 
   Image_info::Db_iterator *it= info.get_dbs();
@@ -221,5 +222,49 @@ bool Logger::push_errors(bool flag)
   m_push_errors= flag;
   return old;
 } 
+
+/**
+  Report the fact that BACKUP/RESTORE operation has been cancelled.
+
+  This method does nothing if no interruption has happened or if an 
+  interruption has already been reported. Otherwise it logs
+  ER_BACKUP_INTERRUPTED note.
+
+  @note The server takes care of giving feedback to the client in case of a 
+  cancelled statement - nothing needs to be done here (nothing pushed on the 
+  server's error stack)
+
+  @returns TRUE if interruption has been detected and reported, 
+  FALSE otherwise.
+ */ 
+bool Logger::report_killed()
+{
+
+  if (!m_thd->killed)
+    return FALSE;
+
+  if (m_kill_reported)
+    return TRUE;
+
+  m_thd->send_kill_message();
+  m_kill_reported= TRUE;
+
+  if (m_state == CREATED || m_state == READY)
+    return TRUE;
+
+  // log_error() does not push messages on the server's error stack.
+  log_error(backup::log_level::INFO, ER_BACKUP_INTERRUPTED);  
+
+  /*
+    Note: It is not possible to open online backup log tables if current
+    query has been killed (m_thd->killed is non-zero). Thus in that case 
+    we can't update state accordingly. This is a limitation of the current 
+    implementation of the online backup logging mechanism.
+  */ 
+  if (m_state == RUNNING)
+    report_state(BUP_CANCEL);
+
+  return TRUE;
+}
 
 } // backup namespace

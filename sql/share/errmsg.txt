@@ -6241,7 +6241,7 @@ ER_BACKUP_INIT_RESTORE_DRIVER
 ER_BACKUP_STOP_BACKUP_DRIVER
         eng "Can't shut down %-.64s backup driver"
 ER_BACKUP_STOP_RESTORE_DRIVERS
-        eng "Can't shut down %-.64s backup driver(s)"
+        eng "Can't shut down %-.64s restore driver(s)"
 ER_BACKUP_PREPARE_DRIVER
         eng "%-.64s backup driver can't prepare for synchronization"
 ER_BACKUP_CREATE_VP
@@ -6491,4 +6491,5 @@ ER_COND_ITEM_TOO_LONG
         eng "Data too long for condition item '%s'"
 ER_PATH_LENGTH
   eng "The path specified for %.64s is too long."
-
+ER_BACKUP_INTERRUPTED
+  eng "Operation has been interrupted."

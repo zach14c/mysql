@@ -1,0 +1,1945 @@
+SHOW VARIABLES LIKE 'storage_engine';
+Variable_name	Value
+storage_engine	#
+call mtr.add_suppression("Operation aborted");
+DROP DATABASE IF EXISTS bup_intr;
+CREATE DATABASE bup_intr;
+USE bup_intr;
+CREATE TABLE t1(a int);
+INSERT INTO  t1 VALUES (1),(2),(3);
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_command.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_command SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_command
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_prepare.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_prepare SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_prepare
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_logger_init.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_logger_init SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_logger_init
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_common_prepare.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_common_prepare SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_common_prepare
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_privileges.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_privileges SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_privileges
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_single_op.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_single_op SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_single_op
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_ddl_block.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_ddl_block SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_ddl_block
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_stream_open.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_stream_open SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_stream_open
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_catalog.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_catalog SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_catalog
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point after_backup_start_backup.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='after_backup_start_backup SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: after_backup_start_backup
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_do_backup.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_do_backup SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_do_backup
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_meta.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_meta SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_meta
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point backup_before_write_preamble.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='backup_before_write_preamble SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: backup_before_write_preamble
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_data.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_data SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_data
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_data_init.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_data_init SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_data_init
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_data_prepare.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_data_prepare SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_data_prepare
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_data_lock.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_data_lock SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_data_lock
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+backup kernel	0	validity point
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_data_unlock.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_data_unlock SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_data_unlock
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+backup kernel	0	validity point
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point after_backup_binlog.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='after_backup_binlog SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: after_backup_binlog
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+backup kernel	0	validity point
+backup kernel	0	vp time
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_data_finish.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_data_finish SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_data_finish
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+backup kernel	0	validity point
+backup kernel	0	vp time
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_summary.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_summary SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_summary
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+backup kernel	0	validity point
+backup kernel	0	vp time
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+backup_id
+#
+DROP DATABASE bup_intr;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_prepare.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_prepare SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_prepare
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_logger_init.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_logger_init SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_logger_init
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_common_prepare.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_common_prepare SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_common_prepare
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_stream_open.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_stream_open SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_stream_open
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_catalog.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_catalog SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_catalog
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_read_header.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_read_header SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_read_header
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_read_catalog.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_read_catalog SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_read_catalog
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_binlog.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_binlog SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_binlog
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point after_backup_start_restore.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='after_backup_start_restore SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: after_backup_start_restore
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_fkey_disable.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_fkey_disable SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_fkey_disable
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_read_metadata.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_read_metadata SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_read_metadata
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_locks_tables.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_locks_tables SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_locks_tables
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted - data might be corrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+DROP DATABASE bup_intr;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_table_data.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_table_data SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_table_data
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted - data might be corrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+DROP DATABASE bup_intr;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point restore_before_drivers_create.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='restore_before_drivers_create SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: restore_before_drivers_create
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted - data might be corrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+DROP DATABASE bup_intr;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point restore_before_drivers_init.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='restore_before_drivers_init SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: restore_before_drivers_init
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted - data might be corrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+DROP DATABASE bup_intr;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point restore_before_read_data_chunk.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='restore_before_read_data_chunk SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: restore_before_read_data_chunk
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted - data might be corrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+DROP DATABASE bup_intr;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point restore_before_sending_data.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='restore_before_sending_data SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: restore_before_sending_data
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted - data might be corrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+DROP DATABASE bup_intr;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point restore_table_data_before_end.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='restore_table_data_before_end SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: restore_table_data_before_end
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted - data might be corrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+DROP DATABASE bup_intr;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_triggers.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_triggers SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_triggers
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Warning	<error-code>	Operation aborted - data might be corrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+DROP DATABASE bup_intr;
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point before_restore_completed.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_restore_completed SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_restore_completed
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+SET DEBUG_SYNC='reset';
+DROP DATABASE IF EXISTS bup_intr;
