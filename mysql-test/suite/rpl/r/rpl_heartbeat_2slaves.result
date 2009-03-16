@@ -45,7 +45,7 @@ SELECT a FROM t1;
 a
 1000
 [on slave]
-Slave has received heartbeats (1 means 5 or more heartbeat events): 1
+Slave has received heartbeats (1 means 'yes'): 1
 
 *** Clean up ***
 DROP DATABASE test_slave1;

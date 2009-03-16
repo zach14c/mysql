@@ -256,9 +256,10 @@ SET @@global.slave_compressed_protocol=0;
 *** Reset master ***
 STOP SLAVE;
 RESET SLAVE;
-CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_PORT=MASTER_PORT, MASTER_USER='root', MASTER_HEARTBEAT_PERIOD=0.5;
+CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_PORT=MASTER_PORT, MASTER_USER='root', MASTER_HEARTBEAT_PERIOD=0.1;
 include/start_slave.inc
-Heartbeat events are received after reload of master (1 means 'yes'): 1
+RESET MASTER;
+Heartbeat events are received after reset of master (1 means 'yes'): 1
 
 *** Reload master ***
 STOP SLAVE;

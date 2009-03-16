@@ -108,8 +108,8 @@ USE test_slave1;
 SELECT a FROM t1;
 --connection slave
 --echo [on slave]
-let $result= query_get_value(SELECT ($slave_rcvd_heartbeats_after - $slave_rcvd_heartbeats_before) > 5 AS Result, Result, 1);
---echo Slave has received heartbeats (1 means 5 or more heartbeat events): $result
+let $result= query_get_value(SELECT ($slave_rcvd_heartbeats_after - $slave_rcvd_heartbeats_before) > 0 AS Result, Result, 1);
+--echo Slave has received heartbeats (1 means 'yes'): $result
 --echo
 
 #
