@@ -1,0 +1,53 @@
+stop slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+reset master;
+reset slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+start slave;
+
+*** Preparing ***
+[on slave]
+include/stop_slave.inc
+RESET SLAVE;
+CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_PORT=MASTER_PORT, MASTER_USER='root', MASTER_HEARTBEAT_PERIOD=0.1, MASTER_LOG_FILE='MASTER_BINLOG';
+include/start_slave.inc
+[on slave1]
+RESET SLAVE;
+CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_PORT=MASTER_PORT, MASTER_USER='root', MASTER_HEARTBEAT_PERIOD=1, MASTER_LOG_FILE='MASTER_BINLOG';
+include/start_slave.inc
+
+*** 2 slaves ***
+Slave has received heartbeat event
+Slave1 has received heartbeat event
+Slave has received more heartbeats than Slave1 (1 means 'yes'): 1
+
+*** Master->heartbeat->Slave   Master->data->Slave1: ***
+[on master]
+CREATE DATABASE test_slave1;
+USE test_slave1;
+CREATE TABLE t1 (a INT PRIMARY KEY, b VARCHAR(10), c LONGTEXT);
+INSERT INTO t1 VALUES (1, 'on master', '');
+[on slave]
+SHOW DATABASES LIKE 'test_slave1';
+Database (test_slave1)
+[on slave1]
+SHOW DATABASES LIKE 'test_slave1';
+Database (test_slave1)
+test_slave1
+include/stop_slave.inc
+[on master]
+creating 1000 updates in binlog
+[on slave1]
+START SLAVE;
+[on slave1]
+USE test_slave1;
+SELECT a FROM t1;
+a
+1000
+[on slave]
+Slave has received heartbeats (1 means 5 or more heartbeat events): 1
+
+*** Clean up ***
+DROP DATABASE test_slave1;
+
+End of 6.0 test
