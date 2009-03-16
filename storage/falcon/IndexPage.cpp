@@ -1199,19 +1199,9 @@ void IndexPage::logIndexPage(Bdb *bdb, TransId transId)
 		return;
 
 	ASSERT(bdb->useCount > 0);
+	ASSERT(bdb->lockType == Exclusive);
+	ASSERT(bdb->isDirty);
 	IndexPage *indexPage = (IndexPage*) bdb->buffer;
-	
-	/**** Debugging only -- can deadlock
-	if (indexPage->parentPage)
-		{
-		Bdb *parentBdb = dbb->fetchPage(indexPage->parentPage, PAGE_btree, Shared);
-		BDB_HISTORY(bdb);
-		IndexPage *parentPage = (IndexPage*) parentBdb->buffer;
-		ASSERT(parentPage->level == indexPage->level + 1);
-		parentBdb->release(REL_HISTORY);
-		}
-	***/
-	
 	dbb->serialLog->logControl->indexPage.append(dbb, transId, INDEX_VERSION_1, bdb->pageNumber, indexPage->level, 
 												 indexPage->nextPage,  
 												 indexPage->length - OFFSET (IndexPage*, superNodes), 
