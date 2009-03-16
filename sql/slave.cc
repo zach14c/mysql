@@ -132,7 +132,6 @@ static bool wait_for_relay_log_space(Relay_log_info* rli);
 static inline bool io_slave_killed(THD* thd,Master_info* mi);
 static inline bool sql_slave_killed(THD* thd,Relay_log_info* rli);
 static int init_slave_thread(THD* thd, SLAVE_THD_TYPE thd_type);
-static int init_recovery(Master_info* mi);
 static int safe_connect(THD* thd, MYSQL* mysql, Master_info* mi);
 static int safe_reconnect(THD* thd, MYSQL* mysql, Master_info* mi,
                           bool suppress_warnings);
@@ -261,12 +260,6 @@ int init_slave()
     goto err;
   }
 
-  if (active_mi->rli.is_relay_log_recovery && init_recovery(active_mi))
-  {
-    error= 1;
-    goto err;
-  }
-
   /* If server id is not set, start_slave_thread() will say it */
 
   if (active_mi->host[0] && !opt_skip_slave_start)
@@ -285,7 +278,6 @@ int init_slave()
   }
 
 err:
-  active_mi->rli.is_relay_log_recovery= FALSE;
   pthread_mutex_unlock(&LOCK_active_mi);
   DBUG_RETURN(error);
 }
@@ -317,9 +309,8 @@ err:
   
    If there is an error, it returns (1), otherwise returns (0).
  */
-static int init_recovery(Master_info* mi)
+int init_recovery(Master_info* mi, const char** errmsg)
 {
-  const char *errmsg= 0;
   DBUG_ENTER("init_recovery");
  
   Relay_log_info *rli= &mi->rli;
@@ -339,26 +330,8 @@ static int init_recovery(Master_info* mi)
             sizeof(mi->rli.event_relay_log_name)-1);
  
     rli->group_relay_log_pos= rli->event_relay_log_pos= BIN_LOG_HEADER_SIZE;
- 
-    if (init_relay_log_pos(rli,
-                           rli->group_relay_log_name,
-                           rli->group_relay_log_pos,
-                           0 /*no data lock*/,
-                            &errmsg, 0))
-      DBUG_RETURN(1);
- 
-    if (flush_master_info(mi, 0))
-    {
-      sql_print_error("Failed to flush master info file");
-      DBUG_RETURN(1);
-    }
-    if (flush_relay_log_info(rli))
-    {
-       sql_print_error("Failed to flush relay info file");
-       DBUG_RETURN(1);
-    }
   }
- 
+
   DBUG_RETURN(0);
 }
  
@@ -4331,7 +4304,7 @@ void rotate_relay_log(Master_info* mi)
   DBUG_ENTER("rotate_relay_log");
   Relay_log_info* rli= &mi->rli;
 
-  DBUG_EXECUTE_IF("crash_before_rotate_relaylog", exit(1););
+  DBUG_EXECUTE_IF("crash_before_rotate_relaylog", DBUG_ABORT(););
 
   /* We don't lock rli->run_lock. This would lead to deadlocks. */
   pthread_mutex_lock(&mi->run_lock);
