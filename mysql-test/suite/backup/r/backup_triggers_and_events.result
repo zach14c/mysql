@@ -189,6 +189,7 @@ AND timediff(ts,@start) < 2;
 count(*) > 0
 1
 Cleaning up.
+SET DEBUG_SYNC = 'RESET';
 DROP EVENT test.ev;
 DROP TRIGGER test.trg;
 DROP TABLE test.logt;
