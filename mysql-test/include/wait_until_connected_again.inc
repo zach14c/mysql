@@ -9,9 +9,9 @@
 
 --disable_result_log
 --disable_query_log
-# We wait for 7 minutes, because some storage engines need quite
+# We wait for 20 minutes, because some storage engines need quite
 # some to restart with Valgrind runs on Pushbuild.
-let $counter= 4200;
+let $counter= 12000;
 let $mysql_errno= 9999;
 while ($mysql_errno)
 {
