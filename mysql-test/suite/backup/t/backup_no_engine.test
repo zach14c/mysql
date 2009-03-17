@@ -14,7 +14,7 @@ DROP DATABASE IF EXISTS db;
 
 CREATE DATABASE db;
 CREATE TABLE db.t1 (a int, b char(32))
-ENGINE=MYISAM;
+;
 
 # copy description of a table using non-existent storage engine
 copy_file $table_def $MYSQLD_DATADIR/db/t2.frm;

@@ -749,6 +749,7 @@ static void do_verify_prepare_field(MYSQL_RES *result,
 {
   MYSQL_FIELD *field;
   CHARSET_INFO *cs;
+  ulonglong expected_field_length;
 
   if (!(field= mysql_fetch_field_direct(result, no)))
   {
@@ -757,6 +758,8 @@ static void do_verify_prepare_field(MYSQL_RES *result,
   }
   cs= get_charset(field->charsetnr, 0);
   DIE_UNLESS(cs);
+  if ((expected_field_length= length * cs->mbmaxlen) > UINT_MAX32)
+    expected_field_length= UINT_MAX32;
   if (!opt_silent)
   {
     fprintf(stdout, "\n field[%d]:", no);
@@ -771,8 +774,8 @@ static void do_verify_prepare_field(MYSQL_RES *result,
       fprintf(stdout, "\n    org_table:`%s`\t(expected: `%s`)",
               field->org_table, org_table);
     fprintf(stdout, "\n    database :`%s`\t(expected: `%s`)", field->db, db);
-    fprintf(stdout, "\n    length   :`%lu`\t(expected: `%lu`)",
-            field->length, length * cs->mbmaxlen);
+    fprintf(stdout, "\n    length   :`%lu`\t(expected: `%llu`)",
+            field->length, expected_field_length);
     fprintf(stdout, "\n    maxlength:`%ld`", field->max_length);
     fprintf(stdout, "\n    charsetnr:`%d`", field->charsetnr);
     fprintf(stdout, "\n    default  :`%s`\t(expected: `%s`)",
@@ -808,11 +811,11 @@ static void do_verify_prepare_field(MYSQL_RES *result,
     as utf8. Field length is calculated as number of characters * maximum
     number of bytes a character can occupy.
   */
-  if (length && field->length != length * cs->mbmaxlen)
+  if (length && (field->length != expected_field_length))
   {
-    fprintf(stderr, "Expected field length: %d,  got length: %d\n",
-            (int) (length * cs->mbmaxlen), (int) field->length);
-    DIE_UNLESS(field->length == length * cs->mbmaxlen);
+    fprintf(stderr, "Expected field length: %llu,  got length: %lu\n",
+            expected_field_length, field->length);
+    DIE_UNLESS(field->length == expected_field_length);
   }
   if (def)
     DIE_UNLESS(strcmp(field->def, def) == 0);
@@ -1810,7 +1813,7 @@ static void test_wl4435()
 
       MYSQL_RES *rs_metadata= mysql_stmt_result_metadata(stmt);
 
-      num_fields= mysql_num_fields(rs_metadata);
+      num_fields= mysql_stmt_field_count(stmt);
       fields= mysql_fetch_fields(rs_metadata);
 
       rs_bind= (MYSQL_BIND *) malloc(sizeof (MYSQL_BIND) * num_fields);
@@ -1926,7 +1929,7 @@ static void test_wl4435()
       if (rc > 0)
       {
         printf("Error: %s (errno: %d)\n",
-               mysql_error(mysql), mysql_errno(mysql));
+               mysql_stmt_error(stmt), mysql_stmt_errno(stmt));
         DIE(rc > 0);
       }
 
@@ -2038,6 +2041,66 @@ static void test_wl4435()
     myquery(rc);
   }
 }
+
+static void test_wl4435_2()
+{
+  MYSQL_STMT *stmt;
+  int  i;
+  int  rc;
+  char query[MAX_TEST_QUERY_LENGTH];
+
+  myheader("test_wl4435_2");
+  mct_start_logging("test_wl4435_2");
+
+  /*
+    Do a few iterations so that we catch any problem with incorrect
+    handling/flushing prepared statement results.
+  */
+
+  for (i= 0; i < 10; ++i)
+  {
+    /*
+      Prepare a procedure. That can be moved out of the loop, but it was
+      left in the loop for the sake of having as many statements as
+      possible.
+    */
+
+    rc= mysql_query(mysql, "DROP PROCEDURE IF EXISTS p1");
+    myquery(rc);
+
+    rc= mysql_query(mysql,
+      "CREATE PROCEDURE p1()"
+      "BEGIN "
+      "  SELECT 1; "
+      "  SELECT 2, 3 UNION SELECT 4, 5; "
+      "  SELECT 6, 7, 8; "
+      "END");
+    myquery(rc);
+
+    /* Invoke a procedure, that returns several result sets. */
+
+    strmov(query, "CALL p1()");
+    stmt= mysql_simple_prepare(mysql, query);
+    check_stmt(stmt);
+
+    /* Execute! */
+
+    rc= mysql_stmt_execute(stmt);
+    check_execute(stmt, rc);
+
+    /* Flush all the results. */
+
+    mysql_stmt_close(stmt);
+
+    /* Clean up. */
+    rc= mysql_commit(mysql);
+    myquery(rc);
+
+    rc= mysql_query(mysql, "DROP PROCEDURE p1");
+    myquery(rc);
+  }
+}
+
 
 /* Test simple prepare field results */
 
@@ -18643,6 +18706,69 @@ static void test_bug36326()
 
 #endif
 
+/**
+  Bug#41078: With CURSOR_TYPE_READ_ONLY mysql_stmt_fetch() returns short
+             string value.
+*/
+
+static void test_bug41078(void)
+{
+  uint         rc;
+  MYSQL_STMT   *stmt= 0;
+  MYSQL_BIND   param, result;
+  ulong        cursor_type= CURSOR_TYPE_READ_ONLY;
+  ulong        len;
+  char         str[64];
+  const char   param_str[]= "abcdefghijklmn";
+  my_bool      is_null, error;
+
+  DBUG_ENTER("test_bug41078");
+
+  rc= mysql_query(mysql, "SET NAMES UTF8");
+  myquery(rc);
+
+  stmt= mysql_simple_prepare(mysql, "SELECT ?");
+  check_stmt(stmt);
+  verify_param_count(stmt, 1);
+
+  rc= mysql_stmt_attr_set(stmt, STMT_ATTR_CURSOR_TYPE, &cursor_type);
+  check_execute(stmt, rc);
+  
+  bzero(&param, sizeof(param));
+  param.buffer_type= MYSQL_TYPE_STRING;
+  param.buffer= (void *) param_str;
+  len= sizeof(param_str) - 1;
+  param.length= &len;
+
+  rc= mysql_stmt_bind_param(stmt, &param);
+  check_execute(stmt, rc);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute(stmt, rc);
+
+  bzero(&result, sizeof(result));
+  result.buffer_type= MYSQL_TYPE_STRING;
+  result.buffer= str;
+  result.buffer_length= sizeof(str);
+  result.is_null= &is_null;
+  result.length= &len;
+  result.error=  &error;
+  
+  rc= mysql_stmt_bind_result(stmt, &result);
+  check_execute(stmt, rc);
+
+  rc= mysql_stmt_store_result(stmt);
+  check_execute(stmt, rc);
+
+  rc= mysql_stmt_fetch(stmt);
+  check_execute(stmt, rc);
+
+  DIE_UNLESS(len == sizeof(param_str) - 1 && !strcmp(str, param_str));
+
+  mysql_stmt_close(stmt);
+
+  DBUG_VOID_RETURN;
+}
 
 /*
   Read and parse arguments and MySQL options from my.cnf
@@ -18957,6 +19083,7 @@ static struct my_tests_st my_tests[]= {
   { "test_bug36004", test_bug36004 },
   { "test_wl4284_1", test_wl4284_1 },
   { "test_wl4435",   test_wl4435 },
+  { "test_wl4435_2", test_wl4435_2 },
   { "test_bug38486", test_bug38486 },
   { "test_bug33831", test_bug33831 },
   { "test_bug40365", test_bug40365 },
@@ -18966,6 +19093,7 @@ static struct my_tests_st my_tests[]= {
 #ifdef HAVE_QUERY_CACHE
   { "test_bug36326", test_bug36326 },
 #endif
+  { "test_bug41078", test_bug41078 },
   { 0, 0 }
 };
 

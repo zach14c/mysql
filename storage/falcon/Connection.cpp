@@ -81,7 +81,7 @@
 #define COOKIE_NAME	"NETFRASTRUCTURE"
 #define UTF8		false
 
-static Mutex		shutdownMutex;
+static Mutex		shutdownMutex("Connection::shutdownMutex");
 //static LinkedList	databases;
 static Database		*firstDatabase;
 static Database		*lastDatabase;
@@ -375,7 +375,6 @@ void Connection::shutdownDatabases()
 	for (Database *database; (database = firstDatabase);)
 		{
 		unlink(database);
-		database->shutdown();
 		database->shutdown();
 		database->release();
 		}

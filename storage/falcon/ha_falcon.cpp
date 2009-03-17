@@ -179,6 +179,18 @@ bool checkExceptionSupport()
 	return false;
 }
 
+// Init/term routines for THR_LOCK, used within StorageTableShare.
+void falcon_lock_init(void *lock)
+{
+	thr_lock_init((THR_LOCK *)lock);
+}
+
+
+void falcon_lock_deinit(void *lock)
+{
+	thr_lock_delete((THR_LOCK *)lock);
+}
+
 int StorageInterface::falcon_init(void *p)
 {
 	DBUG_ENTER("falcon_init");
@@ -285,6 +297,16 @@ int falcon_strnxfrm (void *cs,
 
 	return (int)charset->coll->strnxfrm(charset, (uchar *) dst, dstlen, nweights,
 	                              (uchar *) src, srclen, 0);
+}
+
+int falcon_strnxfrm_space_pad (void *cs,
+                     const char *dst, uint dstlen, int nweights,
+                     const char *src, uint srclen)
+{
+	CHARSET_INFO *charset = (CHARSET_INFO*) cs;
+
+	return (int)charset->coll->strnxfrm(charset, (uchar *) dst, dstlen, nweights,
+	                              (uchar *) src, srclen, MY_STRXFRM_PAD_WITH_SPACE);
 }
 
 char falcon_get_pad_char (void *cs)
@@ -520,7 +542,6 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 
 			if (!storageShare->initialized)
 				{
-				thr_lock_init((THR_LOCK *)storageShare->impure);
 				storageShare->setTablePath(name, tempTable);
 				storageShare->initialized = true;
 				}
@@ -553,15 +574,15 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 
 	thr_lock_data_init((THR_LOCK *)storageShare->impure, &lockData, NULL);
 
-	if (table)
-		mapFields(table);
+	// Map fields for Falcon record encoding
+	
+	mapFields(table);
+	
+	// Map server indexes to Falcon internal indexes
 	
 	setIndexes(table);
 	
-	if (ret)
-		DBUG_RETURN(error(ret));
-
-	DBUG_RETURN(0);
+	DBUG_RETURN(error(ret));
 }
 
 
@@ -859,7 +880,16 @@ int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO 
 		tableSpace = TEMPORARY_TABLESPACE;
 		}
 	else if (info->tablespace)
-		tableSpace = info->tablespace;
+		{
+		if (!strcasecmp(info->tablespace, TEMPORARY_TABLESPACE))
+			{
+			my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
+				"Cannot create non-temporary table '%s' in '%s' tablespace.", MYF(0), tableName, TEMPORARY_TABLESPACE);
+			storageTable->deleteTable();
+			DBUG_RETURN(HA_WRONG_CREATE_OPTION);
+			}
+		tableSpace = storageTable->getTableSpaceName();
+		}
 	else
 		tableSpace = DEFAULT_TABLESPACE;
 
@@ -884,7 +914,11 @@ int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO 
 				DBUG_RETURN(error(ret));
 				}
 
+	// Map fields for Falcon record encoding
+	
 	mapFields(form);
+	
+	// Map server indexes to Falcon indexes
 	
 	setIndexes(table);
 
@@ -899,25 +933,39 @@ int StorageInterface::add_index(TABLE* table_arg, KEY* key_info, uint num_of_key
 	DBUG_RETURN(ret);
 }
 
-int StorageInterface::createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId)
+int StorageInterface::createIndex(const char *schemaName, const char *tableName, TABLE *srvTable, int indexId)
 {
-	KEY *key = table->key_info + indexId;
-	StorageIndexDesc indexDesc;
-	getKeyDesc(table, indexId, &indexDesc);
-	
+	int ret = 0;
 	CmdGen gen;
-	const char *unique = (key->flags & HA_NOSAME) ? "unique " : "";
-	gen.gen("create %sindex \"%s\" on %s.\"%s\" ", unique, indexDesc.name, schemaName, tableName);
-	genKeyFields(key, &gen);
-	const char *sql = gen.getString();
+	StorageIndexDesc indexDesc;
+	getKeyDesc(srvTable, indexId, &indexDesc);
+	
+	if (indexDesc.primaryKey)
+		{
+		int64 incrementValue = 0;
+		genTable(srvTable, &gen);
+		
+		// Primary keys are a special case, so use upgrade()
+	
+		ret = storageTable->upgrade(gen.getString(), incrementValue);
+		}
+	else
+		{
+		KEY *key = srvTable->key_info + indexId;
+		const char *unique = (key->flags & HA_NOSAME) ? "unique " : "";
+		gen.gen("create %sindex \"%s\" on %s.\"%s\" ", unique, indexDesc.name, schemaName, tableName);
+		genKeyFields(key, &gen);
+		
+		ret = storageTable->createIndex(&indexDesc, gen.getString());
+		}
 
-	return storageTable->createIndex(&indexDesc, sql);
+	return ret;
 }
 
-int StorageInterface::dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId, bool online)
+int StorageInterface::dropIndex(const char *schemaName, const char *tableName, TABLE *srvTable, int indexId, bool online)
 {
 	StorageIndexDesc indexDesc;
-	getKeyDesc(table, indexId, &indexDesc);
+	getKeyDesc(srvTable, indexId, &indexDesc);
 	
 	CmdGen gen;
 	gen.gen("drop index %s.\"%s\"", schemaName, indexDesc.name);
@@ -976,18 +1024,17 @@ THR_LOCK_DATA **StorageInterface::store_lock(THD *thd, THR_LOCK_DATA **to,
 			lock_type = TL_WRITE_ALLOW_WRITE;
 
 		/*
-		  In queries of type INSERT INTO t1 SELECT ... FROM t2 ...
-		  MySQL would use the lock TL_READ_NO_INSERT on t2, and that
-		  would conflict with TL_WRITE_ALLOW_WRITE, blocking all inserts
-		  to t2. Convert the lock to a normal read lock to allow
-		  concurrent inserts to t2.
+                  In queries of type INSERT INTO t1 SELECT ... FROM t2 ...
+                  MySQL would use the lock TL_READ_NO_INSERT on t2 to prevent
+                  concurrent inserts into this table. Since Falcon can handle
+                  concurrent changes using own mechanisms and this type of
+                  lock conflicts with TL_WRITE_ALLOW_WRITE we convert it to
+                  a normal read lock to allow concurrent changes.
 		*/
 
-		#ifdef XXX_TALK_TO_SERGEI
-		if (lock_type == TL_READ_NO_INSERT && !thd_in_lock_tables(thd))
-			lock_type = TL_READ;
-		#endif
-
+		if (lock_type == TL_READ_NO_INSERT &&
+                    !(thd_in_lock_tables(thd) && sql_command == SQLCOM_LOCK_TABLES))
+                       lock_type = TL_READ;
 
 		lockData.type = lock_type;
 		}
@@ -1022,12 +1069,7 @@ int StorageInterface::delete_table(const char *tableName)
 		storageShare->lockIndexes(true);
 		storageShare->lock(true);
 
-		if (storageShare->initialized)
-			{
-			thr_lock_delete((THR_LOCK*) storageShare->impure);
-			storageShare->initialized = false;
-			//DBUG_ASSERT(false);
-			}
+		storageShare->initialized = false;
 
 		storageShare->unlock();
 		storageShare->unlockIndexes();
@@ -1378,9 +1420,14 @@ int StorageInterface::index_read(uchar *buf, const uchar *keyBytes, uint key_len
                                 enum ha_rkey_function find_flag)
 {
 	DBUG_ENTER("StorageInterface::index_read");
-	int ret, which = 0;
+	int which = 0;
 	ha_statistic_increment(&SSV::ha_read_key_count);
 
+	int ret = storageTable->checkCurrentIndex();
+
+	if (ret)
+		DBUG_RETURN(error(ret));
+	
 	// XXX This needs to be revisited
 	switch(find_flag)
 		{
@@ -1446,22 +1493,34 @@ int StorageInterface::index_init(uint idx, bool sorted)
 	nextRecord = 0;
 	haveStartKey = false;
 	haveEndKey = false;
-	int ret = 0;
 
-	ret = storageTable->setCurrentIndex(idx);
+	// Get and hold a shared lock on StorageTableShare::indexes, then set
+	// the corresponding Falcon index for use on the current thread
+	
+	int ret = storageTable->setCurrentIndex(idx);
 
+	// If the index is not found, remap the index and try again
+		
 	if (ret)
 		{
-		setIndex(table, idx);
+		storageShare->lockIndexes(true);
+		remapIndexes(table);
+		storageShare->unlockIndexes();
+		
 		ret = storageTable->setCurrentIndex(idx);
+		
+		// Online ALTER allows access to partially deleted indexes, so
+		// fail silently for now to avoid fatal assert in server.
+		// 
+		// TODO: Restore error when server imposes DDL lock across the
+		//       three phases of online ALTER.
+		
+		if (ret)
+			//DBUG_RETURN(error(ret));
+			DBUG_RETURN(error(0));
 		}
 		
-	// validateIndexes(table);
-		
-	if (ret)
-		DBUG_RETURN(error(ret));
-
-	DBUG_RETURN(ret);
+	DBUG_RETURN(error(ret));
 }
 
 int StorageInterface::index_end(void)
@@ -1516,15 +1575,15 @@ ha_rows StorageInterface::records_in_range(uint indexId, key_range *lower, key_r
 	DBUG_RETURN(MAX(guestimate, 2));
 }
 
-void StorageInterface::getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexDesc)
+void StorageInterface::getKeyDesc(TABLE *srvTable, int indexId, StorageIndexDesc *indexDesc)
 {
-	KEY *keyInfo = table->key_info + indexId;
+	KEY *keyInfo = srvTable->key_info + indexId;
 	int numberKeys = keyInfo->key_parts;
 	
 	indexDesc->id			  = indexId;
 	indexDesc->numberSegments = numberKeys;
 	indexDesc->unique		  = (keyInfo->flags & HA_NOSAME);
-	indexDesc->primaryKey	  = (table->s->primary_key == (uint)indexId);
+	indexDesc->primaryKey	  = (srvTable->s->primary_key == (uint)indexId);
 	
 	// Clean up the index name for internal use
 	
@@ -1541,21 +1600,104 @@ void StorageInterface::getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *i
 		segment->length	= part->length;
 		segment->type	= part->field->key_type();
 		segment->nullBit = part->null_bit;
-		segment->isUnsigned = (part->field->flags & ENUM_FLAG) ?
-			true : ((Field_num*) part->field)->unsigned_flag;
+		segment->mysql_charset = NULL;
 
+		// Separate correctly between types that may map to
+		// the same key type, but that should be treated differently.
+		// This way StorageInterface::getSegmentValue only have
+		// to switch on the keyFormat, and the logic needed at runtime
+		// is minimal.
+		// Also set the correct charset where appropriate.
 		switch (segment->type)
 			{
-			case HA_KEYTYPE_TEXT:
-			case HA_KEYTYPE_VARTEXT1:
-			case HA_KEYTYPE_VARTEXT2:
+			case HA_KEYTYPE_LONG_INT:
+				segment->keyFormat = KEY_FORMAT_LONG_INT;
+				break;
+				
+			case HA_KEYTYPE_SHORT_INT:
+				segment->keyFormat = KEY_FORMAT_SHORT_INT;
+				break;
+				
+			case HA_KEYTYPE_ULONGLONG:
+				segment->keyFormat = KEY_FORMAT_ULONGLONG;
+				break;
+
+			case HA_KEYTYPE_LONGLONG:
+				segment->keyFormat = KEY_FORMAT_LONGLONG;
+				break;
+				
+			case HA_KEYTYPE_FLOAT:
+				segment->keyFormat = KEY_FORMAT_FLOAT;
+				break;
+				
+			case HA_KEYTYPE_DOUBLE:
+				segment->keyFormat = KEY_FORMAT_DOUBLE;
+				break;
+				
 			case HA_KEYTYPE_VARBINARY1:
 			case HA_KEYTYPE_VARBINARY2:
+				segment->keyFormat = KEY_FORMAT_VARBINARY;
 				segment->mysql_charset = part->field->charset();
 				break;
 
+			case HA_KEYTYPE_VARTEXT1:
+			case HA_KEYTYPE_VARTEXT2:
+				segment->keyFormat = KEY_FORMAT_VARTEXT;
+				segment->mysql_charset = part->field->charset();
+				break;
+				
+			case HA_KEYTYPE_BINARY:
+				switch (part->field->real_type())
+					{
+					case MYSQL_TYPE_TINY:
+					case MYSQL_TYPE_BIT:
+					case MYSQL_TYPE_YEAR:
+					case MYSQL_TYPE_SET:
+					case MYSQL_TYPE_ENUM:
+					case MYSQL_TYPE_DATETIME:
+						segment->keyFormat = KEY_FORMAT_BINARY_INTEGER;
+						break;
+						
+					case MYSQL_TYPE_NEWDECIMAL:
+						segment->keyFormat = KEY_FORMAT_BINARY_NEWDECIMAL;
+						break;
+						
+					default:
+						segment->keyFormat = KEY_FORMAT_BINARY_STRING;
+						break;
+					}
+				break;
+				
+			case HA_KEYTYPE_TEXT:
+				segment->keyFormat = KEY_FORMAT_TEXT;
+				segment->mysql_charset = part->field->charset();
+				break;
+				
+			case HA_KEYTYPE_ULONG_INT:
+				if (part->field->real_type() == MYSQL_TYPE_TIMESTAMP)
+					segment->keyFormat = KEY_FORMAT_TIMESTAMP;
+				else
+					segment->keyFormat = KEY_FORMAT_ULONG_INT;
+				break;
+				
+			case HA_KEYTYPE_INT8:
+				segment->keyFormat = KEY_FORMAT_INT8;
+				break;
+				
+			case HA_KEYTYPE_USHORT_INT:
+				segment->keyFormat = KEY_FORMAT_USHORT_INT;
+				break;
+				
+			case HA_KEYTYPE_UINT24:
+				segment->keyFormat = KEY_FORMAT_UINT24;
+				break;
+				
+			case HA_KEYTYPE_INT24:
+				segment->keyFormat = KEY_FORMAT_INT24;
+				break;
+				
 			default:
-				segment->mysql_charset = NULL;
+				segment->keyFormat = KEY_FORMAT_OTHER;
 			}
 		}
 }
@@ -1576,16 +1718,12 @@ int StorageInterface::rename_table(const char *from, const char *to)
 
 	ret = storageShare->renameTable(storageConnection, to);
 	
-	if (!ret)
-		remapIndexes(table);
+	remapIndexes(table);
 	
 	storageShare->unlock();
 	storageShare->unlockIndexes();
 
-	if (ret)
-		DBUG_RETURN(error(ret));
-
-	DBUG_RETURN(ret);
+	DBUG_RETURN(error(ret));
 }
 
 double StorageInterface::read_time(uint index, uint ranges, ha_rows rows)
@@ -1605,20 +1743,15 @@ int StorageInterface::read_range_first(const key_range *start_key,
 	if ((res= scanRange(start_key, end_key, eq_range_arg)))
 		DBUG_RETURN(res);
 
-	for (;;)
+	int result = index_next(table->record[0]);
+
+	if (result)
 		{
-		int result = index_next(table->record[0]);
+		if (result == HA_ERR_KEY_NOT_FOUND)
+			result = HA_ERR_END_OF_FILE;
 
-		if (result)
-			{
-			if (result == HA_ERR_KEY_NOT_FOUND)
-				result = HA_ERR_END_OF_FILE;
-
-			table->status = result;
-			DBUG_RETURN(result);
-			}
-
-		DBUG_RETURN(0);
+		table->status = result;
+		DBUG_RETURN(result);
 		}
 
 	DBUG_RETURN(0);
@@ -1633,8 +1766,12 @@ int StorageInterface::scanRange(const key_range *start_key,
 	haveStartKey = false;
 	haveEndKey = false;
 	storageTable->upperBound = storageTable->lowerBound = NULL;
-	int ret = 0;
 
+	int ret = storageTable->checkCurrentIndex();
+
+	if (ret)
+		DBUG_RETURN(error(ret));
+	
 	if (start_key && !storageTable->isKeyNull((const unsigned char*) start_key->key, start_key->length))
 		{
 		haveStartKey = true;
@@ -1645,7 +1782,7 @@ int StorageInterface::scanRange(const key_range *start_key,
 		else if (start_key->flag == HA_READ_AFTER_KEY)
 			storageTable->setReadAfterKey();
 
-		int ret = storageTable->setIndexBound((const unsigned char*) start_key->key,
+		ret = storageTable->setIndexBound((const unsigned char*) start_key->key,
 												start_key->length, LowerBound);
 		if (ret)
 			DBUG_RETURN(error(ret));
@@ -1698,6 +1835,11 @@ int StorageInterface::index_next(uchar *buf)
 	if (activeBlobs)
 		freeActiveBlobs();
 
+	int ret = storageTable->checkCurrentIndex();
+
+	if (ret)
+		DBUG_RETURN(error(ret));
+	
 	for (;;)
 		{
 		lastRecord = storageTable->nextIndexed(nextRecord, lockForUpdate);
@@ -1821,7 +1963,7 @@ int StorageInterface::fillMrrBitmap()
 		startKey = mrr_cur_range.start_key.keypart_map? &mrr_cur_range.start_key: NULL;
 		endKey   = mrr_cur_range.end_key.keypart_map?   &mrr_cur_range.end_key: NULL;
 		if ((res = scanRange(startKey, endKey, test(mrr_cur_range.range_flag & EQ_RANGE))))
-			return res;
+			DBUG_RETURN(res);
 		}
 	DBUG_RETURN(0);
 }
@@ -2236,7 +2378,8 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 {
 	DBUG_ENTER("NfsStorageEngine::alter_tablespace");
 	int ret = 0;
-
+	const char *data_file_name= ts_info->data_file_name;
+	char buff[FN_REFLEN];
 	/*
 	CREATE TABLESPACE tablespace
 		ADD DATAFILE 'file'
@@ -2256,28 +2399,30 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	for NDB only.
 	*/
 
-        /*
-           Sergey Vojtovich is to reconsider this code
-
-	if (ts_info->data_file_name)
+	if (data_file_name)
 		{
-		char buff[FN_REFLEN];
-		size_t dirname_part_length;
-		dirname_part(buff, ts_info->data_file_name, &dirname_part_length);
-		fn_format(buff, buff, mysql_real_data_home, "",
-			MY_RELATIVE_PATH | MY_UNPACK_FILENAME);
-		if (test_if_data_home_dir(buff))
+		size_t length= strlen(data_file_name);
+		if (length <= 4 || strcmp(data_file_name + length - 4, ".fts"))
 			{
-			my_error(ER_WRONG_ARGUMENTS, MYF(0), "DATAFILE");
-			DBUG_RETURN(1);
+			if (!length || length > FN_REFLEN - 5)
+				{
+				my_error(ER_BAD_PATH, MYF(0), data_file_name);
+				DBUG_RETURN(1);
+				}
+			memcpy(buff, data_file_name, length);
+			buff[length]= '.';
+			buff[length + 1]= 'f';
+			buff[length + 2]= 't';
+			buff[length + 3]= 's';
+			buff[length + 4]= '\0';
+			data_file_name= buff;
 			}
 		}
-        */
 
 	switch (ts_info->ts_cmd_type)
 		{
 		case CREATE_TABLESPACE:
-			ret = storageHandler->createTablespace(	ts_info->tablespace_name, ts_info->data_file_name, ts_info->ts_comment);
+			ret = storageHandler->createTablespace(	ts_info->tablespace_name, data_file_name, ts_info->ts_comment);
 			break;
 
 		case DROP_TABLESPACE:
@@ -2319,10 +2464,8 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 	DBUG_ENTER("StorageInterface::check_if_supported_alter");
 	tempTable = (create_info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
 	HA_ALTER_FLAGS supported;
-	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX;
-						/**
-						| HA_ADD_COLUMN | HA_COLUMN_STORAGE | HA_COLUMN_FORMAT | HA_ADD_PK_INDEX | HA_DROP_PK_INDEX;
-						**/
+	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX
+	                      | HA_ADD_PK_INDEX | HA_DROP_PK_INDEX | HA_ADD_COLUMN;
 	HA_ALTER_FLAGS notSupported = ~(supported);
 	
 #ifndef ONLINE_ALTER
@@ -2354,33 +2497,6 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 			}
 		}
 		
-	if (alter_flags->is_set(HA_ADD_INDEX) || alter_flags->is_set(HA_ADD_UNIQUE_INDEX)
-		|| alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX))
-		{
-		for (unsigned int n = 0; n < altered_table->s->keys; n++)
-			{
-			KEY *key = altered_table->key_info + n;
-			KEY *tableEnd = table->key_info + table->s->keys;
-			KEY *tableKey;
-			
-			// Determine if this is a new index
-
-			for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
-				if (!strcmp(tableKey->name, key->name))
-					break;
-
-			// Unique, non-null keys are interpreted as primary keys.
-			// Online add/drop primary keys not yet supported.
-			
-			if (tableKey >= tableEnd)
-				if (n == altered_table->s->primary_key)
-					{
-					DBUG_PRINT("info",("Online add/drop primary key not supported"));
-					DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
-					}
-			}
-		}
-		
 	DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
 }
 
@@ -2404,10 +2520,10 @@ int StorageInterface::alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREA
 	if (alter_flags->is_set(HA_ADD_COLUMN))
 		ret = addColumn(thd, altered_table, create_info, alter_info, alter_flags);
 		
-	if ((alter_flags->is_set(HA_ADD_INDEX) || alter_flags->is_set(HA_ADD_UNIQUE_INDEX)) && !ret)
+	if ((alter_flags->is_set(HA_ADD_INDEX) || alter_flags->is_set(HA_ADD_UNIQUE_INDEX) || alter_flags->is_set(HA_ADD_PK_INDEX)) && !ret)
 		ret = addIndex(thd, altered_table, create_info, alter_info, alter_flags);
 		
-	if ((alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX)) && !ret)
+	if ((alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX) || alter_flags->is_set(HA_DROP_PK_INDEX)) && !ret)
 		ret = dropIndex(thd, altered_table, create_info, alter_info, alter_flags);
 	
 	DBUG_RETURN(ret);
@@ -2490,8 +2606,7 @@ int StorageInterface::addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* cr
 		
 	// The server indexes may have been reordered, so remap to the Falcon indexes
 	
-	if (!ret)
-		remapIndexes(alteredTable);
+	remapIndexes(alteredTable);
 	
 	storageShare->unlock();
 	storageShare->unlockIndexes();
@@ -2529,8 +2644,7 @@ int StorageInterface::dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* c
 	
 	// The server indexes have been reordered, so remap to the Falcon indexes
 	
-	if (!ret)
-		remapIndexes(alteredTable);
+	remapIndexes(alteredTable);
 	
 	storageShare->unlock();
 	storageShare->unlockIndexes();
@@ -2581,26 +2695,25 @@ void StorageInterface::mysqlLogger(int mask, const char* text, void* arg)
 		sql_print_information("%s", text);
 }
 
-int StorageInterface::setIndex(TABLE *table, int indexId)
+int StorageInterface::setIndex(TABLE *srvTable, int indexId)
 {
 	StorageIndexDesc indexDesc;
-	getKeyDesc(table, indexId, &indexDesc);
+	getKeyDesc(srvTable, indexId, &indexDesc);
 
 	return storageTable->setIndex(&indexDesc);
 }
 
-int StorageInterface::setIndexes(TABLE *table)
+int StorageInterface::setIndexes(TABLE *srvTable)
 {
 	int ret = 0;
 	
-	if (!table || storageShare->haveIndexes(table->s->keys))
+	if (!srvTable || storageShare->haveIndexes(srvTable->s->keys))
 		return ret;
 
 	storageShare->lockIndexes(true);
 	storageShare->lock(true);
 
-	ret = remapIndexes(table);
-	// validateIndexes(table, true);
+	ret = remapIndexes(srvTable);
 
 	storageShare->unlock();
 	storageShare->unlockIndexes();
@@ -2608,41 +2721,47 @@ int StorageInterface::setIndexes(TABLE *table)
 	return ret;
 }
 
-int StorageInterface::remapIndexes(TABLE *table)
+// Create an index entry in StorageTableShare for each TABLE index
+// Assume exclusive lock on StorageTableShare::syncIndexMap
+
+int StorageInterface::remapIndexes(TABLE *srvTable)
 {
 	int ret = 0;
 	
 	storageShare->deleteIndexes();
 
-	if (!table)
+	if (!srvTable)
 		return ret;
 		
-	for (uint n = 0; n < table->s->keys; ++n)
-		if ((ret = setIndex(table, n)))
-			break;
+	// Ok to ignore errors in this context
+	
+	for (uint n = 0; n < srvTable->s->keys; ++n)
+		setIndex(srvTable, n);
 
+	// validateIndexes(srvTable, true);
+	
 	return ret;
 }
 
-bool StorageInterface::validateIndexes(TABLE *table, bool exclusiveLock)
+bool StorageInterface::validateIndexes(TABLE *srvTable, bool exclusiveLock)
 {
 	bool ret = true;
 	
-	if (!table)
+	if (!srvTable)
 		return false;
 	
 	storageShare->lockIndexes(exclusiveLock);
 		
-	for (uint n = 0; (n < table->s->keys) && ret; ++n)
+	for (uint n = 0; (n < srvTable->s->keys) && ret; ++n)
 		{
 		StorageIndexDesc indexDesc;
-		getKeyDesc(table, n, &indexDesc);
+		getKeyDesc(srvTable, n, &indexDesc);
 		
 		if (!storageShare->validateIndex(n, &indexDesc))
 			ret = false;
 		}
 	
-	if (ret && (table->s->keys != (uint)storageShare->numberIndexes()))
+	if (ret && (srvTable->s->keys != (uint)storageShare->numberIndexes()))
 		ret = false;
 	
 	storageShare->unlockIndexes();
@@ -2650,7 +2769,7 @@ bool StorageInterface::validateIndexes(TABLE *table, bool exclusiveLock)
 	return ret;
 }
 
-int StorageInterface::genTable(TABLE* table, CmdGen* gen)
+int StorageInterface::genTable(TABLE* srvTable, CmdGen* gen)
 {
 	const char *tableName = storageTable->getName();
 	const char *schemaName = storageTable->getSchemaName();
@@ -2658,9 +2777,9 @@ int StorageInterface::genTable(TABLE* table, CmdGen* gen)
 	const char *sep = "";
 	char nameBuffer[256];
 
-	for (uint n = 0; n < table->s->fields; ++n)
+	for (uint n = 0; n < srvTable->s->fields; ++n)
 		{
-		Field *field = table->field[n];
+		Field *field = srvTable->field[n];
 		CHARSET_INFO *charset = field->charset();
 
 		if (charset)
@@ -2679,12 +2798,27 @@ int StorageInterface::genTable(TABLE* table, CmdGen* gen)
 		sep = ",\n";
 		}
 
-	if (table->s->primary_key < table->s->keys)
+	if (srvTable->s->primary_key < srvTable->s->keys)
 		{
-		KEY *key = table->key_info + table->s->primary_key;
+		KEY *key = srvTable->key_info + srvTable->s->primary_key;
 		gen->gen(",\n  primary key ");
 		genKeyFields(key, gen);
 		}
+
+#if 0		
+	// Disable until UPGRADE TABLE supports index syntax
+	
+	for (unsigned int n = 0; n < srvTable->s->keys; n++)
+		{
+		if (n != srvTable->s->primary_key)
+			{
+			KEY *key = srvTable->key_info + n;
+			const char *unique = (key->flags & HA_NOSAME) ? "unique " : "";
+			gen->gen(",\n  %s key ", unique);
+			genKeyFields(key, gen);
+			}
+		}
+#endif		
 
 	gen->gen (")");
 
@@ -3004,11 +3138,36 @@ void StorageInterface::decodeRecord(uchar *buf)
 	my_ptrdiff_t ptrDiff = buf - table->record[0];
 	my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->write_set);
 	DBUG_ENTER("StorageInterface::decodeRecord");
+
+	// Format of this record
+
 	FieldFormat *fieldFormat = storageTable->format->format;
 	int maxId = storageTable->format->maxId;
 	
-	for (int n = 0; n < maxId; ++n, ++fieldFormat)
+	// Current format for the table, possibly newer than the record format
+	
+	int tableMaxId = storageTable->share->format->maxId;
+	FieldFormat *tableFieldFormat = storageTable->share->format->format;
+	
+	for (int n = 0; n < tableMaxId; ++n, ++fieldFormat, ++tableFieldFormat)
 		{
+		// Online ALTER ADD COLUMN creates a new record format for the table
+		// that will have more fields than the older formats associated with
+		// existing rows.
+		//
+		// Currently, online ALTER ADD COLUMN only supports nullable columns and
+		// no default value. If the format of this record has fewer fields
+		// than the default format of the table, then there are no fields to
+		// decode beyond maxId, so set them to NULL.
+		
+		if (n >= maxId)
+			{
+			Field *newField = fieldMap[tableFieldFormat->fieldId];
+			newField->set_null();
+			newField->reset();
+			continue;
+			}
+	
 		// If the format doesn't have an offset, the field doesn't exist in the record
 		
 		if (fieldFormat->fieldId < 0 || fieldFormat->offset == 0)
@@ -3078,7 +3237,7 @@ void StorageInterface::decodeRecord(uchar *buf)
 				case MYSQL_TYPE_TIMESTAMP:
 					{
 					int value = (int) (dataStream->value.integer64 / 1000);
-					longstore(field->ptr, value);
+					((Field_timestamp*)field)->store_timestamp(value);
 					}
 					break;
 
@@ -3726,18 +3885,22 @@ int StorageInterface::recover (handlerton * hton, XID *xids, uint length)
 	DBUG_RETURN(count);
 }
 
+// Build a record field map for use by encode/decodeRecord()
 
-void StorageInterface::mapFields(TABLE *table)
+void StorageInterface::mapFields(TABLE *srvTable)
 {
+	if (!srvTable)
+		return;
+	
 	maxFields = storageShare->format->maxId;
 	unmapFields();
 	fieldMap = new Field*[maxFields];
 	memset(fieldMap, 0, sizeof(fieldMap[0]) * maxFields);
 	char nameBuffer[256];
 
-	for (uint n = 0; n < table->s->fields; ++n)
+	for (uint n = 0; n < srvTable->s->fields; ++n)
 		{
-		Field *field = table->field[n];
+		Field *field = srvTable->field[n];
 		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer), false);
 		int id = storageShare->getFieldId(nameBuffer);
 		
@@ -3804,7 +3967,7 @@ static MYSQL_SYSVAR_UINT(allocation_extent, falcon_allocation_extent,
 static MYSQL_SYSVAR_ULONGLONG(page_cache_size, falcon_page_cache_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "The amount of memory to be used for the database page cache.",
-  NULL, NULL, LL(4)<<20, LL(2)<<20, (ulonglong) ~0, LL(1)<<20);
+  NULL, NULL, LL(4)<<20, LL(2)<<20, (ulonglong) max_memory_address, LL(1)<<20);
 
 static MYSQL_THDVAR_BOOL(consistent_read, PLUGIN_VAR_OPCMDARG,
    "Enable Consistent Read Mode for Repeatable Reads",

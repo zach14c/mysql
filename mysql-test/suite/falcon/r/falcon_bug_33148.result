@@ -1,0 +1,18 @@
+*** Bug #33148 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE=Falcon;
+CREATE TABLE t1(a INT) ENGINE=Falcon TABLESPACE ts1;
+
+CREATE TABLESPACE TS1
+  ADD DATAFILE 'ts1.fts'
+  EXTENT_SIZE 0
+  ENGINE=Falcon;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) /*!50100 TABLESPACE `ts1` */ ENGINE=Falcon DEFAULT CHARSET=latin1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE t1;
+DROP TABLESPACE ts1 ENGINE=Falcon;

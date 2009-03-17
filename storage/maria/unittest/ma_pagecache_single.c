@@ -1,4 +1,4 @@
-/* Copyright (C) 2006-2008 MySQL AB
+/* Copyright (C) 2006-2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -673,7 +673,8 @@ int main(int argc __attribute__((unused)),
     exit(1);
   }
   pagecache_file_init(file1, &dummy_callback, &dummy_callback,
-                      &dummy_fail_callback, &dummy_callback, NULL);
+                      &dummy_fail_callback, &dummy_callback, &dummy_callback,
+                      NULL);
   my_close(tmp_file, MYF(0));
   my_delete(file2_name, MYF(0));
 

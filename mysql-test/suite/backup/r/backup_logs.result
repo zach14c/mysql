@@ -100,7 +100,7 @@ is included in backup image(BUG#39109)
 Include all objects in database(Databases, tables, procedures and
 functions, views, triggers and events) and perform backup operation.
 con1: Create tables
-CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
+CREATE TABLE backup_logs.t1 (a char(30));
 CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
 CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
 CREATE TABLE backup_logs.t4(id INT, name CHAR(20))ENGINE=BLACKHOLE;

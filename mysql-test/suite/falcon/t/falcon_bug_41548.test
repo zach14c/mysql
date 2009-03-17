@@ -1,0 +1,37 @@
+--source include/have_falcon.inc
+
+#
+# Bug #41548: ALTER TABLESPACE does not work.
+#
+--echo *** Bug #41548 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+--error ER_COM_UNSUPPORTED
+ALTER TABLESPACE ts1 ADD DATAFILE 'test.txt' ENGINE=Falcon;
+--error ER_COM_UNSUPPORTED
+CREATE LOGFILE GROUP lg1 ADD UNDOFILE 'test.txt' ENGINE=Falcon;
+--error ER_COM_UNSUPPORTED
+ALTER LOGFILE GROUP lg1 ADD UNDOFILE 'test.txt' ENGINE=Falcon;
+--error ER_COM_UNSUPPORTED
+DROP LOGFILE GROUP lg1 ENGINE=Falcon;
+--error ER_COM_UNSUPPORTED
+ALTER TABLESPACE ts1 CHANGE DATAFILE 'test.txt' INITIAL_SIZE=1;
+--error ER_COM_UNSUPPORTED
+ALTER TABLESPACE ts1 READ_ONLY;
+
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #

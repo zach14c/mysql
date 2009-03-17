@@ -83,8 +83,8 @@ When one supplies long data for a placeholder:
     at statement execute.
 */
 
-#include "sql_prepare.h"
 #include "mysql_priv.h"
+#include "sql_prepare.h"
 #include "sql_select.h" // for JOIN
 #include "sql_cursor.h"
 #include "sp_head.h"
@@ -241,7 +241,7 @@ protected:
                        const char *message);
 
   virtual void send_eof(uint server_status, uint statement_warn_count);
-  virtual void send_error(uint sql_errno, const char *err_msg);
+  virtual void send_error(uint sql_errno, const char *err_msg, const char* sqlstate);
 private:
   bool store_string(const char *str, size_t length,
                     CHARSET_INFO *src_cs, CHARSET_INFO *dst_cs);
@@ -1100,9 +1100,9 @@ static bool insert_params_from_vars(Prepared_statement *stmt,
   {
     Item_param *param= *it;
     varname= var_it++;
-    entry= (user_var_entry*)hash_search(&stmt->thd->user_vars,
-                                        (uchar*) varname->str,
-                                         varname->length);
+    entry= (user_var_entry*)my_hash_search(&stmt->thd->user_vars,
+                                           (uchar*) varname->str,
+                                           varname->length);
     if (param->set_from_user_var(stmt->thd, entry) ||
         param->convert_str_value(stmt->thd))
       DBUG_RETURN(1);
@@ -1147,8 +1147,8 @@ static bool insert_params_from_vars_with_log(Prepared_statement *stmt,
     Item_param *param= *it;
     varname= var_it++;
 
-    entry= (user_var_entry *) hash_search(&thd->user_vars, (uchar*) varname->str,
-                                          varname->length);
+    entry= (user_var_entry *) my_hash_search(&thd->user_vars, (uchar*)
+                                             varname->str, varname->length);
     /*
       We have to call the setup_one_conversion_function() here to set
       the parameter's members that might be needed further
@@ -2216,9 +2216,9 @@ static const char *get_dynamic_sql_string(LEX *lex, uint *query_len)
       convert it for error messages to be uniform.
     */
     if ((entry=
-         (user_var_entry*)hash_search(&thd->user_vars,
-                                      (uchar*)lex->prepared_stmt_code.str,
-                                      lex->prepared_stmt_code.length))
+         (user_var_entry*)my_hash_search(&thd->user_vars,
+                                         (uchar*)lex->prepared_stmt_code.str,
+                                         lex->prepared_stmt_code.length))
         && entry->value)
     {
       my_bool is_var_null;
@@ -2890,8 +2890,16 @@ Select_fetch_protocol_binary::send_data(List<Item> &fields)
 bool
 Reprepare_observer::report_error(THD *thd)
 {
-  my_error(ER_NEED_REPREPARE, MYF(ME_NO_WARNING_FOR_ERROR|ME_NO_SP_HANDLER));
-
+  /*
+    This 'error' is purely internal to the server:
+    - No exception handler is invoked,
+    - No condition is added in the condition area (warn_list).
+    The diagnostics area is set to an error status to enforce
+    that this thread execution stops and returns to the caller,
+    backtracking all the way to Prepared_statement::execute_loop().
+  */
+  thd->stmt_da->set_error_status(thd, ER_NEED_REPREPARE,
+                                 ER(ER_NEED_REPREPARE), "HY000");
   m_invalidated= TRUE;
 
   return TRUE;
@@ -4376,7 +4384,7 @@ void Protocol_local::send_eof(uint server_status, uint statement_warn_count)
 /** Called to send an error to the client at the end of a statement. */
 
 void
-Protocol_local::send_error(uint sql_errno, const char *err_msg)
+Protocol_local::send_error(uint sql_errno, const char *err_msg, const char*)
 {
   /*
     Just make sure that nothing is sent to the client (default

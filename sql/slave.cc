@@ -1871,8 +1871,9 @@ static int has_temporary_error(THD *thd)
   MYSQL_ERROR *err;
   while ((err= it++))
   {
-    DBUG_PRINT("info", ("has warning %d %s", err->code, err->msg));
-    switch (err->code)
+    DBUG_PRINT("info", ("has condition %d %s", err->get_sql_errno(),
+                        err->get_message_text()));
+    switch (err->get_sql_errno())
     {
     case ER_GET_TEMPORARY_ERRMSG:
       DBUG_RETURN(1);
@@ -2782,11 +2783,15 @@ Slave SQL thread aborted. Can't execute init_slave query");
 
   /* Read queries from the IO/THREAD until this thread is killed */
 
+  thd->variables.new_mode= global_system_variables.new_mode;
+
   while (!sql_slave_killed(thd,rli))
   {
     thd_proc_info(thd, "Reading event from the relay log");
     DBUG_ASSERT(rli->sql_thd == thd);
     THD_CHECK_SENTRY(thd);
+
+    sql_print_information("new_mode %u", thd->variables.new_mode);
     if (exec_relay_log_event(thd,rli))
     {
       DBUG_PRINT("info", ("exec_relay_log_event() failed"));
@@ -2828,10 +2833,11 @@ Slave SQL thread aborted. Can't execute init_slave query");
         bool udf_error = false;
         while ((err= it++))
         {
-          if (err->code == ER_CANT_OPEN_LIBRARY)
+          sql_print_message_func fct;
+          if (err->get_sql_errno() == ER_CANT_OPEN_LIBRARY)
             udf_error = true;
-          (sql_print_message_handlers[err->level])("Slave: %s Error_code: %d",
-                                                   err->msg, err->code);
+          fct= sql_print_message_handlers[err->get_level()];
+          (fct)("Slave: %s Error_code: %d", err->get_message_text(), err->get_sql_errno());
         }
         if (udf_error)
           sql_print_error("Error loading user-defined library, slave SQL "

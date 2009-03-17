@@ -159,6 +159,10 @@ char* query_table_status(THD *thd,const char *db,const char *table_name);
 extern CHARSET_INFO *system_charset_info, *files_charset_info ;
 extern CHARSET_INFO *national_charset_info, *table_alias_charset;
 
+/**
+  Character set of the buildin error messages loaded from errmsg.sys.
+*/
+extern CHARSET_INFO *error_message_charset_info;
 
 enum Derivation
 {
@@ -327,16 +331,12 @@ enum open_table_mode
 */
 #define TABLE_DEF_CACHE_MIN     256
 
-/* 
- Value of 9236 discovered through binary search 2006-09-26 on Ubuntu Dapper
- Drake, libc6 2.3.6-0ubuntu2, Linux kernel 2.6.15-27-686, on x86.  (Added 
- 100 bytes as reasonable buffer against growth and other environments'
- requirements.)
-
- Feel free to raise this by the smallest amount you can to get the
- "execution_constants" test to pass.
- */
-#define STACK_MIN_SIZE          12000   ///< Abort if less stack during eval.
+/*
+  Stack reservation.
+  Feel free to raise this by the smallest amount you can to get the
+  "execution_constants" test to pass.
+*/
+#define STACK_MIN_SIZE          16000   // Abort if less stack during eval.
 
 #define STACK_MIN_SIZE_FOR_OPEN 1024*80
 #define STACK_BUFF_ALLOC        352     ///< For stack overrun checks
@@ -2493,7 +2493,8 @@ extern "C" void unireg_abort(int exit_code) __attribute__((noreturn));
 void kill_delayed_threads(void);
 bool check_stack_overrun(THD *thd, long margin, uchar *dummy);
 #else
-#define unireg_abort(exit_code) DBUG_RETURN(exit_code)
+extern "C" void unireg_clear(int exit_code);
+#define unireg_abort(exit_code) do { unireg_clear(exit_code); DBUG_RETURN(exit_code); } while(0)
 inline void kill_delayed_threads(void) {}
 #define check_stack_overrun(A, B, C) 0
 #endif

@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright (C) 2000-2006 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -233,7 +233,7 @@ err:
 
  err_end:
   myisam_log_record_logical(MI_LOG_UPDATE, info, newrec,
-                            info->lastpos, my_errno);
+                            info->lastpos, save_errno);
   (void) _mi_writeinfo(info, WRITEINFO_UPDATE_KEYFILE);
   allow_break();				/* Allow SIGHUP & SIGINT */
   if (save_errno == HA_ERR_KEY_NOT_FOUND)

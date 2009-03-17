@@ -43,6 +43,7 @@
 #include "sp_pcontext.h"
 #include "sp_rcontext.h"
 #include "sp.h"
+#include "sql_signal.h"
 #include "event_parse_data.h"
 #include <myisam.h>
 #include <myisammrg.h>
@@ -589,6 +590,7 @@ bool setup_select_in_parentheses(LEX *lex)
   enum enum_filetype filetype;
   enum ha_build_method build_method;
   enum Foreign_key::fk_option m_fk_option;
+  Diag_condition_item_name diag_condition_item_name;
 }
 
 %{
@@ -670,6 +672,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  CASCADED                      /* SQL-2003-R */
 %token  CASE_SYM                      /* SQL-2003-R */
 %token  CAST_SYM                      /* SQL-2003-R */
+%token  CATALOG_NAME_SYM              /* SQL-2003-N */
 %token  CHAIN_SYM                     /* SQL-2003-N */
 %token  CHANGE
 %token  CHANGED
@@ -678,6 +681,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  CHECKSUM_SYM
 %token  CHECK_SYM                     /* SQL-2003-R */
 %token  CIPHER_SYM
+%token  CLASS_ORIGIN_SYM              /* SQL-2003-N */
 %token  CLIENT_SYM
 %token  CLOSE_SYM                     /* SQL-2003-R */
 %token  COALESCE                      /* SQL-2003-N */
@@ -686,6 +690,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  COLLATION_SYM                 /* SQL-2003-N */
 %token  COLUMNS
 %token  COLUMN_SYM                    /* SQL-2003-R */
+%token  COLUMN_NAME_SYM               /* SQL-2003-N */
 %token  COMMENT_SYM
 %token  COMMITTED_SYM                 /* SQL-2003-N */
 %token  COMMIT_SYM                    /* SQL-2003-R */
@@ -695,10 +700,13 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  COMPRESSION_SYM
 %token  COMPRESSION_ALGORITHM_SYM
 %token  CONCURRENT
-%token  CONDITION_SYM                 /* SQL-2003-N */
+%token  CONDITION_SYM                 /* SQL-2003-R, SQL-2008-R */
 %token  CONNECTION_SYM
 %token  CONSISTENT_SYM
 %token  CONSTRAINT                    /* SQL-2003-R */
+%token  CONSTRAINT_CATALOG_SYM        /* SQL-2003-N */
+%token  CONSTRAINT_NAME_SYM           /* SQL-2003-N */
+%token  CONSTRAINT_SCHEMA_SYM         /* SQL-2003-N */
 %token  CONTAINS_SYM                  /* SQL-2003-N */
 %token  CONTEXT_SYM
 %token  CONTINUE_SYM                  /* SQL-2003-R */
@@ -712,6 +720,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  CURDATE                       /* MYSQL-FUNC */
 %token  CURRENT_USER                  /* SQL-2003-R */
 %token  CURSOR_SYM                    /* SQL-2003-R */
+%token  CURSOR_NAME_SYM               /* SQL-2003-N */
 %token  CURTIME                       /* MYSQL-FUNC */
 %token  DATABASE
 %token  DATABASES
@@ -916,6 +925,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  MEDIUM_SYM
 %token  MEMORY_SYM
 %token  MERGE_SYM                     /* SQL-2003-R */
+%token  MESSAGE_TEXT_SYM              /* SQL-2003-N */
 %token  MICROSECOND_SYM               /* MYSQL-FUNC */
 %token  MIGRATE_SYM
 %token  MINUTE_MICROSECOND_SYM
@@ -932,6 +942,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  MULTIPOINT
 %token  MULTIPOLYGON
 %token  MUTEX_SYM
+%token  MYSQL_ERRNO_SYM
 %token  NAMES_SYM                     /* SQL-2003-N */
 %token  NAME_SYM                      /* SQL-2003-N */
 %token  NATIONAL_SYM                  /* SQL-2003-R */
@@ -1037,6 +1048,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  REPLICATION
 %token  REQUIRE_SYM
 %token  RESET_SYM
+%token  RESIGNAL_SYM                  /* SQL-2003-R */
 %token  RESOURCES
 %token  RESTORE_SYM
 %token  RESTRICT
@@ -1055,6 +1067,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  RTREE_SYM
 %token  SAVEPOINT_SYM                 /* SQL-2003-R */
 %token  SCHEDULE_SYM
+%token  SCHEMA_NAME_SYM               /* SQL-2003-N */
 %token  SECOND_MICROSECOND_SYM
 %token  SECOND_SYM                    /* SQL-2003-R */
 %token  SECURITY_SYM                  /* SQL-2003-N */
@@ -1073,6 +1086,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  SHIFT_RIGHT                   /* OPERATOR */
 %token  SHOW
 %token  SHUTDOWN
+%token  SIGNAL_SYM                    /* SQL-2003-R */
 %token  SIGNED_SYM
 %token  SIMPLE_SYM                    /* SQL-2003-N */
 %token  SLAVE
@@ -1106,6 +1120,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  STORAGE_SYM
 %token  STRAIGHT_JOIN
 %token  STRING_SYM
+%token  SUBCLASS_ORIGIN_SYM           /* SQL-2003-N */
 %token  SUBDATE_SYM
 %token  SUBJECT_SYM
 %token  SUBPARTITIONS_SYM
@@ -1122,6 +1137,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  TABLE_REF_PRIORITY
 %token  TABLE_SYM                     /* SQL-2003-R */
 %token  TABLE_CHECKSUM_SYM
+%token  TABLE_NAME_SYM                /* SQL-2003-N */
 %token  TEMPORARY                     /* SQL-2003-N */
 %token  TEMPTABLE_SYM
 %token  TERMINATED
@@ -1300,6 +1316,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         function_call_nonkeyword
         function_call_generic
         function_call_conflict
+        signal_allowed_expr
 
 %type <item_num>
         NUM_literal
@@ -1434,13 +1451,16 @@ END_OF_INPUT
 %type <NONE> case_stmt_specification simple_case_stmt searched_case_stmt
 
 %type <num>  sp_decl_idents sp_opt_inout sp_handler_type sp_hcond_list
-%type <spcondtype> sp_cond sp_hcond
+%type <spcondtype> sp_cond sp_hcond sqlstate signal_value opt_signal_value
 %type <spblock> sp_decls sp_decl
 %type <lex> sp_cursor_stmt
 %type <spname> sp_name
 %type <index_hint> index_hint_type
 %type <num> index_hint_clause
 %type <filetype> data_or_xml
+
+%type <NONE> signal_stmt resignal_stmt
+%type <diag_condition_item_name> signal_condition_information_item_name
 
 %type <NONE>
         '-' '+' '*' '/' '%' '(' ')'
@@ -1562,12 +1582,14 @@ statement:
         | repair
         | replace
         | reset
+        | resignal_stmt
         | restore
         | revoke
         | rollback
         | savepoint
         | select
         | set
+        | signal_stmt
         | show
         | slave
         | start
@@ -2682,7 +2704,11 @@ sp_cond:
             $$->type= sp_cond_type_t::number;
             $$->mysqlerr= $1;
           }
-        | SQLSTATE_SYM opt_value TEXT_STRING_literal
+        | sqlstate
+        ;
+
+sqlstate:
+          SQLSTATE_SYM opt_value TEXT_STRING_literal
           { /* SQLSTATE */
             if (!sp_cond_check(&$3))
             {
@@ -2693,8 +2719,8 @@ sp_cond:
             if ($$ == NULL)
               MYSQL_YYABORT;
             $$->type= sp_cond_type_t::state;
-            memcpy($$->sqlstate, $3.str, 5);
-            $$->sqlstate[5]= '\0';
+            memcpy($$->sqlstate, $3.str, SQLSTATE_LENGTH);
+            $$->sqlstate[SQLSTATE_LENGTH]= '\0';
           }
         ;
 
@@ -2737,6 +2763,162 @@ sp_hcond:
             if ($$ == NULL)
               MYSQL_YYABORT;
             $$->type= sp_cond_type_t::exception;
+          }
+        ;
+
+signal_stmt:
+          SIGNAL_SYM signal_value opt_set_signal_information
+          {
+            THD *thd= YYTHD;
+            LEX *lex= thd->lex;
+            Yacc_state *state= & thd->m_parser_state->m_yacc;
+
+            lex->sql_command= SQLCOM_SIGNAL;
+            lex->m_stmt= new (thd->mem_root) SQLCOM_signal(lex, 
+                                                           $2,
+                                                           state->m_set_signal_info);
+            if (lex->m_stmt == NULL)
+              MYSQL_YYABORT;
+          }
+        ;
+
+signal_value:
+          ident
+          {
+            LEX *lex= Lex;
+            sp_cond_type_t *cond;
+            if (lex->spcont == NULL)
+            {
+              /* SIGNAL foo cannot be used outside of stored programs */
+              my_error(ER_SP_COND_MISMATCH, MYF(0), $1.str);
+              MYSQL_YYABORT;
+            }
+            cond= lex->spcont->find_cond(&$1);
+            if (cond == NULL)
+            {
+              my_error(ER_SP_COND_MISMATCH, MYF(0), $1.str);
+              MYSQL_YYABORT;
+            }
+            if (cond->type != sp_cond_type_t::state)
+            {
+              my_error(ER_SIGNAL_BAD_CONDITION_TYPE, MYF(0));
+              MYSQL_YYABORT;
+            }
+            $$= cond;
+          }
+        | sqlstate
+          { $$= $1; }
+        ;
+
+opt_signal_value:
+          /* empty */
+          { $$= NULL; }
+        | signal_value
+          { $$= $1; }
+        ;
+
+opt_set_signal_information:
+          /* empty */
+          {
+            YYTHD->m_parser_state->m_yacc.m_set_signal_info.clear();
+          }
+        | SET signal_information_item_list
+        ;
+
+signal_information_item_list:
+          signal_condition_information_item_name EQ signal_allowed_expr
+          {
+            Set_signal_information *info;
+            info= & YYTHD->m_parser_state->m_yacc.m_set_signal_info;
+            int index= (int) $1;
+            info->clear();
+            info->m_item[index]= $3;
+          }
+        | signal_information_item_list ','
+          signal_condition_information_item_name EQ signal_allowed_expr
+          {
+            Set_signal_information *info;
+            info= & YYTHD->m_parser_state->m_yacc.m_set_signal_info;
+            int index= (int) $3;
+            if (info->m_item[index] != NULL)
+            {
+              my_error(ER_DUP_SIGNAL_SET, MYF(0),
+                       Diag_condition_item_names[index].str);
+              MYSQL_YYABORT;
+            }
+            info->m_item[index]= $5;
+          }
+        ;
+
+/*
+  Only a limited subset of <expr> are allowed in SIGNAL/RESIGNAL.
+*/
+signal_allowed_expr:
+          literal
+          { $$= $1; }
+        | variable
+          {
+            if ($1->type() == Item::FUNC_ITEM)
+            {
+              Item_func *item= (Item_func*) $1;
+              if (item->functype() == Item_func::SUSERVAR_FUNC)
+              {
+                /*
+                  Don't allow the following syntax:
+                    SIGNAL/RESIGNAL ...
+                    SET <signal condition item name> = @foo := expr
+                */
+                my_parse_error(ER(ER_SYNTAX_ERROR));
+                MYSQL_YYABORT;
+              }
+            }
+            $$= $1;
+          }
+        | simple_ident
+          { $$= $1; }
+        ;
+
+/* conditions that can be set in signal / resignal */
+signal_condition_information_item_name:
+          CLASS_ORIGIN_SYM
+          { $$= DIAG_CLASS_ORIGIN; }
+        | SUBCLASS_ORIGIN_SYM
+          { $$= DIAG_SUBCLASS_ORIGIN; }
+        | CONSTRAINT_CATALOG_SYM
+          { $$= DIAG_CONSTRAINT_CATALOG; }
+        | CONSTRAINT_SCHEMA_SYM
+          { $$= DIAG_CONSTRAINT_SCHEMA; }
+        | CONSTRAINT_NAME_SYM
+          { $$= DIAG_CONSTRAINT_NAME; }
+        | CATALOG_NAME_SYM
+          { $$= DIAG_CATALOG_NAME; }
+        | SCHEMA_NAME_SYM
+          { $$= DIAG_SCHEMA_NAME; }
+        | TABLE_NAME_SYM
+          { $$= DIAG_TABLE_NAME; }
+        | COLUMN_NAME_SYM
+          { $$= DIAG_COLUMN_NAME; }
+        | CURSOR_NAME_SYM
+          { $$= DIAG_CURSOR_NAME; }
+        | MESSAGE_TEXT_SYM
+          { $$= DIAG_MESSAGE_TEXT; }
+        | MYSQL_ERRNO_SYM
+          { $$= DIAG_MYSQL_ERRNO; }
+        ;
+
+resignal_stmt:
+          RESIGNAL_SYM opt_signal_value opt_set_signal_information
+          {
+            THD *thd= YYTHD;
+            LEX *lex= thd->lex;
+            Yacc_state *state= & thd->m_parser_state->m_yacc;
+
+            lex->sql_command= SQLCOM_RESIGNAL;
+            lex->m_stmt= new (thd->mem_root) SQLCOM_resignal(lex, 
+                                                             $2,
+                                                             state->m_set_signal_info);
+            if (lex->m_stmt == NULL)
+              MYSQL_YYABORT;
           }
         ;
 
@@ -9835,6 +10017,11 @@ drop:
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
             sp_name *spname;
+            if ($4.str && check_and_convert_db_name(&$4, FALSE))
+            {
+               my_error(ER_WRONG_DB_NAME, MYF(0), $4.str);
+               MYSQL_YYABORT;
+            }
             if (lex->sphead)
             {
               my_error(ER_SP_NO_DROP_SP, MYF(0), "FUNCTION");
@@ -11930,14 +12117,17 @@ keyword_sp:
         | BOOLEAN_SYM              {}
         | BTREE_SYM                {}
         | CASCADED                 {}
+        | CATALOG_NAME_SYM         {}
         | CHAIN_SYM                {}
         | CHANGED                  {}
         | CIPHER_SYM               {}
         | CLIENT_SYM               {}
+        | CLASS_ORIGIN_SYM         {}
         | COALESCE                 {}
         | CODE_SYM                 {}
         | COLLATION_SYM            {}
         | COLUMN_FORMAT_SYM        {}
+        | COLUMN_NAME_SYM          {}
         | COLUMNS                  {}
         | COMMITTED_SYM            {}
         | COMPACT_SYM              {}
@@ -11948,10 +12138,14 @@ keyword_sp:
         | CONCURRENT               {}
         | CONNECTION_SYM           {}
         | CONSISTENT_SYM           {}
+        | CONSTRAINT_CATALOG_SYM   {}
+        | CONSTRAINT_SCHEMA_SYM    {}
+        | CONSTRAINT_NAME_SYM      {}
         | CONTEXT_SYM              {}
         | CONTRIBUTORS_SYM         {}
         | CPU_SYM                  {}
         | CUBE_SYM                 {}
+        | CURSOR_NAME_SYM          {}
         | DATA_SYM                 {}
         | DATAFILE_SYM             {}
         | DATETIME                 {}
@@ -12043,6 +12237,7 @@ keyword_sp:
         | MEDIUM_SYM               {}
         | MEMORY_SYM               {}
         | MERGE_SYM                {}
+        | MESSAGE_TEXT_SYM         {}
         | MICROSECOND_SYM          {}
         | MIGRATE_SYM              {}
         | MINUTE_SYM               {}
@@ -12054,6 +12249,7 @@ keyword_sp:
         | MULTIPOINT               {}
         | MULTIPOLYGON             {}
         | MUTEX_SYM                {}
+        | MYSQL_ERRNO_SYM          {}
         | NAME_SYM                 {}
         | NAMES_SYM                {}
         | NATIONAL_SYM             {}
@@ -12118,6 +12314,7 @@ keyword_sp:
         | ROW_SYM                  {}
         | RTREE_SYM                {}
         | SCHEDULE_SYM             {}
+        | SCHEMA_NAME_SYM          {}
         | SECOND_SYM               {}
         | SERIAL_SYM               {}
         | SERIALIZABLE_SYM         {}
@@ -12136,6 +12333,7 @@ keyword_sp:
         | STATUS_SYM               {}
         | STORAGE_SYM              {}
         | STRING_SYM               {}
+        | SUBCLASS_ORIGIN_SYM      {}
         | SUBDATE_SYM              {}
         | SUBJECT_SYM              {}
         | SUBPARTITION_SYM         {}
@@ -12144,6 +12342,7 @@ keyword_sp:
         | SUSPEND_SYM              {}
         | SWAPS_SYM                {}
         | SWITCHES_SYM             {}
+        | TABLE_NAME_SYM           {}
         | TABLES                   {}
         | TABLE_CHECKSUM_SYM       {}
         | TABLESPACE               {}
@@ -13520,6 +13719,7 @@ subselect_start:
 subselect_end:
           {
             LEX *lex=Lex;
+
             lex->pop_context();
             SELECT_LEX *child= lex->current_select;
             lex->current_select = lex->current_select->return_after_parsing();

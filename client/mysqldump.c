@@ -1,4 +1,4 @@
-/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright 2000-2008 MySQL AB, 2008, 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -891,9 +891,9 @@ static int get_options(int *argc, char ***argv)
   load_defaults("my",load_default_groups,argc,argv);
   defaults_argv= *argv;
 
-  if (hash_init(&ignore_table, charset_info, 16, 0, 0,
-                (hash_get_key) get_table_key,
-                (hash_free_key) free_table_ent, 0))
+  if (my_hash_init(&ignore_table, charset_info, 16, 0, 0,
+                   (my_hash_get_key) get_table_key,
+                   (my_hash_free_key) free_table_ent, 0))
     return(EX_EOM);
   /* Don't copy internal log tables */
   if (my_hash_insert(&ignore_table,
@@ -1463,8 +1463,8 @@ static void free_resources()
   if (md_result_file && md_result_file != stdout)
     my_fclose(md_result_file, MYF(0));
   my_free(opt_password, MYF(MY_ALLOW_ZERO_PTR));
-  if (hash_inited(&ignore_table))
-    hash_free(&ignore_table);
+  if (my_hash_inited(&ignore_table))
+    my_hash_free(&ignore_table);
   if (extended_insert)
     dynstr_free(&extended_row);
   if (insert_pat_inited)
@@ -1522,7 +1522,8 @@ static int connect_to_db(char *host, char *user,char *passwd)
     DB_error(&mysql_connection, "when trying to connect");
     DBUG_RETURN(1);
   }
-  if (mysql_get_server_version(&mysql_connection) < 40100)
+  if ((mysql_get_server_version(&mysql_connection) < 40100) ||
+      (opt_compatible_mode & 3))
   {
     /* Don't dump SET NAMES with a pre-4.1 server (bug#7997).  */
     opt_set_charset= 0;
@@ -2471,11 +2472,11 @@ static uint get_table_structure(char *table, char *db, char *table_type,
 
       row= mysql_fetch_row(result);
 
-      fprintf(sql_file,
-              "SET @saved_cs_client     = @@character_set_client;\n"
-              "SET character_set_client = utf8;\n"
+      fprintf(sql_file, (opt_compatible_mode & 3) ? "%s;\n" :
+              "/*!40101 SET @saved_cs_client     = @@character_set_client */;\n"
+              "/*!40101 SET character_set_client = utf8 */;\n"
               "%s;\n"
-              "SET character_set_client = @saved_cs_client;\n",
+              "/*!40101 SET character_set_client = @saved_cs_client */;\n",
               row[1]);
 
       check_io(sql_file);
@@ -3691,7 +3692,6 @@ static int dump_tablespaces(char* ts_where)
                       " EXTRA"
                       " FROM INFORMATION_SCHEMA.FILES"
                       " WHERE FILE_TYPE = 'UNDO LOG'"
-                      " AND ENGINE != 'Falcon'"
                       " AND FILE_NAME IS NOT NULL",
                       256, 1024);
   if(ts_where)
@@ -3788,8 +3788,7 @@ static int dump_tablespaces(char* ts_where)
                       " INITIAL_SIZE,"
                       " ENGINE"
                       " FROM INFORMATION_SCHEMA.FILES"
-                      " WHERE FILE_TYPE = 'DATAFILE'"
-                      " AND ENGINE != 'Falcon'",
+                      " WHERE FILE_TYPE IN('DATAFILE', 'USER DATAFILE')",
                       256, 1024);
 
   if(ts_where)
@@ -3828,17 +3827,14 @@ static int dump_tablespaces(char* ts_where)
             row[1]);
     if (first)
     {
-      fprintf(md_result_file,
-              "  USE LOGFILE GROUP %s\n"
-              "  EXTENT_SIZE %s\n",
-              row[2],
-              row[3]);
+      if (row[2])
+        fprintf(md_result_file, "  USE LOGFILE GROUP %s\n", row[2]);
+      if (row[3])
+        fprintf(md_result_file, "  EXTENT_SIZE %s\n", row[3]);
     }
-    fprintf(md_result_file,
-            "  INITIAL_SIZE %s\n"
-            "  ENGINE=%s;\n",
-            row[4],
-            row[5]);
+    if (row[4])
+      fprintf(md_result_file, "  INITIAL_SIZE %s\n", row[4]);
+    fprintf(md_result_file, "  ENGINE=%s;\n", row[5]);
     check_io(md_result_file);
     if (first)
     {
@@ -4023,7 +4019,7 @@ static int init_dumping(char *database, int init_func(char*))
 
 my_bool include_table(const uchar *hash_key, size_t len)
 {
-  return !hash_search(&ignore_table, hash_key, len);
+  return ! my_hash_search(&ignore_table, hash_key, len);
 }
 
 

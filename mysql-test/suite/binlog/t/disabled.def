@@ -13,6 +13,3 @@ binlog_truncate_innodb	: BUG#42643 2009-02-06 mats Changes to InnoDB requires to
 
 binlog_multi_engine     : Bug#30544 istruewing 2007-11-26
 binlog_row_ctype_cp932  : Bug#33376 2007-12-19 mats Write set for table not set correctly when inserting an empty set
-binlog_base64_flag      : Bug#38316 sven 2007-12-14
-binlog_killed           : Bug#39861 kostja 2008-04-20
-binlog_killed_simulate  : Bug#37932 kostja 2008-04-20

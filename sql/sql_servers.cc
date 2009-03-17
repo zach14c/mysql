@@ -120,8 +120,8 @@ bool servers_init(bool dont_read_servers_table)
     DBUG_RETURN(TRUE);
 
   /* initialise our servers cache */
-  if (hash_init(&servers_cache, system_charset_info, 32, 0, 0,
-                (hash_get_key) servers_cache_get_key, 0, 0))
+  if (my_hash_init(&servers_cache, system_charset_info, 32, 0, 0,
+                   (my_hash_get_key) servers_cache_get_key, 0, 0))
   {
     return_val= TRUE; /* we failed, out of memory? */
     goto end;
@@ -233,7 +233,7 @@ bool servers_reload(THD *thd)
   tables[0].alias= tables[0].table_name= (char*) "servers";
   tables[0].db= (char*) "mysql";
   tables[0].lock_type= TL_READ;
-  alloc_mdl_locks(tables, thd->mem_root);
+  alloc_mdl_requests(tables, thd->mem_root);
 
   if (simple_open_n_lock_tables(thd, tables))
   {
@@ -364,7 +364,7 @@ insert_server(THD *thd, FOREIGN_SERVER *server)
   bzero((char*) &tables, sizeof(tables));
   tables.db= (char*) "mysql";
   tables.alias= tables.table_name= (char*) "servers";
-  alloc_mdl_locks(&tables, thd->mem_root);
+  alloc_mdl_requests(&tables, thd->mem_root);
 
   /* need to open before acquiring THR_LOCK_plugin or it will deadlock */
   if (! (table= open_ltable(thd, &tables, TL_WRITE, 0)))
@@ -583,7 +583,7 @@ int drop_server(THD *thd, LEX_SERVER_OPTIONS *server_options)
   bzero((char*) &tables, sizeof(tables));
   tables.db= (char*) "mysql";
   tables.alias= tables.table_name= (char*) "servers";
-  alloc_mdl_locks(&tables, thd->mem_root);
+  alloc_mdl_requests(&tables, thd->mem_root);
 
   rw_wrlock(&THR_LOCK_servers);
 
@@ -644,9 +644,10 @@ delete_server_record_in_cache(LEX_SERVER_OPTIONS *server_options)
                      server_options->server_name_length));
 
 
-  if (!(server= (FOREIGN_SERVER *) hash_search(&servers_cache,
-                                     (uchar*) server_options->server_name,
-                                     server_options->server_name_length)))
+  if (!(server= (FOREIGN_SERVER *)
+        my_hash_search(&servers_cache,
+                       (uchar*) server_options->server_name,
+                       server_options->server_name_length)))
   {
     DBUG_PRINT("info", ("server_name %s length %d not found!",
                         server_options->server_name,
@@ -661,8 +662,8 @@ delete_server_record_in_cache(LEX_SERVER_OPTIONS *server_options)
                      server->server_name,
                      server->server_name_length));
 
-  hash_delete(&servers_cache, (uchar*) server);
-  
+  my_hash_delete(&servers_cache, (uchar*) server);
+
   error= 0;
 
 end:
@@ -707,7 +708,7 @@ int update_server(THD *thd, FOREIGN_SERVER *existing, FOREIGN_SERVER *altered)
   bzero((char*) &tables, sizeof(tables));
   tables.db= (char*)"mysql";
   tables.alias= tables.table_name= (char*)"servers";
-  alloc_mdl_locks(&tables, thd->mem_root);
+  alloc_mdl_requests(&tables, thd->mem_root);
 
   if (!(table= open_ltable(thd, &tables, TL_WRITE, 0)))
   {
@@ -769,7 +770,7 @@ int update_server_record_in_cache(FOREIGN_SERVER *existing,
   /*
     delete the existing server struct from the server cache
   */
-  hash_delete(&servers_cache, (uchar*)existing);
+  my_hash_delete(&servers_cache, (uchar*)existing);
 
   /*
     Insert the altered server struct into the server cache
@@ -964,8 +965,8 @@ int create_server(THD *thd, LEX_SERVER_OPTIONS *server_options)
   rw_wrlock(&THR_LOCK_servers);
 
   /* hit the memory first */
-  if (hash_search(&servers_cache, (uchar*) server_options->server_name,
-				   server_options->server_name_length))
+  if (my_hash_search(&servers_cache, (uchar*) server_options->server_name,
+                     server_options->server_name_length))
     goto end;
 
 
@@ -1013,9 +1014,9 @@ int alter_server(THD *thd, LEX_SERVER_OPTIONS *server_options)
 
   rw_wrlock(&THR_LOCK_servers);
 
-  if (!(existing= (FOREIGN_SERVER *) hash_search(&servers_cache,
-                                                 (uchar*) name.str,
-                                                 name.length)))
+  if (!(existing= (FOREIGN_SERVER *) my_hash_search(&servers_cache,
+                                                    (uchar*) name.str,
+                                                    name.length)))
     goto end;
 
   altered= (FOREIGN_SERVER *)alloc_root(&mem,
@@ -1194,7 +1195,7 @@ prepare_server_struct_for_update(LEX_SERVER_OPTIONS *server_options,
 void servers_free(bool end)
 {
   DBUG_ENTER("servers_free");
-  if (!hash_inited(&servers_cache))
+  if (!my_hash_inited(&servers_cache))
     DBUG_VOID_RETURN;
   if (!end)
   {
@@ -1204,7 +1205,7 @@ void servers_free(bool end)
   }
   rwlock_destroy(&THR_LOCK_servers);
   free_root(&mem,MYF(0));
-  hash_free(&servers_cache);
+  my_hash_free(&servers_cache);
   DBUG_VOID_RETURN;
 }
 
@@ -1285,9 +1286,9 @@ FOREIGN_SERVER *get_server_by_name(MEM_ROOT *mem, const char *server_name,
 
   DBUG_PRINT("info", ("locking servers_cache"));
   rw_rdlock(&THR_LOCK_servers);
-  if (!(server= (FOREIGN_SERVER *) hash_search(&servers_cache,
-                                               (uchar*) server_name,
-                                               server_name_length)))
+  if (!(server= (FOREIGN_SERVER *) my_hash_search(&servers_cache,
+                                                  (uchar*) server_name,
+                                                  server_name_length)))
   {
     DBUG_PRINT("info", ("server_name %s length %d not found!",
                         server_name, server_name_length));

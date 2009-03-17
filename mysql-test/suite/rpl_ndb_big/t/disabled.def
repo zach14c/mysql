@@ -9,7 +9,3 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-
-rpl_ndb_circular_simplex : Bug#33849 COMMIT event missing in cluster circular replication.
-
-# the below testcase have been reworked to avoid the bug, test contains comment, keep bug open

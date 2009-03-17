@@ -71,7 +71,9 @@ static const int srlBlobDelete		= 34;
 static const int srlSmallBlob		= 35;
 static const int srlSession			= 36;
 static const int srlSavepointRollback = 37;
-static const int srlMax				= 38;
+static const int srlInventoryPage	= 38;
+static const int srlTableSpaces		= 39;
+static const int srlMax				= 40;
 
 
 class SerialLog;
@@ -98,7 +100,6 @@ public:
 	int				getInt(const UCHAR** ptr);
 	const UCHAR*	getData(int32 length);
 	void			putStream (Stream *stream);
-	void			wakeup();
 	void			startRecord();
 	void			putData(uint32 length, const UCHAR *data);
 	void			putInt(int32 number);

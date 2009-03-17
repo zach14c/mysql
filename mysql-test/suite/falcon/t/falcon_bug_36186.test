@@ -1,0 +1,35 @@
+--source include/have_falcon.inc
+--source include/have_utf32.inc
+
+#
+# Bug #36186: Falcon: searches fail if value < 'a', length>1, index, utf32
+#
+--echo *** Bug #36186 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+CREATE TABLE t1 (s1 varchar(2) character set utf32);
+CREATE INDEX i ON t1 (s1);
+INSERT INTO t1 VALUES ('$$'),('00'),('>>');
+SELECT * FROM t1 WHERE s1 < 'a';
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

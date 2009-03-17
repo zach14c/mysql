@@ -760,6 +760,7 @@ mysql-test/dump.txt
 mysql-test/funcs_1-ps.log
 mysql-test/funcs_1.log
 mysql-test/funcs_1.tar
+mysql-test/gmon.out
 mysql-test/install_test_db
 mysql-test/lib/My/SafeProcess/my_safe_process
 mysql-test/lib/init_db.sql
@@ -768,6 +769,8 @@ mysql-test/load_sysvars.inc
 mysql-test/maria_recovery.trace
 mysql-test/mtr
 mysql-test/mysql-test-run
+mysql-test/mysql-test-gcov.err
+mysql-test/mysql-test-gcov.msg
 mysql-test/mysql-test-run-shell
 mysql-test/mysql-test-run.log
 mysql-test/mysql_test_run_new
@@ -1997,6 +2000,8 @@ extra/libevent/event-config.h
 libmysqld/event_parse_data.cc
 libmysqld/ddl_blocker.cc
 libmysqld/mdl.cc
+libmysqld/sql_fixstring.cc
+libmysqld/sql_signal.cc
 mysql-test/bug36522-64.tar
 mysql-test/bug36522.tar
 mysql-test/t.log
@@ -2009,3 +2014,5 @@ libmysql/probes.h
 libmysql_r/probes.h
 unittest/tmp
 libmysqld/sql_join_cache.cc
+storage/maria/maria_non_trans_log
+libmysqld/examples/mysqltest.cc

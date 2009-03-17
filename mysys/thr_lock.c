@@ -321,6 +321,7 @@ static void check_locks(THR_LOCK *lock, const char *where,
     }
     if (found_errors != old_found_errors)
     {
+      fflush(stderr);
       DBUG_PRINT("error",("Found wrong lock"));
     }
   }
@@ -515,7 +516,8 @@ wait_for_lock(struct st_lock_list *wait, THR_LOCK_DATA *data,
   {
     result= THR_LOCK_SUCCESS;
     if (data->lock->get_status)
-      (*data->lock->get_status)(data->status_param, 0);
+      (*data->lock->get_status)(data->status_param,
+                                data->type == TL_WRITE_CONCURRENT_INSERT);
     check_locks(data->lock,"got wait_for_lock",0);
   }
   pthread_mutex_unlock(&data->lock->mutex);

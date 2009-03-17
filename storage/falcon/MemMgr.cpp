@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -289,7 +289,7 @@ void MemMgrLogDump()
 }
 
 
-MemMgr::MemMgr(int rounding, int cutoff, int minAlloc, bool *alive)
+MemMgr::MemMgr(int rounding, int cutoff, int minAlloc, bool *alive) : mutex("MemMgr::mutex")
 {
 	signature = defaultSignature;
 	roundingSize = rounding;
@@ -321,7 +321,7 @@ MemMgr::MemMgr(int rounding, int cutoff, int minAlloc, bool *alive)
 }
 
 
-MemMgr::MemMgr(void* arg1, void* arg2)
+MemMgr::MemMgr(void* arg1, void* arg2) : mutex("MemMgr::mutex")
 {
 	MemMgr();
 }
@@ -1208,4 +1208,11 @@ void MemMgr::validateBlock(MemBlock *block)
 		if (*p++ != GUARD_BYTE)
 			corrupt ("guard bytes overwritten");
 #endif
+}
+
+int MemMgr::blockSize(void *object)
+{
+	MemBlock *block = (MemBlock*) ((UCHAR*) object - OFFSET(MemBlock*, body));
+
+	return ABS(block->length);
 }

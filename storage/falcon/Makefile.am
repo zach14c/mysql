@@ -154,6 +154,7 @@ falcon_headers= Agent.h Alias.h Application.h \
 		SRLIndexDelete.h \
 		SRLIndexPage.h \
 		SRLIndexUpdate.h \
+		SRLInventoryPage.h \
 		SRLInversionPage.h \
 		SRLOverflowPages.h \
 		SRLPrepare.h \
@@ -167,6 +168,7 @@ falcon_headers= Agent.h Alias.h Application.h \
 		SRLSequencePage.h \
 		SRLSession.h \
 		SRLSwitchLog.h \
+		SRLTableSpaces.h \
 		SRLUpdateIndex.h \
 		SRLUpdateBlob.h \
 		SRLUpdateRecords.h \
@@ -215,7 +217,7 @@ falcon_sources= Agent.cpp Alias.cpp \
 		BDB.cpp \
 		BigInt.cpp \
 		BigInteger.cpp \
-		BinaryBlob.cpp Bitmap.cpp Blob.cpp \
+		BinaryBlob.cpp Bitmap.cpp \
 		BlobReference.cpp Btn.cpp Cache.cpp CmdGen.cpp \
 		CollationCaseless.cpp \
 		CollationUnknown.cpp \
@@ -280,7 +282,7 @@ falcon_sources= Agent.cpp Alias.cpp \
 		NInSelectBitmap.cpp NInSelect.cpp NInsert.cpp NMatching.cpp \
 		NNode.cpp NParameter.cpp NRecordNumber.cpp NRepair.cpp \
 		NReplace.cpp NSelect.cpp NSelectExpr.cpp NSequence.cpp \
-		NStat.cpp NUpdate.cpp OpSys.cpp Page.cpp \
+		NStat.cpp NUpdate.cpp OpSys.cpp \
 		PageInventoryPage.cpp PagePrecedence.cpp PageWriter.cpp \
 		Parameter.cpp Parameters.cpp PreparedStatement.cpp \
 		PrettyPrint.cpp \
@@ -337,6 +339,7 @@ falcon_sources= Agent.cpp Alias.cpp \
 		SRLIndexDelete.cpp \
 		SRLIndexPage.cpp \
 		SRLIndexUpdate.cpp \
+		SRLInventoryPage.cpp \
 		SRLInversionPage.cpp \
 		SRLOverflowPages.cpp \
 		SRLPrepare.cpp \
@@ -351,6 +354,7 @@ falcon_sources= Agent.cpp Alias.cpp \
 		SRLSequencePage.cpp \
 		SRLSession.cpp \
 		SRLSwitchLog.cpp \
+		SRLTableSpaces.cpp \
 		SRLUpdateIndex.cpp \
 		SRLUpdateBlob.cpp \
 		SRLUpdateRecords.cpp \
@@ -371,7 +375,6 @@ falcon_sources= Agent.cpp Alias.cpp \
 		SyncHandler.cpp \
 		SyncObject.cpp\
 		SyncTest.cpp\
-		SyncWait.cpp\
 		Syntax.cpp\
 		TableAttachment.cpp \
 		Table.cpp \

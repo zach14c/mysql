@@ -82,11 +82,17 @@ void TableSpaceManager::add(TableSpace *tableSpace)
 	idHash[slot] = tableSpace;
 	tableSpace->next = tableSpaces;
 	tableSpaces = tableSpace;
+
+	if (database->serialLog && !database->serialLog->recovering)
+		database->serialLog->logControl->tableSpaces.append(this);
 }
 
 TableSpace* TableSpaceManager::findTableSpace(const char *name)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace(1)");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace(DDL)");
+	syncDDL.lock(Shared);
+	
+	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace(syncObj)");
 	syncObj.lock(Shared);
 	TableSpace *tableSpace;
 
@@ -101,9 +107,6 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		if (tableSpace->name == name)
 			return tableSpace;
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace(2)");
-	syncDDL.lock(Shared);
-	
 	PStatement statement = database->prepareStatement(
 		"select tablespace_id, filename, comment from system.tablespaces where tablespace=?");
 	statement->setString(1, name);
@@ -147,7 +150,7 @@ TableSpace* TableSpaceManager::getTableSpace(const char *name)
 		throw SQLError(TABLESPACE_NOT_EXIST_ERROR, "can't find table space \"%s\"", name);
 
 	if (!tableSpace->active)
-		throw SQLError(RUNTIME_ERROR, "table space \"%s\" is not active", (const char*) tableSpace->name);
+		tableSpace->open();
 
 	return tableSpace;
 }
@@ -156,9 +159,9 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 {
 	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::createTableSpace");
 	syncDDL.lock(Exclusive);
-	Sequence *sequence = database->sequenceManager->getSequence(database->getSymbol("SYSTEM"), database->getSymbol("TABLESPACE_IDS"));
+
 	int type = (repository) ? TABLESPACE_TYPE_REPOSITORY : TABLESPACE_TYPE_TABLESPACE;
-	int id = (int) sequence->update(1, database->getSystemTransaction());
+	int id = createTableSpaceId();
 	
 	TableSpace *tableSpace = new TableSpace(database, name, id, fileName, type, tsInit);
 	
@@ -175,6 +178,7 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 		
 		if (!repository)
 			tableSpace->create();
+
 		createdFile = true;
 		add(tableSpace);
 		database->serialLog->logControl->createTableSpace.append(tableSpace);
@@ -183,11 +187,15 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 		{
 		if (createdFile)
 			IO::deleteFile(fileName);
+
 		database->rollbackSystemTransaction();
 		delete tableSpace;
+
 		throw;
 		}
+
 	database->commitSystemTransaction();
+	
 	return tableSpace;
 }
 
@@ -208,28 +216,13 @@ void TableSpaceManager::bootstrap(int sectionId)
 		p = EncodedDataStream::decode(p, &id, true);
 		p = EncodedDataStream::decode(p, &fileName, true);
 		p = EncodedDataStream::decode(p, &type, true);
-		/***
-		p = EncodedDataStream::decode(p, &comment, true);
 
-		TableSpaceInit tsInit;
-		tsInit.comment		= comment.getString();
-		***/
 		
 		TableSpace *tableSpace = new TableSpace(database, name.getString(), id.getInt(), fileName.getString(), type.getInt(), NULL);
-		Log::debug("New table space %s, id %d, type %d, filename %s\n", (const char*) tableSpace->name, tableSpace->tableSpaceId, tableSpace->type, (const char*) tableSpace->filename);
-		
-		if (tableSpace->type == TABLESPACE_TYPE_TABLESPACE)
-			try
-				{
-				tableSpace->open();
-				}
-			catch(SQLException& exception)
-				{
-				Log::log("Couldn't open table space file \"%s\" for tablespace \"%s\": %s\n", 
-						fileName.getString(), name.getString(), exception.getText());
-				}
-			
 		add(tableSpace);
+
+		Log::debug("TableSpaceManager::bootstrap() : table space %s, id %d, type %d, filename %s\n", 
+			(const char*) tableSpace->name, tableSpace->tableSpaceId, tableSpace->type, (const char*) tableSpace->filename);
 		stream.clear();
 		}
 }
@@ -248,10 +241,9 @@ TableSpace* TableSpaceManager::getTableSpace(int id)
 	TableSpace *tableSpace = findTableSpace(id);
 
 	if (!tableSpace)
-		throw SQLError(COMPILE_ERROR, "can't find table space %d", id);
+		throw SQLError(TABLESPACE_NOT_EXIST_ERROR, "can't find table space %d", id);
 
 	if (!tableSpace->active)
-		//throw SQLError(RUNTIME_ERROR, "table space \"%s\" is not active", (const char*) tableSpace->name);
 		tableSpace->open();
 
 	return tableSpace;
@@ -272,12 +264,12 @@ void TableSpaceManager::dropDatabase(void)
 
 void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace(1)");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace(DDL)");
+	syncDDL.lock(Exclusive);
+	
+	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace(syncObj)");
 	syncObj.lock(Exclusive);
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace(2)");
-	syncDDL.lock(Shared);
-	
 	PStatement statement = database->prepareStatement(
 		"delete from system.tablespaces where tablespace=?");
 	statement->setString(1, tableSpace->name);
@@ -368,7 +360,9 @@ void TableSpaceManager::expungeTableSpace(int tableSpaceId)
 			*ptr = tableSpace->next;
 			break;
 			}
-
+	
+	if (database->serialLog)
+		database->serialLog->logControl->tableSpaces.append(this);
 	sync.unlock();
 	//File already deleted, just close the file descriptor
 	tableSpace->close();
@@ -390,47 +384,60 @@ void TableSpaceManager::redoCreateTableSpace(int id, int nameLength, const char*
 {
 	Sync sync(&syncObject, "TableSpaceManager::redoCreateTableSpace");
 	sync.lock(Exclusive);
-	TableSpace *tableSpace;
+	TableSpace *tableSpace = NULL;
 
 	for (tableSpace = idHash[id % TS_HASH_SIZE]; tableSpace; tableSpace = tableSpace->idCollision)
 		if (tableSpace->tableSpaceId == id)
-			return;
+		{
+			tableSpace->close();
+			break;
+		}
 
-	char buffer[1024];
-	memcpy(buffer, name, nameLength);
-	buffer[nameLength] = 0;
-	char *file = buffer + nameLength + 1;
-	memcpy(file, fileName, fileNameLength);
-	file[fileNameLength] = 0;
-	tableSpace = new TableSpace(database, buffer, id, file, type, tsInit);
-	tableSpace->needSave = true;
-	add(tableSpace);	
+	if (!tableSpace)
+		{
+		char buffer[1024];
+		memcpy(buffer, name, nameLength);
+		buffer[nameLength] = 0;
+		char *file = buffer + nameLength + 1;
+		memcpy(file, fileName, fileNameLength);
+		file[fileNameLength] = 0;
+		tableSpace = new TableSpace(database, buffer, id, file, type, tsInit);
+		tableSpace->needSave = true;
+		add(tableSpace);
+		}
 
 	try
 		{
-		tableSpace->open();
+		Dbb *dbb = tableSpace->dbb;
+
+		dbb->create(tableSpace->filename, database->dbb->pageSize, 0, HdrTableSpace, 
+			NO_TRANSACTION, "", true);
+		tableSpace->active = true;
+
 		}
 	catch(SQLException& exception)
 		{
 		Log::log("Couldn't open table space file \"%s\" for tablespace \"%s\": %s\n", 
-					file, buffer, exception.getText());
+			tableSpace->filename.getString(), tableSpace->name.getString(), exception.getText());
+
+		// remove from various hashtables
+		expungeTableSpace(tableSpace->tableSpaceId);
 		}
 }
 
 void TableSpaceManager::initialize(void)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::initialize");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::initialize(DDL)");
+	syncDDL.lock(Exclusive);
+
+	Sync syncObj(&syncObject, "TableSpaceManager::initialize(syncObj)");
 	syncObj.lock(Shared);
 
 	for (TableSpace *tableSpace = tableSpaces; tableSpace; tableSpace = tableSpace->next)
 		if (tableSpace->needSave)
-			{
-			Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace");
-			syncDDL.lock(Shared);
 			tableSpace->save();
-			syncDDL.unlock();
-			database->commitSystemTransaction();
-			}
+
+	database->commitSystemTransaction();
 }
 
 void TableSpaceManager::postRecovery(void)
@@ -469,6 +476,9 @@ JString TableSpaceManager::tableSpaceType(JString name)
 
 void TableSpaceManager::getTableSpaceInfo(InfoTable* infoTable)
 {
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::getTableSpaceInfo");
+	syncDDL.lock(Shared);
+
 	PStatement statement = database->systemConnection->prepareStatement(
 		"select tablespace, comment from system.tablespaces");
 	RSet resultSet = statement->executeQuery();
@@ -513,6 +523,9 @@ JString TableSpaceManager::tableSpaceFileType(JString name)
 
 void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 {
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::getTableSpaceFilesInfo");
+	syncDDL.lock(Shared);
+	
 	PStatement statement = database->systemConnection->prepareStatement(
 		"select tablespace, filename from system.tablespaces");
 	RSet resultSet = statement->executeQuery();
@@ -525,7 +538,7 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 		infoTable->putString(2, tableSpaceFileType(resultSet->getString(1)));	// FILE_TYPE NOT NULL
 		infoTable->setNotNull(3);		// TABLESPACE_NAME
 		infoTable->putString(3, resultSet->getString(1));
-		infoTable->setNull(4);			// TABLE_CATALOG
+                infoTable->putString(4, "def");		// TABLE_CATALOG
 		infoTable->setNull(5);			// TABLE_SCHEMA
 		infoTable->setNull(6);			// TABLE_NAME
 		infoTable->setNull(7);			// LOGFILE_GROUP_NAME
@@ -563,3 +576,25 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 		}
 }
 
+int TableSpaceManager::createTableSpaceId()
+{
+	Sequence *sequence = database->sequenceManager->getSequence(database->getSymbol("SYSTEM"), database->getSymbol("TABLESPACE_IDS"));
+	int id = (int) sequence->update(1, database->getSystemTransaction());
+	return id;
+}
+
+void TableSpaceManager::openTableSpaces()
+{
+	for(TableSpace *ts = tableSpaces; ts; ts = ts->next)
+		{
+		try
+			{
+			ts->open();
+			}
+		catch(SQLException &e) 
+			{
+			Log::debug("Can't open tablespace %s, id %d : %s\n",
+				(const char*) ts->name, ts->tableSpaceId,e.getText());
+			}
+		}
+}

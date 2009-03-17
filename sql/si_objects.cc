@@ -200,56 +200,11 @@ run_service_interface_sql(THD *thd, Ed_connection *ed_connection,
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Update THD with the warnings from the given list.
-
-  @param[in]  thd   Thread context.
-  @parampin]  src   Warning list.
-*/
-
-void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
-{
-  List_iterator_fast<MYSQL_ERROR> err_it(*src);
-  MYSQL_ERROR *err;
-
-  while ((err= err_it++))
-    push_warning(thd, err->level, err->code, err->msg);
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-/**
   Table_name_key defines a hash key, which includes database and tables
   names.
 */
 
-struct Table_name_key
-{
-public:
-  LEX_STRING db_name;
-  LEX_STRING table_name;
-  LEX_STRING key;
-
-public:
-  void init_from_mdl_key(const char *key_arg, size_t key_length_arg,
-                         char *key_buff_arg);
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-void
-Table_name_key::init_from_mdl_key(const char *key_arg, size_t key_length_arg,
-                                  char *key_buff_arg)
-{
-  key.str= key_buff_arg;
-  key.length= key_length_arg - 4; /* Skip MDL object type */
-  memcpy(key.str, key_arg + 4, key.length);
-
-  db_name.str= key.str;
-  db_name.length= strlen(db_name.str);
-  table_name.str= db_name.str + db_name.length + 1; /* Skip \0 */
-  table_name.length= strlen(table_name.str);
-}
+typedef MDL_key Table_name_key;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -261,8 +216,8 @@ get_table_name_key(const uchar *record,
                    my_bool not_used __attribute__((unused)))
 {
   Table_name_key *table_name_key= (Table_name_key *) record;
-  *key_length= table_name_key->key.length;
-  return (uchar *) table_name_key->key.str;
+  *key_length= table_name_key->length();
+  return (uchar*) table_name_key->ptr();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -774,7 +729,7 @@ bool Abstract_obj::create(THD *thd)
     rc= ed_connection.execute_direct(*sql_text);
 
     /* Push warnings on the THD error stack. */
-    copy_warnings(thd, ed_connection.get_warn_list());
+    thd->warning_info->append_warnings(thd, ed_connection.get_warn_list());
 
     if (rc)
       break;
@@ -1492,16 +1447,16 @@ Iterator *View_base_obj_iterator::create(THD *thd,
 inline View_base_obj_iterator::View_base_obj_iterator()
   :m_cur_idx(0)
 {
-  hash_init(&m_table_names, system_charset_info, 16, 0, 0,
-            get_table_name_key, free_table_name_key,
-            MYF(0));
+  my_hash_init(&m_table_names, system_charset_info, 16, 0, 0,
+               get_table_name_key, free_table_name_key,
+               MYF(0));
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
 inline View_base_obj_iterator::~View_base_obj_iterator()
 {
-  hash_free(&m_table_names);
+  my_hash_free(&m_table_names);
 }
 
 
@@ -1579,21 +1534,16 @@ Find_view_underlying_tables::execute_server_code(THD *thd)
     while ((table= it++))
     {
       Table_name_key *table_name_key;
-      char *key_buff;
 
       /* If we expect a view, and it's a table, or vice versa, continue */
       if ((int) m_base_obj_it->get_base_obj_kind() != test(table->view))
         continue;
 
       if (! my_multi_malloc(MYF(MY_WME),
-                            &table_name_key, sizeof(*table_name_key),
-                            &key_buff, table->mdl_lock_data->key_length,
-                            NullS))
+                            &table_name_key, sizeof(*table_name_key), NullS))
         goto end;
 
-      table_name_key->init_from_mdl_key(table->mdl_lock_data->key,
-                                        table->mdl_lock_data->key_length,
-                                        key_buff);
+      table_name_key->mdl_key_init(&table->mdl_request->key);
 
       if (my_hash_insert(m_table_names, (uchar*) table_name_key))
       {
@@ -1627,15 +1577,23 @@ bool View_base_obj_iterator::init(THD *thd,
 
 Obj *View_base_obj_iterator::next()
 {
+  LEX_STRING db_name;
+  LEX_STRING table_name;
   if (m_cur_idx >= m_table_names.records)
     return NULL;
 
   Table_name_key *table_name_key=
-    (Table_name_key *) hash_element(&m_table_names, m_cur_idx);
+    (Table_name_key *) my_hash_element(&m_table_names, m_cur_idx);
 
   ++m_cur_idx;
 
-  return create_obj(&table_name_key->db_name, &table_name_key->table_name);
+  db_name.str= (char*) table_name_key->db_name();
+  db_name.length= table_name_key->db_name_length();
+
+  table_name.str= (char*) table_name_key->table_name();
+  table_name.length= table_name_key->table_name_length();
+
+  return create_obj(&db_name, &table_name);
 }
 
 ///////////////////////////////////////////////////////////////////////////

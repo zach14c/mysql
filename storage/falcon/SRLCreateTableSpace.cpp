@@ -90,6 +90,9 @@ void SRLCreateTableSpace::pass1()
 
 void SRLCreateTableSpace::pass2()
 {
+	if (log->database->tableSpaceManager->findTableSpace(tableSpaceId))
+		return;
+
 	TableSpaceInit tsInit;
 	tsInit.comment		= comment;
 	log->database->tableSpaceManager->redoCreateTableSpace(tableSpaceId, nameLength, name, filenameLength, filename, type, &tsInit);

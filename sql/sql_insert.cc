@@ -928,20 +928,6 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
     }
     DBUG_ASSERT(transactional_table || !changed || 
                 thd->transaction.stmt.modified_non_trans_table);
-
-    if (thd->lock)
-    {
-      /*
-        Invalidate the table in the query cache if something changed
-        after unlocking when changes become fisible.
-        TODO: this is workaround. right way will be move invalidating in
-        the unlock procedure.
-      */
-      if (lock_type ==  TL_WRITE_CONCURRENT_INSERT && changed)
-      {
-        query_cache_invalidate3(thd, table_list, 1);
-      }
-    }
   }
   thd_proc_info(thd, "end");
   /*
@@ -2354,7 +2340,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   {
     /* Can't use my_error since store_globals has not yet been called */
     thd->stmt_da->set_error_status(thd, ER_OUT_OF_RESOURCES,
-                                  ER(ER_OUT_OF_RESOURCES));
+                                   ER(ER_OUT_OF_RESOURCES), NULL);
     goto end;
   }
   DBUG_ENTER("handle_delayed_insert");
@@ -2363,7 +2349,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   {
     /* Can't use my_error since store_globals has perhaps failed */
     thd->stmt_da->set_error_status(thd, ER_OUT_OF_RESOURCES,
-                                  ER(ER_OUT_OF_RESOURCES));
+                                   ER(ER_OUT_OF_RESOURCES), NULL);
     thd->fatal_error();
     goto err;
   }
@@ -2382,7 +2368,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   thd->lex->set_stmt_unsafe();
   thd->set_current_stmt_binlog_row_based_if_mixed();
 
-  alloc_mdl_locks(&di->table_list, thd->mem_root);
+  alloc_mdl_requests(&di->table_list, thd->mem_root);
 
   if (di->open_and_lock_table())
     goto err;
@@ -3565,6 +3551,12 @@ static TABLE *create_table_from_items(THD *thd, HA_CREATE_INFO *create_info,
                                     MYSQL_LOCK_IGNORE_FLUSH, &not_used)) ||
         hooks->postlock(&table, 1))
   {
+    /* purecov: begin tested */
+    /*
+      This can happen in innodb when you get a deadlock when using same table
+      in insert and select
+    */
+    my_error(ER_CANT_LOCK, MYF(0), my_errno);
     if (*lock)
     {
       mysql_unlock_tables(thd, *lock);
@@ -3574,6 +3566,7 @@ static TABLE *create_table_from_items(THD *thd, HA_CREATE_INFO *create_info,
     if (!create_info->table_existed)
       drop_open_table(thd, table, create_table->db, create_table->table_name);
     DBUG_RETURN(0);
+    /* purecov: end */
   }
   DBUG_RETURN(table);
 }

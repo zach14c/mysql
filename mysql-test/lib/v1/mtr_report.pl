@@ -235,6 +235,7 @@ sub mtr_report_stats ($) {
       # We report different types of problems in order
       foreach my $pattern ( "^Warning:",
 			    "\\[Warning\\]",
+			    "^Warning at",
 			    "\\[ERROR\\]",
 			    "^Error:", "^==.* at 0x",
 			    "InnoDB: Warning",

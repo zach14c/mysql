@@ -110,37 +110,37 @@ static TimeZoneRule noDST[]			= { 0,    0,0,0,0,0,0,0,0 };
 static TimeZoneRule USDST[]			= { 2007, 2,8,-1,7200000,	10,1,-1,7200000,
 									    0,    3,1,-1,7200000,	9,-1,1,7200000 };
 									    
-static TimeZoneRule ParisDST[]		= { 0,    2,-1,1,7200000,	9,-1,1,7200000 };
-static TimeZoneRule LondonDST[]		= { 0,    2,-1,1,3600000,	9,-1,1,3600000 };
-static TimeZoneRule WarsawDST[]		= { 0,    2,-1,1,3600000,	9,-1,1,7200000 };
+static TimeZoneRule ParisDST[]		= { 0,    2,-1,1,7200,	9,-1,1,7200 };
+static TimeZoneRule LondonDST[]		= { 0,    2,-1,1,3600,	9,-1,1,3600 };
+static TimeZoneRule WarsawDST[]		= { 0,    2,-1,1,3600,	9,-1,1,7200 };
 
 static TimeZoneRule BrazilDST[]		= { 0,    9,1,-1,0,			1,11,-1,0 };
 static TimeZoneRule AzoresDST[]		= { 0,    2,-1,1,0,			9,-1,1,0 };
-static TimeZoneRule InstanbulDST[]	= { 0,    2,-1,1,10800000,	9,-1,1,10800000 };
-static TimeZoneRule AustralianDST[]	= { 0,    9,-1,1,7200000,	2,-1,1,10800000 };
+static TimeZoneRule InstanbulDST[]	= { 0,    2,-1,1,10800,	9,-1,1,10800 };
+static TimeZoneRule AustralianDST[]	= { 0,    9,-1,1,7200,	2,-1,1,10800 };
 static TimeZoneRule CairoDST[]		= { 0,    3,-1,6,0,			8,-1,6,0 };
-static TimeZoneRule AucklandDST[]	= { 0,    9,1,-1,7200000,	2,15,-1,10800000 };
-static TimeZoneRule RussianDST[]	= { 0,    2,-1,1,7200000,	9,-1,1,10800000 };
+static TimeZoneRule AucklandDST[]	= { 0,    9,1,-1,7200,	2,15,-1,10800 };
+static TimeZoneRule RussianDST[]	= { 0,    2,-1,1,7200,	9,-1,1,10800 };
 static TimeZoneRule RarotongaDST[]	= { 0,    9,-1,1,0,			2,1,-1,0 };
 static TimeZoneRule TehranDST[]		= { 0,    2,4,0,0,			8,4,0,0 };
 static TimeZoneRule ChileDST[]		= { 0,    9,9,-1,0,			2,9,-1,0 };
-static TimeZoneRule CubaDST[]		= { 0,    3,1,-1,0,			9,8,-1,3600000 };
-static TimeZoneRule HaitiDST[]		= { 0,    3,1,-1,3600000,	9,-1,1,7200000 };
+static TimeZoneRule CubaDST[]		= { 0,    3,1,-1,0,			9,8,-1,3600 };
+static TimeZoneRule HaitiDST[]		= { 0,    3,1,-1,3600,	9,-1,1,7200 };
 static TimeZoneRule GrandTurkDST[]	= { 0,    3,1,-1,0,			9,-1,1,0 };
-static TimeZoneRule GodthabDST[]	= { 0,    2,-1,1,-7200000,	9,-1,1,-7200000 };
-static TimeZoneRule TripoliDST[]	= { 0,    2,-1,5,7200000,	9,1,-5,10800000  };
-static TimeZoneRule AmmanDST[]		= { 0,    3,1,-6,0,			8,15,-6,3600000 };
-static TimeZoneRule RigaDST[]		= { 0,    2,-1,1,7200000,	8,-1,1,10800000 };
+static TimeZoneRule GodthabDST[]	= { 0,    2,-1,1,-7200,	9,-1,1,-7200 };
+static TimeZoneRule TripoliDST[]	= { 0,    2,-1,5,7200,	9,1,-5,10800  };
+static TimeZoneRule AmmanDST[]		= { 0,    3,1,-6,0,			8,15,-6,3600 };
+static TimeZoneRule RigaDST[]		= { 0,    2,-1,1,7200,	8,-1,1,10800 };
 static TimeZoneRule BeruitDST[]		= { 0,    2,-1,1,0,			8,-1,1,0 };
-static TimeZoneRule WindhoekDST[]	= { 0,    8,1,-1,7200000,	3,1,-1,7200000 };
+static TimeZoneRule WindhoekDST[]	= { 0,    8,1,-1,7200,	3,1,-1,7200 };
 static TimeZoneRule DamascusDST[]	= { 0,    3,1,0,0,			9,1,0,0 };
 static TimeZoneRule JerusalamDST[]	= { 0,    2,15,-6,0,		8,15,-1,0 };
-static TimeZoneRule BagdadDST[]		= { 0,    3,1,0,10800000,	9,1,0,14400000 };
-static TimeZoneRule BakuDST[]		= { 0,    2,-1,1,18000000,	9,-1,1,18000000 };
+static TimeZoneRule BagdadDST[]		= { 0,    3,1,0,10800,	9,1,0,14400 };
+static TimeZoneRule BakuDST[]		= { 0,    2,-1,1,18000,	9,-1,1,18000 };
 static TimeZoneRule BishkekDST[]	= { 0,    3,7,-1,0,			8,-1,1,0 };
-static TimeZoneRule HobartDST[]		= { 0,    9,1,-1,7200000,	2,-1,1,10800000 };
-static TimeZoneRule NoumeaDST[]		= { 0,    10,-1,1,7200000,	2,1,-1,10800000 };
-static TimeZoneRule ChathamDST[]	= { 0,    9,1,-1,9900000,	2,15,-1,13500000 };
+static TimeZoneRule HobartDST[]		= { 0,    9,1,-1,7200,	2,-1,1,10800 };
+static TimeZoneRule NoumeaDST[]		= { 0,    10,-1,1,7200,	2,1,-1,10800 };
+static TimeZoneRule ChathamDST[]	= { 0,    9,1,-1,9900,	2,15,-1,13500 };
 static TimeZoneRule StandleyDST[]	= { 0,    8,8,-1,0,			3,16,-1,0 };
 static TimeZoneRule AsuncionDST[]	= { 0,    9,1,0,0,			2,1,0,0 };
 //static TimeZoneRule DST		= {  };
@@ -1257,8 +1257,6 @@ int DateTime::timeRule(tm *time, int64 first, const ZoneRule *rule)
 		while (changeDay + 7 < max)
 			changeDay += 7;
 		}
-
-	++changeDay;
 
 	if (time->tm_mday < changeDay)
 		return -1;

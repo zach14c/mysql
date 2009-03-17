@@ -1676,7 +1676,7 @@ int ha_myisam::info(uint flag)
     if (share->key_parts)
       memcpy((char*) table->key_info[0].rec_per_key,
 	     (char*) misam_info.rec_per_key,
-	     sizeof(table->key_info[0].rec_per_key)*share->key_parts);
+	     sizeof(table->key_info[0].rec_per_key[0])*share->key_parts);
     if (share->tmp_table == NO_TMP_TABLE)
       pthread_mutex_unlock(&share->LOCK_ha_data);
 
@@ -1711,6 +1711,8 @@ int ha_myisam::info(uint flag)
 int ha_myisam::extra(enum ha_extra_function operation)
 {
   if ((specialflag & SPECIAL_SAFE_MODE) && operation == HA_EXTRA_KEYREAD)
+    return 0;
+  if (operation == HA_EXTRA_MMAP && !opt_myisam_use_mmap)
     return 0;
   return mi_extra(file, operation, 0);
 }
@@ -2013,13 +2015,12 @@ int ha_myisam::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                      uint n_ranges, uint mode, 
                                      HANDLER_BUFFER *buf)
 {
-  return ds_mrr.dsmrr_init(this, &table->key_info[active_index], 
-                           seq, seq_init_param, n_ranges, mode, buf);
+  return ds_mrr.dsmrr_init(this, seq, seq_init_param, n_ranges, mode, buf);
 }
 
 int ha_myisam::multi_range_read_next(char **range_info)
 {
-  return ds_mrr.dsmrr_next(this, range_info);
+  return ds_mrr.dsmrr_next(range_info);
 }
 
 ha_rows ha_myisam::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
@@ -2162,6 +2163,15 @@ my_bool ha_myisam::register_query_cache_table(THD *thd, char *table_name,
       DBUG_RETURN(FALSE);
     }
   }
+
+  /*
+    This query execution might have started after the query cache was flushed
+    by a concurrent INSERT. In this case, don't cache this statement as the
+    data file length difference might not be visible yet if the tables haven't
+    been unlocked by the concurrent insert thread.
+  */
+  if (file->state->uncacheable)
+    DBUG_RETURN(FALSE);
 
   /* It is ok to try to cache current statement. */
   DBUG_RETURN(TRUE);

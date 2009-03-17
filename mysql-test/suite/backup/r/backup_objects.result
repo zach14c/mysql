@@ -1,4 +1,3 @@
-SET storage_engine=MyISAM;
 
 Starting Test - Backup
 
@@ -223,7 +222,7 @@ character_set_client	latin2
 collation_connection	latin1_swedish_ci
 SHOW CREATE VIEW db2.v21;;
 View	v21
-Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `db2`.`v21` AS select `x`.`b` AS `b`,`db2`.`f21`(`y`.`a`) AS `a` from (`db1`.`v11` `x` join `db2`.`v22` `y`) where (`x`.`a` = `y`.`b`)
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v21` AS select `x`.`b` AS `b`,`db2`.`f21`(`y`.`a`) AS `a` from (`db1`.`v11` `x` join `db2`.`v22` `y`) where (`x`.`a` = `y`.`b`)
 character_set_client	latin2
 collation_connection	latin1_swedish_ci
 SHOW CREATE PROCEDURE db1.p11;;

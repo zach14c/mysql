@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2008 MySQL AB
+/* Copyright (C) 2000-2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -617,18 +617,23 @@ static my_bool pagecache_fwrite(PAGECACHE *pagecache,
   /* Todo: Integrate this with write_callback so we have only one callback */
   if ((*filedesc->flush_log_callback)(buffer, pageno, filedesc->callback_data))
     DBUG_RETURN(1);
-  DBUG_PRINT("info", ("write_callback: 0x%lx  data: 0x%lx",
-                      (ulong) filedesc->write_callback,
+  DBUG_PRINT("info", ("pre_write_callback: 0x%lx  data: 0x%lx",
+                      (ulong) filedesc->pre_write_callback,
                       (ulong) filedesc->callback_data));
-  if ((*filedesc->write_callback)(buffer, pageno, filedesc->callback_data))
+  if ((*filedesc->pre_write_callback)(buffer, pageno, filedesc->callback_data))
   {
-    DBUG_PRINT("error", ("write callback problem"));
+    DBUG_PRINT("error", ("pre_write callback problem"));
     DBUG_RETURN(1);
   }
   if (my_pwrite(filedesc->file, buffer, pagecache->block_size,
                 ((my_off_t) pageno << pagecache->shift), flags))
   {
     (*filedesc->write_fail)(filedesc->callback_data);
+    DBUG_RETURN(1);
+  }
+  if ((*filedesc->post_write_callback)(buffer, pageno, filedesc->callback_data))
+  {
+    DBUG_PRINT("error", ("post_write callback problem"));
     DBUG_RETURN(1);
   }
   DBUG_RETURN(0);
@@ -729,10 +734,10 @@ ulong init_pagecache(PAGECACHE *pagecache, size_t use_mem,
   if (! pagecache->inited)
   {
     if (pthread_mutex_init(&pagecache->cache_lock, MY_MUTEX_INIT_FAST) ||
-        hash_init(&pagecache->files_in_flush, &my_charset_bin, 32,
-                  offsetof(struct st_file_in_flush, file),
-                  sizeof(((struct st_file_in_flush *)NULL)->file),
-                  NULL, NULL, 0))
+        my_hash_init(&pagecache->files_in_flush, &my_charset_bin, 32,
+                     offsetof(struct st_file_in_flush, file),
+                     sizeof(((struct st_file_in_flush *)NULL)->file),
+                     NULL, NULL, 0))
       goto err;
     pagecache->inited= 1;
     pagecache->in_init= 0;
@@ -1129,7 +1134,7 @@ void end_pagecache(PAGECACHE *pagecache, my_bool cleanup)
 
   if (cleanup)
   {
-    hash_free(&pagecache->files_in_flush);
+    my_hash_free(&pagecache->files_in_flush);
     pthread_mutex_destroy(&pagecache->cache_lock);
     pagecache->inited= pagecache->can_be_used= 0;
     PAGECACHE_DEBUG_CLOSE;
@@ -2974,7 +2979,11 @@ void pagecache_unlock_by_link(PAGECACHE *pagecache,
     }
     if (lsn != LSN_IMPOSSIBLE)
       check_and_set_lsn(pagecache, lsn, block);
-    block->status&= ~PCBLOCK_ERROR;
+    /*
+      Reset error flag. Mark also that page is active; This may not have
+      been the case if there was an error reading the page
+    */
+    block->status= (block->status & ~PCBLOCK_ERROR) | PCBLOCK_READ;
   }
 
   /* if we lock for write we must link the block to changed blocks */
@@ -4223,11 +4232,11 @@ static int flush_cached_blocks(PAGECACHE *pagecache,
        @todo IO If page is contiguous with next page to flush, group flushes
        in one single my_pwrite().
     */
-    /*
+    /**
       It is important to use block->hash_link->file below and not 'file', as
-      the first one is right and the second may have different content (and
-      this matters for callbacks, bitmap pages and data pages have different
-      ones).
+      the first one is right and the second may have different out-of-date
+      content (see StaleFilePointersInFlush in ma_checkpoint.c).
+      @todo change argument of functions to be File.
     */
     error= pagecache_fwrite(pagecache, &block->hash_link->file,
                             block->buffer,
@@ -4359,8 +4368,8 @@ static int flush_pagecache_blocks_int(PAGECACHE *pagecache,
     us_flusher.flush_queue.last_thread= NULL;
     us_flusher.first_in_switch= FALSE;
     while ((other_flusher= (struct st_file_in_flush *)
-            hash_search(&pagecache->files_in_flush, (uchar *)&file->file,
-                        sizeof(file->file))))
+            my_hash_search(&pagecache->files_in_flush, (uchar *)&file->file,
+                           sizeof(file->file))))
     {
       /*
         File is in flush already: wait, unless FLUSH_KEEP_LAZY. "Flusher"
@@ -4586,7 +4595,7 @@ restart:
     }
 #ifdef THREAD
     /* wake up others waiting to flush this file */
-    hash_delete(&pagecache->files_in_flush, (uchar *)&us_flusher);
+    my_hash_delete(&pagecache->files_in_flush, (uchar *)&us_flusher);
     if (us_flusher.flush_queue.last_thread)
       wqueue_release_queue(&us_flusher.flush_queue);
 #endif
@@ -4727,7 +4736,7 @@ my_bool pagecache_collect_changed_blocks_with_lsn(PAGECACHE *pagecache,
     struct st_file_in_flush *other_flusher;
     for (file_hash= 0;
          (other_flusher= (struct st_file_in_flush *)
-          hash_element(&pagecache->files_in_flush, file_hash)) != NULL &&
+          my_hash_element(&pagecache->files_in_flush, file_hash)) != NULL &&
            !other_flusher->first_in_switch;
          file_hash++)
     {}

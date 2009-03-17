@@ -1,0 +1,6 @@
+*** Bug #35257 ***
+SET @@storage_engine = 'Falcon';
+CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE=Falcon;
+CREATE TABLESPACE TS1 ADD DATAFILE 'ts2.fts' ENGINE=Falcon;
+ERROR HY000: Tablespace 'TS1' already exists
+DROP TABLESPACE ts1 ENGINE=Falcon;

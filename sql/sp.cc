@@ -496,16 +496,24 @@ db_find_routine(THD *thd, int type, sp_name *name, sp_head **sphp)
 struct Silence_deprecated_warning : public Internal_error_handler
 {
 public:
-  virtual bool handle_error(THD *thd,
-                            MYSQL_ERROR::enum_warning_level level,
-                            uint sql_errno, const char *message);
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                MYSQL_ERROR ** cond_hdl);
 };
 
 bool
-Silence_deprecated_warning::
-handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
-             uint sql_errno, const char *message)
+Silence_deprecated_warning::handle_condition(
+  THD *,
+  uint sql_errno,
+  const char*,
+  MYSQL_ERROR::enum_warning_level level,
+  const char*,
+  MYSQL_ERROR ** cond_hdl)
 {
+  *cond_hdl= NULL;
   if (sql_errno == ER_WARN_DEPRECATED_SYNTAX &&
       level == MYSQL_ERROR::WARN_LEVEL_WARN)
     return TRUE;
@@ -936,10 +944,12 @@ sp_create_routine(THD *thd, int type, sp_head *sp)
         ret= SP_INTERNAL_ERROR;
         goto done;
       }
-
+      /* restore sql_mode when binloging */
+      thd->variables.sql_mode= saved_mode;
       /* Such a statement can always go directly to binlog, no trans cache */
       thd->binlog_query(THD::MYSQL_QUERY_TYPE,
                         log_query.c_ptr(), log_query.length(), FALSE, FALSE);
+      thd->variables.sql_mode= 0;
     }
 
   }
@@ -1490,11 +1500,11 @@ static bool add_used_routine(LEX *lex, Query_arena *arena,
                              const LEX_STRING *key,
                              TABLE_LIST *belong_to_view)
 {
-  hash_init_opt(&lex->sroutines, system_charset_info,
-                Query_tables_list::START_SROUTINES_HASH_SIZE,
-                0, 0, sp_sroutine_key, 0, 0);
+  my_hash_init_opt(&lex->sroutines, system_charset_info,
+                   Query_tables_list::START_SROUTINES_HASH_SIZE,
+                   0, 0, sp_sroutine_key, 0, 0);
 
-  if (!hash_search(&lex->sroutines, (uchar *)key->str, key->length))
+  if (!my_hash_search(&lex->sroutines, (uchar *)key->str, key->length))
   {
     Sroutine_hash_entry *rn=
       (Sroutine_hash_entry *)arena->alloc(sizeof(Sroutine_hash_entry) +
@@ -1559,7 +1569,7 @@ void sp_remove_not_own_routines(LEX *lex)
       but we want to be more future-proof.
     */
     next_rt= not_own_rt->next;
-    hash_delete(&lex->sroutines, (uchar *)not_own_rt);
+    my_hash_delete(&lex->sroutines, (uchar *)not_own_rt);
   }
 
   *(Sroutine_hash_entry **)lex->sroutines_list_own_last= NULL;
@@ -1588,8 +1598,8 @@ void sp_update_sp_used_routines(HASH *dst, HASH *src)
 {
   for (uint i=0 ; i < src->records ; i++)
   {
-    Sroutine_hash_entry *rt= (Sroutine_hash_entry *)hash_element(src, i);
-    if (!hash_search(dst, (uchar *)rt->key.str, rt->key.length))
+    Sroutine_hash_entry *rt= (Sroutine_hash_entry *)my_hash_element(src, i);
+    if (!my_hash_search(dst, (uchar *)rt->key.str, rt->key.length))
       my_hash_insert(dst, (uchar *)rt);
   }
 }
@@ -1615,7 +1625,7 @@ sp_update_stmt_used_routines(THD *thd, LEX *lex, HASH *src,
 {
   for (uint i=0 ; i < src->records ; i++)
   {
-    Sroutine_hash_entry *rt= (Sroutine_hash_entry *)hash_element(src, i);
+    Sroutine_hash_entry *rt= (Sroutine_hash_entry *)my_hash_element(src, i);
     (void)add_used_routine(lex, thd->stmt_arena, &rt->key, belong_to_view);
   }
 }

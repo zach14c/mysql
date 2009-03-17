@@ -432,6 +432,9 @@ C_MODE_END
 #ifdef HAVE_FLOAT_H
 #include <float.h>
 #endif
+#ifdef HAVE_FENV_H
+#include <fenv.h> /* For fesetround() */
+#endif
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -653,7 +656,6 @@ C_MODE_END
 */
 #define _VARARGS(X) X
 #define _STATIC_VARARGS(X) X
-#define _PC(X)	X
 
 /* The DBUG_ON flag always takes precedence over default DBUG_OFF */
 #if defined(DBUG_ON) && defined(DBUG_OFF)

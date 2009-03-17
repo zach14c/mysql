@@ -265,8 +265,8 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_SHOW_AUTHORS]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_CONTRIBUTORS]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_PRIVILEGES]= CF_STATUS_COMMAND;
-  sql_command_flags[SQLCOM_SHOW_WARNS]= CF_STATUS_COMMAND;
-  sql_command_flags[SQLCOM_SHOW_ERRORS]= CF_STATUS_COMMAND;
+  sql_command_flags[SQLCOM_SHOW_WARNS]= CF_STATUS_COMMAND | CF_DIAGNOSTIC_STMT;
+  sql_command_flags[SQLCOM_SHOW_ERRORS]= CF_STATUS_COMMAND | CF_DIAGNOSTIC_STMT;
   sql_command_flags[SQLCOM_SHOW_ENGINE_STATUS]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_ENGINE_MUTEX]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_ENGINE_LOGS]= CF_STATUS_COMMAND;
@@ -1124,7 +1124,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       select_lex.table_list.link_in_list((uchar*) &table_list,
                                          (uchar**) &table_list.next_local);
     thd->lex->add_to_query_tables(&table_list);
-    alloc_mdl_locks(&table_list, thd->mem_root);
+    alloc_mdl_requests(&table_list, thd->mem_root);
 
     /* switch on VIEW optimisation: do not fill temporary tables */
     thd->lex->sql_command= SQLCOM_SHOW_FIELDS;
@@ -1852,8 +1852,14 @@ mysql_execute_command(THD *thd)
     that is not a SHOW command or a select that only access local
     variables, but for now this is probably good enough.
   */
-  if (all_tables)
-    thd->warning_info->opt_clear_warning_info(thd->query_id);
+  if ((sql_command_flags[lex->sql_command] & CF_DIAGNOSTIC_STMT) != 0)
+    thd->warning_info->set_read_only(TRUE);
+  else
+  {
+    thd->warning_info->set_read_only(FALSE);
+    if (all_tables)
+      thd->warning_info->opt_clear_warning_info(thd->query_id);
+  }
 
 #ifdef HAVE_REPLICATION
   if (unlikely(thd->slave_thread))
@@ -3510,7 +3516,7 @@ ddl_blocker_err:
     if (trans_commit_implicit(thd))
       goto error;
 
-    alloc_mdl_locks(all_tables, thd->locked_tables_list.locked_tables_root());
+    alloc_mdl_requests(all_tables, thd->locked_tables_list.locked_tables_root());
 
     thd->options|= OPTION_TABLE_LOCK;
     thd->in_lock_tables=1;
@@ -4428,6 +4434,7 @@ create_sp_error:
       case SP_KEY_NOT_FOUND:
 	if (lex->drop_if_exists)
 	{
+          write_bin_log(thd, TRUE, thd->query, thd->query_length);
 	  push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_NOTE,
 			      ER_SP_DOES_NOT_EXIST, ER(ER_SP_DOES_NOT_EXIST),
                               SP_COM_STRING(lex), lex->spname->m_qname.str);
@@ -4650,6 +4657,11 @@ create_sp_error:
     my_ok(thd, 1);
     break;
   }
+  case SQLCOM_SIGNAL:
+  case SQLCOM_RESIGNAL:
+    DBUG_ASSERT(lex->m_stmt != NULL);
+    res= lex->m_stmt->execute(thd);
+    break;
   default:
 #ifndef EMBEDDED_LIBRARY
     DBUG_ASSERT(0);                             /* Impossible */
@@ -5478,7 +5490,7 @@ void mysql_reset_thd_for_next_command(THD *thd)
     OPTION_STATUS_NO_TRANS_UPDATE | OPTION_KEEP_LOG to not get warnings
     in ha_rollback_trans() about some tables couldn't be rolled back.
   */
-  if (!(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+  if (!thd->in_multi_stmt_transaction())
   {
     thd->options&= ~OPTION_KEEP_LOG;
     thd->transaction.all.modified_non_trans_table= FALSE;
@@ -6130,9 +6142,9 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
   ptr->next_name_resolution_table= NULL;
   /* Link table in global list (all used tables) */
   lex->add_to_query_tables(ptr);
-  ptr->mdl_lock_data= mdl_alloc_lock(0 , ptr->db, ptr->table_name,
-                                thd->locked_tables_root ?
-                                thd->locked_tables_root : thd->mem_root);
+  ptr->mdl_request=
+    MDL_request::create(0, ptr->db, ptr->table_name, thd->locked_tables_root ?
+                        thd->locked_tables_root : thd->mem_root);
   DBUG_RETURN(ptr);
 }
 
@@ -6362,7 +6374,6 @@ void st_select_lex::set_lock_for_tables(thr_lock_type lock_type)
   DBUG_ENTER("set_lock_for_tables");
   DBUG_PRINT("enter", ("lock_type: %d  for_update: %d", lock_type,
 		       for_update));
-
   for (TABLE_LIST *tables= (TABLE_LIST*) table_list.first;
        tables;
        tables= tables->next_local)

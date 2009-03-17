@@ -56,8 +56,6 @@
 //#define STOP_RECORD	123
 //#define TRACE_PAGE	109
 
-static const int SECTION_HASH_SIZE	= 997;
-
 extern uint falcon_large_blob_threshold;
 
 #ifdef _DEBUG
@@ -70,11 +68,10 @@ static const char THIS_FILE[]=__FILE__;
 //////////////////////////////////////////////////////////////////////
 
 
-Dbb::Dbb(Database *dbase)
+Dbb::Dbb(Database *dbase) : sectionsMutex("Dbb::sectionMutex")
 {
 	database = dbase;
 	cache = NULL;
-	sections = NULL;
 	sequenceSection = NULL;
 	nextIndex = 0;
 	nextSection = 0;
@@ -91,17 +88,17 @@ Dbb::Dbb(Database *dbase)
 	noLog = false;
 	syncClone.setName("Dbb::syncClone");
 	syncSequences.setName("Dbb::syncSequences");
+	memset (sections, 0, sizeof (sections));
 }
 
 
-Dbb::Dbb(Dbb *dbb, int tblSpaceId)
+Dbb::Dbb(Dbb *dbb, int tblSpaceId) : sectionsMutex("Dbb::sectionMutex")
 {
 	database = dbb->database;
 	tableSpaceId = tblSpaceId;
 	cache = dbb->cache;
 	pageSize = dbb->pageSize;
 	serialLog = dbb->serialLog;
-	sections = NULL;
 	sequenceSection = NULL;
 	nextIndex = 0;
 	nextSection = 0;
@@ -113,6 +110,7 @@ Dbb::Dbb(Dbb *dbb, int tblSpaceId)
 	highPage = 0;
 	defaultIndexVersion = dbb->defaultIndexVersion;
 	noLog = false;
+	memset (sections, 0, sizeof (sections));
 }
 
 Dbb::~Dbb()
@@ -131,16 +129,12 @@ Dbb::~Dbb()
 
 	Section *section;
 
-	if (sections)
-		for (int n = 0; n < SECTION_HASH_SIZE; ++n)
-			while ((section = sections [n]))
-				{
-				sections [n] = section->hash;
-				delete section;
-				}
-
-	if (sections)
-		delete [] sections;
+	for (int n = 0; n < SECTION_HASH_SIZE; ++n)
+		while ((section = sections [n]))
+			{
+			sections [n] = section->hash;
+			delete section;
+			}
 
 	if (inversion)
 		delete inversion;
@@ -149,7 +143,7 @@ Dbb::~Dbb()
 		dbb->close();
 }
 
-Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot)
+Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot, bool useExistingFile)
 {
 	serialLog = database->serialLog;
 	odsVersion = ODS_VERSION;
@@ -157,7 +151,11 @@ Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType 
 	sequence = 1;
 
 	init(pageSz, (int) ((cacheSize + pageSz - 1) / pageSz));
-	createFile(fileName);
+	if(useExistingFile)
+		openFile(fileName, false);
+	else
+		createFile(fileName);
+
 	try
 		{
 		Hdr::create(this, fileType, transId, logRoot);
@@ -168,7 +166,8 @@ Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType 
 	catch(...)
 		{
 		closeFile();
-		deleteFile();
+		if(!useExistingFile)
+			deleteFile();
 		throw;
 		}
 
@@ -194,8 +193,7 @@ void Dbb::init()
 	linesPerPage = (short) ((pageSize - OFFSET (RecordLocatorPage*, elements)) / sizeof (struct RecordIndex));
 	sequencesPerPage = (short) ((pageSize - OFFSET (SequencePage*, sequences)) / sizeof (int64));
 	sequencesPerSection = (int) (pagesPerSection * sequencesPerPage);
-	sections = new Section* [SECTION_HASH_SIZE];
-	memset (sections, 0, sizeof (Section*) * SECTION_HASH_SIZE);
+
 	utf8 = false;
 }
 
@@ -374,6 +372,8 @@ Section* Dbb::findSection(int32 sectionId)
 	int slot = sectionId % SECTION_HASH_SIZE;
 	Section *section;
 
+	Sync sync (&sectionsMutex, "Dbb::findSection");
+	sync.lock(Exclusive);
 	for (section = sections [slot]; section; section = section->hash)
 		if (section->sectionId == sectionId)
 			return section;
@@ -421,9 +421,6 @@ int32 Dbb::createIndex(TransId transId, int indexVersion)
 		default:
 			ASSERT(false);
 		}
-
-	if (serialLog)
-		serialLog->logControl->createIndex.append(this, transId, indexId, indexVersion);
 
 	return indexId;
 }
@@ -625,7 +622,10 @@ void Dbb::deleteSection(int32 sectionId, TransId transId)
 		Section::deleteSection (this, sectionId, transId);
 
 	Section *section;
-	
+
+	Sync sync(&sectionsMutex, "Dbb::deleteSection");
+	sync.lock(Exclusive);
+
 	for (Section **ptr = sections + slot; (section = *ptr); ptr = &section->hash)
 		if (section->sectionId == sectionId)
 			{
@@ -1168,34 +1168,6 @@ void Dbb::reportStatistics()
 	priorFakes = fakes;
 	priorFlushWrites = flushWrites;
 }
-
-void Dbb::commit(Transaction *transaction)
-{
-	if (transaction->hasUpdates)
-		serialLog->logControl->commit.append(transaction);
-}
-
-void Dbb::prepareTransaction(TransId transId, int xidLength, const UCHAR *xid)
-{
-	serialLog->logControl->prepare.append(transId, xidLength, xid);
-}
-
-void Dbb::rollback(TransId transId, bool updateTransaction)
-{
-	if (updateTransaction)
-		{
-		if (serialLog)
-			serialLog->logControl->rollback.append(transId, updateTransaction);
-		//flush();
-		}
-}
-
-/***
-void Dbb::setRecovering(bool flag)
-{
-	recovering = flag;
-}
-***/
 
 void Dbb::enableSerialLog()
 {

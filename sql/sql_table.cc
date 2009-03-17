@@ -1631,7 +1631,7 @@ int mysql_rm_table_part2(THD *thd, TABLE_LIST *tables, bool if_exists,
             Since we don't acquire metadata lock if we have found temporary
             table, we should do something to avoid releasing it at the end.
           */
-          table->mdl_lock_data= 0;
+          table->mdl_request= NULL;
         }
         else
         {
@@ -1644,7 +1644,7 @@ int mysql_rm_table_part2(THD *thd, TABLE_LIST *tables, bool if_exists,
                                                 table->table_name);
           if (!table->table)
             DBUG_RETURN(1);
-          table->mdl_lock_data= table->table->mdl_lock_data;
+          table->mdl_request->ticket= table->table->mdl_ticket;
         }
     }
   }
@@ -1877,15 +1877,14 @@ err:
     }
     for (table= tables; table; table= table->next_local)
     {
-      if (table->mdl_lock_data)
+      if (table->mdl_request)
       {
         /*
           Under LOCK TABLES we may have several instances of table open
           and locked and therefore have to remove several metadata lock
           requests associated with them.
         */
-        mdl_release_and_remove_all_locks_for_name(&thd->mdl_context,
-                                                  table->mdl_lock_data);
+        thd->mdl_context.release_all_locks_for_name(table->mdl_request->ticket);
       }
     }
   }
@@ -3762,29 +3761,32 @@ warn:
 
 static bool lock_table_name_if_not_cached(THD *thd, const char *db,
                                           const char *table_name,
-                                          MDL_LOCK_DATA **lock_data)
+                                          MDL_request **mdl_request)
 {
   bool conflict;
 
-  if (!(*lock_data= mdl_alloc_lock(0, db, table_name, thd->mem_root)))
+  if (!(*mdl_request= MDL_request::create(0, db, table_name, thd->mem_root)))
     return TRUE;
-  mdl_set_lock_type(*lock_data, MDL_EXCLUSIVE);
-  mdl_add_lock(&thd->mdl_context, *lock_data);
-  if (mdl_try_acquire_exclusive_lock(&thd->mdl_context, *lock_data,
-                                     &conflict))
+  (*mdl_request)->set_type(MDL_EXCLUSIVE);
+  thd->mdl_context.add_request(*mdl_request);
+  if (thd->mdl_context.try_acquire_exclusive_lock(*mdl_request, &conflict))
   {
     /*
       To simplify our life under LOCK TABLES we remove unsatisfied
       lock request from the context.
     */
-    mdl_remove_lock(&thd->mdl_context, *lock_data);
+    thd->mdl_context.remove_request(*mdl_request);
     if (!conflict)
     {
       /* Probably OOM. */
       return TRUE;
     }
     else
-      *lock_data= 0;
+      *mdl_request= NULL;
+  }
+  else
+  {
+    DEBUG_SYNC(thd, "locked_table_name");
   }
   return FALSE;
 }
@@ -3800,7 +3802,7 @@ bool mysql_create_table(THD *thd, const char *db, const char *table_name,
                         bool internal_tmp_table,
                         uint select_field_count)
 {
-  MDL_LOCK_DATA *target_lock_data= 0;
+  MDL_request *target_mdl_request= NULL;
   bool result;
   Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_create_table");
@@ -3813,7 +3815,7 @@ bool mysql_create_table(THD *thd, const char *db, const char *table_name,
   /* Wait for any database locks */
   pthread_mutex_lock(&LOCK_lock_db);
   while (!thd->killed &&
-         hash_search(&lock_db_cache,(uchar*) db, strlen(db)))
+         my_hash_search(&lock_db_cache,(uchar*) db, strlen(db)))
   {
     wait_for_condition(thd, &LOCK_lock_db, &COND_refresh);
     pthread_mutex_lock(&LOCK_lock_db);
@@ -3829,12 +3831,12 @@ bool mysql_create_table(THD *thd, const char *db, const char *table_name,
 
   if (!(create_info->options & HA_LEX_CREATE_TMP_TABLE))
   {
-    if (lock_table_name_if_not_cached(thd, db, table_name, &target_lock_data))
+    if (lock_table_name_if_not_cached(thd, db, table_name, &target_mdl_request))
     {
       result= TRUE;
       goto unlock;
     }
-    if (!target_lock_data)
+    if (!target_mdl_request)
     {
       if (create_info->options & HA_LEX_CREATE_IF_NOT_EXISTS)
       {
@@ -3858,10 +3860,10 @@ bool mysql_create_table(THD *thd, const char *db, const char *table_name,
                                      select_field_count);
 
 unlock:
-  if (target_lock_data)
+  if (target_mdl_request)
   {
-    mdl_release_lock(&thd->mdl_context, target_lock_data);
-    mdl_remove_lock(&thd->mdl_context, target_lock_data);
+    thd->mdl_context.release_lock(target_mdl_request->ticket);
+    thd->mdl_context.remove_request(target_mdl_request);
   }
   pthread_mutex_lock(&LOCK_lock_db);
   if (!--creating_table && creating_database)
@@ -4024,7 +4026,7 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
   char from[FN_REFLEN],tmp[FN_REFLEN+32];
   const char **ext;
   MY_STAT stat_info;
-  MDL_LOCK_DATA *mdl_lock_data;
+  MDL_request *mdl_request= NULL;
   enum enum_open_table_action ot_action_unused;
   DBUG_ENTER("prepare_for_repair");
   uint reopen_for_repair_flags= (MYSQL_LOCK_IGNORE_FLUSH |
@@ -4043,13 +4045,13 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
     uint key_length;
 
     key_length= create_table_def_key(thd, key, table_list, 0);
-    mdl_lock_data= mdl_alloc_lock(0, table_list->db, table_list->table_name,
-                                  thd->mem_root);
-    mdl_set_lock_type(mdl_lock_data, MDL_EXCLUSIVE);
-    mdl_add_lock(&thd->mdl_context, mdl_lock_data);
-    if (mdl_acquire_exclusive_locks(&thd->mdl_context))
+    mdl_request= MDL_request::create(0, table_list->db,
+                                     table_list->table_name, thd->mem_root);
+    mdl_request->set_type(MDL_EXCLUSIVE);
+    thd->mdl_context.add_request(mdl_request);
+    if (thd->mdl_context.acquire_exclusive_locks())
     {
-      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+      thd->mdl_context.remove_request(mdl_request);
       DBUG_RETURN(0);
     }
 
@@ -4069,11 +4071,7 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
     }
     pthread_mutex_unlock(&LOCK_open);
     table= &tmp_table;
-    table_list->mdl_lock_data= mdl_lock_data;
-  }
-  else
-  {
-    mdl_lock_data= table->mdl_lock_data;
+    table_list->mdl_request= mdl_request;
   }
 
   /* A MERGE table must not come here. */
@@ -4184,10 +4182,10 @@ end:
     pthread_mutex_unlock(&LOCK_open);
   }
   /* In case of a temporary table there will be no metadata lock. */
-  if (error && mdl_lock_data)
+  if (error && mdl_request)
   {
-    mdl_release_lock(&thd->mdl_context, mdl_lock_data);
-    mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+    thd->mdl_context.release_lock(mdl_request->ticket);
+    thd->mdl_context.remove_request(mdl_request);
   }
   DBUG_RETURN(error);
 }
@@ -4362,7 +4360,14 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
           view_checksum(thd, table) == HA_ADMIN_WRONG_CHECKSUM)
         push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                      ER_VIEW_CHECKSUM, ER(ER_VIEW_CHECKSUM));
-      result_code= HA_ADMIN_CORRUPT;
+      if (thd->stmt_da->is_error() && 
+          (thd->stmt_da->sql_errno() == ER_NO_SUCH_TABLE ||
+           thd->stmt_da->sql_errno() == ER_FILE_NOT_FOUND))
+        /* A missing table is just issued as a failed command */
+        result_code= HA_ADMIN_FAILED;
+      else
+        /* Default failure code is corrupt table */
+        result_code= HA_ADMIN_CORRUPT;
       goto send_result;
     }
 
@@ -4476,10 +4481,10 @@ send_result:
         protocol->prepare_for_resend();
         protocol->store(table_name, system_charset_info);
         protocol->store((char*) operator_name, system_charset_info);
-        protocol->store(warning_level_names[err->level].str,
-                        warning_level_names[err->level].length,
+        protocol->store(warning_level_names[err->get_level()].str,
+                        warning_level_names[err->get_level()].length,
                         system_charset_info);
-        protocol->store(err->msg, system_charset_info);
+        protocol->store(err->get_message_text(), system_charset_info);
         if (protocol->write())
           goto err;
       }
@@ -4495,8 +4500,8 @@ send_result_message:
     switch (result_code) {
     case HA_ADMIN_NOT_IMPLEMENTED:
       {
-       char buf[MYSQL_ERRMSG_SIZE];
-       uint length=my_snprintf(buf, sizeof(buf),
+	char buf[MYSQL_ERRMSG_SIZE];
+	uint length=my_snprintf(buf, sizeof(buf),
 				ER(ER_CHECK_NOT_IMPLEMENTED), operator_name);
 	protocol->store(STRING_WITH_LEN("note"), system_charset_info);
 	protocol->store(buf, length, system_charset_info);
@@ -4886,7 +4891,7 @@ bool mysql_create_like_schema_frm(THD* thd, TABLE_LIST* schema_table,
 bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
                              HA_CREATE_INFO *create_info)
 {
-  MDL_LOCK_DATA *target_lock_data= 0;
+  MDL_request *target_mdl_request= NULL;
   char src_path[FN_REFLEN], dst_path[FN_REFLEN];
   uint dst_path_length;
   char *db= table->db;
@@ -4933,9 +4938,9 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
   }
   else
   {
-    if (lock_table_name_if_not_cached(thd, db, table_name, &target_lock_data))
+    if (lock_table_name_if_not_cached(thd, db, table_name, &target_mdl_request))
       goto err;
-    if (!target_lock_data)
+    if (!target_mdl_request)
       goto table_exists;
     dst_path_length= build_table_filename(dst_path, sizeof(dst_path),
                                           db, table_name, reg_ext, 0);
@@ -4945,7 +4950,7 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
       Make the metadata lock available to open_table() called to
       reopen the table down the road.
     */
-    table->mdl_lock_data= target_lock_data;
+    table->mdl_request= target_mdl_request;
   }
 
   DBUG_EXECUTE_IF("sleep_create_like_before_copy", my_sleep(6000000););
@@ -5109,10 +5114,10 @@ table_exists:
     my_error(ER_TABLE_EXISTS_ERROR, MYF(0), table_name);
 
 err:
-  if (target_lock_data)
+  if (target_mdl_request)
   {
-    mdl_release_lock(&thd->mdl_context, target_lock_data);
-    mdl_remove_lock(&thd->mdl_context, target_lock_data);
+    thd->mdl_context.release_lock(target_mdl_request->ticket);
+    thd->mdl_context.remove_request(target_mdl_request);
   }
   DBUG_RETURN(res);
 }
@@ -6001,7 +6006,7 @@ mysql_fast_or_online_alter_table(THD *thd,
       Make the metadata lock available to open_table() called to
       reopen the table down the road.
     */
-    table_list->mdl_lock_data= table->mdl_lock_data;
+    table_list->mdl_request->ticket= table->mdl_ticket;
   }
 
   /*
@@ -6578,7 +6583,8 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
                        uint order_num, ORDER *order, bool ignore)
 {
   TABLE *table, *new_table= 0;
-  MDL_LOCK_DATA *mdl_lock_data, *target_lock_data= 0;
+  MDL_ticket *mdl_ticket;
+  MDL_request *target_mdl_request= NULL;
   int error= 0;
   char tmp_name[80],old_name[32],new_name_buff[FN_REFLEN];
   char new_alias_buff[FN_REFLEN], *table_name, *db, *new_alias, *alias;
@@ -6751,7 +6757,7 @@ view_err:
                                         MYSQL_OPEN_TAKE_UPGRADABLE_MDL)))
     DBUG_RETURN(TRUE);
   table->use_all_columns();
-  mdl_lock_data= table->mdl_lock_data;
+  mdl_ticket= table->mdl_ticket;
 
   /*
     Prohibit changing of the UNION list of a non-temporary MERGE table
@@ -6804,9 +6810,9 @@ view_err:
       else
       {
         if (lock_table_name_if_not_cached(thd, new_db, new_name,
-                                          &target_lock_data))
+                                          &target_mdl_request))
           DBUG_RETURN(TRUE);
-        if (!target_lock_data)
+        if (!target_mdl_request)
         {
 	  my_error(ER_TABLE_EXISTS_ERROR, MYF(0), new_alias);
 	  DBUG_RETURN(TRUE);
@@ -6986,13 +6992,12 @@ view_err:
       */
       if (new_name != table_name || new_db != db)
       {
-        mdl_release_lock(&thd->mdl_context, target_lock_data);
-        mdl_remove_lock(&thd->mdl_context, target_lock_data);
-        mdl_release_and_remove_all_locks_for_name(&thd->mdl_context,
-                                                  mdl_lock_data);
+        thd->mdl_context.release_lock(target_mdl_request->ticket);
+        thd->mdl_context.remove_request(target_mdl_request);
+        thd->mdl_context.release_all_locks_for_name(mdl_ticket);
       }
       else
-        mdl_downgrade_exclusive_lock(&thd->mdl_context, mdl_lock_data);
+        mdl_ticket->downgrade_exclusive_lock();
     }
     DBUG_RETURN(error);
   }
@@ -7406,13 +7411,12 @@ end_online:
   {
     if ((new_name != table_name || new_db != db))
     {
-      mdl_release_lock(&thd->mdl_context, target_lock_data);
-      mdl_remove_lock(&thd->mdl_context, target_lock_data);
-      mdl_release_and_remove_all_locks_for_name(&thd->mdl_context,
-                                                mdl_lock_data);
+      thd->mdl_context.release_lock(target_mdl_request->ticket);
+      thd->mdl_context.remove_request(target_mdl_request);
+      thd->mdl_context.release_all_locks_for_name(mdl_ticket);
     }
     else
-      mdl_downgrade_exclusive_lock(&thd->mdl_context, mdl_lock_data);
+      mdl_ticket->downgrade_exclusive_lock();
   }
 
 end_temporary:
@@ -7466,10 +7470,10 @@ err:
                                  alter_info->datetime_field->field_name);
     thd->abort_on_warning= save_abort_on_warning;
   }
-  if (target_lock_data)
+  if (target_mdl_request)
   {
-    mdl_release_lock(&thd->mdl_context, target_lock_data);
-    mdl_remove_lock(&thd->mdl_context, target_lock_data);
+    thd->mdl_context.release_lock(target_mdl_request->ticket);
+    thd->mdl_context.remove_request(target_mdl_request);
   }
   DBUG_RETURN(TRUE);
 
@@ -7481,12 +7485,12 @@ err_with_mdl:
     tables and release the exclusive metadata lock.
   */
   thd->locked_tables_list.unlink_all_closed_tables();
-  if (target_lock_data)
+  if (target_mdl_request)
   {
-    mdl_release_lock(&thd->mdl_context, target_lock_data);
-    mdl_remove_lock(&thd->mdl_context, target_lock_data);
+    thd->mdl_context.release_lock(target_mdl_request->ticket);
+    thd->mdl_context.remove_request(target_mdl_request);
   }
-  mdl_release_and_remove_all_locks_for_name(&thd->mdl_context, mdl_lock_data);
+  thd->mdl_context.release_all_locks_for_name(mdl_ticket);
   DBUG_RETURN(TRUE);
 }
 /* mysql_alter_table */

@@ -29,6 +29,7 @@
 #include "PageType.h"
 #include "SyncObject.h"
 #include "SparseArray.h"
+#include "Mutex.h"
 
 #define TRANSACTION_ID(transaction)		((transaction) ? transaction->transactionId : 0)
 
@@ -36,6 +37,7 @@
 
 #define PAGE_SIZE		4096
 #define CACHE_SIZE		1024
+#define SECTION_HASH_SIZE	997
 
 // Selective debugging
 
@@ -113,10 +115,7 @@ public:
 	void	createSection(int32 sectionId, TransId transId);
 	void	dropDatabase();
 	void	enableSerialLog();
-	void	rollback (TransId transId, bool updateTransaction);
 	void	updateRecord(int32 sectionId, int32 recordId, Stream *stream, TransId transId, bool earlyWrite);
-	void	prepareTransaction(TransId transId, int xidLength, const UCHAR *xid);
-	void	commit(Transaction *transaction);
 	void	reportStatistics();
 	bool	hasDirtyPages();
 	bool	deleteShadow (DatabaseCopy *shadow);
@@ -168,7 +167,9 @@ public:
 	Bdb*	fakePage (int32 pageNumber, PageType pageType, TransId transId);
 	Bdb*	trialFetch(int32 pageNumber, PageType pageType, LockType lockType);
 	void	init(int pageSz, int cacheSize);
-	Cache*	create (const char *fileName, int pageSize, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot);
+	Cache*	create (const char *fileName, int pageSize, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot, 
+		bool useExistingFile = false);
+
 	void	validateCache(void);
 	void	logUpdatedRecords(Transaction* transaction, RecordVersion* records, bool chill = false);
 	void	logIndexUpdates(DeferredIndex* deferredIndex);
@@ -202,7 +203,8 @@ public:
 	int			sequencesPerSection;
 	bool		utf8;
 	bool		noLog;
-	Section		**sections;
+	Section		*sections[SECTION_HASH_SIZE];
+	Mutex		sectionsMutex;
 	int			debug;
 	int			sequence;
 	int			odsVersion;

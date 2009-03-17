@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -101,6 +102,11 @@ int maria_delete_all_rows(MARIA_HA *info)
       my_chsize(info->dfile.file, 0, 0, MYF(MY_WME)) ||
       my_chsize(share->kfile.file, share->base.keystart, 0, MYF(MY_WME)))
     goto err;
+  if (unlikely(ma_get_physical_logging_state(share)))
+  {
+    maria_log_chsize_physical(share, MA_LOG_CHSIZE_MAD, 0);
+    maria_log_chsize_physical(share, MA_LOG_CHSIZE_MAI, share->base.keystart);
+  }
 
   if (_ma_initialize_data_file(share, info->dfile.file))
     goto err;
@@ -115,8 +121,16 @@ int maria_delete_all_rows(MARIA_HA *info)
       but redo_insert are skipped (dirty pages list is empty).
       To avoid this, we need to set skip_redo_lsn now, and thus need to sync
       files.
+      Also fixes the problem of:
+      bulk insert; insert; delete_all; crash:
+      "bulk insert" is skipped (no REDOs), so if "insert" would not be skipped
+      (if we didn't update skip_redo_lsn below) then "insert" would be tried
+      and fail, saying that it sees that the first page has to be created
+      though the inserted row has rownr>0.
     */
-    my_bool error= _ma_state_info_write(share, 1|4) ||
+    my_bool error= _ma_state_info_write(share,
+                                        MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET |
+                                        MA_STATE_INFO_WRITE_LOCK) ||
       _ma_update_state_lsns(share, lsn, trnman_get_min_trid(), FALSE, FALSE) ||
       _ma_sync_table_files(info);
     info->trn->rec_lsn= LSN_IMPOSSIBLE;

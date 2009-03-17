@@ -1,3 +1,18 @@
+/* Copyright (C) 2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; version 2 of the License.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
+
 /**
   @file
 
@@ -156,12 +171,15 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
 
 #ifndef DBUG_OFF
   backup_factory *saved_factory; // to save hton->get_backup_engine
+#ifndef WITH_MARIA_STORAGE_ENGINE
+  handlerton *maria_hton= (handlerton*) 1;  
+#endif
 
   DBUG_EXECUTE_IF("backup_test_dummy_be_factory", 
     {
       handlerton *hton= se_hton(se);
       saved_factory= hton->get_backup_engine;
-      if (hton == myisam_hton) 
+      if (hton == myisam_hton || hton == maria_hton) 
         hton->get_backup_engine= dummy_backup_engine_factory;
     });
 #endif
@@ -389,10 +407,10 @@ Backup_info::Backup_info(backup::Logger &log, THD *thd)
 
   bzero(m_snap, sizeof(m_snap));
 
-  if (hash_init(&ts_hash, &::my_charset_bin, 16, 0, 0,
-                Ts_hash_node::get_key, Ts_hash_node::free, MYF(0))
+  if (my_hash_init(&ts_hash, &::my_charset_bin, 16, 0, 0,
+                   Ts_hash_node::get_key, Ts_hash_node::free, MYF(0))
       ||
-      hash_init(&dep_hash, &::my_charset_bin, 16, 0, 0,
+      my_hash_init(&dep_hash, &::my_charset_bin, 16, 0, 0,
                 Dep_node::get_key, Dep_node::free, MYF(0)))
   {
     // Allocation failed. Error has been reported, but not logged to backup logs
@@ -474,8 +492,8 @@ Backup_info::~Backup_info()
   while ((snap= it++))
     delete snap;
 
-  hash_free(&ts_hash);  
-  hash_free(&dep_hash);
+  my_hash_free(&ts_hash);  
+  my_hash_free(&dep_hash);
 }
 
 /**
@@ -529,7 +547,7 @@ backup::Image_info::Ts* Backup_info::add_ts(obs::Obj *obj)
   size_t klen= 0;
   uchar  *key= Ts_hash_node::get_key((const uchar*)&n0, &klen, TRUE);
 
-  Ts_hash_node *n1= (Ts_hash_node*) hash_search(&ts_hash, key, klen);
+  Ts_hash_node *n1= (Ts_hash_node*) my_hash_search(&ts_hash, key, klen);
 
   // if tablespace was found, return the catalogue entry stored in the hash
   if (n1)
@@ -1236,7 +1254,7 @@ int Backup_info::get_dep_node(const ::String &db_name,
   size_t klen;
   uchar  *key= Dep_node::get_key((const uchar*)&n, &klen, TRUE);
 
-  node= (Dep_node*) hash_search(&dep_hash, key, klen);
+  node= (Dep_node*) my_hash_search(&dep_hash, key, klen);
 
   // if we have found node in the hash there is nothing more to do
   if (node)

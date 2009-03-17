@@ -1,0 +1,14 @@
+*** Bug #34478 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (s1 varbinary(1000));
+CREATE INDEX i1 on t1(s1);
+INSERT INTO t1 VALUES (0x00), (0x0000), (0x0000), (0x00);
+SELECT hex(s1) FROM t1 WHERE s1 = 0x00;
+hex(s1)
+00
+00
+SELECT count(*) FROM t1;
+count(*)
+4
+DROP TABLE t1;
