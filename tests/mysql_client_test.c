@@ -1509,7 +1509,7 @@ static void test_prepare_simple()
 #define CMD_BUFFER_SIZE 8192
 
 char mct_log_file_path[FILE_PATH_SIZE];
-FILE *mct_log_file;
+FILE *mct_log_file= NULL;
 
 void mct_start_logging(const char *test_case_name)
 {
@@ -1518,6 +1518,14 @@ void mct_start_logging(const char *test_case_name)
   if (!tmp_dir)
   {
     printf("Warning: MYSQL_TMP_DIR is not set. Logging is disabled.\n");
+    return;
+  }
+
+  if (mct_log_file)
+  {
+    printf("Warning: can not start logging for test case '%s' "
+           "because log is already open\n",
+           (const char *) test_case_name);
     return;
   }
 
@@ -1564,55 +1572,13 @@ void mct_log(const char *format, ...)
   }
 }
 
-int mct_check_result(const char *result_file_name)
+void mct_close_log()
 {
-  char diff_cmd[CMD_BUFFER_SIZE];
-
-  const char *test_dir= getenv("MYSQL_TEST_DIR");
-  char result_file_path[FILE_PATH_SIZE];
-
   if (!mct_log_file)
-  {
-    printf("Warning: logging was disabled. Result checking is impossible.\n");
-    return 0;
-  }
-
-  if (!test_dir)
-  {
-    printf("Warning: MYSQL_TEST_DIR is not set. "
-           "Result checking is impossible.\n");
-    return 0;
-  }
-
-  /*
-    Path is: <test_dir>/<result_file_name>
-    2 is length of '/' + \0
-  */
-
-  if (strlen(test_dir) + strlen(result_file_name) + 2 > FILE_PATH_SIZE)
-  {
-    printf("Warning: MYSQL_TEST_DIR is too long. "
-           "Result checking is impossible.\n");
-    return 0;
-  }
-
-  my_snprintf(result_file_path, FILE_PATH_SIZE,
-              "%s/%s",
-              (const char *) test_dir,
-              (const char *) result_file_name);
+    return;
 
   my_fclose(mct_log_file, MYF(0));
   mct_log_file= NULL;
-
-  my_snprintf(diff_cmd, CMD_BUFFER_SIZE, "diff -u '%s' '%s'",
-              (const char *) result_file_path,
-              (const char *) mct_log_file_path);
-
-  puts("");
-  fflush(stdout);
-  fflush(stderr);
-
-  return system(diff_cmd);
 }
 
 #define WL4435_NUM_PARAMS 10
@@ -1824,19 +1790,19 @@ static void test_wl4435()
       for (i = 0; i < num_fields; ++i)
       {
         mct_log("  - %d: name: '%s'/'%s'; table: '%s'/'%s'; "
-                   "db: '%s'; catalog: '%s'; length: %d; max_length: %d; "
-                   "type: %d; decimals: %d\n",
-                   (int) i,
-                   (const char *) fields[i].name,
-                   (const char *) fields[i].org_name,
-                   (const char *) fields[i].table,
-                   (const char *) fields[i].org_table,
-                   (const char *) fields[i].db,
-                   (const char *) fields[i].catalog,
-                   (int) fields[i].length,
-                   (int) fields[i].max_length,
-                   (int) fields[i].type,
-                   (int) fields[i].decimals);
+                "db: '%s'; catalog: '%s'; length: %d; max_length: %d; "
+                "type: %d; decimals: %d\n",
+                (int) i,
+                (const char *) fields[i].name,
+                (const char *) fields[i].org_name,
+                (const char *) fields[i].table,
+                (const char *) fields[i].org_table,
+                (const char *) fields[i].db,
+                (const char *) fields[i].catalog,
+                (int) fields[i].length,
+                (int) fields[i].max_length,
+                (int) fields[i].type,
+                (int) fields[i].decimals);
 
         rs_bind[i].buffer_type= fields[i].type;
         rs_bind[i].is_null= &is_null;
@@ -1891,22 +1857,22 @@ static void test_wl4435()
           {
             case MYSQL_TYPE_LONG:
               mct_log(" int: %ld;",
-                         (long) *((int *) rs_bind[i].buffer));
+                      (long) *((int *) rs_bind[i].buffer));
               break;
 
             case MYSQL_TYPE_STRING:
               mct_log(" str: '%s';",
-                         (char *) rs_bind[i].buffer);
+                      (char *) rs_bind[i].buffer);
               break;
 
             case MYSQL_TYPE_DOUBLE:
               mct_log(" dbl: %lf;",
-                         (double) *((double *) rs_bind[i].buffer));
+                      (double) *((double *) rs_bind[i].buffer));
               break;
 
             case MYSQL_TYPE_NEWDECIMAL:
               mct_log(" dec: '%s';",
-                         (char *) rs_bind[i].buffer);
+                      (char *) rs_bind[i].buffer);
               break;
 
             default:
@@ -1947,11 +1913,10 @@ static void test_wl4435()
 
   mysql_stmt_close(stmt);
 
+  mct_close_log();
+
   rc= mysql_commit(mysql);
   myquery(rc);
-
-  rc= mct_check_result("r/test_wl4435.result");
-  mytest_r(rc);
 
   /* i18n part of test case. */
 
