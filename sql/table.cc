@@ -475,6 +475,8 @@ void free_table_share(TABLE_SHARE *share)
   if (share->tmp_table == NO_TMP_TABLE)
     pthread_mutex_destroy(&share->LOCK_ha_data);
   my_hash_free(&share->name_hash);
+  if (share->ha_data_destroy)
+    share->ha_data_destroy(share->ha_data);
 
   plugin_unlock(NULL, share->db_plugin);
   share->db_plugin= NULL;
@@ -1087,7 +1089,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       next_chunk+= 2 + share->comment.length;
     }
     DBUG_ASSERT (next_chunk <= buff_end);
-    if (share->mysql_version >= MYSQL_VERSION_TABLESPACE_IN_FRM)
+    if (share->mysql_version >= MYSQL_VERSION_TABLESPACE_IN_FRM_CGE)
     {
       /*
        New frm format in mysql_version 5.2.5 (originally in
@@ -3113,11 +3115,8 @@ void TABLE::reset_item_list(List<Item> *item_list) const
 
 void  TABLE_LIST::calc_md5(char *buffer)
 {
-  my_MD5_CTX context;
   uchar digest[16];
-  my_MD5Init(&context);
-  my_MD5Update(&context,(uchar *) select_stmt.str, select_stmt.length);
-  my_MD5Final(digest, &context);
+  MY_MD5_HASH(digest, (uchar *) select_stmt.str, select_stmt.length);
   sprintf((char *) buffer,
 	    "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
 	    digest[0], digest[1], digest[2], digest[3],
@@ -4920,12 +4919,11 @@ size_t max_row_length(TABLE *table, const uchar *data)
    objects for all elements of table list.
 */
 
-void alloc_mdl_locks(TABLE_LIST *table_list, MEM_ROOT *root)
+void alloc_mdl_requests(TABLE_LIST *table_list, MEM_ROOT *root)
 {
   for ( ; table_list ; table_list= table_list->next_global)
-    table_list->mdl_lock_data= mdl_alloc_lock(0, table_list->db,
-                                              table_list->table_name,
-                                              root);
+    table_list->mdl_request=
+      MDL_request::create(0, table_list->db, table_list->table_name, root);
 }
 
 

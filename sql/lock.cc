@@ -954,7 +954,7 @@ static MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table_ptr, uint count,
    @note This function assumes that no metadata locks were acquired
          before calling it. Also it cannot be called while holding
          LOCK_open mutex. Both these invariants are enforced by asserts
-         in mdl_acquire_exclusive_locks() functions.
+         in MDL_context::acquire_exclusive_locks().
 
    @retval FALSE  Success.
    @retval TRUE   Failure (OOM or thread was killed).
@@ -963,25 +963,25 @@ static MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table_ptr, uint count,
 bool lock_table_names(THD *thd, TABLE_LIST *table_list)
 {
   TABLE_LIST *lock_table;
-  MDL_LOCK_DATA *mdl_lock_data;
+  MDL_request *mdl_request;
 
   DEBUG_SYNC(thd, "before_wait_locked_tname");
   for (lock_table= table_list; lock_table; lock_table= lock_table->next_local)
   {
-    if (!(mdl_lock_data= mdl_alloc_lock(0, lock_table->db,
-                                        lock_table->table_name,
-                                        thd->mem_root)))
+    mdl_request= MDL_request::create(0, lock_table->db, lock_table->table_name,
+                                     thd->mem_root);
+    if (!mdl_request)
       goto end;
-    mdl_set_lock_type(mdl_lock_data, MDL_EXCLUSIVE);
-    mdl_add_lock(&thd->mdl_context, mdl_lock_data);
-    lock_table->mdl_lock_data= mdl_lock_data;
+    mdl_request->set_type(MDL_EXCLUSIVE);
+    thd->mdl_context.add_request(mdl_request);
+    lock_table->mdl_request= mdl_request;
   }
-  if (mdl_acquire_exclusive_locks(&thd->mdl_context))
+  if (thd->mdl_context.acquire_exclusive_locks())
     goto end;
   return 0;
 
 end:
-  mdl_remove_all_locks(&thd->mdl_context);
+  thd->mdl_context.remove_all_requests();
   return 1;
 }
 
@@ -997,8 +997,8 @@ end:
 void unlock_table_names(THD *thd)
 {
   DBUG_ENTER("unlock_table_names");
-  mdl_release_locks(&thd->mdl_context);
-  mdl_remove_all_locks(&thd->mdl_context);
+  thd->mdl_context.release_all_locks();
+  thd->mdl_context.remove_all_requests();
   DBUG_VOID_RETURN;
 }
 
@@ -1182,7 +1182,7 @@ bool lock_global_read_lock(THD *thd)
             redundancy between metadata locks, global read lock and DDL
             blocker (see WL#4399 and WL#4400).
     */
-    if (mdl_acquire_global_shared_lock(&thd->mdl_context))
+    if (thd->mdl_context.acquire_global_shared_lock())
     {
       /* Our thread was killed -- return back to initial state. */
       pthread_mutex_lock(&LOCK_global_read_lock);
@@ -1216,7 +1216,7 @@ void unlock_global_read_lock(THD *thd)
              ("global_read_lock: %u  global_read_lock_blocks_commit: %u",
               global_read_lock, global_read_lock_blocks_commit));
 
-  mdl_release_global_shared_lock(&thd->mdl_context);
+  thd->mdl_context.release_global_shared_lock();
 
   pthread_mutex_lock(&LOCK_global_read_lock);
   tmp= --global_read_lock;
@@ -1574,30 +1574,30 @@ int set_handler_table_locks(THD *thd, TABLE_LIST *table_list,
 {
   TABLE_LIST    *tlist;
   int           error= 0;
+  int           trans_lock_type;
+  thr_lock_type lock_type;
   DBUG_ENTER("set_handler_table_locks");
   DBUG_PRINT("lock_info", ("transactional: %d", transactional));
 
   for (tlist= table_list; tlist; tlist= tlist->next_global)
   {
-    int lock_type;
-    int lock_timeout= -1; /* Use default for non-transactional locks. */
-
     if (tlist->placeholder())
       continue;
+    /*
+      All tlist objects have an opened TABLE objects attached and
+      it should contain a proper lock types set even if it
+      came in as a base table from a view only.
+    */
+    lock_type= tlist->table->reginfo.lock_type;
+    int lock_timeout= -1; /* Use default for non-transactional locks. */
 
-    DBUG_ASSERT((tlist->lock_type == TL_READ) ||
-                (tlist->lock_type == TL_READ_NO_INSERT) ||
-                (tlist->lock_type == TL_WRITE_DEFAULT) ||
-                (tlist->lock_type == TL_WRITE) ||
-                (tlist->lock_type == TL_WRITE_CONCURRENT_INSERT) ||
-                (tlist->lock_type == TL_WRITE_LOW_PRIORITY));
+    DBUG_ASSERT(lock_type != TL_WRITE_DEFAULT && lock_type != TL_READ_DEFAULT);
 
     /*
-      Every tlist object has a proper lock_type set. Even if it came in
-      the list as a base table from a view only.
+      Translate the lock_type into a transactional lock type.
     */
-    lock_type= ((tlist->lock_type <= TL_READ_NO_INSERT) ?
-                HA_LOCK_IN_SHARE_MODE : HA_LOCK_IN_EXCLUSIVE_MODE);
+    trans_lock_type= ((lock_type <= TL_READ_NO_INSERT) ?
+                      HA_LOCK_IN_SHARE_MODE : HA_LOCK_IN_EXCLUSIVE_MODE);
 
     if (transactional)
     {
@@ -1634,7 +1634,7 @@ int set_handler_table_locks(THD *thd, TABLE_LIST *table_list,
     */
     if (!error || !transactional)
     {
-      error= tlist->table->file->lock_table(thd, lock_type, lock_timeout);
+      error= tlist->table->file->lock_table(thd, trans_lock_type, lock_timeout);
       if (error && transactional && (error != HA_ERR_WRONG_COMMAND))
         tlist->table->file->print_error(error, MYF(0));
     }

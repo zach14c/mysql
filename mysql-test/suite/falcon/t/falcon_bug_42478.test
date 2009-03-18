@@ -1,0 +1,56 @@
+--source include/have_falcon.inc
+
+#
+# Bug #42478 Falcon crash in Database::updateSequence
+#
+# The reason for the crash is broken handling or rename
+# cross database/schema boundaries (Falcon sequences 
+# disregard schema name on rename)
+# This test uses rename, equal table names and different
+# database/schema names to make the error apparent
+
+--echo *** Bug #42478 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+DROP DATABASE IF EXISTS d1;
+DROP DATABASE IF EXISTS d2;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+CREATE DATABASE d1;
+CREATE DATABASE d2;
+
+CREATE TABLE t1 (i INT AUTO_INCREMENT, PRIMARY KEY(i));
+RENAME TABLE t1 TO d1.t1;
+
+CREATE TABLE t1 (i INT AUTO_INCREMENT, PRIMARY KEY(i));
+RENAME TABLE t1 TO d2.t1;
+
+INSERT INTO d1.t1 VALUES();
+INSERT INTO d2.t1 VALUES();
+
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SHOW CREATE TABLE d1.t1;
+SHOW CREATE TABLE d2.t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE d1.t1;
+DROP TABLE d2.t1;
+
+DROP DATABASE d1;
+DROP DATABASE d2;

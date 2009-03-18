@@ -434,16 +434,15 @@ int ha_myisammrg::add_children_list(void)
     /* Copy select_lex. Used in unique_table() at least. */
     child_l->select_lex= parent_l->select_lex;
 
-    child_l->mdl_lock_data= NULL; /* Safety, if alloc_mdl_locks fails. */
+    child_l->mdl_request= NULL; /* Safety, if alloc_mdl_requests fails. */
 
     /* Break when this was the last child. */
     if (&child_l->next_global == this->children_last_l)
       break;
   }
 
-  alloc_mdl_locks(children_l,
-                  thd->locked_tables_root ? thd->locked_tables_root :
-                  thd->mem_root);
+  alloc_mdl_requests(children_l, thd->locked_tables_root ?
+                     thd->locked_tables_root : thd->mem_root);
 
   /* Insert children into the table list. */
   if (parent_l->next_global)
@@ -1076,6 +1075,16 @@ int ha_myisammrg::info(uint flag)
     table->s->crashed= 1;
 #endif
   stats.data_file_length= mrg_info.data_file_length;
+  if (mrg_info.errkey >= (int) table_share->keys)
+  {
+    /*
+     If value of errkey is higher than the number of keys
+     on the table set errkey to MAX_KEY. This will be
+     treated as unknown key case and error message generator
+     won't try to locate key causing segmentation fault.
+    */
+    mrg_info.errkey= MAX_KEY;
+  }
   errkey= mrg_info.errkey;
   table->s->keys_in_use.set_prefix(table->s->keys);
   stats.mean_rec_length= mrg_info.reclength;

@@ -1273,7 +1273,9 @@ sp_head::execute(THD *thd)
     */
     if (ctx)
     {
-      switch (ctx->found_handler(&hip)) {
+      uint handler_index;
+
+      switch (ctx->found_handler(& hip, & handler_index)) {
       case SP_HANDLER_NONE:
         break;
       case SP_HANDLER_CONTINUE:
@@ -1282,16 +1284,20 @@ sp_head::execute(THD *thd)
         ctx->push_hstack(i->get_cont_dest());
         /* Fall through */
       default:
+        if (ctx->end_partial_result_set)
+          thd->protocol->end_partial_result_set(thd);
         ip= hip;
         err_status= FALSE;
         ctx->clear_handler();
-        ctx->enter_handler(hip);
+        ctx->enter_handler(hip, handler_index);
         thd->clear_error();
         thd->is_fatal_error= 0;
         thd->killed= THD::NOT_KILLED;
         thd->mysys_var->abort= 0;
         continue;
       }
+
+      ctx->end_partial_result_set= FALSE;
     }
   } while (!err_status && !thd->killed && !thd->is_fatal_error);
 
@@ -3499,9 +3505,9 @@ sp_instr_copen::execute(THD *thd, uint *nextp)
     */
     if (!res)
     {
-      uint dummy1;
+      uint dummy1, dummy2;
 
-      if (thd->spcont->found_handler(&dummy1))
+      if (thd->spcont->found_handler(&dummy1, &dummy2))
         res= -1;
     }
     /* TODO: Assert here that we either have an error or a cursor */
@@ -3969,10 +3975,10 @@ sp_head::add_used_tables_to_table_list(THD *thd,
       table->prelocking_placeholder= 1;
       table->belong_to_view= belong_to_view;
       table->trg_event_map= stab->trg_event_map;
-      table->mdl_lock_data= mdl_alloc_lock(0, table->db, table->table_name,
-                                           thd->locked_tables_root ?
-                                           thd->locked_tables_root :
-                                           thd->mem_root);
+      table->mdl_request= MDL_request::create(0, table->db, table->table_name,
+                                              thd->locked_tables_root ?
+                                              thd->locked_tables_root :
+                                              thd->mem_root);
 
       /* Everyting else should be zeroed */
 
@@ -4016,9 +4022,10 @@ sp_add_to_query_tables(THD *thd, LEX *lex,
   table->lock_transactional= 1; /* allow transactional locks */
   table->select_lex= lex->current_select;
   table->cacheable_table= 1;
-  table->mdl_lock_data= mdl_alloc_lock(0, table->db, table->table_name,
-                                       thd->locked_tables_root ?
-                                       thd->locked_tables_root : thd->mem_root);
+  table->mdl_request= MDL_request::create(0, table->db, table->table_name,
+                                          thd->locked_tables_root ?
+                                          thd->locked_tables_root :
+                                          thd->mem_root);
 
   lex->add_to_query_tables(table);
   return table;

@@ -60,6 +60,7 @@ RecordScavenge::RecordScavenge(Database *db, uint64 generation, bool forceScaven
 	retireableSpace = 0;
 	unScavengeableRecords = 0;
 	unScavengeableSpace = 0;
+	maxChainLength = 0;
 
 	Sync syncActive(&database->transactionManager->activeTransactions.syncObject, "RecordScavenge::RecordScavenge");
 	syncActive.lock(Shared);
@@ -82,12 +83,10 @@ bool RecordScavenge::canBeRetired(Record* record)
 		if (!record->isVersion())
 			return true;
 
+		// This record version may be retired if it is
+		// currently not pointed to by a transaction.
+
 		RecordVersion * recVer = (RecordVersion *) record;
-		ASSERT(!recVer->superceded);  // Must be the base record
-
-		// This record version may be retired if 
-		// it is currently not pointed to by a transaction
-
 		if (!recVer->transaction)
 			return true;
 		}
@@ -107,6 +106,7 @@ bool RecordScavenge::canBeRetired(Record* record)
 
 Record* RecordScavenge::inventoryRecord(Record* record)
 {
+	uint64 chainLength = 0;
 	Record *oldestVisibleRec = NULL;
 
 	Sync syncPrior(record->getSyncPrior(), "RecordScavenge::inventoryRecord");
@@ -114,6 +114,8 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 
 	for (Record *rec = record; rec; rec = rec->getPriorVersion())
 		{
+		if (++chainLength > maxChainLength)
+			maxChainLength = chainLength;
 		int scavengeType = CANNOT_SCAVENGE;  // Initial value
 
 		++totalRecords;
@@ -310,6 +312,9 @@ void RecordScavenge::print(void)
 	Log::log (LogScavenge,"Cycle=" I64FORMAT 
 		"  Inventory; unScavengeable records=" I64FORMAT " containing " I64FORMAT " bytes\n", 
 		cycle, unScavengeableRecords, unScavengeableSpace);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Inventory; max prior reord chain length=" I64FORMAT "\n", 
+		cycle, maxChainLength);
 
 	// Results of the Scavenge Cycle;
 
