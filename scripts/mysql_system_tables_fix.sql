@@ -239,17 +239,19 @@ ALTER TABLE help_topic
 CONVERT TO CHARACTER SET utf8;
 
 #
-# Convert log tables to UTF-8.
+# Modify and convert log tables to UTF-8.
 #
 
 SET @old_log_state = @@global.general_log;
 SET GLOBAL general_log = 'OFF';
 ALTER TABLE general_log CONVERT TO CHARACTER SET utf8;
+ALTER TABLE general_log MODIFY COLUMN server_id INTEGER UNSIGNED NOT NULL;
 SET GLOBAL general_log = @old_log_state;
 
 SET @old_log_state = @@global.slow_query_log;
 SET GLOBAL slow_query_log = 'OFF';
 ALTER TABLE slow_log CONVERT TO CHARACTER SET utf8;
+ALTER TABLE slow_log MODIFY COLUMN server_id INTEGER UNSIGNED NOT NULL;
 SET GLOBAL slow_query_log = @old_log_state;
 
 #
@@ -524,7 +526,10 @@ ALTER TABLE event MODIFY sql_mode
                             'PAD_CHAR_TO_FULL_LENGTH'
                             ) DEFAULT '' NOT NULL AFTER on_completion;
 ALTER TABLE event MODIFY name char(64) CHARACTER SET utf8 NOT NULL default '';
-ALTER TABLE event ADD COLUMN originator INT(10) NOT NULL AFTER comment;
+
+ALTER TABLE event MODIFY COLUMN originator INT UNSIGNED NOT NULL;
+ALTER TABLE event ADD COLUMN originator INT UNSIGNED NOT NULL AFTER comment;
+
 ALTER TABLE event MODIFY COLUMN status ENUM('ENABLED','DISABLED','SLAVESIDE_DISABLED') NOT NULL default 'ENABLED';
 
 ALTER TABLE event ADD COLUMN time_zone char(64) CHARACTER SET latin1
