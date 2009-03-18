@@ -325,7 +325,7 @@ void TransactionManager::purgeTransactionsWithLocks()
 
 	while ((transaction != NULL) &&
 		   (transaction->state == Committed) &&
-		   (transaction->commitId < oldestActive) &&
+		   (transaction->commitId <= oldestActive) &&
 		   !transaction->writePending)
 		{
 		transaction->commitRecords();
