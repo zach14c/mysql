@@ -169,8 +169,9 @@ our $opt_force;
 our $opt_mem= $ENV{'MTR_MEM'};
 
 our $opt_gcov;
-our $opt_gcov_err;
-our $opt_gcov_msg;
+our $opt_gcov_exe= "gcov";
+our $opt_gcov_err= "mysql-test-gcov.msg";
+our $opt_gcov_msg= "mysql-test-gcov.err";
 
 our $glob_debugger= 0;
 our $opt_gdb;
@@ -414,7 +415,7 @@ sub main {
   mtr_print_line();
 
   if ( $opt_gcov ) {
-    gcov_collect($basedir, $opt_gcov,
+    gcov_collect($basedir, $opt_gcov_exe,
 		 $opt_gcov_msg, $opt_gcov_err);
   }
 
@@ -5191,6 +5192,8 @@ Misc options
   sleep=SECONDS         Passed to mysqltest, will be used as fixed sleep time
   debug-sync-timeout=NUM Set default timeout for WAIT_FOR debug sync
                         actions. Disable facility with NUM=0.
+  gcov                  Collect coverage information after the test.
+                        The result is a gcov file per source and header file.
 
 HERE
   exit(1);
