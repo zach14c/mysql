@@ -87,6 +87,7 @@ void Index::init(Table *tbl, const char *indexName, int indexType, int count)
 {
 	table = tbl;
 	database = table->database;
+	maxKeyLength = database->getMaxKeyLength();
 	dbb = table->dbb;
 	name = indexName;
 	type = indexType & IndexTypeMask;
@@ -309,7 +310,7 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey,
 
 			if (field->collation)
 				{
-				field->collation->makeKey(value, indexKey, partialLength, database->getMaxKeyLength(), highKey);
+				field->collation->makeKey(value, indexKey, partialLength, maxKeyLength, highKey);
 				}
 			else
 				{
@@ -401,7 +402,7 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 		if(n < numberFields - 1)
 			segmentLength = ROUNDUP(segmentLength , RUN);
 	
-		if (p + segmentLength > maxIndexKeyRunLength(database->getMaxKeyLength()))
+		if (p + segmentLength > maxIndexKeyRunLength(maxKeyLength))
 			throw SQLError (INDEX_OVERFLOW, "maximum index key length exceeded");
 			
 		for (int i = 0; i < length; ++i)
@@ -428,7 +429,7 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 		// segment. This will make key larger and will hopefully
 		// reduce the number of false positives in search (saves
 		// work in postprocessing).
-		if (p < (uint)database->getMaxKeyLength())
+		if (p < (uint)maxKeyLength)
 			key[p++] = SEGMENT_BYTE(n, numberFields);
 		}
 
@@ -863,8 +864,8 @@ int Index::getPartialLength(int segment)
 
 void Index::setPartialLength(int segment, uint partialLength)
 {
-	if (partialLength > (uint) database->getMaxKeyLength())
-		partialLength = database->getMaxKeyLength();
+	if (partialLength > (uint) maxKeyLength)
+		partialLength = maxKeyLength;
 
 	if (!partialLengths)
 		{
@@ -927,7 +928,7 @@ void Index::checkMaxKeyLength(void)
 	Field *fld;
 	int sumKeyLen = 0;
 	int len;
-	int maxKeyLen = database->getMaxKeyLength() * RUN / (RUN - 1);
+	int maxKeyLen = maxKeyLength * RUN / (RUN - 1);
 
 	// All but the last field will be padded to the nearest RUN length
 	
