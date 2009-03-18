@@ -1673,7 +1673,13 @@ static bool mysql_test_create_table(Prepared_statement *stmt)
     if (!(lex->create_info.options & HA_LEX_CREATE_TMP_TABLE))
     {
       lex->link_first_table_back(create_table, link_to_local);
-      create_table->open_type= TABLE_LIST::OPEN_OR_CREATE;
+      /*
+        The open and lock strategies will be set again once the
+        statement is executed. These values are only meaningful
+        for the prepare phase.
+      */
+      create_table->open_strategy= TABLE_LIST::OPEN_IF_EXISTS;
+      create_table->lock_strategy= TABLE_LIST::SHARED_MDL;
     }
 
     if (open_normal_and_derived_tables(stmt->thd, lex->query_tables, 0))

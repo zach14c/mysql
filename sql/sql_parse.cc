@@ -2552,7 +2552,9 @@ mysql_execute_command(THD *thd)
       if (!(create_info.options & HA_LEX_CREATE_TMP_TABLE))
       {
         lex->link_first_table_back(create_table, link_to_local);
-        create_table->open_type= TABLE_LIST::OPEN_OR_CREATE;
+        /* Set strategies: reset default or 'prepared' values. */
+        create_table->open_strategy= TABLE_LIST::OPEN_IF_EXISTS;
+        create_table->lock_strategy= TABLE_LIST::EXCLUSIVE_DOWNGRADABLE_MDL;
         if (!thd->locked_tables_mode)
           global_schema_lock_guard.lock();
       }

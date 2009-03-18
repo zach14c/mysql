@@ -881,6 +881,7 @@ static bool notify_shared_lock(THD *thd, MDL_ticket *conflicting_ticket)
   if (conflicting_ticket->is_shared())
   {
     THD *conflicting_thd= conflicting_ticket->get_ctx()->get_thd();
+    DBUG_ASSERT(thd != conflicting_thd); /* Self-deadlock */
     woke= mysql_notify_thread_having_shared_lock(thd, conflicting_thd);
   }
   return woke;

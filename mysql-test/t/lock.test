@@ -281,20 +281,5 @@ drop table t1;
 drop view v1;
 
 --echo #
---echo # WL#4284: Transactional DDL locking
---echo #
---echo # FLUSH PRIVILEGES should not implicitly unlock locked tables.
---echo #
---disable_warnings
-drop table if exists t1;
---enable_warnings
-create table t1 (c1 int);
-lock tables t1 read;
---error ER_TABLE_NOT_LOCKED
-flush privileges;
-unlock tables;
-drop table t1;
-
---echo #
 --echo # End of 6.0 tests.
 --echo #
