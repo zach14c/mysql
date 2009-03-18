@@ -5524,6 +5524,14 @@ void mysql_reset_thd_for_next_command(THD *thd)
 }
 
 
+/**
+  Resets the lex->current_select object.
+  @note It is assumed that lex->current_select != NULL
+
+  This function is a wrapper around select_lex->init_select() with an added
+  check for the special situation when using INTO OUTFILE and LOAD DATA.
+*/
+
 void
 mysql_init_select(LEX *lex)
 {
@@ -5537,6 +5545,18 @@ mysql_init_select(LEX *lex)
   }
 }
 
+
+/**
+  Used to allocate a new SELECT_LEX object on the current thd mem_root and
+  link it into the relevant lists.
+
+  This function is always followed by mysql_init_select.
+
+  @see mysql_init_select
+
+  @retval TRUE An error occurred
+  @retval FALSE The new SELECT_LEX was successfully allocated.
+*/
 
 bool
 mysql_new_select(LEX *lex, bool move_down)
