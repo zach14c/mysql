@@ -175,6 +175,7 @@ SELECT * FROM UPPER.ucase;
 
 --error ER_NONUNIQ_DB
 BACKUP DATABASE upper, UPPER to 'notunique.bup';
+--replace_regex /[0000-9999]+/####/
 SHOW WARNINGS;
 
 --echo #
@@ -183,6 +184,7 @@ SHOW WARNINGS;
 
 --error ER_BAD_DB_ERROR
 BACKUP DATABASE NoTThErE to 'notthere.bup';
+--replace_regex /[0000-9999]+/####/
 SHOW WARNINGS;
 
 --echo #

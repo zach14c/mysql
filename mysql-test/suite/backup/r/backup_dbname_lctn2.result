@@ -213,8 +213,8 @@ BACKUP DATABASE upper, UPPER to 'notunique.bup';
 ERROR 42000: Not unique database: 'UPPER'
 SHOW WARNINGS;
 Level	Code	Message
-Error	1753	Not unique database: 'UPPER'
-Warning	1763	Operation aborted
+Error	####	Not unique database: 'UPPER'
+Warning	####	Operation aborted
 #
 # Verify that BACKUP error message has lower case dbname when not found
 #
@@ -222,8 +222,8 @@ BACKUP DATABASE NoTThErE to 'notthere.bup';
 ERROR 42000: Unknown database 'NoTThErE'
 SHOW WARNINGS;
 Level	Code	Message
-Error	1049	Unknown database 'NoTThErE'
-Warning	1763	Operation aborted
+Error	####	Unknown database 'NoTThErE'
+Warning	####	Operation aborted
 #
 # CLEANUP
 #
