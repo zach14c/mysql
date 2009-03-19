@@ -223,7 +223,7 @@ static int myisammrg_parent_open_callback(void *callback_param,
   TABLE_LIST    *child_l;
   const char    *db;
   const char    *table_name;
-  uint          dirlen;
+  size_t        dirlen;
   char          dir_path[FN_REFLEN];
   DBUG_ENTER("myisammrg_parent_open_callback");
 
@@ -552,6 +552,62 @@ static MI_INFO *myisammrg_attach_children_callback(void *callback_param)
 
 
 /**
+
+  @detail This function initializes the MERGE storage engine structures
+    and adds a child list of TABLE_LIST to the parent TABLE.
+
+  @param[in]    name            MERGE table path name
+  @param[in]    mode            read/write mode, unused
+  @param[in]    test_if_locked  open flags
+
+  @return       status
+    @retval     0               OK
+    @retval     -1              Error, my_errno gives reason
+*/
+
+int ha_myisammrg::open(const char *name, int mode __attribute__((unused)),
+                       uint test_if_locked)
+{
+  DBUG_ENTER("ha_myisammrg::open");
+  DBUG_PRINT("myrg", ("name: '%s'  table: 0x%lx", name, (long) table));
+  DBUG_PRINT("myrg", ("test_if_locked: %u", test_if_locked));
+
+  /* Save for later use. */
+  this->test_if_locked= test_if_locked;
+
+  /* retrieve children table list. */
+  my_errno= 0;
+  if (is_cloned)
+  {
+    /*
+      Open and attaches the MyISAM tables,that are under the MERGE table 
+      parent, on the MyISAM storage engine interface directly within the
+      MERGE engine. The new MyISAM table instances, as well as the MERGE 
+      clone itself, are not visible in the table cache. This is not a 
+      problem because all locking is handled by the original MERGE table
+      from which this is cloned of.
+    */
+    if (!(file= myrg_open(table->s->normalized_path.str, table->db_stat, 
+                                       HA_OPEN_IGNORE_IF_LOCKED)))
+    {
+      DBUG_PRINT("error", ("my_errno %d", my_errno));
+      DBUG_RETURN(my_errno ? my_errno : -1); 
+    }
+
+    file->children_attached= TRUE;
+
+    info(HA_STATUS_NO_LOCK | HA_STATUS_VARIABLE | HA_STATUS_CONST);
+  }
+  else if (!(file= myrg_parent_open(name, myisammrg_parent_open_callback, this)))
+  {
+    DBUG_PRINT("error", ("my_errno %d", my_errno));
+    DBUG_RETURN(my_errno ? my_errno : -1);
+  }
+  DBUG_PRINT("myrg", ("MYRG_INFO: 0x%lx", (long) file));
+  DBUG_RETURN(0);
+}
+
+/**
    Returns a cloned instance of the current handler.
 
    @return A cloned handler instance.
@@ -563,6 +619,7 @@ handler *ha_myisammrg::clone(MEM_ROOT *mem_root)
     (ha_myisammrg*) get_new_handler(table->s, mem_root, table->s->db_type());
   if (!new_handler)
     return NULL;
+  
   
   /* Inform ha_myisammrg::open() that it is a cloned handler */
   new_handler->is_cloned= TRUE;
@@ -886,6 +943,7 @@ int ha_myisammrg::close(void)
   /*
     There are cases where children are not explicitly detached before
     close. detach_children() protects itself against double detach.
+    children_attached is always true. 
   */
   if (!is_cloned)
     detach_children();
@@ -1231,7 +1289,7 @@ THR_LOCK_DATA **ha_myisammrg::store_lock(THD *thd,
 static void split_file_name(const char *file_name,
 			    LEX_STRING *db, LEX_STRING *name)
 {
-  uint dir_length, prefix_length;
+  size_t dir_length, prefix_length;
   char buff[FN_REFLEN];
 
   db->length= 0;
@@ -1304,7 +1362,7 @@ int ha_myisammrg::create(const char *name, register TABLE *form,
   const char **table_names, **pos;
   TABLE_LIST *tables= (TABLE_LIST*) create_info->merge_list.first;
   THD *thd= current_thd;
-  uint dirlgt= dirname_length(name);
+  size_t dirlgt= dirname_length(name);
   DBUG_ENTER("ha_myisammrg::create");
 
   /* Allocate a table_names array in thread mem_root. */
@@ -1363,7 +1421,7 @@ int ha_myisammrg::create(const char *name, register TABLE *form,
 void ha_myisammrg::append_create_info(String *packet)
 {
   const char *current_db;
-  uint db_length;
+  size_t db_length;
   THD *thd= current_thd;
   MYRG_TABLE *open_table, *first;
 

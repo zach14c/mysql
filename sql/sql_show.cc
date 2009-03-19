@@ -391,7 +391,10 @@ find_files(THD *thd, List<LEX_STRING> *files, const char *db,
     wild_length= strlen(wild);
     if (!wild[0])
       wild= 0;
+    else
+      wild_length= strlen(wild);
   }
+
 
   bzero((char*) &table_list,sizeof(table_list));
 
@@ -4072,6 +4075,17 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     table->field[4]->store((longlong) count, TRUE);
     field->sql_type(type);
     table->field[14]->store(type.ptr(), type.length(), cs);
+    /*
+      MySQL column type has the following format:
+      base_type [(dimension)] [unsigned] [zerofill].
+      For DATA_TYPE column we extract only base type.
+    */
+    if (!tmp_buff)
+      /*
+        if there is no dimention part then check the presence of
+        [unsigned] [zerofill] attributes and cut them of if exist.
+      */
+      tmp_buff= strchr(type.ptr(), ' ');
 
     if (get_field_default_value(thd, timestamp_field, field, &type, 0))
     {

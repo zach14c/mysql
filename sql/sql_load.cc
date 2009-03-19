@@ -16,7 +16,6 @@
 
 /* Copy data from a textfile to table */
 /* 2006-12 Erik Wetterberg : LOAD XML added */
-
 #include "mysql_priv.h"
 #include <my_dir.h>
 #include <m_ctype.h>
@@ -324,6 +323,24 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
     {
       (void) fn_format(name, ex->file_name, mysql_real_data_home, "",
 		       MY_RELATIVE_PATH | MY_UNPACK_FILENAME);
+#if !defined(__WIN__) && ! defined(__NETWARE__)
+      MY_STAT stat_info;
+      if (!my_stat(name,&stat_info,MYF(MY_WME)))
+	DBUG_RETURN(TRUE);
+
+      // if we are not in slave thread, the file must be:
+      if (!thd->slave_thread &&
+	  !((stat_info.st_mode & S_IROTH) == S_IROTH &&  // readable by others
+	    (stat_info.st_mode & S_IFLNK) != S_IFLNK && // and not a symlink
+	    ((stat_info.st_mode & S_IFREG) == S_IFREG ||
+	     (stat_info.st_mode & S_IFIFO) == S_IFIFO)))
+      {
+	my_error(ER_TEXTFILE_NOT_READABLE, MYF(0), name);
+	DBUG_RETURN(TRUE);
+      }
+      if ((stat_info.st_mode & S_IFIFO) == S_IFIFO)
+	is_fifo = 1;
+#endif
 
       if (thd->slave_thread)
       {
@@ -356,24 +373,6 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
         DBUG_RETURN(TRUE);
       }
 
-#if !defined(__WIN__) && ! defined(__NETWARE__)
-      MY_STAT stat_info;
-      if (!my_stat(name,&stat_info,MYF(MY_WME)))
-	DBUG_RETURN(TRUE);
-
-      // if we are not in slave thread, the file must be:
-      if (!thd->slave_thread &&
-	  !((stat_info.st_mode & S_IROTH) == S_IROTH &&  // readable by others
-	    (stat_info.st_mode & S_IFLNK) != S_IFLNK && // and not a symlink
-	    ((stat_info.st_mode & S_IFREG) == S_IFREG ||
-	     (stat_info.st_mode & S_IFIFO) == S_IFIFO)))
-      {
-	my_error(ER_TEXTFILE_NOT_READABLE, MYF(0), name);
-	DBUG_RETURN(TRUE);
-      }
-      if ((stat_info.st_mode & S_IFIFO) == S_IFIFO)
-	is_fifo = 1;
-#endif
     }
     if ((file=my_open(name,O_RDONLY,MYF(MY_WME))) < 0)
       DBUG_RETURN(TRUE);
@@ -595,8 +594,8 @@ static bool write_execute_load_query_log_event(THD *thd,
 {
   Execute_load_query_log_event
     e(thd, thd->query, thd->query_length,
-      (char*)thd->lex->fname_start - (char*)thd->query,
-      (char*)thd->lex->fname_end - (char*)thd->query,
+      (uint) ((char*)thd->lex->fname_start - (char*)thd->query),
+      (uint) ((char*)thd->lex->fname_end - (char*)thd->query),
       (duplicates == DUP_REPLACE) ? LOAD_DUP_REPLACE :
       (ignore ? LOAD_DUP_IGNORE : LOAD_DUP_ERROR),
       transactional_table, FALSE, killed_err_arg);
