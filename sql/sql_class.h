@@ -718,7 +718,7 @@ public:
   */
 
   char *db;
-  size_t db_length;
+  uint db_length;
 
 public:
 

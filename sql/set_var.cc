@@ -1644,6 +1644,7 @@ bool sys_var_int_ptr::check(THD *thd, set_var *var)
 bool sys_var_int_ptr::update(THD *thd, set_var *var)
 {
   *value= (uint) var->save_result.ulonglong_value;
+  return 0;
 }
 
 void sys_var_int_ptr::set_default(THD *thd, enum_var_type type)

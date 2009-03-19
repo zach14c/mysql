@@ -192,8 +192,9 @@ typedef fp_except fp_except_t;
 inline void setup_fpu()
 {
 #if defined(__FreeBSD__) && defined(HAVE_IEEEFP_H)
-  /* We can't handle floating point exceptions with threads, so disable
-     this on freebsd
+  /*
+     We can't handle floating point exceptions with threads, so disable
+     this on freebsd.
      Don't fall for overflow, underflow,divide-by-zero or loss of precision
   */
 #if defined(__i386__)
@@ -203,6 +204,7 @@ inline void setup_fpu()
   fpsetmask(~(FP_X_INV |             FP_X_OFL | FP_X_UFL | FP_X_DZ |
               FP_X_IMP));
 #endif /* __i386__ */
+
 #endif /* __FreeBSD__ && HAVE_IEEEFP_H */
 
 #ifdef HAVE_FESETROUND
@@ -1320,7 +1322,7 @@ static void mysqld_exit(int exit_code)
   exit(exit_code); /* purecov: inspected */
 }
 
-#endif /*EMBEDDED_LIBRARY*/
+#endif /* !EMBEDDED_LIBRARY */
 
 
 void clean_up(bool print_message)
@@ -3919,7 +3921,6 @@ static int init_server_components()
       {
         freopen(log_error_file, "a+", stderr);
         setbuf(stderr, NULL);
-      }
       }
     }
   }
@@ -7832,7 +7833,6 @@ static void usage(void)
   print_version();
   puts("\
 Copyright (C) 2000-2008 MySQL AB, Monty and others, 2008-2009 Sun Microsystems, Inc.\n\
-Copyright (C) 2008 Sun Microsystems, Inc.\n\
 This software comes with ABSOLUTELY NO WARRANTY. This is free software,\n\
 and you are welcome to modify and redistribute it under the GPL license\n\n\
 Starts the MySQL database server\n");

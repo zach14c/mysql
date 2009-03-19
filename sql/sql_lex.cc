@@ -265,7 +265,7 @@ void Lex_input_stream::body_utf8_append_literal(THD *thd,
   {
     thd->convert_string(&utf_txt,
                         &my_charset_utf8_general_ci,
-                        txt->str, (uint) txt->length,
+                        txt->str, txt->length,
                         txt_cs);
   }
   else
@@ -447,7 +447,7 @@ bool is_keyword(const char *name, uint len)
 bool is_lex_native_function(const LEX_STRING *name)
 {
   DBUG_ASSERT(name != NULL);
-  return (get_hash_symbol(name->str, (uint) name->length, 1) != 0);
+  return (get_hash_symbol(name->str, name->length, 1) != 0);
 }
 
 /* make a copy of token before ptr and set yytoklen */
@@ -1141,7 +1141,7 @@ int lex_one_token(void *arg, void *yythd)
       if (c != '.')
       {					// Found complete integer number.
         yylval->lex_str=get_token(lip, 0, lip->yyLength());
-	return int_token(yylval->lex_str.str, (uint) yylval->lex_str.length);
+	return int_token(yylval->lex_str.str,yylval->lex_str.length);
       }
       // fall through
     case MY_LEX_REAL:			// Incomplete real number
@@ -2048,8 +2048,8 @@ void st_select_lex::print_order(String *str,
     if (order->counter_used)
     {
       char buffer[20];
-      size_t length= my_snprintf(buffer, 20, "%d", order->counter);
-      str->append(buffer, (uint) length);
+      uint length= my_snprintf(buffer, 20, "%d", order->counter);
+      str->append(buffer, length);
     }
     else
       (*order->item)->print(str, query_type);

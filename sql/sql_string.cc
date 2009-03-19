@@ -393,7 +393,7 @@ bool String::append(const char *s,uint32 arg_length)
 
 bool String::append(const char *s)
 {
-  return append(s, (uint) strlen(s));
+  return append(s, strlen(s));
 }
 
 
@@ -1078,7 +1078,7 @@ outp:
       }
     }
     *from_end_pos= from;
-    res= (uint) (to - to_start);
+    res= to - to_start;
   }
   return (uint32) res;
 }
