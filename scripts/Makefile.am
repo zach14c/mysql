@@ -23,7 +23,6 @@ EXTRA_PROGRAMS = 	comp_sql
 bin_SCRIPTS =		@server_scripts@ \
 			msql2mysql \
 			mysql_config \
-			mysql_fix_privilege_tables \
 			mysql_fix_extensions \
 			mysql_setpermission \
 			mysql_secure_installation \
@@ -44,7 +43,6 @@ EXTRA_SCRIPTS =		make_binary_distribution.sh \
 			msql2mysql.sh \
 			mysql_config.sh \
 			mysql_config.pl.in \
-			mysql_fix_privilege_tables.sh \
 			mysql_fix_extensions.sh \
 			mysql_install_db.sh \
 			mysql_install_db.pl.in \
@@ -80,7 +78,6 @@ CLEANFILES =		@server_scripts@ \
 			make_sharedlib_distribution \
 			msql2mysql \
 			mysql_config \
-			mysql_fix_privilege_tables \
 			mysql_fix_extensions \
 			mysql_setpermission \
 			mysql_secure_installation \
