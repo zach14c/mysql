@@ -1602,15 +1602,6 @@ FLUSH TABLE t1;
 SELECT * FROM t1 ORDER BY a;
 DROP TABLE t1;
 
-#
-# BUG#40677 - Archive tables joined on primary return no result
-#
-CREATE TABLE t1(id INT NOT NULL AUTO_INCREMENT, name VARCHAR(128) NOT NULL, PRIMARY KEY(id)) ENGINE=archive;
-INSERT INTO t1 VALUES(NULL,'a'),(NULL,'a');
-CREATE TABLE t2(id INT NOT NULL AUTO_INCREMENT, name VARCHAR(128) NOT NULL, PRIMARY KEY(id)) ENGINE=archive;
-INSERT INTO t2 VALUES(NULL,'b'),(NULL,'b');
-SELECT t1.id, t2.id, t1.name, t2.name FROM t1,t2 WHERE t1.id = t2.id;
-DROP TABLE t1,t2;
 --echo #
 --echo # BUG#32880 - Repairing Archive table fails with internal error 144
 --echo #
@@ -1625,3 +1616,15 @@ SHOW CREATE TABLE t1;
 CHECK TABLE t1;
 REPAIR TABLE t1;
 DROP TABLE t1;
+
+--echo End of 5.1 tests
+
+#
+# BUG#40677 - Archive tables joined on primary return no result
+#
+CREATE TABLE t1(id INT NOT NULL AUTO_INCREMENT, name VARCHAR(128) NOT NULL, PRIMARY KEY(id)) ENGINE=archive;
+INSERT INTO t1 VALUES(NULL,'a'),(NULL,'a');
+CREATE TABLE t2(id INT NOT NULL AUTO_INCREMENT, name VARCHAR(128) NOT NULL, PRIMARY KEY(id)) ENGINE=archive;
+INSERT INTO t2 VALUES(NULL,'b'),(NULL,'b');
+SELECT t1.id, t2.id, t1.name, t2.name FROM t1,t2 WHERE t1.id = t2.id;
+DROP TABLE t1,t2;
