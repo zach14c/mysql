@@ -567,10 +567,7 @@ public:
                                ulong SV::*offset_arg)
     :sys_var_thd_enum(chain, name_arg, offset_arg, &optimizer_switch_typelib)
   {}
-  bool check(THD *thd, set_var *var)
-  {
-    return check_set(thd, var, enum_names);
-  }
+  bool check(THD *thd, set_var *var);
   void set_default(THD *thd, enum_var_type type);
   uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
   static bool symbolic_mode_representation(THD *thd, ulonglong sql_mode,

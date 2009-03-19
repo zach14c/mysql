@@ -98,30 +98,30 @@ explain extended select * from t1 where a in (select pk from t10 where pk<3);
 
 select @@optimizer_switch; 
 
-set optimizer_switch='no_materialization';
+set optimizer_switch='default,materialization=off';
 select @@optimizer_switch; 
 
-set optimizer_switch='no_semijoin';
+set optimizer_switch='default,semijoin=off';
 select @@optimizer_switch; 
 
-set optimizer_switch='no_loosescan';
+set optimizer_switch='default,loosescan=off';
 select @@optimizer_switch; 
 
-set optimizer_switch='no_semijoin,no_materialization';
+set optimizer_switch='default,semijoin=off,materialization=off';
 select @@optimizer_switch; 
 
-set optimizer_switch='no_materialization,no_semijoin';
+set optimizer_switch='default,materialization=off,semijoin=off';
 select @@optimizer_switch; 
 
-set optimizer_switch='no_semijoin,no_materialization,no_loosescan';
+set optimizer_switch='default,semijoin=off,materialization=off,loosescan=off';
 select @@optimizer_switch; 
 
-set optimizer_switch='no_semijoin,no_loosescan';
+set optimizer_switch='default,semijoin=off,loosescan=off';
 select @@optimizer_switch; 
 
-set optimizer_switch='no_materialization,no_loosescan';
+set optimizer_switch='default,materialization=off,loosescan=off';
 select @@optimizer_switch; 
-set optimizer_switch='';
+set optimizer_switch=default;
 
 drop table t0, t1, t2;
 drop table t10, t11, t12;
