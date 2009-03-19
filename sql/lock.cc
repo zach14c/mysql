@@ -1574,30 +1574,30 @@ int set_handler_table_locks(THD *thd, TABLE_LIST *table_list,
 {
   TABLE_LIST    *tlist;
   int           error= 0;
+  int           trans_lock_type;
+  thr_lock_type lock_type;
   DBUG_ENTER("set_handler_table_locks");
   DBUG_PRINT("lock_info", ("transactional: %d", transactional));
 
   for (tlist= table_list; tlist; tlist= tlist->next_global)
   {
-    int lock_type;
-    int lock_timeout= -1; /* Use default for non-transactional locks. */
-
     if (tlist->placeholder())
       continue;
+    /*
+      All tlist objects have an opened TABLE objects attached and
+      it should contain a proper lock types set even if it
+      came in as a base table from a view only.
+    */
+    lock_type= tlist->table->reginfo.lock_type;
+    int lock_timeout= -1; /* Use default for non-transactional locks. */
 
-    DBUG_ASSERT((tlist->lock_type == TL_READ) ||
-                (tlist->lock_type == TL_READ_NO_INSERT) ||
-                (tlist->lock_type == TL_WRITE_DEFAULT) ||
-                (tlist->lock_type == TL_WRITE) ||
-                (tlist->lock_type == TL_WRITE_CONCURRENT_INSERT) ||
-                (tlist->lock_type == TL_WRITE_LOW_PRIORITY));
+    DBUG_ASSERT(lock_type != TL_WRITE_DEFAULT && lock_type != TL_READ_DEFAULT);
 
     /*
-      Every tlist object has a proper lock_type set. Even if it came in
-      the list as a base table from a view only.
+      Translate the lock_type into a transactional lock type.
     */
-    lock_type= ((tlist->lock_type <= TL_READ_NO_INSERT) ?
-                HA_LOCK_IN_SHARE_MODE : HA_LOCK_IN_EXCLUSIVE_MODE);
+    trans_lock_type= ((lock_type <= TL_READ_NO_INSERT) ?
+                      HA_LOCK_IN_SHARE_MODE : HA_LOCK_IN_EXCLUSIVE_MODE);
 
     if (transactional)
     {
@@ -1634,7 +1634,7 @@ int set_handler_table_locks(THD *thd, TABLE_LIST *table_list,
     */
     if (!error || !transactional)
     {
-      error= tlist->table->file->lock_table(thd, lock_type, lock_timeout);
+      error= tlist->table->file->lock_table(thd, trans_lock_type, lock_timeout);
       if (error && transactional && (error != HA_ERR_WRONG_COMMAND))
         tlist->table->file->print_error(error, MYF(0));
     }
