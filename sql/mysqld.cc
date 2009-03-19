@@ -332,17 +332,24 @@ TYPELIB sql_mode_typelib= { array_elements(sql_mode_names)-1,"",
 
 static const char *optimizer_switch_names[]=
 {
+  "firstmatch", 
   "index_merge","index_merge_union","index_merge_sort_union", 
-  "index_merge_intersection", "default", NullS
+  "index_merge_intersection", 
+  "loosescan","materialization", "semijoin", 
+  "default", NullS
 };
 
 /* Corresponding defines are named OPTIMIZER_SWITCH_XXX */
 static const unsigned int optimizer_switch_names_len[]=
 {
+  sizeof("firstmatch") - 1,
   sizeof("index_merge") - 1,
   sizeof("index_merge_union") - 1,
   sizeof("index_merge_sort_union") - 1,
   sizeof("index_merge_intersection") - 1,
+  sizeof("loosescan") - 1,
+  sizeof("materialization") - 1,
+  sizeof("semijoin") - 1,
   sizeof("default") - 1
 };
 
@@ -3529,7 +3536,6 @@ static int init_common_variables(const char *conf_file_name, int argc,
   global_system_variables.character_set_client= default_charset_info;
 
   global_system_variables.optimizer_use_mrr= 1;
-  global_system_variables.optimizer_switch= 0;
 
   if (!(character_set_filesystem= 
         get_charset_by_csname(character_set_filesystem_name,

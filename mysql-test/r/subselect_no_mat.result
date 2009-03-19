@@ -1,7 +1,7 @@
 show variables like 'optimizer_switch';
 Variable_name	Value
-optimizer_switch	
-set optimizer_switch='no_materialization';
+optimizer_switch	firstmatch=on,index_merge=on,index_merge_union=on,index_merge_sort_union=on,index_merge_intersection=on,loosescan=on,materialization=on,semijoin=on
+set optimizer_switch='materialization=off';
 drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t11,t12;
 select (select 2);
 (select 2)
@@ -5007,7 +5007,7 @@ id	g	v	s
 61	60	NULL	l
 drop table t1, t2;
 End of 5.1 tests.
-set optimizer_switch='';
+set optimizer_switch=default;
 show variables like 'optimizer_switch';
 Variable_name	Value
-optimizer_switch	
+optimizer_switch	firstmatch=on,index_merge=on,index_merge_union=on,index_merge_sort_union=on,index_merge_intersection=on,loosescan=on,materialization=on,semijoin=on

@@ -939,7 +939,7 @@ a	b	c
 drop table t1, t11, t12, t21, t22;
 create table t1(a int);
 insert into t1 values (0),(1);
-set @@optimizer_switch='no_firstmatch';
+set @@optimizer_switch='firstmatch=off';
 explain 
 select (select max(Y.a) from t1 Y where a in (select a from t1 Z) and a < X.a) as subq from t1 X;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
@@ -950,13 +950,13 @@ select (select max(Y.a) from t1 Y where a in (select a from t1 Z) and a < X.a) a
 subq
 NULL
 0
-set @@optimizer_switch='';
+set @@optimizer_switch=default;
 drop table t1;
 create table t0 (a int);
 insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
 create table t1 as select * from t0;
 insert into t1 select a+10 from t0;
-set @@optimizer_switch='no_firstmatch,no_materialization';
+set @@optimizer_switch='firstmatch=off,materialization=off';
 insert into t0 values(2);
 explain select * from t1 where 2 in (select a from t0);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
@@ -984,7 +984,7 @@ a
 17
 18
 19
-set @@optimizer_switch='no_materialization';
+set @@optimizer_switch='default,materialization=off';
 explain select * from t1 where 2 in (select a from t0);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t0	ALL	NULL	NULL	NULL	NULL	11	Using where; FirstMatch
@@ -1011,7 +1011,7 @@ a
 17
 18
 19
-set @@optimizer_switch='';
+set @@optimizer_switch=default;
 explain select * from (select a from t0) X where a in (select a from t1);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	<derived2>	ALL	NULL	NULL	NULL	NULL	11	
@@ -1040,7 +1040,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 drop table t1, t3, t4;
 create table t1 (a int) as select * from t0 where a < 5;
 set @save_max_heap_table_size=@@max_heap_table_size;
-set @@optimizer_switch='no_firstmatch,no_materialization';
+set @@optimizer_switch='firstmatch=off,materialization=off';
 set @@max_heap_table_size= 16384;
 explain select count(*) from t0 A, t0 B, t0 C, t0 D where D.a in (select a from t1 E);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
@@ -1074,7 +1074,7 @@ a	filler
 1	filler
 2	filler
 drop table t0, t2, t3;
-set @@optimizer_switch='no_firstmatch,no_materialization';
+set @@optimizer_switch='firstmatch=off,materialization=off';
 create table t1 (a date);
 insert into t1 values ('2008-01-01'),('2008-01-01'),('2008-02-01'),('2008-02-01');
 create table t2 (a int);
@@ -1171,7 +1171,7 @@ create table t1 (a int, b int);
 insert into t1 select a,a from t0;
 create table t2 (a int, b int);
 insert into t2 select A.a + 10*B.a, A.a + 10*B.a from t0 A, t0 B;
-set @@optimizer_switch='no_firstmatch';
+set @@optimizer_switch='firstmatch=off';
 explain select * from t1 where (a,b) in (select a,b from t2);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	10	
@@ -1183,7 +1183,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	10	
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	100	Materialize
 set @@optimizer_search_depth=@save_optimizer_search_depth;
-set @@optimizer_switch='';
+set @@optimizer_switch=default;
 drop table t0, t1, t2;
 create table t0 (a decimal(4,2));
 insert into t0 values (10.24), (22.11);

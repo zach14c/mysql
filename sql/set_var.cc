@@ -491,6 +491,8 @@ static sys_var_thd_ulong        sys_optimizer_prune_level(&vars, "optimizer_prun
                                                   &SV::optimizer_prune_level);
 static sys_var_thd_ulong        sys_optimizer_search_depth(&vars, "optimizer_search_depth",
                                                    &SV::optimizer_search_depth);
+static sys_var_thd_optimizer_switch   sys_optimizer_switch(&vars, "optimizer_switch",
+                                     &SV::optimizer_switch);
 
 const char *optimizer_use_mrr_names[] = {"auto", "force", "disable", NullS};
 TYPELIB optimizer_use_mrr_typelib= {
@@ -630,8 +632,6 @@ static sys_var_thd_ulong	sys_sort_buffer(&vars, "sort_buffer_size",
 */
 static sys_var_thd_sql_mode    sys_sql_mode(&vars, "sql_mode",
                                             &SV::sql_mode);
-static sys_var_thd_optimizer_switch   sys_optimizer_switch(&vars, "optimizer_switch",
-                                     &SV::optimizer_switch);
 #if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
 extern char *opt_ssl_ca, *opt_ssl_capath, *opt_ssl_cert, *opt_ssl_cipher,
             *opt_ssl_key;
@@ -4449,14 +4449,11 @@ symbolic_mode_representation(THD *thd, ulonglong val, LEX_STRING *rep)
  
   for (i= 0, bit=1; bit != OPTIMIZER_SWITCH_LAST; i++, bit= bit << 1)
   {
-    if (val & 1)
-  {
     tmp.append(optimizer_switch_typelib.type_names[i],
                optimizer_switch_typelib.type_lengths[i]);
     tmp.append('=');
     tmp.append((val & bit)? "on":"off");
     tmp.append(',');
-  }
   }
 
   if (tmp.length())

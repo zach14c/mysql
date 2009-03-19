@@ -572,23 +572,26 @@ enum open_table_mode
 #define MODE_PAD_CHAR_TO_FULL_LENGTH    (ULL(1) << 31)
 
 /* @@optimizer_switch flags. These must be in sync with optimizer_switch_typelib */
-#define OPTIMIZER_SWITCH_INDEX_MERGE 1
-#define OPTIMIZER_SWITCH_INDEX_MERGE_UNION 2
-#define OPTIMIZER_SWITCH_INDEX_MERGE_SORT_UNION 4
-#define OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT 8
-#define OPTIMIZER_SWITCH_LAST 16
+#define OPTIMIZER_SWITCH_FIRSTMATCH 1
+#define OPTIMIZER_SWITCH_INDEX_MERGE 2
+#define OPTIMIZER_SWITCH_INDEX_MERGE_UNION 4
+#define OPTIMIZER_SWITCH_INDEX_MERGE_SORT_UNION 8
+#define OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT 16
+#define OPTIMIZER_SWITCH_LOOSE_SCAN 32
+#define OPTIMIZER_SWITCH_MATERIALIZATION 64
+#define OPTIMIZER_SWITCH_SEMIJOIN 128
+#define OPTIMIZER_SWITCH_LAST 256
 
 /* The following must be kept in sync with optimizer_switch_str in mysqld.cc */
-#define OPTIMIZER_SWITCH_DEFAULT (OPTIMIZER_SWITCH_INDEX_MERGE | \
+#define OPTIMIZER_SWITCH_DEFAULT (OPTIMIZER_SWITCH_FIRSTMATCH | \
+                                  OPTIMIZER_SWITCH_INDEX_MERGE | \
                                   OPTIMIZER_SWITCH_INDEX_MERGE_UNION | \
                                   OPTIMIZER_SWITCH_INDEX_MERGE_SORT_UNION | \
-                                  OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT)
+                                  OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT | \
+                                  OPTIMIZER_SWITCH_LOOSE_SCAN | \
+                                  OPTIMIZER_SWITCH_MATERIALIZATION | \
+                                  OPTIMIZER_SWITCH_SEMIJOIN)
 
-/* @@optimizer_switch flags */
-#define OPTIMIZER_SWITCH_NO_MATERIALIZATION 1
-#define OPTIMIZER_SWITCH_NO_SEMIJOIN 2
-#define OPTIMIZER_SWITCH_NO_LOOSE_SCAN 4
-#define OPTIMIZER_SWITCH_NO_FIRSTMATCH 8
 
 /*
   Replication uses 8 bytes to store SQL_MODE in the binary log. The day you
