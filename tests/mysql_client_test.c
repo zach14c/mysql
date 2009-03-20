@@ -749,6 +749,7 @@ static void do_verify_prepare_field(MYSQL_RES *result,
 {
   MYSQL_FIELD *field;
   CHARSET_INFO *cs;
+  ulonglong expected_field_length;
 
   if (!(field= mysql_fetch_field_direct(result, no)))
   {
@@ -757,6 +758,8 @@ static void do_verify_prepare_field(MYSQL_RES *result,
   }
   cs= get_charset(field->charsetnr, 0);
   DIE_UNLESS(cs);
+  if ((expected_field_length= length * cs->mbmaxlen) > UINT_MAX32)
+    expected_field_length= UINT_MAX32;
   if (!opt_silent)
   {
     fprintf(stdout, "\n field[%d]:", no);
@@ -771,8 +774,8 @@ static void do_verify_prepare_field(MYSQL_RES *result,
       fprintf(stdout, "\n    org_table:`%s`\t(expected: `%s`)",
               field->org_table, org_table);
     fprintf(stdout, "\n    database :`%s`\t(expected: `%s`)", field->db, db);
-    fprintf(stdout, "\n    length   :`%lu`\t(expected: `%lu`)",
-            field->length, length * cs->mbmaxlen);
+    fprintf(stdout, "\n    length   :`%lu`\t(expected: `%llu`)",
+            field->length, expected_field_length);
     fprintf(stdout, "\n    maxlength:`%ld`", field->max_length);
     fprintf(stdout, "\n    charsetnr:`%d`", field->charsetnr);
     fprintf(stdout, "\n    default  :`%s`\t(expected: `%s`)",
@@ -808,11 +811,11 @@ static void do_verify_prepare_field(MYSQL_RES *result,
     as utf8. Field length is calculated as number of characters * maximum
     number of bytes a character can occupy.
   */
-  if (length && field->length != length * cs->mbmaxlen)
+  if (length && (field->length != expected_field_length))
   {
-    fprintf(stderr, "Expected field length: %d,  got length: %d\n",
-            (int) (length * cs->mbmaxlen), (int) field->length);
-    DIE_UNLESS(field->length == length * cs->mbmaxlen);
+    fprintf(stderr, "Expected field length: %llu,  got length: %lu\n",
+            expected_field_length, field->length);
+    DIE_UNLESS(field->length == expected_field_length);
   }
   if (def)
     DIE_UNLESS(strcmp(field->def, def) == 0);
@@ -1506,7 +1509,7 @@ static void test_prepare_simple()
 #define CMD_BUFFER_SIZE 8192
 
 char mct_log_file_path[FILE_PATH_SIZE];
-FILE *mct_log_file;
+FILE *mct_log_file= NULL;
 
 void mct_start_logging(const char *test_case_name)
 {
@@ -1515,6 +1518,14 @@ void mct_start_logging(const char *test_case_name)
   if (!tmp_dir)
   {
     printf("Warning: MYSQL_TMP_DIR is not set. Logging is disabled.\n");
+    return;
+  }
+
+  if (mct_log_file)
+  {
+    printf("Warning: can not start logging for test case '%s' "
+           "because log is already open\n",
+           (const char *) test_case_name);
     return;
   }
 
@@ -1561,55 +1572,13 @@ void mct_log(const char *format, ...)
   }
 }
 
-int mct_check_result(const char *result_file_name)
+void mct_close_log()
 {
-  char diff_cmd[CMD_BUFFER_SIZE];
-
-  const char *test_dir= getenv("MYSQL_TEST_DIR");
-  char result_file_path[FILE_PATH_SIZE];
-
   if (!mct_log_file)
-  {
-    printf("Warning: logging was disabled. Result checking is impossible.\n");
-    return 0;
-  }
-
-  if (!test_dir)
-  {
-    printf("Warning: MYSQL_TEST_DIR is not set. "
-           "Result checking is impossible.\n");
-    return 0;
-  }
-
-  /*
-    Path is: <test_dir>/<result_file_name>
-    2 is length of '/' + \0
-  */
-
-  if (strlen(test_dir) + strlen(result_file_name) + 2 > FILE_PATH_SIZE)
-  {
-    printf("Warning: MYSQL_TEST_DIR is too long. "
-           "Result checking is impossible.\n");
-    return 0;
-  }
-
-  my_snprintf(result_file_path, FILE_PATH_SIZE,
-              "%s/%s",
-              (const char *) test_dir,
-              (const char *) result_file_name);
+    return;
 
   my_fclose(mct_log_file, MYF(0));
   mct_log_file= NULL;
-
-  my_snprintf(diff_cmd, CMD_BUFFER_SIZE, "diff -u '%s' '%s'",
-              (const char *) result_file_path,
-              (const char *) mct_log_file_path);
-
-  puts("");
-  fflush(stdout);
-  fflush(stderr);
-
-  return system(diff_cmd);
 }
 
 #define WL4435_NUM_PARAMS 10
@@ -1821,19 +1790,19 @@ static void test_wl4435()
       for (i = 0; i < num_fields; ++i)
       {
         mct_log("  - %d: name: '%s'/'%s'; table: '%s'/'%s'; "
-                   "db: '%s'; catalog: '%s'; length: %d; max_length: %d; "
-                   "type: %d; decimals: %d\n",
-                   (int) i,
-                   (const char *) fields[i].name,
-                   (const char *) fields[i].org_name,
-                   (const char *) fields[i].table,
-                   (const char *) fields[i].org_table,
-                   (const char *) fields[i].db,
-                   (const char *) fields[i].catalog,
-                   (int) fields[i].length,
-                   (int) fields[i].max_length,
-                   (int) fields[i].type,
-                   (int) fields[i].decimals);
+                "db: '%s'; catalog: '%s'; length: %d; max_length: %d; "
+                "type: %d; decimals: %d\n",
+                (int) i,
+                (const char *) fields[i].name,
+                (const char *) fields[i].org_name,
+                (const char *) fields[i].table,
+                (const char *) fields[i].org_table,
+                (const char *) fields[i].db,
+                (const char *) fields[i].catalog,
+                (int) fields[i].length,
+                (int) fields[i].max_length,
+                (int) fields[i].type,
+                (int) fields[i].decimals);
 
         rs_bind[i].buffer_type= fields[i].type;
         rs_bind[i].is_null= &is_null;
@@ -1888,22 +1857,22 @@ static void test_wl4435()
           {
             case MYSQL_TYPE_LONG:
               mct_log(" int: %ld;",
-                         (long) *((int *) rs_bind[i].buffer));
+                      (long) *((int *) rs_bind[i].buffer));
               break;
 
             case MYSQL_TYPE_STRING:
               mct_log(" str: '%s';",
-                         (char *) rs_bind[i].buffer);
+                      (char *) rs_bind[i].buffer);
               break;
 
             case MYSQL_TYPE_DOUBLE:
               mct_log(" dbl: %lf;",
-                         (double) *((double *) rs_bind[i].buffer));
+                      (double) *((double *) rs_bind[i].buffer));
               break;
 
             case MYSQL_TYPE_NEWDECIMAL:
               mct_log(" dec: '%s';",
-                         (char *) rs_bind[i].buffer);
+                      (char *) rs_bind[i].buffer);
               break;
 
             default:
@@ -1944,11 +1913,10 @@ static void test_wl4435()
 
   mysql_stmt_close(stmt);
 
+  mct_close_log();
+
   rc= mysql_commit(mysql);
   myquery(rc);
-
-  rc= mct_check_result("r/test_wl4435.result");
-  mytest_r(rc);
 
   /* i18n part of test case. */
 
@@ -2038,6 +2006,66 @@ static void test_wl4435()
     myquery(rc);
   }
 }
+
+static void test_wl4435_2()
+{
+  MYSQL_STMT *stmt;
+  int  i;
+  int  rc;
+  char query[MAX_TEST_QUERY_LENGTH];
+
+  myheader("test_wl4435_2");
+  mct_start_logging("test_wl4435_2");
+
+  /*
+    Do a few iterations so that we catch any problem with incorrect
+    handling/flushing prepared statement results.
+  */
+
+  for (i= 0; i < 10; ++i)
+  {
+    /*
+      Prepare a procedure. That can be moved out of the loop, but it was
+      left in the loop for the sake of having as many statements as
+      possible.
+    */
+
+    rc= mysql_query(mysql, "DROP PROCEDURE IF EXISTS p1");
+    myquery(rc);
+
+    rc= mysql_query(mysql,
+      "CREATE PROCEDURE p1()"
+      "BEGIN "
+      "  SELECT 1; "
+      "  SELECT 2, 3 UNION SELECT 4, 5; "
+      "  SELECT 6, 7, 8; "
+      "END");
+    myquery(rc);
+
+    /* Invoke a procedure, that returns several result sets. */
+
+    strmov(query, "CALL p1()");
+    stmt= mysql_simple_prepare(mysql, query);
+    check_stmt(stmt);
+
+    /* Execute! */
+
+    rc= mysql_stmt_execute(stmt);
+    check_execute(stmt, rc);
+
+    /* Flush all the results. */
+
+    mysql_stmt_close(stmt);
+
+    /* Clean up. */
+    rc= mysql_commit(mysql);
+    myquery(rc);
+
+    rc= mysql_query(mysql, "DROP PROCEDURE p1");
+    myquery(rc);
+  }
+}
+
 
 /* Test simple prepare field results */
 
@@ -18643,6 +18671,69 @@ static void test_bug36326()
 
 #endif
 
+/**
+  Bug#41078: With CURSOR_TYPE_READ_ONLY mysql_stmt_fetch() returns short
+             string value.
+*/
+
+static void test_bug41078(void)
+{
+  uint         rc;
+  MYSQL_STMT   *stmt= 0;
+  MYSQL_BIND   param, result;
+  ulong        cursor_type= CURSOR_TYPE_READ_ONLY;
+  ulong        len;
+  char         str[64];
+  const char   param_str[]= "abcdefghijklmn";
+  my_bool      is_null, error;
+
+  DBUG_ENTER("test_bug41078");
+
+  rc= mysql_query(mysql, "SET NAMES UTF8");
+  myquery(rc);
+
+  stmt= mysql_simple_prepare(mysql, "SELECT ?");
+  check_stmt(stmt);
+  verify_param_count(stmt, 1);
+
+  rc= mysql_stmt_attr_set(stmt, STMT_ATTR_CURSOR_TYPE, &cursor_type);
+  check_execute(stmt, rc);
+  
+  bzero(&param, sizeof(param));
+  param.buffer_type= MYSQL_TYPE_STRING;
+  param.buffer= (void *) param_str;
+  len= sizeof(param_str) - 1;
+  param.length= &len;
+
+  rc= mysql_stmt_bind_param(stmt, &param);
+  check_execute(stmt, rc);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute(stmt, rc);
+
+  bzero(&result, sizeof(result));
+  result.buffer_type= MYSQL_TYPE_STRING;
+  result.buffer= str;
+  result.buffer_length= sizeof(str);
+  result.is_null= &is_null;
+  result.length= &len;
+  result.error=  &error;
+  
+  rc= mysql_stmt_bind_result(stmt, &result);
+  check_execute(stmt, rc);
+
+  rc= mysql_stmt_store_result(stmt);
+  check_execute(stmt, rc);
+
+  rc= mysql_stmt_fetch(stmt);
+  check_execute(stmt, rc);
+
+  DIE_UNLESS(len == sizeof(param_str) - 1 && !strcmp(str, param_str));
+
+  mysql_stmt_close(stmt);
+
+  DBUG_VOID_RETURN;
+}
 
 /*
   Read and parse arguments and MySQL options from my.cnf
@@ -18957,6 +19048,7 @@ static struct my_tests_st my_tests[]= {
   { "test_bug36004", test_bug36004 },
   { "test_wl4284_1", test_wl4284_1 },
   { "test_wl4435",   test_wl4435 },
+  { "test_wl4435_2", test_wl4435_2 },
   { "test_bug38486", test_bug38486 },
   { "test_bug33831", test_bug33831 },
   { "test_bug40365", test_bug40365 },
@@ -18966,6 +19058,7 @@ static struct my_tests_st my_tests[]= {
 #ifdef HAVE_QUERY_CACHE
   { "test_bug36326", test_bug36326 },
 #endif
+  { "test_bug41078", test_bug41078 },
   { 0, 0 }
 };
 

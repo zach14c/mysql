@@ -288,7 +288,7 @@ static struct show_privileges_st sys_privileges[]=
   {"Alter", "Tables",  "To alter the table"},
   {"Alter routine", "Functions,Procedures",  "To alter or drop stored functions/procedures"},
   {"Create", "Databases,Tables,Indexes",  "To create new databases and tables"},
-  {"Create routine","Functions,Procedures","To use CREATE FUNCTION/PROCEDURE"},
+  {"Create routine","Databases","To use CREATE FUNCTION/PROCEDURE"},
   {"Create temporary tables","Databases","To use CREATE TEMPORARY TABLE"},
   {"Create view", "Tables",  "To create new views"},
   {"Create user", "Server Admin",  "To create new users"},
@@ -1623,21 +1623,25 @@ void append_definer(THD *thd, String *buffer, const LEX_STRING *definer_user,
 int
 view_store_create_info(THD *thd, TABLE_LIST *table, String *buff)
 {
+  my_bool compact_view_name= TRUE;
   my_bool foreign_db_mode= (thd->variables.sql_mode & (MODE_POSTGRESQL |
                                                        MODE_ORACLE |
                                                        MODE_MSSQL |
                                                        MODE_DB2 |
                                                        MODE_MAXDB |
                                                        MODE_ANSI)) != 0;
-  /*
-     Compact output format for view can be used
-     - if user has db of this view as current db
-     - if this view only references table inside it's own db
-  */
+
   if (!thd->db || strcmp(thd->db, table->view_db.str))
-    table->compact_view_format= FALSE;
+    /*
+      print compact view name if the view belongs to the current database
+    */
+    compact_view_name= table->compact_view_format= FALSE;
   else
   {
+    /*
+      Compact output format for view body can be used
+      if this view only references table inside it's own db
+    */
     TABLE_LIST *tbl;
     table->compact_view_format= TRUE;
     for (tbl= thd->lex->query_tables;
@@ -1658,7 +1662,7 @@ view_store_create_info(THD *thd, TABLE_LIST *table, String *buff)
     view_store_options(thd, table, buff);
   }
   buff->append(STRING_WITH_LEN("VIEW "));
-  if (!table->compact_view_format)
+  if (!compact_view_name)
   {
     append_identifier(thd, buff, table->view_db.str, table->view_db.length);
     buff->append('.');
@@ -3088,12 +3092,8 @@ uint get_table_open_method(TABLE_LIST *tables,
    Acquire high priority share metadata lock on a table.
 
    @param thd            Thread context.
-   @param mdl_lock_data  Pointer to memory to be used for MDL_LOCK_DATA
+   @param mdl_request    Pointer to memory to be used for MDL_request
                          object for a lock request.
-   @param mdlkey         Pointer to the buffer for key for the lock request
-                         (should be at least strlen(db) + strlen(name) + 2
-                         bytes, or, if the lengths are not known,
-                         MAX_MDLKEY_LENGTH)
    @param table          Table list element for the table
 
    @note This is an auxiliary function to be used in cases when we want to
@@ -3107,23 +3107,23 @@ uint get_table_open_method(TABLE_LIST *tables,
 */
 
 static bool
-acquire_high_prio_shared_mdl_lock(THD *thd, MDL_LOCK_DATA *mdl_lock_data,
-                                  char *mdlkey, TABLE_LIST *table)
+acquire_high_prio_shared_mdl_lock(THD *thd, MDL_request *mdl_request,
+                                  TABLE_LIST *table)
 {
   bool retry;
 
-  mdl_init_lock(mdl_lock_data, mdlkey, 0, table->db, table->table_name);
-  table->mdl_lock_data= mdl_lock_data;
-  mdl_add_lock(&thd->mdl_context, mdl_lock_data);
-  mdl_set_lock_type(mdl_lock_data, MDL_SHARED_HIGH_PRIO);
+  mdl_request->init(0, table->db, table->table_name);
+  table->mdl_request= mdl_request;
+  thd->mdl_context.add_request(mdl_request);
+  mdl_request->set_type(MDL_SHARED_HIGH_PRIO);
 
   while (1)
   {
-    if (mdl_acquire_shared_lock(&thd->mdl_context, mdl_lock_data, &retry))
+    if (thd->mdl_context.acquire_shared_lock(mdl_request, &retry))
     {
-      if (!retry || mdl_wait_for_locks(&thd->mdl_context))
+      if (!retry || thd->mdl_context.wait_for_locks())
       {
-        mdl_remove_all_locks(&thd->mdl_context);
+        thd->mdl_context.remove_all_requests();
         return TRUE;
       }
       continue;
@@ -3165,8 +3165,7 @@ static int fill_schema_table_from_frm(THD *thd, TABLE_LIST *tables,
   int error;
   char key[MAX_DBKEY_LENGTH];
   uint key_length;
-  MDL_LOCK_DATA mdl_lock_data;
-  char mdlkey[MAX_MDLKEY_LENGTH];
+  MDL_request mdl_request;
 
   bzero((char*) &table_list, sizeof(TABLE_LIST));
   bzero((char*) &tbl, sizeof(TABLE));
@@ -3179,8 +3178,7 @@ static int fill_schema_table_from_frm(THD *thd, TABLE_LIST *tables,
           simply obtaining internal lock of data-dictionary (ATM it
           is LOCK_open) instead of obtaning full-blown metadata lock.
   */
-  if (acquire_high_prio_shared_mdl_lock(thd, &mdl_lock_data, mdlkey,
-                                        &table_list))
+  if (acquire_high_prio_shared_mdl_lock(thd, &mdl_request, &table_list))
   {
     /*
       Some error occured (most probably we have been killed while
@@ -3264,8 +3262,8 @@ err_unlock:
   pthread_mutex_unlock(&LOCK_open);
 
 err:
-  mdl_release_lock(&thd->mdl_context, &mdl_lock_data);
-  mdl_remove_lock(&thd->mdl_context, &mdl_lock_data);
+  thd->mdl_context.release_lock(mdl_request.ticket);
+  thd->mdl_context.remove_request(&mdl_request);
   thd->clear_error();
   return res;
 }
@@ -3864,11 +3862,23 @@ void store_column_type(TABLE *table, Field *field, CHARSET_INFO *cs,
   /* DTD_IDENTIFIER column */
   table->field[offset + 7]->store(column_type.ptr(), column_type.length(), cs);
   table->field[offset + 7]->set_notnull();
+  /*
+    DATA_TYPE column:
+    MySQL column type has the following format:
+    base_type [(dimension)] [unsigned] [zerofill].
+    For DATA_TYPE column we extract only base type.
+  */
   tmp_buff= strchr(column_type.ptr(), '(');
-  /* DATA_TYPE column */
+  if (!tmp_buff)
+    /*
+      if there is no dimention part then check the presence of
+      [unsigned] [zerofill] attributes and cut them of if exist.
+    */
+    tmp_buff= strchr(column_type.ptr(), ' ');
   table->field[offset]->store(column_type.ptr(),
-                         (tmp_buff ? tmp_buff - column_type.ptr() :
-                          column_type.length()), cs);
+                              (tmp_buff ? tmp_buff - column_type.ptr() :
+                               column_type.length()), cs);
+
   is_blob= (field->type() == MYSQL_TYPE_BLOB);
   if (field->has_charset() || is_blob ||
       field->real_type() == MYSQL_TYPE_VARCHAR ||  // For varbinary type
@@ -4059,6 +4069,8 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     table->field[3]->store(field->field_name, strlen(field->field_name),
                            cs);
     table->field[4]->store((longlong) count, TRUE);
+    field->sql_type(type);
+    table->field[14]->store(type.ptr(), type.length(), cs);
 
     if (get_field_default_value(thd, timestamp_field, field, &type, 0))
     {
@@ -7572,7 +7584,7 @@ bool show_create_trigger(THD *thd, const sp_name *trg_name)
 
   uint num_tables; /* NOTE: unused, only to pass to open_tables(). */
 
-  alloc_mdl_locks(lst, thd->mem_root);
+  alloc_mdl_requests(lst, thd->mem_root);
 
   if (open_tables(thd, &lst, &num_tables, 0))
   {

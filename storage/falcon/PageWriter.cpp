@@ -38,7 +38,7 @@ static const char THIS_FILE[]=__FILE__;
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-PageWriter::PageWriter(Database *db)
+PageWriter::PageWriter(Database *db) : syncObject("PageWriter::syncObject")
 {
 	database = db;
 	cache = database->cache;
