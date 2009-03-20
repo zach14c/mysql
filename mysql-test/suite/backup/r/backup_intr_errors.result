@@ -1,0 +1,275 @@
+call mtr.add_suppression("Backup:");
+call mtr.add_suppression("Restore:");
+#
+# Setup
+#
+DROP DATABASE IF EXISTS bup_intr;
+CREATE DATABASE bup_intr;
+USE bup_intr;
+CREATE TABLE t1(engine char(6));
+INSERT INTO  t1 VALUES ('innodb'),('memory');
+CREATE TABLE t2(a int);
+INSERT INTO t2 VALUES (1);
+DELETE FROM bup_intr.t1 WHERE engine='innodb';
+
+########################################
+## Testing with innodb engine.
+########################################
+
+ALTER TABLE bup_intr.t1 ENGINE=innodb;
+SET SESSION DEBUG="+d,backup_driver_cancel_error";
+SET SESSION DEBUG="+d,backup_stream_close_error";
+SET SESSION DEBUG="+d,backup_remove_location_error";
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_data_lock.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_data_lock SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_data_lock
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Error	<error-code>	Snapshot backup driver can't cancel its backup operation
+Warning	<error-code>	Operation aborted
+Error	<error-code>	Backup/Restore: Error on close of backup stream
+Error	<error-code>	Error on delete of <backup image path> (errno: 176)
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+backup kernel	0	validity point
+SELECT * FROM mysql.backup_history;
+SET SESSION DEBUG="-d";
+#
+# Prepare bup_intr.bkp for RESTORE testing. Note that above BACKUP
+# command should not create the file because it was interrupted.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+backup_id
+#
+DROP DATABASE bup_intr;
+SET SESSION DEBUG="+d,backup_driver_cancel_error";
+SET SESSION DEBUG="+d,backup_stream_close_error";
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point restore_before_sending_data.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='restore_before_sending_data SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: restore_before_sending_data
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Error	<error-code>	Can't shut down Snapshot restore driver(s)
+Warning	<error-code>	Operation aborted - data might be corrupted
+Error	<error-code>	Backup/Restore: Error on close of backup stream
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+SET SESSION DEBUG="-d";
+#
+# Restore original database - the interrupted RESTORE statement could
+# corrupt it.
+#
+RESTORE FROM 'bup_intr.bkp' OVERWRITE;
+backup_id
+#
+DELETE FROM bup_intr.t1 WHERE engine='memory';
+
+########################################
+## Testing with memory engine.
+########################################
+
+ALTER TABLE bup_intr.t1 ENGINE=memory;
+SET SESSION DEBUG="+d,backup_driver_cancel_error";
+SET SESSION DEBUG="+d,backup_stream_close_error";
+SET SESSION DEBUG="+d,backup_remove_location_error";
+
+######################################################################
+#
+# Testing interruption of command BACKUP DATABASE bup_intr TO 'bup_intr.bkp'
+# at synchronization point before_backup_data_lock.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='before_backup_data_lock SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: before_backup_data_lock
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Error	<error-code>	Default backup driver can't cancel its backup operation
+Warning	<error-code>	Operation aborted
+Error	<error-code>	Backup/Restore: Error on close of backup stream
+Error	<error-code>	Error on delete of <backup image path> (errno: 176)
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+backup kernel	0	validity point
+SELECT * FROM mysql.backup_history;
+SET SESSION DEBUG="-d";
+#
+# Prepare bup_intr.bkp for RESTORE testing. Note that above BACKUP
+# command should not create the file because it was interrupted.
+#
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+backup_id
+#
+DROP DATABASE bup_intr;
+SET SESSION DEBUG="+d,backup_driver_cancel_error";
+SET SESSION DEBUG="+d,backup_stream_close_error";
+
+######################################################################
+#
+# Testing interruption of command RESTORE FROM 'bup_intr.bkp'
+# at synchronization point restore_before_sending_data.
+#
+######################################################################
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC='reset';
+SET DEBUG_SYNC='restore_before_sending_data SIGNAL here WAIT_FOR go';
+SET DEBUG_SYNC='backup_restore_ctx_dtor SIGNAL here';
+#
+# Start the command.
+#
+RESTORE FROM 'bup_intr.bkp';
+#
+# Wait for the command to reach its synchronization point,
+# then kill it.
+#
+SET DEBUG_SYNC='now WAIT_FOR here';
+SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
+state
+debug sync point: restore_before_sending_data
+KILL QUERY <query id>;
+SET DEBUG_SYNC='now SIGNAL go';
+#
+# Reap the command and show results.
+#
+ERROR 70100: Query execution was interrupted
+SHOW WARNINGS;
+Level	Code	Message
+Error	<error-code>	Query execution was interrupted
+Error	<error-code>	Can't shut down Default restore driver(s)
+Warning	<error-code>	Operation aborted - data might be corrupted
+Error	<error-code>	Backup/Restore: Error on close of backup stream
+#
+# Examine backup logs.
+#
+# FIXME: Until BUG#39924 is fixed, change to BUP_CANCEL state will not be
+# seen in backup_progress table and backup_history table will be empty.
+# When the bug is fixed the output below will change and the result file
+# should be modifed accordingly.
+#
+SELECT object, error_num, notes FROM mysql.backup_progress;
+object	error_num	notes
+backup kernel	0	starting
+backup kernel	0	running
+SELECT * FROM mysql.backup_history;
+SET SESSION DEBUG="-d";
+#
+# Restore original database - the interrupted RESTORE statement could
+# corrupt it.
+#
+RESTORE FROM 'bup_intr.bkp' OVERWRITE;
+backup_id
+#
+#
+# Cleanup
+#
+SET DEBUG_SYNC='reset';
+DROP DATABASE IF EXISTS bup_intr;

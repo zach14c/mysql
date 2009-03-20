@@ -112,17 +112,30 @@ running
 Unknown database 'foo,bar'
 error
 PURGE BACKUP LOGS;
+CREATE DATABASE foo;
+CREATE DATABASE bar;
+# 
 # repeated database
-BACKUP DATABASE foo,test,bar,foo TO 'test.bak' ;
+# 
+BACKUP DATABASE foo, bar, foo TO 'test.bak' ;
 ERROR 42000: Not unique database: 'foo'
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Not unique database: 'foo'
+Warning	#	Operation aborted
 verify backup history and progress logs for backup_state.
 SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
 backup_state	operation	backup_file	command
+error	backup	test.bak	BACKUP DATABASE foo, bar, foo TO 'test.bak'
 SELECT notes FROM mysql.backup_progress;
 notes
+starting
+running
+Not unique database: 'foo'
+error
+DROP DATABASE foo;
+DROP DATABASE bar;
+PURGE BACKUP LOGS;
 use adb;
 create table t1 (a int);
 create procedure p1() backup database test to 'test.bak';
@@ -567,6 +580,16 @@ DROP DATABASE db1;
 SET SESSION DEBUG='+d,restore_read_summary';
 RESTORE FROM 'errorinject.bak';
 ERROR HY000: Error when reading summary section of backup image
+SET SESSION DEBUG='-d';
+#
+# Test error handling by injecting errors into BACKUP
+#
+#
+# Error injection in si_object.cc:get_database_stub
+#
+SET SESSION DEBUG='+d,siobj_get_db_stub';
+BACKUP DATABASE db1 TO 'failed1.bak';
+ERROR HY000: Failed to add database `db1` to the catalog
 SET SESSION DEBUG='-d';
 #
 # Cleanup

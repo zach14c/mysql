@@ -33,6 +33,7 @@ public:
 	virtual ~SRLDeleteIndex();
 	virtual void	redo();
 	virtual void	pass1();
+	virtual void	pass2();
 	virtual void	read();
 	virtual void	commit(void);
 	void			append(Dbb *dbb, TransId transId, int indexId, int idxVersion);

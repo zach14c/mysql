@@ -64,14 +64,13 @@ public:
 	Btn*		findSupernode(int level, UCHAR *key, size_t len, int32 recordNumber, Btn *after, bool *match);
 	Btn*		findPriorNodeForSupernode(Btn *where,IndexKey *priorKey);
 	Btn*		getEnd(void);
+	static void	 initRootPage(Bdb *bdb);
 
 	void		backup(EncodedDataStream* stream);
 	void		restore(EncodedDataStream* stream);
 
 	static int		computePrefix (IndexKey *key1, IndexKey *key2);
 	static Bdb*		findLevel (Dbb *dbb, int32 indexId, Bdb *bdb, int level, IndexKey *indexKey, int32 recordNumber);
-	static Bdb*		createNewLevel (Dbb* dbb, int level, int version, TransId transId);
-	static Bdb*		createNewLevel (Dbb *dbb, int level, int version, int32 page1, int32 page2, IndexKey *key2, TransId transId);
 	static void		printPage (Bdb *bdb, bool inversion);
 	static void		printPage (IndexPage *page, int32 pageNumber, bool inversion);
 	static void		printPage (IndexPage *page, int32 pageNum, bool printDetail, bool inversion);

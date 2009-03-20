@@ -8,7 +8,10 @@
 
 --source include/not_embedded.inc
 --source suite/backup_engines/include/backup_engine.inc
---source include/have_debug.inc
+#
+# Cannot run test for archive because archive doesn't support UPDATE
+#
+--source suite/backup_engines/include/not_archive.inc
 
 connect (backup,localhost,root,,);
 connect (breakpoints,localhost,root,,);

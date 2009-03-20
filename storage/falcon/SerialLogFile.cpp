@@ -68,7 +68,7 @@ static const char THIS_FILE[]=__FILE__;
 //////////////////////////////////////////////////////////////////////
 
 
-SerialLogFile::SerialLogFile(Database *db)
+SerialLogFile::SerialLogFile(Database *db) : syncObject("SerialLogFile::syncObject")
 {
 	database = db;
 	handle = 0;

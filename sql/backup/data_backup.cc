@@ -544,7 +544,8 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
   List<Scheduler::Pump>  inactive;  // list of images not yet being created
 
   // keeps maximal init size for images in inactive list
-  size_t      max_init_size=0;
+  size_t  max_init_size=0;
+  bool    commits_blocked= FALSE;   // indicates if commit blocker is active
 
   DBUG_PRINT("backup_data",("initializing scheduler"));
 
@@ -558,13 +559,12 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       continue;
 
     Scheduler::Pump *p= new Scheduler::Pump(*i, s);
-
     if (!p)
     {
       log.report_error(ER_OUT_OF_RESOURCES);
       goto error;
     }
-    if (!p->is_valid())
+    if (log.report_killed() || !p->is_valid())
     {
       log.report_error(ER_BACKUP_CREATE_BACKUP_DRIVER,p->m_name);
       delete p;
@@ -684,7 +684,11 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       non-transactional tables and pass that to block_commits().
     */
     int error= 0;
-    error= block_commits(thd, NULL);
+
+    if (!(error= block_commits(thd, NULL)))
+      commits_blocked= TRUE;
+    if (log.report_killed())
+      goto error;
     if (error)
     {
       log.report_error(ER_BACKUP_SYNCHRONIZE);
@@ -702,6 +706,12 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     
     DBUG_PRINT("backup_data",("-- SYNC PHASE --"));
 
+    /*
+      Before proceeding, check if the process is interrupted.
+    */
+    if (log.report_killed())
+      goto error;
+
     log.report_state(BUP_VALIDITY_POINT);
     /*
       This breakpoint is used to assist in testing state changes for
@@ -715,13 +725,18 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     */
 
     DEBUG_SYNC(thd, "before_backup_data_lock");
+    /*
+      Note: we do not detect/react to process interruptions during the 
+      synchronization. We let the protocol to go through and check for
+      possible interruptions only at the end, i.e., after sch.unlock().
+    */ 
     if (sch.lock())    // logs errors
       goto error;
 
     save_vp_info(info);
 
     DEBUG_SYNC(thd, "before_backup_data_unlock");
-    if (sch.unlock())    // logs errors
+    if (sch.unlock() || log.report_killed())    // logs errors
       goto error;
 
     /*
@@ -729,6 +744,9 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     */
     DEBUG_SYNC(thd, "before_backup_unblock_commit");
     unblock_commits(thd);
+    commits_blocked= FALSE;
+    if (log.report_killed())
+      goto error;
 
 
     report_vp_info(info);
@@ -755,6 +773,8 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
 
  error:
 
+  if (commits_blocked)
+    unblock_commits(thd);
   DBUG_RETURN(ERROR);
 }
 
@@ -811,10 +831,14 @@ public:
   Pick next backup pump and call its @c pump() method.
 
   Method updates statistics of number of drivers in each phase which is used
-  to detect end of a backup process.
+  to detect end of a backup process. A check for interruption is done each time
+  this method is called.
  */
 int Scheduler::step()
 {
+  if (m_log.report_killed())
+    return ER_QUERY_INTERRUPTED;
+
   // Pick next driver to pump data from.
 
   Pump_iterator p(*this);
@@ -927,7 +951,7 @@ int Scheduler::add(Pump *p)
   p->set_logger(&m_log);
   p->start_pos= avg;
 
-  if (p->begin())  // logs errors
+  if (p->begin() || m_log.report_killed())  // logs errors
   {
     delete p;
     return ERROR;
@@ -1046,7 +1070,7 @@ int Scheduler::prepare()
 
   for (Pump_iterator it(*this); it; ++it)
   {
-    if (it->prepare())  // logs errors
+    if (it->prepare() || m_log.report_killed())  // logs errors
     {
       remove_pump(it);  // Note: never errors.
       return ERROR;
@@ -1138,6 +1162,16 @@ Backup_pump::~Backup_pump()
   bitmap_free(&m_closed_streams);
 }
 
+/*
+  Note: The standard report_error() method does not log an error in case
+  the statement has been interrupted - the interruption is reported instead.
+  But we want to always report errors signalled by a backup driver, even if an
+  interruption has just happened. Therefore, inside Backup_pump methods where 
+  errors from the driver are reported, we use the variant of 
+  Logger::report_error() with explicit log_level::ERROR. This variant does not 
+  check for interruptions and always reports given error.
+*/ 
+
 /// Initialize backup driver.
 int Backup_pump::begin()
 {
@@ -1148,7 +1182,8 @@ int Backup_pump::begin()
   {
     state= backup_state::ERROR;
     if (m_log)
-      m_log->report_error(ER_BACKUP_INIT_BACKUP_DRIVER, m_name);
+      m_log->report_error(log_level::ERROR,
+                          ER_BACKUP_INIT_BACKUP_DRIVER, m_name);
     return ERROR;
   }
 
@@ -1166,7 +1201,8 @@ int Backup_pump::end()
     {
       state= backup_state::ERROR;
       if (m_log)
-        m_log->report_error(ER_BACKUP_STOP_BACKUP_DRIVER, m_name);
+        m_log->report_error(log_level::ERROR,
+                            ER_BACKUP_STOP_BACKUP_DRIVER, m_name);
       return ERROR;
     }
 
@@ -1195,7 +1231,8 @@ int Backup_pump::prepare()
   default:
     state= backup_state::ERROR;
     if (m_log)
-      m_log->report_error(ER_BACKUP_PREPARE_DRIVER, m_name);
+      m_log->report_error(log_level::ERROR,
+                          ER_BACKUP_PREPARE_DRIVER, m_name);
     return ERROR;
   }
 
@@ -1212,7 +1249,8 @@ int Backup_pump::lock()
   {
     state= backup_state::ERROR;
     if (m_log)
-      m_log->report_error(ER_BACKUP_CREATE_VP, m_name);
+      m_log->report_error(log_level::ERROR, 
+                          ER_BACKUP_CREATE_VP, m_name);
     return ERROR;
   }
 
@@ -1228,7 +1266,8 @@ int Backup_pump::unlock()
   {
     state= backup_state::ERROR;
     if (m_log)
-      m_log->report_error(ER_BACKUP_UNLOCK_DRIVER, m_name);
+      m_log->report_error(log_level::ERROR, 
+                          ER_BACKUP_UNLOCK_DRIVER, m_name);
     return ERROR;
   }
 
@@ -1241,7 +1280,8 @@ int Backup_pump::cancel()
   {
     state= backup_state::ERROR;
     if (m_log)
-      m_log->report_error(ER_BACKUP_CANCEL_BACKUP, m_name);
+      m_log->report_error(log_level::ERROR, 
+                          ER_BACKUP_CANCEL_BACKUP, m_name);
     return ERROR;
   }
   state= backup_state::CANCELLED;
@@ -1367,7 +1407,8 @@ int Backup_pump::pump(size_t *howmuch)
       case ERROR:
       default:
         if (m_log)
-          m_log->report_error(ER_BACKUP_GET_DATA, m_name);
+          m_log->report_error(log_level::ERROR,
+                              ER_BACKUP_GET_DATA, m_name);
         state= backup_state::ERROR;
         return ERROR;
 
@@ -1485,6 +1526,7 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
   }
 
   // Create restore drivers
+  DEBUG_SYNC(thd, "restore_before_drivers_create");
   result_t res;
 
   for (uint n=0; n < info.snap_count(); ++n)
@@ -1498,6 +1540,8 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
       continue;
 
     res= snap->get_restore_driver(drv[n]);
+    if (log.report_killed())
+      goto error;
     if (res == backup::ERROR)
     {
       log.report_error(ER_BACKUP_CREATE_RESTORE_DRIVER, snap->name());
@@ -1506,9 +1550,12 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
  }
 
   // Initialize the drivers.
+  DEBUG_SYNC(thd, "restore_before_drivers_init");
   for (uint n=0; n < info.snap_count(); ++n)
   {
     res= drv[n]->begin(0);
+    if (log.report_killed())
+      goto error;
     if (res == backup::ERROR)
     {
       log.report_error(ER_BACKUP_INIT_RESTORE_DRIVER, info.m_snap[n]->name());
@@ -1539,8 +1586,12 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
 
       case READING:
 
+        DEBUG_SYNC(thd, "restore_before_read_data_chunk");
         bzero(&chunk_info, sizeof(chunk_info));
         ret= bstream_rd_data_chunk(&s, &chunk_info);
+
+        if (log.report_killed())
+          goto error;
 
         /* Mimic error in bstream_rd_data_chunk */
         DBUG_EXECUTE_IF("restore_tbl_data_read", ret= BSTREAM_ERROR;);
@@ -1602,7 +1653,12 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
            Note: For testing, error can be injected in default driver
            send_data by using dbug hook 'backup_default_send_data'
         */
+        DEBUG_SYNC(thd, "restore_before_sending_data");
         ret= drvr->send_data(buf);
+
+        if (log.report_killed())
+          goto error;
+
         switch (ret) {
 
         case backup::OK:
@@ -1663,6 +1719,18 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
     DBUG_PRINT("restore",("Shutting down restore driver %s",
                            info.m_snap[n]->name()));
     res= active[n]->end();
+    /* 
+      After ->end() call on a driver, it is no longer active and its ->cancel()
+      method should not be called if we jump to error. This is the case even 
+      when ->end() returned error because the only allowed driver call after 
+      an error is ->end(). Hence we set active[n] to NULL.
+    */
+    active[n]= NULL;
+
+    /*
+      In case of error, store driver's name in bad_drivers so that it is
+      reported below.
+    */ 
     if (res == backup::ERROR)
     {
       state= ERROR;
@@ -1671,6 +1739,13 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
         bad_drivers.append(",");
       bad_drivers.append(info.m_snap[n]->name());
     }
+
+    /*
+      If interruption has happened, skip shutting down the rest of the drivers.
+      They will be canceled below.
+    */ 
+    if (log.report_killed())
+      goto error;
   }
 
   goto finish;
@@ -1691,7 +1766,6 @@ error:
     DBUG_PRINT("restore",("Cancelling restore driver %s",
                            info.m_snap[n]->name()));
     res= active[n]->cancel();
-
     if (res)
     {
       if (!bad_drivers.is_empty())
@@ -1702,8 +1776,14 @@ error:
 
 finish:  
 
+  /*
+    We always log shutdown errors, even if an interruption has happened before.
+    This is why we must supply explicit log_level::ERROR to report_error() as
+    otherwise the method will report interruption instead of an error.
+  */
   if (!bad_drivers.is_empty())
-    log.report_error(ER_BACKUP_STOP_RESTORE_DRIVERS, bad_drivers.c_ptr());
+    log.report_error(log_level::ERROR, 
+                     ER_BACKUP_STOP_RESTORE_DRIVERS, bad_drivers.c_ptr());
 
   // Call free() for all existing drivers
 

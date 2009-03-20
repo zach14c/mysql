@@ -8,7 +8,7 @@
 let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --disable_warnings
 --error 0,1
-remove_file $MYSQLD_BACKUPDIR/db.bak;
+--remove_file $MYSQLD_BACKUPDIR/db.bak
 --enable_warnings
 
 SET GLOBAL event_scheduler=off;
@@ -214,4 +214,5 @@ DROP TRIGGER test.trg;
 DROP TABLE test.logt;
 DROP TABLE test.t1;
 DROP DATABASE db;
-remove_file $MYSQLD_BACKUPDIR/db.bak;
+
+--remove_file $MYSQLD_BACKUPDIR/db.bak

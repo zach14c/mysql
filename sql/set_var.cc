@@ -1842,7 +1842,7 @@ bool sys_var::check_enum(THD *thd, set_var *var, const TYPELIB *enum_names)
     if (!(res=var->value->val_str(&str)) ||
 	((long) (var->save_result.ulong_value=
 		 (ulong) find_type(enum_names, res->ptr(),
-				   res->length(),1)-1)) < 0)
+				   res->length(), FALSE) - 1)) < 0)
     {
       value= res ? res->c_ptr() : "NULL";
       goto err;
@@ -2538,7 +2538,7 @@ static int  sys_check_log_path(THD *thd,  set_var *var)
     return 1;
   }
 
-  log_file_str= res->c_ptr();
+  log_file_str= res->c_ptr_safe();
   bzero(&f_stat, sizeof(MY_STAT));
 
   path_length= unpack_filename(path, log_file_str);
@@ -2745,7 +2745,7 @@ static bool sys_update_backup_history_log_path(THD *thd, set_var * var)
   String str(buff,sizeof(buff), system_charset_info), *res;
 
   res= var->value->val_str(&str);
-  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+  if (my_strcasecmp(system_charset_info, res->c_ptr_safe(), 
       sys_var_backup_progress_log_path.value) == 0)
   {
     my_error(ER_BACKUP_LOGPATHS, MYF(0));
@@ -2773,7 +2773,7 @@ static bool sys_update_backup_progress_log_path(THD *thd, set_var * var)
   String str(buff,sizeof(buff), system_charset_info), *res;
 
   res= var->value->val_str(&str);
-  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+  if (my_strcasecmp(system_charset_info, res->c_ptr_safe(), 
       sys_var_backup_history_log_path.value) == 0)
   {
     my_error(ER_BACKUP_LOGPATHS, MYF(0));
@@ -2950,7 +2950,7 @@ static int sys_check_backupdir(THD *thd, set_var *var)
   if (!(res= var->value->val_str(&str)))
     goto err;
 
-  log_file_str= res->c_ptr();
+  log_file_str= res->c_ptr_safe();
   bzero(&f_stat, sizeof(MY_STAT));
 
   /* Get dirname of the file path. */
@@ -3003,7 +3003,7 @@ static bool sys_update_backupdir(THD *thd, set_var * var)
 
     if (!(strres= var->value->val_str(&str)))
       goto err;
-    copied_value= strres->c_ptr();
+    copied_value= strres->c_ptr_safe();
     str_length= strres->length();
   }
   else

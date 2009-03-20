@@ -1,0 +1,141 @@
+*** Bug #34182 ***
+# Initialisation
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+# Test #1 - Double locking in a subselect
+CREATE TABLE t1 (id INTEGER primary key, x INTEGER) ENGINE falcon;
+CREATE TABLE t2 (b integer, a integer) ENGINE falcon;
+INSERT INTO t1 VALUES (1, 1), (222, 222);
+INSERT INTO t2 VALUES (1, 10), (2, 20), (3, 30);
+SELECT * FROM t1;
+id	x
+1	1
+222	222
+SELECT * FROM t2;
+b	a
+1	10
+2	20
+3	30
+# Following UPDATE should leave record id=1 locked in T1.
+BEGIN;
+UPDATE t2 SET a = 100 WHERE b = (SELECT x FROM t1 WHERE id = b FOR UPDATE);
+# Establish connection conn1 (user = root)
+# conn1 should be able to make updates to t1 id=222
+UPDATE t1 SET x = 2222 WHERE id = 222;
+# conn1 should not be able to make updates to t1 id=1
+UPDATE t1 SET x = 1111 WHERE id = 1;
+# Connect to default and COMMIT
+COMMIT;
+# Connect to conn1 and reap the UPDATE
+# Connect to default and prepare for Test #2
+DROP TABLE t1;
+DROP TABLE t2;
+# Test #2 - Multiple locking within savepoints
+CREATE TABLE t1 (id INTEGER primary key, x INTEGER) ENGINE falcon;
+INSERT INTO t1 VALUES (1, 1), (2, 2), (3, 3);
+BEGIN;
+SELECT * FROM t1 WHERE id = 1 FOR UPDATE;
+id	x
+1	1
+SAVEPOINT SP1;
+SELECT * FROM t1 WHERE id <= 2 FOR UPDATE;
+id	x
+1	1
+2	2
+SAVEPOINT SP2;
+SELECT * FROM t1 WHERE id <= 3 FOR UPDATE;
+id	x
+1	1
+2	2
+3	3
+# This update will fetch all 3 records for update, 
+# replace the lock on id=3, and then attempt to unlock
+# both id=1 and id=2.  But they should remain locked.
+UPDATE t1 SET x = 333 WHERE x = 3;
+SELECT * FROM t1;
+id	x
+1	1
+2	2
+3	333
+# conn1 should not be able to make updates to t1 id=1
+UPDATE t1 SET x = 1111 WHERE id = 1;
+# Establish connection conn2 (user = root)
+# conn2 should not be able to make updates to t1 id=2
+UPDATE t1 SET x = 2222 WHERE id = 2;
+# Connect to default and ROLLBACK TO SP1
+ROLLBACK;
+SELECT * FROM t1;
+id	x
+1	1111
+2	2222
+3	3
+# Check Results For Test 2
+# Check Results
+# Connect to conn1 and reap
+SELECT * FROM t1;
+id	x
+1	1111
+2	2222
+3	3
+# Connect to conn2 and reap
+SELECT * FROM t1;
+id	x
+1	1111
+2	2222
+3	3
+# Test #3 - Multiple locking within savepoints
+# Connect to default and lock records again
+BEGIN;
+SELECT * FROM t1 WHERE id = 1 FOR UPDATE;
+id	x
+1	1111
+SAVEPOINT SP1;
+SELECT * FROM t1 WHERE id <= 2 FOR UPDATE;
+id	x
+1	1111
+2	2222
+SAVEPOINT SP2;
+SELECT * FROM t1 WHERE id <= 3 FOR UPDATE;
+id	x
+1	1111
+2	2222
+3	3
+UPDATE t1 SET x = 333 WHERE x = 3;
+SELECT * FROM t1;
+id	x
+1	1111
+2	2222
+3	333
+ROLLBACK TO SP1;
+SELECT * FROM t1;
+id	x
+1	1111
+2	2222
+3	3
+# conn1 should not be able to make updates to t1 id=1
+UPDATE t1 SET x = 111111 WHERE id = 1;
+# conn2 should be able to make updates to t1 id=2
+UPDATE t1 SET x = 222222 WHERE id = 2;
+# Connect to default and commit;
+COMMIT;
+SELECT * FROM t1;
+id	x
+1	111111
+2	222222
+3	3
+# Check Results
+# Connect to conn1 and reap
+SELECT * FROM t1;
+id	x
+1	111111
+2	222222
+3	3
+# Connect to conn2
+SELECT * FROM t1;
+id	x
+1	111111
+2	222222
+3	3
+# Final cleanup
+DROP TABLE t1;

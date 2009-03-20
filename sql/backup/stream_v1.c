@@ -1629,21 +1629,27 @@ int bstream_wr_item_def(backup_stream *s,
   data.end= 0;
   query.begin= 0;
   query.end= 0;
+
+  /* 
+    Fetch item's create query and/or extra metadata data. Note that
+    the BSTREAM_EOS reply from bcat_get_item_create_*() functions
+    indicates lack of the corresponding piece of metadata.
+  */
+
   ret= bcat_get_item_create_query(cat,item,&query);
   if (ret == BSTREAM_OK) 
     flags |= BSTREAM_FLAG_HAS_CREATE_STMT;
   else if (ret == BSTREAM_ERROR) 
     goto wr_error;
 
-  /* bcat_get_item_create_data not in use yet. */
-  /*
   ret= bcat_get_item_create_data(cat,item,&data);
   if (ret == BSTREAM_OK)
     flags |= BSTREAM_FLAG_HAS_EXTRA_DATA;
   else if (ret == BSTREAM_ERROR) 
     goto wr_error;
-  */
   
+  /* save the header of metadata entry, containing item coordinates */
+
   ret= bstream_wr_meta_item(s,kind,flags,item);
   if (ret == BSTREAM_ERROR) 
     goto wr_error;

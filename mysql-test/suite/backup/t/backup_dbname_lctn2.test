@@ -1,0 +1,8 @@
+#
+# This test is designed to ensure the backup can successfully
+# backup and retore databases with upper case names when the
+# --lower_case_table_names = 2 on the Windows platform.
+#
+
+--source include/windows.inc
+--source suite/backup/t/backup_dbname_lctn1.test

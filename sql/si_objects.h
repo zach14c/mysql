@@ -152,7 +152,7 @@ public:
 
   @return a pointer to an instance of Obj representing the given database.
 */
-Obj *get_database_stub(const String *db_name);
+Obj *get_database_stub(THD *thd, const String *db_name);
 
 ///////////////////////////////////////////////////////////////////////////
 

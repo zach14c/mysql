@@ -1,0 +1,126 @@
+#
+# This test checks what happens if errors occur during BACKUP/RESTORE shutdown
+# sequence in case of interruption of one of these statements. The errors are
+# triggered using error injection code. They should be reported on server's 
+# error stack after the standard "Query execution was interrupted" error. The
+# latter error should be reported by the interrupted statement.
+#
+
+--source include/not_embedded.inc
+--source include/have_innodb.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
+
+call mtr.add_suppression("Backup:");
+call mtr.add_suppression("Restore:");
+
+--echo #
+--echo # Setup
+--echo #
+let $bdir=`SELECT @@backupdir`;
+
+--disable_warnings
+DROP DATABASE IF EXISTS bup_intr;
+--error 0,1
+--remove_file $bdir/bup_intr.bkp
+--enable_warnings
+
+CREATE DATABASE bup_intr;
+USE bup_intr;
+
+CREATE TABLE t1(engine char(6));
+#
+# Table t1 is used in the test loop which will iterate over its rows and
+# change t1's storage engine as indicated. We pick innodb and memory to 
+# trigger use of the default and the snapshot backup/restore drivers.
+#
+INSERT INTO  t1 VALUES ('innodb'),('memory');
+#
+# Table t2 is here so that some table data is always stored in the image
+# and the synchronization point used below is always reached.
+#
+CREATE TABLE t2(a int);
+INSERT INTO t2 VALUES (1);
+
+# connection required by backup_restore_interrupt.inc
+--connect (killer,localhost,root,,)
+
+#
+# Loop over rows in t1 which indicate what storage engine should be used.
+#
+
+while (`SELECT count(*) > 0 FROM bup_intr.t1`)
+{
+
+  # read the next engine and remove it from t1
+  let $engine=`SELECT engine FROM bup_intr.t1 LIMIT 1`;
+  eval DELETE FROM bup_intr.t1 WHERE engine='$engine';
+
+  --echo
+  --echo ########################################
+  --echo ## Testing with $engine engine.
+  --echo ########################################
+  --echo
+
+  # change storage engine of t1
+  eval ALTER TABLE bup_intr.t1 ENGINE=$engine;
+
+  #
+  # Test interruption of BACKUP
+  #
+  let $do_restore=0;
+  # activate error injection code
+  SET SESSION DEBUG="+d,backup_driver_cancel_error";
+  SET SESSION DEBUG="+d,backup_stream_close_error";
+  SET SESSION DEBUG="+d,backup_remove_location_error";
+  #
+  # Test interruption in the middle of BACKUP operation, just before VP
+  # is created.
+  #
+  let $sync_point=before_backup_data_lock;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+  SET SESSION DEBUG="-d";
+
+  --echo #
+  --echo # Prepare bup_intr.bkp for RESTORE testing. Note that above BACKUP
+  --echo # command should not create the file because it was interrupted.
+  --echo #
+  --replace_column 1 #
+  BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+  DROP DATABASE bup_intr;
+
+  #
+  # Test interruption of RESTORE
+  #
+  let $do_restore=1;
+  # activate error injection code
+  SET SESSION DEBUG="+d,backup_driver_cancel_error";
+  SET SESSION DEBUG="+d,backup_stream_close_error";
+  #
+  # Test interruption of RESTORE when the first block of table data is
+  # sent to a restore driver.
+  #
+  let $sync_point=restore_before_sending_data;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+  SET SESSION DEBUG="-d";
+
+  --echo #
+  --echo # Restore original database - the interrupted RESTORE statement could
+  --echo # corrupt it.
+  --echo #
+  --replace_column 1 #
+  RESTORE FROM 'bup_intr.bkp' OVERWRITE;
+  --remove_file $bdir/bup_intr.bkp
+
+} # end of the while loop.
+
+--echo #
+--echo # Cleanup
+--echo #
+SET DEBUG_SYNC='reset';
+--disable_warnings
+DROP DATABASE IF EXISTS bup_intr;
+--error 0,1
+--remove_file $bdir/bup_intr.bkp
+--enable_warnings
+
