@@ -1644,6 +1644,9 @@ void Database::shutdown()
 	serialLog->shutdown();
 	cache->shutdown();
 
+	if (cycleManager)
+		cycleManager->shutdown();
+		
 	if (threads)
 		{
 		threads->shutdownAll();
@@ -1651,7 +1654,6 @@ void Database::shutdown()
 		}
 
 	tableSpaceManager->shutdown(0);
-	cycleManager->shutdown();
 	dbb->shutdown(0);
 
 	if (serialLog)
