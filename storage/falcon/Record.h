@@ -125,8 +125,9 @@ public:
 	virtual int		setRecordData(const UCHAR *dataIn, int dataLength);
 	virtual void	serialize(Serialize* stream);
 	virtual int		getSize(void);
-	virtual SyncObject* getSyncPrior(void);
+	//virtual SyncObject* getSyncPrior(void);
 	virtual SyncObject* getSyncThaw(void);
+	virtual void	queueForDelete(void);
 
 	const UCHAR*	getEncoding (int index);
 	int				setEncodedRecord(Stream *stream, bool interlocked);
@@ -202,7 +203,6 @@ public:
 	uint historyCount;
 	struct record_history		history[MAX_RECORD_HISTORY];
 #endif
-
 };
 
 #endif // !defined(AFX_RECORD_H__02AD6A50_A433_11D2_AB5B_0000C01D2301__INCLUDED_)

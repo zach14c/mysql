@@ -50,6 +50,7 @@
 #include "Dbb.h"
 #include "CmdGen.h"
 #include "IndexWalker.h"
+#include "CycleLock.h"
 //#include "SyncTest.h"
 
 #define ACCOUNT				"mysql"
@@ -263,6 +264,8 @@ Table* StorageDatabase::findTable(const char* tableName, const char *schemaName)
 
 int StorageDatabase::insert(Connection* connection, Table* table, Stream* stream)
 {
+	CycleLock cycleLock(table->database);
+
 	return table->insert(connection->getTransaction(), stream);
 }
 
@@ -274,14 +277,17 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 	Transaction *transaction = connection->getTransaction();
 	Record *candidate = NULL;
 	Record *record = NULL;
+	CycleLock cycleLock(table->database);
 	
 	try
 		{
 		for (;;)
 			{
 			candidate = table->fetchNext(recordNumber);
+			
 			if (!candidate)
 				return StorageErrorRecordNotFound;
+				
 			RECORD_HISTORY(candidate);
 
 			record = (lockForUpdate)
@@ -294,6 +300,7 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 					candidate->release(REC_HISTORY);
 					
 				recordNumber = candidate->recordNumber + 1;
+				
 				continue;
 				}
 			
@@ -323,12 +330,16 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 			{
 			case UPDATE_CONFLICT:
 				return StorageErrorUpdateConflict;
+				
 			case OUT_OF_MEMORY_ERROR:
 				return StorageErrorOutOfMemory;
+				
 			case OUT_OF_RECORD_MEMORY_ERROR:
 				return StorageErrorOutOfRecordMemory;
+				
 			case DEADLOCK:
 				return StorageErrorDeadlock;
+				
 			case LOCK_TIMEOUT:
 				return StorageErrorLockTimeout;
 			}
@@ -347,8 +358,10 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 	try
 		{
 		candidate = table->fetch(recordNumber);
+		
 		if (!candidate)
 			return StorageErrorRecordNotFound;
+			
 		RECORD_HISTORY(candidate);
 
 		Record *record = (lockForUpdate)
@@ -409,6 +422,7 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 	Table *table = storageTable->share->table;
 	Transaction *transaction = connection->getTransaction();
 	Record *candidate = NULL;
+	CycleLock cycleLock(table->database);
 	
 	try
 		{
@@ -484,6 +498,7 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 
 int StorageDatabase::nextIndexed(StorageTable* storageTable, IndexWalker* indexWalker, bool lockForUpdate)
 {
+	CycleLock cycleLock(storageTable->share->table->database);
 
 	try
 		{
@@ -637,12 +652,15 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 	Connection *connection = storageConnection->connection;
 	Transaction *transaction = connection->transaction;
 	Record *candidate = NULL, *record = NULL;
+	CycleLock cycleLock(table->database);
 	
 	try
 		{
 		candidate = table->fetch(recordNumber);
+		
 		if (!candidate)
 			return StorageErrorRecordNotFound;
+			
 		RECORD_HISTORY(candidate);
 
 		if (candidate->state == recLock)
@@ -704,6 +722,7 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 int StorageDatabase::updateRow(StorageConnection* storageConnection, Table* table, Record *oldRecord, Stream* stream)
 {
 	Connection *connection = storageConnection->connection;
+	CycleLock cycleLock(table->database);
 	table->update (connection->getTransaction(), oldRecord, stream);
 	
 	return 0;

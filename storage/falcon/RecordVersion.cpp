@@ -126,10 +126,13 @@ Record* RecordVersion::releaseNonRecursive()
 
 Record* RecordVersion::fetchVersion(Transaction * trans)
 {
+	/***
 	Sync syncPrior(format->table->getSyncPrior(this), "RecordVersion::fetchVersion");
+	
 	if (priorVersion)
 		syncPrior.lock(Shared);
-
+	***/
+	
 	return fetchVersionRecursive(trans);
 }
 
@@ -233,8 +236,8 @@ void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestAct
 	if (!priorVersion)
 		return;
 
-	Sync syncPrior(getSyncPrior(), "RecordVersion::scavengeSavepoint");
-	syncPrior.lock(Shared);
+	//Sync syncPrior(getSyncPrior(), "RecordVersion::scavengeSavepoint");
+	//syncPrior.lock(Shared);
 	
 	Record *rec = priorVersion;
 	Record *ptr = NULL;
@@ -266,9 +269,11 @@ void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestAct
 	Record *prior = priorVersion;
 	prior->addRef();
 
-	syncPrior.unlock();
-	syncPrior.lock(Exclusive);
+	//syncPrior.unlock();
+	//syncPrior.lock(Exclusive);
 
+	// Since prior is invisible to other transactions, this is safe
+	
 	setPriorVersion(rec);
 	ptr->state = recEndChain;
 	format->table->garbageCollect(prior, this, transaction, false);
@@ -305,14 +310,14 @@ bool RecordVersion::isSuperceded()
 
 Record* RecordVersion::clearPriorVersion(void)
 {
-	Sync syncPrior(getSyncPrior(), "RecordVersion::clearPriorVersion");
-	syncPrior.lock(Exclusive);
-
+	//Sync syncPrior(getSyncPrior(), "RecordVersion::clearPriorVersion");
+	//syncPrior.lock(Exclusive);
 	Record * prior = priorVersion;
 	
 	if (prior && prior->useCount == 1)
 		{
 		priorVersion = NULL;
+		
 		return prior;
 		}
 	
@@ -461,3 +466,8 @@ void RecordVersion::serialize(Serialize* stream)
 		stream->putInt(2);
 }
 
+
+void RecordVersion::queueForDelete(void)
+{
+	format->table->queueForDelete(this);
+}

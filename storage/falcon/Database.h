@@ -126,6 +126,7 @@ class PriorityScheduler;
 class SQLException;
 class BackLog;
 class SyncHandler;
+class CycleManager;
 
 struct JavaCallback;
 
@@ -321,6 +322,7 @@ public:
 	TransactionManager	*transactionManager;
 	FilterSetManager	*filterSetManager;
 	TableSpaceManager	*tableSpaceManager;
+	CycleManager		*cycleManager;
 	SyncHandler			*syncHandler;
 	SearchWords			*searchWords;
 	Thread				*tickerThread;

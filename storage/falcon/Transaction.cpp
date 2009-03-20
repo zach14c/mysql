@@ -165,6 +165,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 
 Transaction::~Transaction()
 {
+	commitId = -1;
 	Tdelete++;
 
 	if (state == Active)
@@ -176,6 +177,10 @@ Transaction::~Transaction()
 			syncIsActive.unlock();
 		}
 
+	state = -1;
+	transactionId = -1;
+	commitId = -1;
+	
 	if (inList)
 		transactionManager->removeTransaction(this);
 
@@ -186,12 +191,14 @@ Transaction::~Transaction()
 	// We modify record list without locking.
 	// It is a destructor and if somebody accesses the list
 	// at this point, he is already lost.
+	
 	for (RecordVersion *record; (record = firstRecord);)
 		{
+		//record->transaction = NULL;
 		removeRecordNoLock(record);
 		}
+		
 	firstRecord = NULL;
-	
 	releaseSavepoints();
 	
 	if (deferredIndexes)
@@ -406,13 +413,16 @@ void Transaction::rollback()
 			record->rollback(this);
 		
 		record->transaction = rollbackTransaction;
-		record->release(REC_HISTORY);
+		//record->release(REC_HISTORY);
+		record->queueForDelete();
 		}
+		
 	firstRecord = NULL;
 	syncRec.unlock();
 
 	Sync syncSP(&syncSavepoints, "Transaction::rollback");
 	syncSP.lock(Shared);
+	
 	for (SavePoint *savePoint = savePoints; savePoint; savePoint = savePoint->next)
 		if (savePoint->backloggedRecords)
 			database->backLog->rollbackRecords(savePoint->backloggedRecords, this);
@@ -758,8 +768,8 @@ bool Transaction::needToLock(Record* record)
 {
 	// Find the first visible record version
 
-	Sync syncPrior(record->getSyncPrior(), "Transaction::needToLock");
-	syncPrior.lock(Shared);
+	//Sync syncPrior(record->getSyncPrior(), "Transaction::needToLock");
+	//syncPrior.lock(Shared);
 
 	for (Record* candidate = record; 
 		 candidate != NULL;
@@ -769,13 +779,17 @@ bool Transaction::needToLock(Record* record)
 		TransId transId = candidate->getTransactionId();
 
 		if (visible(transaction, transId, FOR_WRITING))
+			{
 			if (candidate->state == recDeleted)
+				{
 				if (!transaction || transaction->state == Committed)
 					return false; // Committed and deleted
-				else
-					return true; // Just in case this rolls back.
-			else
-				return true;
+
+				return true; // Just in case this rolls back.
+				}
+
+			return true;
+			}
 		}
 
 	return false;
@@ -1274,8 +1288,10 @@ void Transaction::rollbackSavepoint(int savePointId)
 			rec->rollback(this);
 			SET_RECORD_ACTIVE(rec, false);
 			rec->transaction = NULL;
-			rec->release(REC_HISTORY);
+			//rec->release(REC_HISTORY);
+			rec->queueForDelete();
 			}
+			
 		syncRec.unlock();
 
 		// Handle any backlogged records

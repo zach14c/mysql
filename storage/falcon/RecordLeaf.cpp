@@ -147,8 +147,10 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 					if (prune->useCount != 1)
 						{
 						prior = NULL;
+						
 						break;
 						}
+						
 					recordScavenge->recordsPruned++;
 					recordScavenge->spacePruned += prune->getMemUsage();
 					}
@@ -157,7 +159,8 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 					{
 					SET_RECORD_ACTIVE(prior, false);
 					table->garbageCollect(prior, record, NULL, false);
-					prior->release(REC_HISTORY);
+					//prior->release(REC_HISTORY);
+					prior->queueForDelete();
 					}
 				}
 			}

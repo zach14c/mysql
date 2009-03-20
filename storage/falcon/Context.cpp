@@ -28,6 +28,7 @@
 #include "View.h"
 #include "SQLError.h"
 #include "Connection.h"
+#include "CycleLock.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -100,6 +101,8 @@ bool Context::fetchNext(Statement * statement)
 	if (eof)
 		throw SQLEXCEPTION (RUNTIME_ERROR, "record stream is not open");
 
+	CycleLock cycleLock(table->database);
+	
 	for (;;)
 		{
 		if (record)
@@ -111,6 +114,7 @@ bool Context::fetchNext(Statement * statement)
 		if (!candidate)
 			{
 			eof = true;
+			
 			return false;
 			}
 
@@ -151,6 +155,8 @@ bool Context::fetchIndexed(Statement * statement)
 
 	if (!bitmap)
 		return false;
+
+	CycleLock cycleLock(table->database);
 
 	for (;;)
 		{

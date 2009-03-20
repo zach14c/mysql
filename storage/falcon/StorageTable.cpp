@@ -29,6 +29,7 @@
 #include "Value.h"
 #include "SQLException.h"
 #include "MySQLCollation.h"
+#include "Log.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -52,6 +53,7 @@ StorageTable::StorageTable(StorageConnection *connection, StorageTableShare *tab
 	record = NULL;
 	recordLocked = false;
 	indexesLocked = false;
+	historyIndex = 0;
 }
 
 StorageTable::~StorageTable(void)
@@ -157,6 +159,22 @@ int StorageTable::next(int recordNumber, bool lockForUpdate)
 
 	int ret = storageDatabase->nextRow(this, recordNumber, lockForUpdate);
 
+#ifdef TRACK_RECORDS
+	if (ret >= 0)
+		{
+		if (historyIndex >= recordHistorySize)
+			Log::debug("history overflow\n");
+		else
+			{
+			RecordHistory *history = recordHistory + historyIndex++;
+			history->record = record;
+			history->recordNumber = record->recordNumber;
+			history->transaction = record->getTransaction();
+			history->transactionId = record->getTransactionId();
+			}
+		}
+#endif
+			
 	return ret;
 }
 
@@ -659,4 +677,5 @@ void StorageTable::clearStatement(void)
 	clearAlter();
 	delete indexWalker;
 	indexWalker = NULL;
+	historyIndex = 0;
 }
