@@ -266,10 +266,6 @@ bool subquery_types_allow_materialization(THD *thd,
 int do_sj_reset(SJ_TMP_TABLE *sj_tbl);
 TABLE *create_duplicate_weedout_tmp_table(THD *thd, uint uniq_tuple_length_arg,
                                           SJ_TMP_TABLE *sjtbl);
-inline bool optimizer_flag(THD *thd, uint flag)
-{ 
-  return (thd->variables.optimizer_switch & flag);
-}
 
 Item_equal *find_item_equal(COND_EQUAL *cond_equal, Field *field,
                             bool *inherited_fl);
