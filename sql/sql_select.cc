@@ -4341,9 +4341,6 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables_arg, COND *conds,
     }
   }
 
-  if (pull_out_semijoin_tables(join))
-    DBUG_RETURN(TRUE);
-
   /* Calc how many (possible) matched records in each table */
 
   for (s=stat ; s < stat_end ; s++)
@@ -4426,6 +4423,9 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables_arg, COND *conds,
     }
   }
 
+  if (pull_out_semijoin_tables(join))
+    DBUG_RETURN(TRUE);
+
   join->join_tab=stat;
   join->map2table=stat_ref;
   join->all_tables= table_vector;
@@ -4500,6 +4500,9 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
   {
     while ((sj_nest= sj_list_it++))
     {
+      /* semi-join nests with only constant tables are not valid */
+      DBUG_SASSERT(sj_nest->sj_inner_tables & ~join->const_tables);
+
       sj_nest->sj_mat_info= NULL;
       if (sj_nest->sj_inner_tables && /* not everything was pulled out */
           !sj_nest->sj_subq_pred->is_correlated && 
