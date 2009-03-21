@@ -421,9 +421,14 @@ static ulong max_used_connections;
 static volatile ulong cached_thread_count= 0;
 static const char *sql_mode_str= "OFF";
 /* Text representation for OPTIMIZER_SWITCH_DEFAULT */
-static const char *optimizer_switch_str="index_merge=on,index_merge_union=on,"
+static const char *optimizer_switch_str="firstmatch=on,"
+                                        "index_merge=on,"
+                                        "index_merge_union=on,"
                                         "index_merge_sort_union=on,"
-                                        "index_merge_intersection=on";
+                                        "index_merge_intersection=on,"
+                                        "loosescan=on,"
+                                        "materialization=on,"
+                                        "semijoin=on";
 static char *mysqld_user, *mysqld_chroot, *log_error_file_ptr;
 static char *opt_init_slave, *language_ptr, *opt_init_connect;
 static char *default_character_set_name;
