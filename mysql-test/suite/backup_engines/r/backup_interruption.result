@@ -28,9 +28,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_command
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -72,9 +69,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_prepare
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -116,9 +110,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_logger_init
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -160,9 +151,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_common_prepare
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -207,9 +195,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_privileges
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -254,9 +239,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_single_op
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -301,9 +283,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_ddl_block
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -348,9 +327,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_stream_open
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -395,9 +371,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_catalog
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -442,9 +415,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: after_backup_start_backup
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -489,9 +459,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_do_backup
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -536,9 +503,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_meta
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -583,9 +547,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: backup_before_write_preamble
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -630,9 +591,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_data
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -677,9 +635,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_data_init
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -724,9 +679,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_data_prepare
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -771,9 +723,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_data_lock
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -819,9 +768,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_data_unlock
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -867,9 +813,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: after_backup_binlog
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -917,9 +860,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_data_finish
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -967,9 +907,6 @@ BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_backup_summary
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1021,9 +958,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_prepare
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1065,9 +999,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_logger_init
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1109,9 +1040,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_common_prepare
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1156,9 +1084,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_stream_open
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1203,9 +1128,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_catalog
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1250,9 +1172,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_read_header
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1297,9 +1216,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_read_catalog
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1344,9 +1260,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_binlog
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1391,9 +1304,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: after_backup_start_restore
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1438,9 +1348,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_fkey_disable
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1485,9 +1392,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_read_metadata
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1532,9 +1436,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_locks_tables
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1580,9 +1481,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_table_data
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1628,9 +1526,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: restore_before_drivers_create
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1676,9 +1571,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: restore_before_drivers_init
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1724,9 +1616,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: restore_before_read_data_chunk
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1772,9 +1661,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: restore_before_sending_data
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1820,9 +1706,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: restore_table_data_before_end
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1868,9 +1751,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_triggers
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #
@@ -1916,9 +1796,6 @@ RESTORE FROM 'bup_intr.bkp';
 # then kill it.
 #
 SET DEBUG_SYNC='now WAIT_FOR here';
-SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=<query id>;
-state
-debug sync point: before_restore_completed
 KILL QUERY <query id>;
 SET DEBUG_SYNC='now SIGNAL go';
 #

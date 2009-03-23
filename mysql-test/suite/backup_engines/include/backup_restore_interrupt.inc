@@ -69,8 +69,14 @@ eval $command;
   --echo # then kill it.
   --echo #
   SET DEBUG_SYNC='now WAIT_FOR here';
-  --replace_regex /id=[0-9]+/id=<query id>/
-  eval SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=$id;
+#
+# SELECTs from I_S.PROCESSLIST commented out because such selects are unstable
+# in the current server (v6.0 as of Mar 2009). See bug#37990, bug#41346, 
+# bug#43357. When I_S quality is improved, the following lines could be 
+# re-enabled increasing sensitivity of this test to potential problems.
+#
+#  --replace_regex /id=[0-9]+/id=<query id>/
+#  eval SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=$id;
   --replace_regex /QUERY [0-9]+/QUERY <query id>/
   eval KILL QUERY $id;
   SET DEBUG_SYNC='now SIGNAL go';
