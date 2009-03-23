@@ -3147,6 +3147,7 @@ bool Prepared_statement::prepare(const char *packet, uint packet_len)
   bool error;
   Statement stmt_backup;
   Query_arena *old_stmt_arena;
+  MDL_ticket *mdl_savepoint= NULL;
   DBUG_ENTER("Prepared_statement::prepare");
   /*
     If this is an SQLCOM_PREPARE, we also increase Com_prepare_sql.
@@ -3205,6 +3206,13 @@ bool Prepared_statement::prepare(const char *packet, uint packet_len)
   */
   DBUG_ASSERT(thd->change_list.is_empty());
 
+  /*
+    Marker used to release metadata locks acquired while the prepared
+    statement is being checked.
+  */
+  if (thd->in_multi_stmt_transaction())
+    mdl_savepoint= thd->mdl_context.mdl_savepoint();
+
   /* 
    The only case where we should have items in the thd->free_list is
    after stmt->set_params_from_vars(), which may in some cases create
@@ -3228,6 +3236,15 @@ bool Prepared_statement::prepare(const char *packet, uint packet_len)
 
   lex_end(lex);
   cleanup_stmt();
+  /*
+    If not inside a multi-statement transaction, the metadata locks have
+    already been released and the rollback_to_savepoint is a nop.
+    Otherwise, release acquired locks -- a NULL mdl_savepoint means that
+    all locks are going to be released or that the transaction didn't
+    own any locks.
+  */
+  if (!thd->locked_tables_mode)
+    thd->mdl_context.rollback_to_savepoint(mdl_savepoint);
   thd->restore_backup_statement(this, &stmt_backup);
   thd->stmt_arena= old_stmt_arena;
 
