@@ -23,6 +23,7 @@
 #include "Configuration.h"
 #include "RecordVersion.h"
 #include "Transaction.h"
+#include "TransactionState.h"
 #include "TransactionManager.h"
 #include "Table.h"
 #include "Connection.h"
@@ -47,9 +48,15 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *trans, Rec
 {
 	virtualOffset = 0;
 	transaction   = trans;
+	transState    = trans->transactionState;
 	transactionId = transaction->transactionId;
 	savePointId   = transaction->curSavePointId;
 	superceded    = false;
+
+	// Add a use count on the transaction state to ensure it lives as long 
+	// as the record version object
+
+	transState->addRef();
 
 	if ((priorVersion = oldVersion))
 		{
@@ -66,7 +73,7 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *trans, Rec
 		recordNumber = -1;
 }
 
-RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(database, stream)
+RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(database, stream), transState(NULL)
 {
 	// Reconstitute a record version and recursively restore all
 	// prior versions from 'stream'
@@ -104,6 +111,11 @@ RecordVersion::~RecordVersion()
 	
 	while (prior)
 		prior = prior->releaseNonRecursive();
+
+	// Release the use count on the transaction state object
+
+	if (transState)
+		transState->release();
 }
 
 // Release the priorRecord reference without doing it recursively.
@@ -143,7 +155,7 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 		{
 		if (IS_READ_COMMITTED(trans->isolationLevel))
 			{
-			int state = (recTransaction) ? recTransaction->state : 0;
+			int state = (recTransaction) ? recTransaction->transactionState->state : 0;
 			
 			if (!transaction || state == Committed || recTransaction == trans)
 				return (getRecordData()) ? this : NULL;
@@ -293,6 +305,11 @@ void RecordVersion::setSuperceded(bool flag)
 Transaction* RecordVersion::getTransaction()
 {
 	return transaction;
+}
+
+TransactionState* RecordVersion::getTransactionState() const
+{
+	return transState;
 }
 
 bool RecordVersion::isSuperceded()

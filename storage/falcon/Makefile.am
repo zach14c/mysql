@@ -205,6 +205,7 @@ falcon_headers= Agent.h Alias.h Application.h \
 		TimeStamp.h \
 		Transaction.h \
 		TransactionManager.h \
+		TransactionState.h \
 		Trigger.h \
 		TriggerRecord.h \
 		Types.h Unicode.h UnTable.h User.h UserRole.h \
@@ -389,6 +390,7 @@ falcon_sources= Agent.cpp Alias.cpp \
 		TimeStamp.cpp \
 		Transaction.cpp \
 		TransactionManager.cpp \
+		TransactionState.cpp \
 		Trigger.cpp \
 		Unicode.cpp UnTable.cpp User.cpp \
 		UserRole.cpp Validation.cpp Value.cpp ValueEx.cpp Values.cpp \

@@ -1718,7 +1718,7 @@ void Connection::detachDatabase()
 
 	try
 		{
-		if (transaction && transaction->state == Active)
+		if (transaction && transaction->getState() == Active)
 			transaction->rollback();
 		}
 	catch (SQLException &exception)
