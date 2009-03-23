@@ -200,56 +200,11 @@ run_service_interface_sql(THD *thd, Ed_connection *ed_connection,
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Update THD with the warnings from the given list.
-
-  @param[in]  thd   Thread context.
-  @parampin]  src   Warning list.
-*/
-
-void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
-{
-  List_iterator_fast<MYSQL_ERROR> err_it(*src);
-  MYSQL_ERROR *err;
-
-  while ((err= err_it++))
-    push_warning(thd, err->level, err->code, err->msg);
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-/**
   Table_name_key defines a hash key, which includes database and tables
   names.
 */
 
-struct Table_name_key
-{
-public:
-  LEX_STRING db_name;
-  LEX_STRING table_name;
-  LEX_STRING key;
-
-public:
-  void init_from_mdl_key(const char *key_arg, size_t key_length_arg,
-                         char *key_buff_arg);
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-void
-Table_name_key::init_from_mdl_key(const char *key_arg, size_t key_length_arg,
-                                  char *key_buff_arg)
-{
-  key.str= key_buff_arg;
-  key.length= key_length_arg - 4; /* Skip MDL object type */
-  memcpy(key.str, key_arg + 4, key.length);
-
-  db_name.str= key.str;
-  db_name.length= strlen(db_name.str);
-  table_name.str= db_name.str + db_name.length + 1; /* Skip \0 */
-  table_name.length= strlen(table_name.str);
-}
+typedef MDL_key Table_name_key;
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -261,8 +216,8 @@ get_table_name_key(const uchar *record,
                    my_bool not_used __attribute__((unused)))
 {
   Table_name_key *table_name_key= (Table_name_key *) record;
-  *key_length= table_name_key->key.length;
-  return (uchar *) table_name_key->key.str;
+  *key_length= table_name_key->length();
+  return (uchar*) table_name_key->ptr();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -774,7 +729,7 @@ bool Abstract_obj::create(THD *thd)
     rc= ed_connection.execute_direct(*sql_text);
 
     /* Push warnings on the THD error stack. */
-    copy_warnings(thd, ed_connection.get_warn_list());
+    thd->warning_info->append_warnings(thd, ed_connection.get_warn_list());
 
     if (rc)
       break;
@@ -1579,21 +1534,16 @@ Find_view_underlying_tables::execute_server_code(THD *thd)
     while ((table= it++))
     {
       Table_name_key *table_name_key;
-      char *key_buff;
 
       /* If we expect a view, and it's a table, or vice versa, continue */
       if ((int) m_base_obj_it->get_base_obj_kind() != test(table->view))
         continue;
 
       if (! my_multi_malloc(MYF(MY_WME),
-                            &table_name_key, sizeof(*table_name_key),
-                            &key_buff, table->mdl_lock_data->key_length,
-                            NullS))
+                            &table_name_key, sizeof(*table_name_key), NullS))
         goto end;
 
-      table_name_key->init_from_mdl_key(table->mdl_lock_data->key,
-                                        table->mdl_lock_data->key_length,
-                                        key_buff);
+      table_name_key->mdl_key_init(&table->mdl_request->key);
 
       if (my_hash_insert(m_table_names, (uchar*) table_name_key))
       {
@@ -1627,6 +1577,8 @@ bool View_base_obj_iterator::init(THD *thd,
 
 Obj *View_base_obj_iterator::next()
 {
+  LEX_STRING db_name;
+  LEX_STRING table_name;
   if (m_cur_idx >= m_table_names.records)
     return NULL;
 
@@ -1635,7 +1587,13 @@ Obj *View_base_obj_iterator::next()
 
   ++m_cur_idx;
 
-  return create_obj(&table_name_key->db_name, &table_name_key->table_name);
+  db_name.str= (char*) table_name_key->db_name();
+  db_name.length= table_name_key->db_name_length();
+
+  table_name.str= (char*) table_name_key->table_name();
+  table_name.length= table_name_key->table_name_length();
+
+  return create_obj(&db_name, &table_name);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2175,7 +2133,7 @@ const String *Tablespace_obj::get_description()
 
   /* Either description or id and data file name must be not empty. */
   DBUG_ASSERT(m_description.length() ||
-              m_id.length() && m_data_file_name.length());
+              (m_id.length() && m_data_file_name.length()));
 
   if (m_description.length())
     DBUG_RETURN(&m_description);
@@ -2246,6 +2204,7 @@ Grant_obj::Grant_obj(const Ed_row &row)
   const LEX_STRING *db_name= row.get_column(2);
   const LEX_STRING *tbl_name= row.get_column(3);
   const LEX_STRING *col_name= row.get_column(4);
+  const LEX_STRING *routine_type= row.get_column(5);
 
   LEX_STRING table_name= { C_STRING_WITH_LEN("") };
   LEX_STRING column_name= { C_STRING_WITH_LEN("") };
@@ -2263,10 +2222,21 @@ Grant_obj::Grant_obj(const Ed_row &row)
   String_stream s_stream(&m_grant_info);
   s_stream << privilege_type;
 
+  /*
+    Either column_name or routine_type or both are NULL.
+    They are never both non-NULL.
+  */
+  DBUG_ASSERT(!column_name.length || !routine_type->length);
+
   if (column_name.length)
     s_stream << "(" << &column_name << ")";
 
-  s_stream << " ON " << db_name << ".";
+  s_stream << " ON ";
+
+  if (routine_type->length)
+    s_stream << routine_type << " ";
+
+  s_stream << db_name << ".";
 
   if (table_name.length)
     s_stream << &table_name;
@@ -2348,9 +2318,65 @@ bool Grant_obj::do_init_from_image(In_stream *is)
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
-Obj *get_database_stub(const String *db_name)
+Obj *get_database_stub(THD *thd, const String *db_name)
 {
-  return new Database_obj(db_name->lex_string());
+
+  DBUG_EXECUTE_IF("siobj_get_db_stub",  return NULL; );
+  /*
+    The specified db name may have characters in a wrong case. Get the
+    normalized name by reading it from INFORMATION_SCHEMA. Note: if
+    lower_case_table_names=0, the db name must not be converted.
+   */
+
+  if (!lower_case_table_names)
+    return new Database_obj(db_name->lex_string()); 
+
+
+  Ed_connection ed_connection(thd);
+  String_stream s_stream;
+  Ed_result_set *ed_result_set;
+
+  // Prepare SELECT statement.
+
+  s_stream << "SELECT schema_name "
+              "FROM INFORMATION_SCHEMA.SCHEMATA WHERE "
+              "LCASE(schema_name) = LCASE('" << db_name << "')";
+
+  // Execute SELECT.
+
+  if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+      ed_connection.get_warn_count())
+    return NULL;
+
+  // Fetch result.
+
+  ed_result_set= ed_connection.use_result_set();
+
+  // The database did not find the database. Return a Database_obj
+  // with correct name anyway as per method specification
+  if (ed_result_set->size() != 1)
+  {
+    // Need to convert the name to lower case when lctn=1
+    if (lower_case_table_names == 1)
+    {
+      String lcasename;
+      lcasename.copy(db_name->ptr(), db_name->length(), system_charset_info);
+      my_casedn_str(lcasename.charset(), lcasename.c_ptr());
+      return new Database_obj(lcasename.lex_string()); 
+    }
+    else 
+      return new Database_obj(db_name->lex_string()); 
+  }
+
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
+  Ed_row *row= row_it++;
+
+  DBUG_ASSERT(row->size() == 1);
+    
+
+  // Create object using normalized name.
+
+  return new Database_obj(*row); 
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2463,7 +2489,8 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "privilege_type AS c2, "
     "table_schema AS c3, "
     "NULL AS c4, "
-    "NULL AS c5 "
+    "NULL AS c5, "
+    "NULL AS c6 "
     "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES "
     "WHERE table_schema = '" << db_name << "') "
     "UNION "
@@ -2471,6 +2498,7 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "privilege_type, "
     "table_schema, "
     "table_name, "
+    "NULL, "
     "NULL "
     "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES "
     "WHERE table_schema = '" << db_name << "') "
@@ -2479,10 +2507,20 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "privilege_type, "
     "table_schema, "
     "table_name, "
-    "column_name "
+    "column_name, "
+    "NULL "
     "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES "
     "WHERE table_schema = '" << db_name << "') "
-    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
+    "UNION "
+    "(SELECT CONCAT('''', User, '''@''', Host, ''''), "
+    "Proc_priv, "
+    "Db, "
+    "Routine_name, "
+    "NULL, "
+    "Routine_type "
+    "FROM mysql.procs_priv "
+    "WHERE Db = '" << db_name << "') "
+    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC, c6 ASC";
 
   return create_row_set_iterator<Grant_iterator>(thd, s_stream.lex_string());
 }
@@ -2719,6 +2757,11 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
 
   ed_result_set= ed_connection.use_result_set();
 
+  // Return NULL if the tablespace does not exist
+  if (ed_result_set->size() == 0)
+    return NULL;
+
+  // There can only be one tablespace with this name
   DBUG_ASSERT(ed_result_set->size() == 1);
 
   List_iterator_fast<Ed_row> row_it(*ed_result_set);

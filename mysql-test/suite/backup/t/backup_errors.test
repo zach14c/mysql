@@ -117,20 +117,27 @@ SHOW WARNINGS;
 SELECT backup_state,operation,backup_file, command FROM mysql.backup_history;
 SELECT notes FROM mysql.backup_progress;
 
-#
-# Note: the following error is detected on parser level. Thus no 
-# backup_id is assigned and nothing is written to backup logs.
-#
 PURGE BACKUP LOGS;
+
+CREATE DATABASE foo;
+CREATE DATABASE bar;
+
+--echo # 
 --echo # repeated database
+--echo # 
 -- error ER_NONUNIQ_DB
-eval BACKUP DATABASE foo,test,bar,foo TO 'test.bak' $compression;
+eval BACKUP DATABASE foo, bar, foo TO 'test.bak' $compression;
 --replace_column 2 #
 SHOW WARNINGS;
 
 --echo verify backup history and progress logs for backup_state.
 SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
 SELECT notes FROM mysql.backup_progress;
+
+DROP DATABASE foo;
+DROP DATABASE bar;
+
+PURGE BACKUP LOGS;
 
 # Test that BACKUP/RESTORE statements are disable inside stored routines,
 # triggers and events.
@@ -677,6 +684,19 @@ DROP DATABASE db1;
 SET SESSION DEBUG='+d,restore_read_summary';
 --error ER_BACKUP_READ_SUMMARY
 RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+
+--echo #
+--echo # Test error handling by injecting errors into BACKUP
+--echo #
+
+--echo #
+--echo # Error injection in si_object.cc:get_database_stub
+--echo #
+SET SESSION DEBUG='+d,siobj_get_db_stub';
+--error ER_BACKUP_CATALOG_ADD_DB
+BACKUP DATABASE db1 TO 'failed1.bak';
 SET SESSION DEBUG='-d';
 
 --echo #

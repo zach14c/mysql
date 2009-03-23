@@ -105,7 +105,7 @@ void NBitmap::makeKey(Statement *statement, NNode **exprs, IndexKey *indexKey)
 			break;
 			}
 
-	index->makeKey(nodeCount, values, indexKey);
+	index->makeKey(nodeCount, values, indexKey, false);
 }
 
 NNode* NBitmap::clone()

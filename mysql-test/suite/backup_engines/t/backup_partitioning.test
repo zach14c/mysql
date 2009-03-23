@@ -7,13 +7,11 @@
 # character set.
 ###############################################################################
 --source include/not_embedded.inc
---source include/have_debug.inc
+--source include/have_partition.inc
 --source suite/backup_engines/include/backup_engine.inc
 --source suite/backup_engines/include/not_csv.inc
-
 #
-# BUG#43030 : Partitioning has issues in archive. Remove the following directive
-#             when this bug is fixed.
+# The archive engine does not support partitioning using indexes. 
 #
 --source suite/backup_engines/include/not_archive.inc
 

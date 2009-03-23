@@ -1,0 +1,129 @@
+#
+# Test BACKUP/RESTORE on case-sensitive servers. In this environment,
+# databases 'X' and 'x' are two different databases that can be backed
+# up and restore independently.
+#
+
+--source include/not_embedded.inc
+--source include/not_windows.inc
+
+--echo #
+--echo # Create two database:
+--echo #  * 1 with lower-case name "backupcasetest"
+--echo #  * 1 with upper-case name "BACKUPCASETEST"
+--echo #
+
+--disable_warnings
+DROP DATABASE IF EXISTS backupcasetest;
+DROP DATABASE IF EXISTS BACKUPCASETEST;
+--enable_warnings
+
+--echo # Creating database with lower-case name
+CREATE DATABASE backupcasetest;
+CREATE TABLE backupcasetest.lcase (a char(10), b char(10));
+INSERT INTO backupcasetest.lcase VALUES ('L41','1300'),
+                                        ('L01','1453'), 
+                                        ('L00','1000'),
+                                        ('L41','1301'),
+                                        ('L41','1305');
+
+--echo # Creating database with upper-case name
+CREATE DATABASE BACKUPCASETEST;
+CREATE TABLE BACKUPCASETEST.ucase (a char(10), b char(10));
+INSERT INTO BACKUPCASETEST.ucase VALUES ('U41','1300'),
+                                        ('U01','1453'), 
+                                        ('U00','1000'),
+                                        ('U41','1301'),
+                                        ('U41','1305');
+
+--echo
+--echo # BACKUP lower-case database
+--replace_column 1 #
+BACKUP DATABASE backupcasetest to 'lcase.bup';
+
+--echo
+--echo # BACKUP upper-case database
+--replace_column 1 #
+BACKUP DATABASE BACKUPCASETEST to 'ucase.bup';
+
+--echo
+--echo # BACKUP both database
+--replace_column 1 #
+BACKUP DATABASE BACKUPCASETEST, backupcasetest to 'bothcases.bup';
+
+--echo #
+--echo # Print contents of the databases
+--echo #
+--echo #    Lower case database:
+--echo #
+
+SHOW TABLES IN backupcasetest;
+SELECT * FROM backupcasetest.lcase;
+
+--echo #
+--echo #    Upper case database:
+--echo #
+
+SHOW TABLES IN BACKUPCASETEST;
+SELECT * FROM BACKUPCASETEST.ucase;
+
+--echo #
+--echo # Drop the databases
+--echo #
+DROP DATABASE backupcasetest;
+DROP DATABASE BACKUPCASETEST;
+
+--echo #
+--echo # RESTORE lower case database and verify content
+--echo #
+--replace_column 1 #
+RESTORE FROM 'lcase.bup';
+
+--echo
+SHOW DATABASES WHERE `Database` LIKE 'backupcasetest';
+SHOW TABLES IN backupcasetest;
+SELECT * FROM backupcasetest.lcase;
+
+--echo #
+--echo # RESTORE upper case database and verify content
+--echo #
+--replace_column 1 #
+RESTORE FROM 'ucase.bup';
+
+--echo
+SHOW DATABASES WHERE `Database` LIKE 'backupcasetest';
+SHOW TABLES IN BACKUPCASETEST;
+SELECT * FROM BACKUPCASETEST.ucase;
+
+--echo #
+--echo # Drop the databases
+--echo #
+DROP DATABASE backupcasetest;
+DROP DATABASE BACKUPCASETEST;
+
+--echo #
+--echo # RESTORE backup image with both databases and verify content
+--echo #
+--replace_column 1 #
+RESTORE FROM 'bothcases.bup';
+
+--echo
+SHOW DATABASES WHERE `Database` LIKE 'backupcasetest';
+SHOW TABLES IN backupcasetest;
+SELECT * FROM backupcasetest.lcase;
+
+--echo
+SHOW TABLES IN BACKUPCASETEST;
+SELECT * FROM BACKUPCASETEST.ucase;
+
+--echo #
+--echo # CLEANUP
+--echo #
+DROP DATABASE backupcasetest;
+DROP DATABASE BACKUPCASETEST;
+
+let $MYSQLD_DATADIR = `select @@datadir`;
+--remove_file $MYSQLD_DATADIR/lcase.bup
+--remove_file $MYSQLD_DATADIR/ucase.bup
+--remove_file $MYSQLD_DATADIR/bothcases.bup
+

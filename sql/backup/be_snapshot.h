@@ -54,6 +54,7 @@ public:
     { 
       m_cancel= TRUE;
       cleanup();
+      DBUG_EXECUTE_IF("backup_driver_cancel_error", return backup::ERROR;);
       return backup::OK;
     }
 private:

@@ -64,7 +64,7 @@ public:
 	int					renameTable(StorageConnection* storageConnection, Table* table, const char* newName, const char *schemaName);
 	Bitmap*				indexScan(Index* index, StorageKey *lower, StorageKey *upper, int searchFlags, StorageConnection* storageConnection, Bitmap *bitmap);
 	IndexWalker*		indexPosition(Index* index, StorageKey* lower, StorageKey* upper, int searchFlags, StorageConnection* storageConnection);
-	int					makeKey(StorageIndexDesc* index, const UCHAR* key, int keyLength, StorageKey* storageKey);
+	int					makeKey(StorageIndexDesc* index, const UCHAR* key, int keyLength, StorageKey* storageKey, bool highKey);
 	int					storeBlob(Connection* connection, Table* table, StorageBlob* blob);
 	void				getBlob(Table* table, int recordNumber, StorageBlob* blob);
 	void				addRef(void);

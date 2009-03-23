@@ -275,7 +275,6 @@ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
          connection con5;
          --echo # con5: Reaping BACKUP/RESTORE
          reap;
-         SET debug="-d";
 
      connection con3;
      --echo # con3: Completing DDL3
@@ -317,3 +316,8 @@ SET DEBUG_SYNC= 'reset';
 
 let $backup_to=;
 let $restore_from=;
+
+connection con5;
+  SET debug="-d";
+
+
