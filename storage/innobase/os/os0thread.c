@@ -171,6 +171,7 @@ os_thread_create(
 #if !(defined(UNIV_HOTBACKUP) && defined(UNIV_HPUX10))
 	pthread_attr_destroy(&attr);
 #endif
+
 	if (thread_id) {
 		*thread_id = pthread;
 	}

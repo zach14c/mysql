@@ -28,6 +28,7 @@ connection slave;
 # The warning has to be disabled as mtr can change the init value
 # for slave_net_timeout
 --disable_warnings
+set @restore_slave_net_timeout=@@global.slave_net_timeout;
 set @@global.slave_net_timeout= 10;
 --enable_warnings
 ###
@@ -112,7 +113,7 @@ drop table if exists t1;
 #
 
 connection slave;
-set @@global.slave_net_timeout= 10;
+set @@global.slave_net_timeout= 20;
 --replace_result $MASTER_MYPORT MASTER_PORT
 # no error this time but rather a warning
 eval change master to master_host='127.0.0.1',master_port=$MASTER_MYPORT, master_user='root', master_heartbeat_period= 0.5;
@@ -132,7 +133,7 @@ source include/show_slave_status.inc;
 # That would cause reconnecting and relaylog rotation w/o the fix i.e
 # without a heartbeat received.
 
-real_sleep 15;
+real_sleep 30;
 
 # check (compare with the previous show's results) that no rotation happened
 source include/show_slave_status.inc;
@@ -166,6 +167,7 @@ while (`select $slave_value = 0`)
   let $slave_value= query_get_value("SHOW STATUS like 'Slave_received_heartbeats'", Value, 1);
 }
 --echo A heartbeat has been received by the slave
+
 # cleanup
 
 connection master;
@@ -173,6 +175,7 @@ drop table t1;
 
 #connection slave;
 sync_slave_with_master;
+set @@global.slave_net_timeout=@restore_slave_net_timeout;
 
 
 --echo End of tests
