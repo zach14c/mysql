@@ -27,6 +27,7 @@
 #include "Record.h"
 
 class Transaction;
+class TransactionState;
 class SyncObject;
 
 class RecordVersion : public Record  
@@ -37,6 +38,7 @@ public:
 
 	virtual bool		isSuperceded();
 	virtual Transaction* getTransaction();
+	virtual TransactionState* getTransactionState() const;
 	virtual TransId		getTransactionId();
 	virtual int			getSavePointId();
 	virtual void		setSuperceded (bool flag);
@@ -73,6 +75,9 @@ public:
 	TransId			transactionId;
 	int				savePointId;
 	bool			superceded;
+
+private:
+	TransactionState *transState;
 };
 
 #endif // !defined(AFX_RECORDVERSION_H__84FD1965_A97F_11D2_AB5C_0000C01D2301__INCLUDED_)

@@ -536,6 +536,11 @@ Transaction* Record::getTransaction()
 	return NULL;
 }
 
+TransactionState* Record::getTransactionState() const
+{
+	return NULL;
+}
+
 bool Record::isSuperceded()
 {
 	return false;
