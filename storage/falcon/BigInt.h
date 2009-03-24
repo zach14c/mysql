@@ -62,6 +62,7 @@ public:
 	void			subtract(int index, BigWord value);
 	
 	void			set(int64 value, int scale=0);
+	void			set(uint64 value, int scale=0);
 	void			set(BigInt *bigInt);
 	void			setString(int stringLength, const char* str);
 	void			getString(int bufferLength, char* buffer);
