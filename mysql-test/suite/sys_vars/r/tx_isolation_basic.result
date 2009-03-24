@@ -67,10 +67,7 @@ ERROR 42000: Variable 'tx_isolation' can't be set to the value of '-1'
 SET @@global.tx_isolation = READUNCOMMITTED;
 ERROR 42000: Variable 'tx_isolation' can't be set to the value of 'READUNCOMMITTED'
 SET @@global.tx_isolation = 'REPEATABLE';
-SELECT @@global.tx_isolation;
-@@global.tx_isolation
-REPEATABLE-READ
-'Bug# 34833: REPEATABLE is not documented as as valid tx_isolation level'
+ERROR 42000: Variable 'tx_isolation' can't be set to the value of 'REPEATABLE'
 SET @@global.tx_isolation = OFF;
 ERROR 42000: Variable 'tx_isolation' can't be set to the value of 'OFF'
 SET @@global.tx_isolation = ON;
@@ -82,10 +79,7 @@ ERROR 42000: Variable 'tx_isolation' can't be set to the value of '-1'
 SET @@tx_isolation = READUNCOMMITTED;
 ERROR 42000: Variable 'tx_isolation' can't be set to the value of 'READUNCOMMITTED'
 SET @@tx_isolation = 'REPEATABLE';
-SELECT @@tx_isolation;
-@@tx_isolation
-REPEATABLE-READ
-'Bug# 34833: REPEATABLE is not documented as as valid tx_isolation level'
+ERROR 42000: Variable 'tx_isolation' can't be set to the value of 'REPEATABLE'
 SET @@tx_isolation = 'NONE';
 ERROR 42000: Variable 'tx_isolation' can't be set to the value of 'NONE'
 SET @@tx_isolation = 'ALL';

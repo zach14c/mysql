@@ -108,12 +108,8 @@ SET @@global.query_cache_type = -1;
 SET @@global.query_cache_type = ONDEMAND;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@global.query_cache_type = 'ON,OFF';
-
+--Error ER_WRONG_VALUE_FOR_VAR
 SET @@global.query_cache_type = 'OF';
-SELECT @@global.query_cache_type;
-
---echo 'Bug# 34828: OF is taken as OFF.'
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@global.query_cache_type = YES;
 
