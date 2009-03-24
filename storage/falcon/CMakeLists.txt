@@ -289,6 +289,7 @@ SET(FALCON_SOURCES
 		TimeStamp.cpp 
 		Transaction.cpp
 		TransactionManager.cpp
+		TransactionState.cpp
 		Trigger.cpp
 		Unicode.cpp 
 		UnTable.cpp 
@@ -577,6 +578,7 @@ SET(FALCON_SOURCES
 		TimeStamp.h 
 		Transaction.h
 		TransactionManager.h
+		TransactionState.h
 		Trigger.h
 		Types.h
 		Unicode.h 
