@@ -89,6 +89,7 @@ static const int recEndChain = 11;		// end of chain for garbage collection
 class Format;
 class Table;
 class Transaction;
+class TransactionState;
 class Value;
 class Stream;
 class Database;
@@ -104,6 +105,7 @@ class Record
 {
 public:
 	virtual Transaction* getTransaction();
+	virtual TransactionState* getTransactionState() const;
 	virtual TransId	getTransactionId();
 	virtual int		getSavePointId();
 	virtual void	setSuperceded (bool flag);

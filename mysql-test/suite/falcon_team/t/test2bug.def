@@ -18,7 +18,6 @@
 #
 
 falcon_bug_34174 : Bug#34174 - Infinite loop checking rolled back record in select for update
-falcon_bug_36294-big: Bug#36631	- Assertion in SerialLogControl::nextRecord, sometimes.
 falcon_deadlock:  Bug#34182 - SELECT ... FOR UPDATE does not lock when in subquery
 falcon_bug_34351_B: Bug#42140 - falcon_bug_34351_B fails; sometimes
 falcon_bug_34351_C: Bug#41357 - falcon.falcon_bug_34351_C fails with assertion IS_CONSISTENT_READ

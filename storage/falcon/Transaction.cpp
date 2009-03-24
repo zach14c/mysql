@@ -20,6 +20,7 @@
 #include <memory.h>
 #include "Engine.h"
 #include "Transaction.h"
+#include "TransactionState.h"
 #include "Configuration.h"
 #include "Database.h"
 #include "Dbb.h"
@@ -89,12 +90,12 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	freeSavePoints = NULL;
 	useCount = 1;
 	syncObject.setName("Transaction::syncObject");
-	syncIsActive.setName("Transaction::syncActive");
 	syncDeferredIndexes.setName("Transaction::syncDeferredIndexes");
 	syncRecords.setName("Transaction::syncRecords");
 	syncSavepoints.setName("Transaction::syncSavepoints");
 	firstRecord = NULL;
 	lastRecord = NULL;
+	transactionState = new TransactionState();
 	initialize(cnct, seq);
 }
 
@@ -112,14 +113,14 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	transactionManager = database->transactionManager;
 	systemTransaction = database->systemConnection == connection;
 	transactionId = seq;
-	commitId = 0;
+	transactionState->transactionId = seq;
+	transactionState->commitId = 0;
 	chillPoint = &firstRecord;
 	commitTriggers = false;
 	hasUpdates = false;
 	hasLocks = false;
 	writePending = true;
 	pendingPageWrites = false;
-	waitingFor = NULL;
 	curSavePointId = 0;
 	deferredIndexes = NULL;
 	backloggedRecords = NULL;
@@ -143,7 +144,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	
 	if (seq == 0)
 		{
-		state = Available;
+		transactionState->state = Available;
 		systemTransaction = false;
 		writePending = false;
 
@@ -159,28 +160,23 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	startTime = database->deltaTime;
 	blockingRecord = NULL;
 	thread = Thread::getThread("Transaction::initialize");
-	syncIsActive.lock(NULL, Exclusive);
-	state = Active;
+	transactionState->syncIsActive.lock(NULL, Exclusive);
+	transactionState->state = Active;
 }
 
 Transaction::~Transaction()
 {
-	commitId = -1;
 	Tdelete++;
 
-	if (state == Active)
+	if (transactionState->state == Active)
 		{
 		Log::debug("Deleting apparently active transaction %d\n", transactionId);
 		ASSERT(false);
 		
-		if (syncIsActive.ourExclusiveLock())
-			syncIsActive.unlock();
+		if (transactionState->syncIsActive.ourExclusiveLock())
+			transactionState->syncIsActive.unlock();
 		}
 
-	state = -1;
-	transactionId = -1;
-	commitId = -1;
-	
 	if (inList)
 		transactionManager->removeTransaction(this);
 
@@ -203,6 +199,9 @@ Transaction::~Transaction()
 	
 	if (deferredIndexes)
 		releaseDeferredIndexes();
+
+	if (transactionState)
+		transactionState->release();
 }
 
 void Transaction::commit()
@@ -224,7 +223,7 @@ void Transaction::commit()
 	Log::log(LogXARecovery, "%d: Commit %sTransaction %d\n", 
 		database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
 
-	if (state == Active)
+	if (transactionState->state == Active)
 		{
 		Sync sync(&syncDeferredIndexes, "Transaction::commit(1)");
 		sync.lock(Shared);
@@ -286,11 +285,11 @@ void Transaction::commit()
 
 	// Set the commit transition id for this transaction
 
-	commitId = INTERLOCKED_INCREMENT(transactionManager->transactionSequence);
+	transactionState->commitId = INTERLOCKED_INCREMENT(transactionManager->transactionSequence);
 
 	transactionManager->activeTransactions.remove(this);
 	transactionManager->committedTransactions.append(this);
-	state = Committed;
+	transactionState->state = Committed;
 
 	// This is one of the few points where we have an exclusive lock on both the
 	// active and committed transaction list. Although this has nothing to do
@@ -305,7 +304,7 @@ void Transaction::commit()
 	syncCommitted.unlock();
 	syncActiveTransactions.unlock();
 	
-	syncIsActive.unlock(); // signal waiting transactions
+	transactionState->syncIsActive.unlock(); // signal waiting transactions
 	
 	// signal a gopher to start processing this transaction
 
@@ -357,10 +356,11 @@ void Transaction::commitNoUpdates(void)
 	
 	connection = NULL;
 	transactionId = 0;
+	transactionState->transactionId = 0;
 	writePending = false;
-	state = Available;
+	transactionState->state = Available;
 	syncActiveTransactions.unlock();
-	syncIsActive.unlock();
+	transactionState->syncIsActive.unlock();
 	release();
 }
 
@@ -455,8 +455,8 @@ void Transaction::rollback()
 	inList = false;
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
-	state = RolledBack;
-	syncIsActive.unlock();
+	transactionState->state = RolledBack;
+	transactionState->syncIsActive.unlock();
 
 	// Finish the SerialLogTransaction and signal a gopher
 
@@ -473,7 +473,7 @@ void Transaction::rollback()
 
 void Transaction::prepare(int xidLen, const UCHAR *xidPtr)
 {
-	if (state != Active)
+	if (transactionState->state != Active)
 		throw SQLEXCEPTION (RUNTIME_ERROR, "transaction is not active");
 
 	Log::log(LogXARecovery, "Prepare transaction %d: xidLen = %d\n", transactionId, xidLen);
@@ -488,7 +488,7 @@ void Transaction::prepare(int xidLen, const UCHAR *xidPtr)
 		}
 		
 	database->pageWriter->waitForWrites(this);
-	state = Limbo;
+	transactionState->state = Limbo;
 
 	// Flush a prepare record to the serial log
 
@@ -601,8 +601,9 @@ void Transaction::thaw(DeferredIndex * deferredIndex)
 void Transaction::addRecord(RecordVersion * record)
 {
 	ASSERT(record->recordNumber >= 0);
+
 	hasUpdates = true;
-	
+
 	if (record->state == recLock)
 		hasLocks = true;
 	else if (record->state == recDeleted)
@@ -725,19 +726,34 @@ bool Transaction::visible(Transaction * transaction, TransId transId, int forWha
 	if (!transaction)
 		return true;
 
+    return visible(transaction->transactionState, forWhat);
+}
+
+
+/***
+@brief		Determine if changes by another transaction are visible to this.
+@details	This function is called for Consistent-Read transactions to determine
+			if the sent trans was committed before this transaction started.  If not,
+			it is invisible to this transaction.
+***/
+
+bool Transaction::visible(const TransactionState* transState, int forWhat) const
+{
+	ASSERT(transState != NULL);
+
 	// If we're the transaction in question, consider us committed
 
-	if (transId == transactionId)
+	if (transactionState == transState)
 		return true;
 
 	// If we're the system transaction, just use the state of the other transaction
 
 	if (database->systemConnection->transaction == this)
-		return transaction->state == Committed;
+		return transState->state == Committed;
 
 	// If the other transaction is not yet committed, the trans is not visible.
 
-	if (transaction->state != Committed)
+	if (transState->state != Committed)
 		return false;
 
 	// The other transaction is committed.  
@@ -754,11 +770,12 @@ bool Transaction::visible(Transaction * transaction, TransId transId, int forWha
 	// If the other transaction committed after we started then it is not
 	// be visible to us
 
-	if (transaction->commitId > transactionId)
+	if (transState->commitId > transactionId)
 		return false;
 
 	return true;
 }
+
 
 /***
 @brief		Determine if there is a need to lock this record for update.
@@ -774,15 +791,18 @@ bool Transaction::needToLock(Record* record)
 	for (Record* candidate = record; 
 		 candidate != NULL;
 		 candidate = candidate->getPriorVersion())
+	for (Record* candidate = record; 
+		 candidate != NULL;
+		 candidate = candidate->getPriorVersion())
 		{
-		Transaction *transaction = candidate->getTransaction();
-		TransId transId = candidate->getTransactionId();
+		TransactionState* transState = candidate->getTransactionState();
+		ASSERT(transState != NULL);
 
-		if (visible(transaction, transId, FOR_WRITING))
+		if (visible(transState, FOR_WRITING))
 			{
 			if (candidate->state == recDeleted)
 				{
-				if (!transaction || transaction->state == Committed)
+				if (transState->state == Committed)
 					return false; // Committed and deleted
 
 				return true; // Just in case this rolls back.
@@ -791,6 +811,7 @@ bool Transaction::needToLock(Record* record)
 			return true;
 			}
 		}
+
 
 	return false;
 }
@@ -846,24 +867,30 @@ State Transaction::getRelativeState(Record* record, uint32 flags)
 		}
 
 	blockingRecord = record;
-	State state = getRelativeState(record->getTransaction(), record->getTransactionId(), flags);
+	State state = getRelativeState(record->getTransactionState(), record->getTransactionId(), flags);
 	blockingRecord = NULL;
 
 	return state;
 }
 
+
 /***
 @brief		Get the relative state between this transaction and another.
 ***/
 
-State Transaction::getRelativeState(Transaction *transaction, TransId transId, uint32 flags)
+State Transaction::getRelativeState(TransactionState* transState, TransId transId, uint32 flags)
 {
+	// Note: The structure of this method is still based on the
+	// original getRelativeState() - should be carefully rewritten
+
 	if (transactionId == transId)
 		return Us;
 
-	// A record may still have the transId even after the trans itself has been deleted.
-	
-	if (!transaction)
+	// The following if test replaces the original if (!transaction)
+	// This could be improved by combining it with the last if test
+	// at the end of this function.
+
+	if (transState->state == Committed && transState->commitId < transactionId)
 		{
 		// All calls to getRelativeState are for the purpose of writing.
 		// So only ConsistentRead can get CommittedInvisible.
@@ -883,13 +910,13 @@ State Transaction::getRelativeState(Transaction *transaction, TransId transId, u
 		return CommittedVisible;
 		}
 
-	if (transaction->isActive())
+	if (transState->isActive())
 		{
 		if (flags & DO_NOT_WAIT)
 			return Active;
 
 		bool isDeadlock;
-		waitForTransaction(transaction, 0 , &isDeadlock);
+		waitForTransaction(transState, 0 , &isDeadlock);
 
 		if (isDeadlock)
 			return Deadlock;
@@ -897,19 +924,20 @@ State Transaction::getRelativeState(Transaction *transaction, TransId transId, u
 		return WasActive;			// caller will need to re-fetch
 		}
 
-	if (transaction->state == Committed)
+	if (transState->state == Committed)
 		{
 		// Return CommittedVisible if the other trans has a lower TransId and 
 		// it was committed when we started.
 		
-		if (visible (transaction, transId, FOR_WRITING))
+		if (visible (transState, FOR_WRITING))
 			return CommittedVisible;
 
 		return CommittedInvisible;
 		}
 
-	return (State) transaction->state;
+	return (State) transState->state;
 }
+
 
 void Transaction::dropTable(Table* table)
 {
@@ -956,7 +984,7 @@ bool Transaction::hasRecords(Table* table)
 void Transaction::writeComplete(void)
 {
 	ASSERT(writePending);
-	ASSERT(state == Committed);
+	ASSERT(transactionState->state == Committed);
 	releaseDeferredIndexes();
 
 //	Log::log(LogXARecovery, "%d: WriteComplete %sTransaction %d\n", 
@@ -973,6 +1001,7 @@ bool Transaction::waitForTransaction(TransId transId)
 
 }
 
+
 // Wait for transaction, unless it would lead to deadlock.
 // Returns the state of transation.
 //
@@ -985,50 +1014,66 @@ bool Transaction::waitForTransaction(TransId transId)
 // use inline assembly or intrinsics to generate memory barrier instead of 
 // volatile. 
 
-State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
+State Transaction::waitForTransaction(TransactionState* transState, TransId transId,
 										bool *deadlock)
 {
+	ASSERT(transState != NULL);
+
 	*deadlock = false;
 	State state;
 
-	if(transaction)
-		transaction->addRef();
+	// Increase the use count on the transaction state object to ensure
+	// the object the waitingFor pointer refers to does not get deleted
+
+	if(transState)
+		transState->addRef();
 
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject,
 		"Transaction::waitForTransaction(1)");
 	syncActiveTransactions.lock(Shared);
 
-	if (!transaction)
+	// If a transaction state object is not given, locate it by searching
+	// for the transaction in the active list
+
+	if (!transState)
 		{
+		Transaction* transaction; 
+
 		// transaction parameter is not given, find transaction using its ID.
 		for (transaction = transactionManager->activeTransactions.first; transaction;
 			 transaction = transaction->next)
 			{
 			if (transaction->transactionId == transId)
 				{
-				transaction->addRef();
 				break;
 				}
 			}
+
+		// If the transaction is not found in the active list it is committed
+
+		if (!transaction)
+			return Committed;
+
+		transState = transaction->transactionState;
+		transState->addRef();
 		}
 
-	if (!transaction)
-		return Committed;
+	ASSERT(transState != NULL);
 
-	if (transaction->state == Available || transaction->state == Committed)
+	if (transState->state == Available || transState->state == Committed)
 	{
-		state = (State)transaction->state;
-		transaction->release();
+		state = (State)transState->state;
+		transState->release();
 		return state;
 	}
 
 
-	if (!COMPARE_EXCHANGE_POINTER(&waitingFor, NULL, transaction))
+	if (!COMPARE_EXCHANGE_POINTER(&transactionState->waitingFor, NULL, transState))
 		FATAL("waitingFor was not NULL");
 
-	volatile Transaction *trans;
-	for (trans = transaction->waitingFor; trans; trans = trans->waitingFor)
-		if (trans == this)
+	volatile TransactionState *trans;
+	for (trans = transState->waitingFor; trans; trans = trans->waitingFor)
+		if (trans == transactionState)
 			{
 			*deadlock = true;
 			break;
@@ -1039,40 +1084,24 @@ State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 		try
 			{
 			syncActiveTransactions.unlock();
-			transaction->waitForTransaction();
+			transState->waitForTransaction();
 			}
 		catch(...)
 			{
-			if (!COMPARE_EXCHANGE_POINTER(&waitingFor, transaction, NULL))
-				FATAL("waitingFor was not %p",transaction);
+			if (!COMPARE_EXCHANGE_POINTER(&transactionState->waitingFor, transState, NULL))
+				FATAL("waitingFor was not %p", transState);
 			throw;
 			}
 		}
 
-	if (!COMPARE_EXCHANGE_POINTER(&waitingFor, transaction, NULL))
-		FATAL("waitingFor was not %p",transaction);
+	if (!COMPARE_EXCHANGE_POINTER(&transactionState->waitingFor, transState, NULL))
+		FATAL("waitingFor was not %p", transState);
 
-	state = (State)transaction->state;
-	transaction->release();
+	state = (State)transState->state;
+
+	transState->release();
 
 	return state;
-}
-
-void Transaction::waitForTransaction()
-{
-	/***
-	Thread *exclusiveThread = syncActive.getExclusiveThread();
-	
-	if (exclusiveThread)
-		{
-		char buffer[1024];
-		connection->getCurrentStatement(buffer, sizeof(buffer));
-		Log::debug("Blocking on %d: %s\n", exclusiveThread->threadId, buffer);
-		}
-	***/
-	
-	Sync sync(&syncIsActive, "Transaction::waitForTransaction(2)");
-	sync.lock(Shared, falcon_lock_wait_timeout * 1000);
 }
 
 void Transaction::addRef()
@@ -1355,7 +1384,7 @@ void Transaction::releaseRecordLocks(void)
 void Transaction::print(void)
 {
 	Log::debug("  %p Id %d, state %d, updates %d, wrtPend %d, records %d\n",
-			this, transactionId, state, hasUpdates, writePending, 
+			this, transactionId, transactionState->state, hasUpdates, writePending, 
 			firstRecord != NULL);
 }
 
@@ -1427,10 +1456,10 @@ void Transaction::getInfo(InfoTable* infoTable)
 	// Need to decide if we want to include the startEvent and endEvent
 	// in this table.
 
-	if (!(state == Available))
+	if (!(transactionState->state == Available))
 		{
 		int n = 0;
-		infoTable->putString(n++, stateNames[state]);
+		infoTable->putString(n++, stateNames[transactionState->state]);
 		infoTable->putInt(n++, mySqlThreadId);
 		infoTable->putInt(n++, transactionId);
 		infoTable->putInt(n++, hasUpdates);
@@ -1438,7 +1467,7 @@ void Transaction::getInfo(InfoTable* infoTable)
 		infoTable->putInt(n++, 0);  // Number of dependencies, will be removed
 		infoTable->putInt(n++, 0); //  was oldestActive);
 		infoTable->putInt(n++, firstRecord != NULL);
-		infoTable->putInt(n++, (waitingFor) ? waitingFor->transactionId : 0);
+		infoTable->putInt(n++, (transactionState->waitingFor) ? transactionState->waitingFor->transactionId : 0);
 		
 		char buffer[512];
 		
@@ -1573,5 +1602,5 @@ void Transaction::validateRecords(void)
 
 bool Transaction::committedBefore(TransId transactionId)
 {
-	return (commitId && commitId < transactionId);
+	return (transactionState->commitId && transactionState->commitId < transactionId);
 }

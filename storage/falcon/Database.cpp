@@ -1619,7 +1619,7 @@ void Database::shutdown()
 	
 	if (systemConnection && 
 		systemConnection->transaction && 
-		systemConnection->transaction->state == Active)
+		systemConnection->transaction->getState() == Active)
 		systemConnection->commit();
 		
 	if (repositoryManager)

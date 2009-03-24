@@ -2675,7 +2675,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 				//syncPrior.unlock(); // release lock before wait
 				syncUnique->unlock(); // release lock before wait
 
-				state = transaction->getRelativeState(activeTransaction,
+				state = transaction->getRelativeState(activeTransaction->transactionState,
 						activeTransaction->transactionId, WAIT_IF_ACTIVE);
 
 				if (state != Deadlock)
@@ -3783,7 +3783,7 @@ bool Table::validateUpdate(int32 recordNumber, TransId transactionId)
 		
 		Transaction *transaction = record->getTransaction();
 		
-		if (!transaction || transaction->state == Committed)
+		if (!transaction || transaction->getState() == Committed)
 			{
 			SET_RECORD_ACTIVE(record, false);
 			record->release(REC_HISTORY);

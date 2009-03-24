@@ -1,0 +1,63 @@
+--source include/have_innodb.inc
+--source include/have_ucs2.inc
+--source include/have_utf16.inc
+--source include/have_utf32.inc
+
+
+--disable_warnings
+drop table if exists t1;
+--enable_warnings
+
+--echo In the following tests we change the order of letter "b"
+--echo making it equal to letter "a", and check that it works
+--echo with all Unicode character sets
+set names utf8;
+
+--replace_result $MYSQL_TEST_DIR MYSQL_TEST_DIR
+show variables like 'character_sets_dir%';
+
+show collation like 'utf8_test_ci';
+--error ER_CANT_CREATE_TABLE
+create table t1 (c1 char(1) character set utf8 collate utf8_test_ci)
+engine=innodb;
+show warnings;
+
+show collation like 'ucs2_test_ci';
+--error ER_CANT_CREATE_TABLE
+create table t1 (c1 char(1) character set ucs2 collate ucs2_test_ci)
+engine=innodb;
+show warnings;
+
+show collation like 'utf16_test_ci';
+--error ER_CANT_CREATE_TABLE
+create table t1 (c1 char(1) character set utf16 collate utf16_test_ci)
+engine=innodb;
+show warnings;
+
+show collation like 'utf32_test_ci';
+--error ER_CANT_CREATE_TABLE
+create table t1 (c1 char(1) character set utf32 collate utf32_test_ci)
+engine=innodb;
+show warnings;
+
+--echo  Vietnamese experimental collation
+
+show collation like 'ucs2_vn_ci';
+--error ER_CANT_CREATE_TABLE
+create table t1 (c1 char(1) character set ucs2 collate ucs2_vn_ci)
+engine=innodb;
+show warnings;
+
+-- echo The following tests check that two-byte collation IDs work
+# The file ../std-data/Index.xml has a number of collations with high IDs.
+
+# Test that the "ID" column in I_S and SHOW queries can handle two bytes
+select * from information_schema.collations where id>256 order by id;
+show collation like '%test%';
+
+# Test that two-byte collation ID is correctly transfered to the client side.
+show collation like 'ucs2_vn_ci';
+--error ER_CANT_CREATE_TABLE
+create table t1 (c1 char(1) character set ucs2 collate ucs2_vn_ci)
+engine=innodb;
+show warnings;
