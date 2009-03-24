@@ -15,4 +15,5 @@ rpl_extraColmaster_myisam  : BUG#41097 2008-12-12 sven result files for rpl_extr
 rpl_binlog_corruption      : BUG#41793 2008-12-30 sven rpl_binlog_corruption disabled in main (needs new mtr)
 rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)
 rpl_cross_version	   : Bug#42311 2009-01-23 aelkin
-rpl_log_pos                : Bug#42858 2009-02-14 alik rpl.rpl_log_pos fails, thus was disabled
+rpl_heartbeat_basic	   : Bug#43828 Sporadic failures (Serge.Kozlov@sun.com)
+rpl_heartbeat_2slaves	   : Bug#43828 Sporadic failrues (Serge.Kozlov@sun.com)
