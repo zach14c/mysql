@@ -1,11 +1,13 @@
 #
-# Test BACKUP/RESTORE on case-sensitive servers. In this environment,
-# databases 'X' and 'x' are two different databases that can be backed
-# up and restore independently.
+# Test BACKUP/RESTORE on case-sensitive servers, i.e., servers with
+# case sensitive file systems (typically *nix) and system variable
+# lower_case_table_names=0. In this environment, databases 'X' and 'x'
+# are two different databases that can be backed up and restore
+# independently.
 #
 
 --source include/not_embedded.inc
---source include/not_windows.inc
+--source include/have_case_sensitive_file_system.inc
 
 --echo #
 --echo # Create two database:
