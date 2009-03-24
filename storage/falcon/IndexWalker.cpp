@@ -175,7 +175,7 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 			candidate->release(REC_HISTORY);
 			}
 		}
-	catch (SQLException&)
+	catch (SQLException &)
 		{
 
 		// 'record' must be NULL if an exception has been thrown.
