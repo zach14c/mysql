@@ -795,8 +795,13 @@ bool Transaction::needToLock(Record* record)
 	for (Record* candidate = record;  candidate != NULL; candidate = candidate->getPriorVersion())
 		{
 		TransactionState* transState = candidate->getTransactionState();
-		ASSERT(transState != NULL);
+		//ASSERT(transState != NULL);
 
+		// If there is no transaction state, it is not a record version.
+		
+		if (!transState)
+			return true;
+	
 		if (visible(transState, FOR_WRITING))
 			{
 			if (candidate->state == recDeleted)
