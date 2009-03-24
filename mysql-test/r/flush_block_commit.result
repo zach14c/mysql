@@ -35,9 +35,4 @@ show create database test;
 Database	Create Database
 test	CREATE DATABASE `test` /*!40100 DEFAULT CHARACTER SET latin1 */
 commit;
-flush tables with read lock;
-begin;
-insert into t1 values (1);;
-unlock tables;
-commit;
 drop table t1;

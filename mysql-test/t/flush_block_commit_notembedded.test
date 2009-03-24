@@ -32,3 +32,25 @@ reap;
 drop table t1;
 set autocommit=1;
 
+# GLR blocks new transactions
+create table t1 (a int) engine=innodb;
+connection con1;
+flush tables with read lock;
+connection con2;
+begin;
+--send insert into t1 values (1);
+connection con1;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "Waiting for release of readlock" and
+        info = "insert into t1 values (1)";
+--source include/wait_condition.inc
+unlock tables;
+connection con2;
+--reap
+commit;
+drop table t1;
+
+connection default;
+disconnect con1;
+disconnect con2;

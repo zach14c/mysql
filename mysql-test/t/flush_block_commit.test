@@ -69,22 +69,10 @@ select * from t1;
 show create database test;
 commit;
 
-# GLR blocks new transactions
-connection con1;
-flush tables with read lock;
-connection con2;
-begin;
---send insert into t1 values (1);
-connection con1;
-let $wait_condition=
-  select count(*) = 1 from information_schema.processlist
-  where state = "Waiting for release of readlock" and
-        info = "insert into t1 values (1)";
---source include/wait_condition.inc
-unlock tables;
-connection con2;
---reap
-commit;
+connection default;
+disconnect con1;
+disconnect con2;
+disconnect con3;
 
 drop table t1;
 
