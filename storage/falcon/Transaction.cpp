@@ -121,7 +121,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	hasUpdates = false;
 	hasLocks = false;
 	writePending = true;
-	pendingPageWrites = false;
+	//pendingPageWrites = false;
 	curSavePointId = 0;
 	deferredIndexes = NULL;
 	backloggedRecords = NULL;
@@ -237,7 +237,7 @@ void Transaction::commit()
 		sync.unlock();
 		database->dbb->logUpdatedRecords(this, firstRecord);
 
-		if (pendingPageWrites)
+		if (transactionState->pendingPageWrites)
 			database->pageWriter->waitForWrites(this);
 		}
 			
@@ -416,7 +416,7 @@ void Transaction::rollback()
 		else
 			record->rollback(this);
 		
-		record->transaction = rollbackTransaction;
+		//record->transaction = rollbackTransaction;
 		//record->release(REC_HISTORY);
 		record->queueForDelete();
 		}
@@ -509,7 +509,7 @@ void Transaction::prepare(int xidLen, const UCHAR *xidPtr)
 	sync.unlock();
 	database->dbb->logUpdatedRecords(this, firstRecord);
 
-	if (pendingPageWrites)
+	if (transactionState->pendingPageWrites)
 		database->pageWriter->waitForWrites(this);
 
 	if (hasLocks)
@@ -686,7 +686,7 @@ void Transaction::removeRecordNoLock(RecordVersion *record)
 	*ptr = record->nextInTrans;
 	record->prevInTrans = NULL;
 	record->nextInTrans = NULL;
-	record->transaction = NULL;
+	//record->transaction = NULL;
 
 	Sync syncSP(&syncSavepoints, "Transaction::rollback");
 	syncSP.lock(Shared);
@@ -1205,7 +1205,7 @@ void Transaction::releaseSavepoint(int savePointId)
 				 record = record->nextInTrans)
 				{
 				record->savePointId = nextLowerSavePointId;
-				record->scavengeSavepoint(transactionId, nextLowerSavePointId);
+				record->scavengeSavepoint(this, nextLowerSavePointId);
 				}
 
 			savePoint->next = freeSavePoints;
@@ -1325,7 +1325,7 @@ void Transaction::rollbackSavepoint(int savePointId)
 			rec->nextInTrans = NULL;
 			rec->rollback(this);
 			SET_RECORD_ACTIVE(rec, false);
-			rec->transaction = NULL;
+			//rec->transaction = NULL;
 			//rec->release(REC_HISTORY);
 			rec->queueForDelete();
 			}

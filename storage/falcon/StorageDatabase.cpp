@@ -665,7 +665,7 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 
 		if (candidate->state == recLock)
 			record = candidate->getPriorVersion();
-		else if (candidate->getTransaction() == transaction)
+		else if (candidate->getTransactionState() == transaction->transactionState)
 			record = candidate;
 		else
 			record = candidate->fetchVersion(transaction);

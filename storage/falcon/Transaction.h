@@ -141,7 +141,7 @@ public:
 	bool			systemTransaction;
 	bool			hasUpdates;
 	bool			writePending;
-	bool			pendingPageWrites;
+	//bool			pendingPageWrites;
 	bool			hasLocks;
 	SyncObject		syncObject;
 	SyncObject		syncDeferredIndexes;

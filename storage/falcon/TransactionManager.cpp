@@ -444,7 +444,11 @@ Transaction* TransactionManager::findTransaction(TransId transactionId)
 
 	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
 		if (transaction->transactionId == transactionId)
+			{
+			transaction->addRef();
+			
 			return transaction;
+			}
 	
 	syncActive.unlock();
 
@@ -453,7 +457,11 @@ Transaction* TransactionManager::findTransaction(TransId transactionId)
 
 	for (transaction = committedTransactions.first; transaction; transaction = transaction->next)
 		if (transaction->transactionId == transactionId)
+			{
+			transaction->addRef();
+			
 			return transaction;
+			}
 	
 	return NULL;
 }

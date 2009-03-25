@@ -59,6 +59,7 @@ class Database;
 class Dbb;
 class Index;
 class Transaction;
+class TransactionState;
 class Value;
 CLASS(Field);
 class Format;
@@ -95,7 +96,7 @@ public:
 	void		getIndirectBlob (int recordId, BlobReference *blob);
 	BinaryBlob* getBinaryBlob (int recordId);
 	AsciiBlob*	getAsciiBlob (int recordId);
-	int32		getIndirectId (BlobReference *reference, Transaction *transaction);
+	int32		getIndirectId (BlobReference *reference, TransactionState *transaction);
 	void		refreshFields();
 	void		insertView(Transaction *transaction, int count, Field **fieldVector, Value **values);
 	void		bind (Table *table);
@@ -169,7 +170,7 @@ public:
 	bool		isCreated();
 	void		reIndexInversion(Transaction *transaction);
 	void		makeSearchable (Field *field, Transaction *transaction);
-	int32		getBlobId (Value *value, int32 oldId, bool cloneFlag, Transaction *transaction);
+	int32		getBlobId (Value *value, int32 oldId, bool cloneFlag, TransactionState *transaction);
 	void		addFormat (Format *format);
 	void		rollbackRecord (RecordVersion *recordVersion, Transaction *transaction);
 	Record*		fetch (int32 recordNumber);

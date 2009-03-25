@@ -20,9 +20,13 @@
 
 extern uint		falcon_lock_wait_timeout;
 
-TransactionState::TransactionState() : commitId(0), waitingFor(NULL), useCount(1)
+TransactionState::TransactionState()
 {
 	syncIsActive.setName("TransactionState::syncIaActive");
+	pendingPageWrites = false;
+	waitingFor = NULL;
+	commitId = 0;
+	useCount = 1;
 }
 
 
@@ -45,4 +49,9 @@ void TransactionState::release()
 
 	if (INTERLOCKED_DECREMENT(useCount) == 0)
 		delete this;
+}
+
+bool TransactionState::committedBefore(TransId transactionId)
+{
+	return commitId && commitId < transactionId;
 }

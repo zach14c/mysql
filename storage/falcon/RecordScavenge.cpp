@@ -88,7 +88,9 @@ bool RecordScavenge::canBeRetired(Record* record)
 		// currently not pointed to by a transaction.
 
 		RecordVersion * recVer = (RecordVersion *) record;
-		if (!recVer->transaction)
+		
+		//if (!recVer->transaction)
+		if (recVer->transactionState->isCommitted())
 			return true;
 		}
 

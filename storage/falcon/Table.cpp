@@ -353,7 +353,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		FOR_FIELDS(field, this)
 			if (field->defaultValue)
-				record->setValue(transaction, field->id, field->defaultValue, false, false);
+				record->setValue(transaction->transactionState, field->id, field->defaultValue, false, false);
 		END_FOR;
 
 		// Copy field values into record
@@ -368,7 +368,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 			if(field->repository)
 				value = field->repository->defaultRepository(field, value, &temp);
 
-			record->setValue(transaction, field->id, value, false, false);
+			record->setValue(transaction->transactionState, field->id, value, false, false);
 			}
 
 		fireTriggers(transaction, PreInsert, NULL, record);
@@ -386,7 +386,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		// Make insert/update atomic, then check for unique index duplicats
 		
-		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction);
+		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction->transactionState);
 
 		checkNullable(record);  // Verify that record is valid
 
@@ -409,7 +409,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		if (recordNumber >= 0)
 			{
-			dbb->updateRecord(dataSection, recordNumber, NULL, transaction, false);
+			dbb->updateRecord(dataSection, recordNumber, NULL, transaction->transactionState, false);
 			dataSection->expungeRecord(recordNumber);
 			record->recordNumber = -1;
 			}
@@ -1102,7 +1102,7 @@ void Table::addFormat(Format * format)
 	formats [slot] = format;
 }
 
-int32 Table::getBlobId(Value * value, int32 oldId, bool cloneFlag, Transaction *transaction)
+int32 Table::getBlobId(Value * value, int32 oldId, bool cloneFlag, TransactionState *transaction)
 {
 	int32 id;
 
@@ -1186,7 +1186,7 @@ int32 Table::getBlobId(Value * value, int32 oldId, bool cloneFlag, Transaction *
 }
 
 
-int32 Table::getIndirectId(BlobReference *reference, Transaction *transaction)
+int32 Table::getIndirectId(BlobReference *reference, TransactionState *transaction)
 {
 	if (!blobSection)
 		blobSection = dbb->findSection(blobSectionId);
@@ -1345,7 +1345,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 			Value value;
 			int id = field->id;
 			oldRecord->getValue(id, &value);
-			record->setValue(transaction, id, &value, true, false);
+			record->setValue(transaction->transactionState, id, &value, true, false);
 		END_FOR;
 
 		// Copy field values being changed
@@ -1360,7 +1360,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 			if (field->repository)
 				value = field->repository->defaultRepository(field, value, &temp);
 
-			record->setValue(transaction, field->id, value, false, false);
+			record->setValue(transaction->transactionState, field->id, value, false, false);
 			}
 
 		// Fire pre-operation triggers
@@ -1395,7 +1395,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 		// If this is a re-update in the same transaction and the same savepoint,
 		// carefully remove the prior version.
 
-		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
+		record->scavengeSavepoint(transaction, transaction->curSavePointId);
 		record->release(REC_HISTORY);
 		}
 	catch (...)
@@ -1562,7 +1562,7 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 	RecordVersion *record;
 	bool wasLock = false;
 	
-	if (candidate->state == recLock && candidate->getTransaction() == transaction)
+	if (candidate->state == recLock && candidate->getTransactionState() == transaction->transactionState)
 		{
 		if (candidate->getSavePointId() == transaction->curSavePointId)
 			{
@@ -2562,7 +2562,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 {
 	Record *rec;
 	Record *oldRecord = record->getPriorVersion();
-	Transaction *activeTransaction = NULL;
+	//Transaction *activeTransaction = NULL;
+	TransactionState *activeTransaction = NULL;
 	State state = CommittedVisible;
 
 	if (oldRecord && recordNumber == oldRecord->recordNumber)
@@ -2612,7 +2613,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 					
 					if (activeTransaction)
 						activeTransaction->release();
-						
+					
 					return false;	// Check next record number.
 
 				case CommittedInvisible:
@@ -2627,7 +2628,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 					// Keep looking for a possible duplicate conflict,
 					// either visible, or pending at a savepoint.
 
-					activeTransaction = dup->getTransaction();
+					activeTransaction = dup->getTransactionState();
 					activeTransaction->addRef();
 					
 					continue;
@@ -2675,7 +2676,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 				//syncPrior.unlock(); // release lock before wait
 				syncUnique->unlock(); // release lock before wait
 
-				state = transaction->getRelativeState(activeTransaction->transactionState,
+				state = transaction->getRelativeState(activeTransaction,
 						activeTransaction->transactionId, WAIT_IF_ACTIVE);
 
 				if (state != Deadlock)
@@ -2722,7 +2723,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 			if (!activeTransaction)
 				{
-				activeTransaction = dup->getTransaction();
+				activeTransaction = dup->getTransactionState();
+				
 				if (activeTransaction)
 					activeTransaction->addRef();
 				}
@@ -2895,7 +2897,7 @@ void Table::validateBlobs(int optionMask)
 			Log::debug ("Orphan blob %d, table %s.%s, blob section %d\n", next, schemaName, name, blobSectionId);
 			
 			if (optionMask & validateRepair)
-				dbb->updateRecord(blobSection, next, (Stream*) NULL, (Transaction*) NULL, false);
+				dbb->updateRecord(blobSection, next, (Stream*) NULL, (TransactionState*) NULL, false);
 			}
 		}
 
@@ -3079,7 +3081,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		record = allocRecordVersion(fmt, transaction, NULL);
 		record->state = recInserting;
 		record->setEncodedRecord(stream, false);
-		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction);
+		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction->transactionState);
 		
 		// Make insert/update atomic, then check for unique index duplicats
 
@@ -3104,7 +3106,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 
 		if (recordNumber >= 0)
 			{
-			dbb->updateRecord(dataSection, recordNumber, NULL, transaction, false);
+			dbb->updateRecord(dataSection, recordNumber, NULL, transaction->transactionState, false);
 			dataSection->expungeRecord(recordNumber);
 			record->recordNumber = -1;
 			}
@@ -3135,7 +3137,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	checkAncestor(candidate, orgRecord);
 	Record *oldRecord = candidate;
 
-	if (candidate->getTransaction() == transaction)
+	if (candidate->getTransactionState() == transaction->transactionState)
 		{
 		if (candidate->state == recLock)
 			oldRecord = oldRecord->getPriorVersion();
@@ -3154,7 +3156,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	RecordVersion *record = NULL;
 	bool updated = false;
 	
-	if (candidate->state == recLock && candidate->getTransaction() == transaction)
+	if (candidate->state == recLock && candidate->getTransactionState() == transaction->transactionState)
 		{
 		if (candidate->getSavePointId() == transaction->curSavePointId)
 			{
@@ -3218,7 +3220,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 		// If this is a re-update in the same transaction and the same savepoint,
 		// carefully remove the prior version.
 
-		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
+		record->scavengeSavepoint(transaction, transaction->curSavePointId);
 		record->release(REC_HISTORY);
 
 		oldRecord->release(REC_HISTORY);	// This reference originated in this function.
@@ -3294,10 +3296,10 @@ int Table::storeBlob(Transaction *transaction, uint32 length, const UCHAR *data)
 	if (!blobSection)
 		blobSection = dbb->findSection(blobSectionId);
 		
-	int32 recordNumber = dbb->insertStub(blobSection, transaction);
+	int32 recordNumber = dbb->insertStub(blobSection, transaction->transactionState);
 	Stream stream;
 	stream.putSegment((int) length, (const char*) data, false);
-	dbb->updateBlob(blobSection, recordNumber, &stream, transaction);
+	dbb->updateBlob(blobSection, recordNumber, &stream, transaction->transactionState);
 
 	return recordNumber;
 }
@@ -3486,7 +3488,7 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 
 	// If we already have this locked or updated, get the active version
 
-	if (source->getTransaction() == transaction)
+	if (source->getTransactionState() == transaction->transactionState)
 		{
 		if (source->state == recDeleted)
 			{
@@ -3781,12 +3783,14 @@ bool Table::validateUpdate(int32 recordNumber, TransId transactionId)
 			return true;
 			}
 		
-		Transaction *transaction = record->getTransaction();
+		TransactionState *transactionState = record->getTransactionState();
 		
-		if (!transaction || transaction->getState() == Committed)
+		//if (transactionState->getState() == Committed)
+		if (transactionState->isCommitted())
 			{
 			SET_RECORD_ACTIVE(record, false);
 			record->release(REC_HISTORY);
+			
 			return false;
 			}
 		

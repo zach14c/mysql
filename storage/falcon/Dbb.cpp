@@ -288,7 +288,7 @@ void Dbb::createSection(int32 sectionId, TransId transId)
 	Section::createSection(this, sectionId, transId);
 }
 
-int32 Dbb::insertStub(int32 sectionId, Transaction *transaction)
+int32 Dbb::insertStub(int32 sectionId, TransactionState *transaction)
 {
 	TransId transId = (transaction) ? transaction->transactionId : 0;
 	Section *section = findSection (sectionId);
@@ -297,7 +297,7 @@ int32 Dbb::insertStub(int32 sectionId, Transaction *transaction)
 }
 
 
-int32 Dbb::insertStub(Section* section, Transaction* transaction)
+int32 Dbb::insertStub(Section* section, TransactionState* transaction)
 {
 	TransId transId = (transaction) ? transaction->transactionId : 0;
 	
@@ -328,7 +328,7 @@ void Dbb::logRecord(int32 sectionId, int32 recordId, Stream *stream, Transaction
 		updateRecord(sectionId, recordId, stream, transaction->transactionId, false);
 }
 
-void Dbb::updateBlob(Section *blobSection, int recordNumber, Stream* stream, Transaction* transaction)
+void Dbb::updateBlob(Section *blobSection, int recordNumber, Stream* stream, TransactionState* transaction)
 {
 	if (!serialLog->recovering && stream && stream->totalLength < (int) falcon_large_blob_threshold)
 		{
@@ -351,7 +351,7 @@ void Dbb::updateRecord(int32 sectionId, int32 recordId, Stream *stream, TransId 
 		serialLog->setPhysicalBlock(transId);
 }
 
-void Dbb::updateRecord(Section* section, int32 recordId, Stream* stream, Transaction* transaction, bool earlyWrite)
+void Dbb::updateRecord(Section* section, int32 recordId, Stream* stream, TransactionState* transaction, bool earlyWrite)
 {
 	TransId transId = (transaction) ? transaction->transactionId : 0;
 	section->updateRecord (recordId, stream, transId, earlyWrite);

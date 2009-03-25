@@ -104,54 +104,55 @@ extern void	RecordDelete (char *record);
 class Record
 {
 public:
-	virtual Transaction* getTransaction();
+	//virtual Transaction* getTransaction();
 	virtual TransactionState* getTransactionState() const;
-	virtual TransId	getTransactionId();
-	virtual int		getSavePointId();
-	virtual void	setSuperceded (bool flag);
-	virtual Record*	fetchVersion (Transaction * transaction);
-	virtual Record*	fetchVersionRecursive (Transaction *transaction);
-	virtual bool	retire(RecordScavenge *recordScavenge);
-	virtual void	scavenge(TransId targetTransactionId, int oldestActiveSavePointId);
-	virtual bool	isVersion();
-	virtual bool	isSuperceded();
-	virtual bool	isNull(int fieldId);
-	virtual Record*	releaseNonRecursive(void);
-	virtual Record*	clearPriorVersion(void);
-	virtual void	setPriorVersion(Record* record);
-	virtual Record*	getPriorVersion();
-	virtual Record*	getGCPriorVersion(void);
-	virtual	void	print(void);
-	virtual int		thaw(void);
+	virtual TransId		getTransactionId();
+	virtual int			getSavePointId();
+	virtual void		setSuperceded (bool flag);
+	virtual Record*		fetchVersion (Transaction * transaction);
+	virtual Record*		fetchVersionRecursive (Transaction *transaction);
+	virtual bool		retire(RecordScavenge *recordScavenge);
+	virtual void		scavenge(TransId targetTransactionId, int oldestActiveSavePointId);
+	virtual bool		isVersion();
+	virtual bool		isSuperceded();
+	virtual bool		isNull(int fieldId);
+	virtual Record*		releaseNonRecursive(void);
+	virtual Record*		clearPriorVersion(void);
+	virtual void		setPriorVersion(Record* record);
+	virtual Record*		getPriorVersion();
+	virtual Record*		getGCPriorVersion(void);
+	virtual	void		print(void);
+	virtual int			thaw(void);
 	virtual const char*	getEncodedRecord();
-	virtual int		setRecordData(const UCHAR *dataIn, int dataLength);
-	virtual void	serialize(Serialize* stream);
-	virtual int		getSize(void);
-	//virtual SyncObject* getSyncPrior(void);
+	virtual int			setRecordData(const UCHAR *dataIn, int dataLength);
+	virtual void		serialize(Serialize* stream);
+	virtual int			getSize(void);
 	virtual SyncObject* getSyncThaw(void);
-	virtual void	queueForDelete(void);
+	virtual void		queueForDelete(void);
 
-	const UCHAR*	getEncoding (int index);
-	int				setEncodedRecord(Stream *stream, bool interlocked);
-	void			getValue (int fieldId, Value* value);
-	void			getRawValue (int fieldId, Value* value);
-	int				getFormatVersion();
-	void			setValue (Transaction *transaction, int id, Value *value, bool cloneFlag, bool copyFlag);
-	void			poke ();
-	void			release();
-	void			addRef();
-	int				getBlobId(int fieldId);
-	void			finalize(Transaction *transaction);
-	void			getEncodedValue (int fieldId, Value *value);
-	bool			getRecord (Stream *stream);
-	int				getEncodedSize();
-	void			deleteData(void);
-	void			printRecord(const char* header);
-	void			validateData(void);
-	char*			allocRecordData(int length);
-	void			expungeRecord(void);
-	int				getDataMemUsage(void);
-	int				getMemUsage(void);
+	//virtual SyncObject* getSyncPrior(void);
+
+	const UCHAR*		getEncoding (int index);
+	int					setEncodedRecord(Stream *stream, bool interlocked);
+	void				getValue (int fieldId, Value* value);
+	void				getRawValue (int fieldId, Value* value);
+	int					getFormatVersion();
+	void				setValue (TransactionState *transaction, int id, Value *value, bool cloneFlag, bool copyFlag);
+	void				poke ();
+	void				release();
+	void				addRef();
+	int					getBlobId(int fieldId);
+	void				finalize(Transaction *transaction);
+	void				getEncodedValue (int fieldId, Value *value);
+	bool				getRecord (Stream *stream);
+	int					getEncodedSize();
+	void				deleteData(void);
+	void				printRecord(const char* header);
+	void				validateData(void);
+	char*				allocRecordData(int length);
+	void				expungeRecord(void);
+	int					getDataMemUsage(void);
+	int					getMemUsage(void);
 	
 	Record (Table *table, Format *recordFormat);
 	Record (Table *table, int32 recordNumber, Stream *stream);
@@ -166,12 +167,12 @@ public:
 		}
 
 	inline char* getRecordData()
-	{
+		{
 		if (state == recChilled)
 			thaw();
 		
 		return data.record;
-	}
+		}
 		
 protected:
 	virtual ~Record();

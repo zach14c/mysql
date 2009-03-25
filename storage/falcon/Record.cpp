@@ -180,7 +180,7 @@ Record::~Record()
 	deleteData();
 }
 
-void Record::setValue(Transaction * transaction, int id, Value * value, bool cloneFlag, bool copyFlag)
+void Record::setValue(TransactionState * transaction, int id, Value * value, bool cloneFlag, bool copyFlag)
 {
 	ASSERT (id < format->maxId);
 
@@ -208,7 +208,7 @@ void Record::setValue(Transaction * transaction, int id, Value * value, bool clo
 
 	if (value->isNull ((Type) ff->type))
 		{
-		data.record [NULL_BYTE (ff)] &= ~NULL_BIT (ff);
+		data.record[NULL_BYTE (ff)] &= ~NULL_BIT (ff);
 		memset(ptr, 0, ff->length);
 		
 		return;
@@ -227,7 +227,7 @@ void Record::setValue(Transaction * transaction, int id, Value * value, bool clo
 			break;
 
 		case Varchar:
-			*(short*) ptr = value->getString (ff->length - 2, ptr + 2);
+			*(short*) ptr = value->getString(ff->length - 2, ptr + 2);
 			break;
 
 		case Short:
@@ -248,7 +248,7 @@ void Record::setValue(Transaction * transaction, int id, Value * value, bool clo
 
 		case Asciiblob:
 		case Binaryblob:
-			*(int32*) ptr = format->table->getBlobId (value, *(int32*) ptr, cloneFlag, transaction);
+			*(int32*) ptr = format->table->getBlobId(value, *(int32*) ptr, cloneFlag, transaction);
 			break;
 
 		case Date:
@@ -531,10 +531,12 @@ void Record::setSuperceded(bool flag)
 
 }
 
+/***
 Transaction* Record::getTransaction()
 {
 	return NULL;
 }
+***/
 
 TransactionState* Record::getTransactionState() const
 {

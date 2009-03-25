@@ -55,21 +55,29 @@ class TransactionState
 public:
 	TransactionState();
 
-	void waitForTransaction();
-
-	bool isActive() const
+	void		addRef();
+	void		release();
+	void		waitForTransaction();
+	bool		committedBefore(TransId transactionId);
+	
+	inline bool	isActive() const
 	    {
 		return state == Active || state == Limbo;
 	    }
 
-	void addRef();
-	void release();
+	inline bool	isCommitted() const
+	    {
+		return state == Active || state == Limbo;
+	    }
+
 
 public:
 	TransId			transactionId;       // used also as startEvent by dep.mgr.
 	TransId			commitId;            // used as commitEvent by dep.mgr.
 	volatile		INTERLOCK_TYPE state;
 	SyncObject 		syncIsActive;
+	bool			pendingPageWrites;
+	
 	volatile TransactionState* waitingFor; // Used for deadlock detection
 
 private:
