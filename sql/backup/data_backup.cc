@@ -1572,7 +1572,6 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
     uint    repeats=0, errors= 0;
     int     ret;
 
-    static const uint MAX_ERRORS= 3;
     static const uint MAX_REPEATS= 7;
 
     Restore_driver  *drvr= NULL;  // pointer to the current driver
@@ -1670,19 +1669,14 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
           break;
 
         case backup::ERROR:
-          if( errors > MAX_ERRORS )
-          {
-            log.report_error(ER_BACKUP_SEND_DATA, buf.table_num, snap->name());
-            /*
-              If driver signals error then it is not active any longer - neither 
-              ->end() nor ->cancel() should be called on it, only ->free(). 
-              This is why we need to remove it from active[] array.
-            */
-            active[snap_num]= NULL;
-            goto error;
-          }
-          errors++;
-          break;
+          log.report_error(ER_BACKUP_SEND_DATA, buf.table_num, snap->name());
+          /*
+            If driver signals error then it is not active any longer - neither 
+            ->end() nor ->cancel() should be called on it, only ->free(). 
+            This is why we need to remove it from active[] array.
+          */
+          active[snap_num]= NULL;
+          goto error;
 
         case backup::PROCESSING:
         case backup::BUSY:
