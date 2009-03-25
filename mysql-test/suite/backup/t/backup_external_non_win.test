@@ -1,0 +1,233 @@
+#
+# Interoperability testing of mysql backup feature with 
+# mysql_convert_table_format 
+#
+# mysql_convert_table_format utility does not work in windows. Therefore,
+# this test will not be executed in windows
+
+--source include/not_embedded.inc
+--source include/have_innodb.inc
+--source include/not_windows.inc
+--source suite/backup/include/backup_ext.inc
+
+let $MYSQLD_BACKUPDIR = `select @@backupdir`;
+let $MYSQLD_DATADIR= `select @@datadir`;
+
+--echo
+--echo # Drop database if already exists
+--echo #
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+--enable_warnings
+
+--echo #
+--echo # Create databases and tables
+--echo #
+
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+
+CREATE TABLE db1.t1(
+ id INT,
+ name VARCHAR(30),
+ INDEX idx(name(10))
+);
+
+CREATE TABLE db2.t1(
+ a INT AUTO_INCREMENT PRIMARY KEY,
+ b CHAR(20) NOT NULL,
+ c CHAR(20) NOT NULL,
+ INDEX(b, c)
+);
+
+INSERT INTO db1.t1 VALUES 
+(1,'test1'),(2,'test2'),
+(3,'test3'),(4,'test4');
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+
+SELECT COUNT(*) FROM db1.t1;
+SELECT * FROM db1.t1 LIMIT 4;
+
+INSERT INTO db2.t1(b,c) VALUES
+('abcd1','efgh1'),('efgh1','pqrs1'),('pqrs1','abcd1'),
+('xwyz1','klmn1'),('klmn1','opdh1'),('opdh1','xwyz1');
+
+--echo
+--echo # Check the indexes in tables
+
+--query_vertical SHOW INDEX FROM db1.t1;
+--query_vertical SHOW INDEX FROM db2.t1;
+
+--echo
+--echo # Test 1 : Interoperability of backup and restore with
+--echo #          mysql_convert_table_format
+
+# Changing the storage engine for db1
+SHOW CREATE TABLE db1.t1;
+
+source $MYSQLTEST_VARDIR/tmp/mctf.inc;
+--exec $MYSQL_CONVERT_TABLE_FORMAT --user=root -S $MASTER_MYSOCK --port=$MASTER_MYPORT  --type=innodb db1
+
+--echo
+--echo # Check the storage engine of table is chnaged to innodb
+SHOW CREATE TABLE db1.t1;
+
+# Execute backup operation
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'db1.bak';
+
+DROP DATABASE db1;
+
+# Perform restore
+--replace_column 1 #
+RESTORE FROM 'db1.bak';
+
+--echo # Verify db1.t1 has same storage engine as it was before backup
+SHOW CREATE TABLE db1.t1;
+
+--echo # Changing the storage engine back to myisam
+source $MYSQLTEST_VARDIR/tmp/mctf.inc;
+--exec $MYSQL_CONVERT_TABLE_FORMAT -u root -S $MASTER_MYSOCK --port=$MASTER_MYPORT  db1
+
+SHOW CREATE TABLE db1.t1;
+--remove_file $MYSQLD_BACKUPDIR/db1.bak
+
+--echo
+--echo # Test 2 : Create objects that directly or indirectly is affected 
+--echo # storage engine. Use mysql_convert_table_format and change the storage 
+--echo # engine type
+
+# Objects that are directly or indirectly affected by storage engines are
+# triggers, views, partitions & tablespace
+
+--echo Creating objects
+
+CREATE TABLESPACE ts ADD DATAFILE 'df' ENGINE=FALCON;
+CREATE TABLE db1.t2(comment CHAR(20)) TABLESPACE ts ENGINE=FALCON;
+SHOW CREATE TABLE db1.t2;
+CREATE VIEW db2.v1 AS SELECT * FROM db1.t2;
+DELIMITER ||;
+CREATE TRIGGER db2.trg1 AFTER DELETE ON db2.t1 FOR EACH ROW
+BEGIN
+ INSERT INTO db1.t2 VALUES("Firing trigger");
+END;||
+DELIMITER ;||
+
+--echo # Create table with partitions
+
+CREATE TABLE db1.tpl(id INT, a CHAR(20)) PARTITION BY LIST(id)
+(
+   PARTITION p0 VALUES IN (1,4),
+   PARTITION p1 VALUES IN (2,3)
+);
+
+INSERT INTO db1.tpl VALUES(1, 'a'),(2,'b'),(3,'c'),(4,'d');
+EXPLAIN PARTITIONS SELECT * FROM db1.tpl;
+SELECT * FROM db1.tpl;
+
+CREATE TABLE db1.tph(name CHAR(20), bdate DATE)
+PARTITION BY HASH (YEAR(bdate)) PARTITIONS 4;
+
+INSERT INTO db1.tph VALUES
+('jim','1999-12-12'),('tom','1987-09-08'),('carrie','1988-10-11');
+EXPLAIN PARTITIONS SELECT * FROM db1.tph;
+SELECT * FROM db1.tph;
+
+--echo # Fire trigger
+DELETE FROM db2.t1 WHERE a=2;
+SELECT * FROM db2.t1 WHERE a=2;
+SELECT * FROM db1.t2;
+
+# Perform backup
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'db1.bak';
+
+--echo # Use mysql_convert_table_format to change the storage engines of 
+--echo # tables in db1
+
+--disable_warnings
+source $MYSQLTEST_VARDIR/tmp/mctf.inc;
+--exec $MYSQL_CONVERT_TABLE_FORMAT -u root -S $MASTER_MYSOCK --port=$MASTER_MYPORT  --type=myisam db1
+--enable_warnings
+
+--echo # Note that tablespace will be ignored by db1.t2
+SHOW CREATE TABLE db1.t1;
+SHOW CREATE TABLE db1.t2;
+
+# Perform backup operation
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+# Perform restore
+--replace_column 1 #
+RESTORE FROM 'db12.bak';
+--remove_file $MYSQLD_BACKUPDIR/db12.bak
+
+--echo # Fire Trigger
+DELETE FROM db2.t1 WHERE a=3;
+SELECT * FROM db2.t1 WHERE a=3;
+SELECT * FROM db1.t2;
+
+--echo # Note that tablepsace will be ignored because of myisam storage engine
+SHOW CREATE TABLE db1.t2;
+
+--echo # Restore from db1.bak to get back tablespace
+--replace_column 1 #
+RESTORE FROM 'db1.bak' OVERWRITE;
+
+--echo # Verify that tablespace is restored from db1.t2
+SHOW CREATE TABLE db1.t2;
+
+source $MYSQLTEST_VARDIR/tmp/mctf.inc;
+--exec $MYSQL_CONVERT_TABLE_FORMAT -u root -S $MASTER_MYSOCK --port=$MASTER_MYPORT  --type=falcon db1
+
+SHOW CREATE TABLE db1.tpl;
+SHOW CREATE TABLE db1.tph;
+
+# Perform backup operation
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+# Perform restore
+--replace_column 1 #
+RESTORE FROM 'db12.bak';
+
+SHOW CREATE TABLE db1.tpl;
+SHOW CREATE TABLE db1.tph;
+
+--echo # Fire Trigger
+DELETE FROM db2.t1 WHERE a=4;
+SELECT * FROM db2.t1 WHERE a=4;
+SELECT * FROM db1.t2;
+
+DROP TABLE db1.tpl;
+DROP TABLE db1.tph;
+DROP TABLE db1.t2;
+DROP VIEW db2.v1;
+--remove_file $MYSQLD_BACKUPDIR/db12.bak
+--remove_file $MYSQLD_BACKUPDIR/db1.bak
+
+--echo # Changing the storage engine back to myisam after restore
+source $MYSQLTEST_VARDIR/tmp/mctf.inc;
+--exec $MYSQL_CONVERT_TABLE_FORMAT -u root -S $MASTER_MYSOCK --port=$MASTER_MYPORT db1
+
+SHOW CREATE TABLE db1.t1;
+
+# Test clean-up section
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+

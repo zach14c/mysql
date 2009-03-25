@@ -1,0 +1,309 @@
+
+# Drop database if already exists
+#
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+#
+# Create databases and tables
+#
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE TABLE db1.t1(
+id INT,
+name VARCHAR(30),
+INDEX idx(name(10))
+);
+CREATE TABLE db2.t1(
+a INT AUTO_INCREMENT PRIMARY KEY,
+b CHAR(20) NOT NULL,
+c CHAR(20) NOT NULL,
+INDEX(b, c)
+);
+INSERT INTO db1.t1 VALUES 
+(1,'test1'),(2,'test2'),
+(3,'test3'),(4,'test4');
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+SELECT COUNT(*) FROM db1.t1;
+COUNT(*)
+128
+SELECT * FROM db1.t1 LIMIT 4;
+id	name
+1	test1
+2	test2
+3	test3
+4	test4
+INSERT INTO db2.t1(b,c) VALUES
+('abcd1','efgh1'),('efgh1','pqrs1'),('pqrs1','abcd1'),
+('xwyz1','klmn1'),('klmn1','opdh1'),('opdh1','xwyz1');
+
+# Check the indexes in tables
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	A
+Cardinality	NULL
+Sub_part	10
+Packed	NULL
+Null	YES
+Index_type	BTREE
+Comment	
+Index_Comment	
+SHOW INDEX FROM db2.t1;;
+Table	t1
+Non_unique	0
+Key_name	PRIMARY
+Seq_in_index	1
+Column_name	a
+Collation	A
+Cardinality	6
+Sub_part	NULL
+Packed	NULL
+Null	
+Index_type	BTREE
+Comment	
+Index_Comment	
+Table	t1
+Non_unique	1
+Key_name	b
+Seq_in_index	1
+Column_name	b
+Collation	A
+Cardinality	NULL
+Sub_part	NULL
+Packed	NULL
+Null	
+Index_type	BTREE
+Comment	
+Index_Comment	
+Table	t1
+Non_unique	1
+Key_name	b
+Seq_in_index	2
+Column_name	c
+Collation	A
+Cardinality	NULL
+Sub_part	NULL
+Packed	NULL
+Null	
+Index_type	BTREE
+Comment	
+Index_Comment	
+
+# Test 1 : Interoperability of backup and restore with
+#          mysql_convert_table_format
+SHOW CREATE TABLE db1.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int(11) DEFAULT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  KEY `idx` (`name`(10))
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+
+# Check the storage engine of table is chnaged to innodb
+SHOW CREATE TABLE db1.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int(11) DEFAULT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  KEY `idx` (`name`(10))
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+BACKUP DATABASE db1 TO 'db1.bak';
+backup_id
+#
+DROP DATABASE db1;
+RESTORE FROM 'db1.bak';
+backup_id
+#
+# Verify db1.t1 has same storage engine as it was before backup
+SHOW CREATE TABLE db1.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int(11) DEFAULT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  KEY `idx` (`name`(10))
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+# Changing the storage engine back to myisam
+SHOW CREATE TABLE db1.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int(11) DEFAULT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  KEY `idx` (`name`(10))
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+
+# Test 2 : Create objects that directly or indirectly is affected 
+# storage engine. Use mysql_convert_table_format and change the storage 
+# engine type
+Creating objects
+CREATE TABLESPACE ts ADD DATAFILE 'df' ENGINE=FALCON;
+CREATE TABLE db1.t2(comment CHAR(20)) TABLESPACE ts ENGINE=FALCON;
+SHOW CREATE TABLE db1.t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `comment` char(20) DEFAULT NULL
+) /*!50100 TABLESPACE `ts` */ ENGINE=Falcon DEFAULT CHARSET=latin1
+CREATE VIEW db2.v1 AS SELECT * FROM db1.t2;
+CREATE TRIGGER db2.trg1 AFTER DELETE ON db2.t1 FOR EACH ROW
+BEGIN
+INSERT INTO db1.t2 VALUES("Firing trigger");
+END;||
+# Create table with partitions
+CREATE TABLE db1.tpl(id INT, a CHAR(20)) PARTITION BY LIST(id)
+(
+PARTITION p0 VALUES IN (1,4),
+PARTITION p1 VALUES IN (2,3)
+);
+INSERT INTO db1.tpl VALUES(1, 'a'),(2,'b'),(3,'c'),(4,'d');
+EXPLAIN PARTITIONS SELECT * FROM db1.tpl;
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	tpl	p0,p1	ALL	NULL	NULL	NULL	NULL	4	
+SELECT * FROM db1.tpl;
+id	a
+1	a
+4	d
+2	b
+3	c
+CREATE TABLE db1.tph(name CHAR(20), bdate DATE)
+PARTITION BY HASH (YEAR(bdate)) PARTITIONS 4;
+INSERT INTO db1.tph VALUES
+('jim','1999-12-12'),('tom','1987-09-08'),('carrie','1988-10-11');
+EXPLAIN PARTITIONS SELECT * FROM db1.tph;
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	tph	p0,p1,p2,p3	ALL	NULL	NULL	NULL	NULL	3	
+SELECT * FROM db1.tph;
+name	bdate
+carrie	1988-10-11
+jim	1999-12-12
+tom	1987-09-08
+# Fire trigger
+DELETE FROM db2.t1 WHERE a=2;
+SELECT * FROM db2.t1 WHERE a=2;
+a	b	c
+SELECT * FROM db1.t2;
+comment
+Firing trigger
+BACKUP DATABASE db1 TO 'db1.bak';
+backup_id
+#
+# Use mysql_convert_table_format to change the storage engines of 
+# tables in db1
+t1 is already of type myisam;  Ignored
+tph is already of type myisam;  Ignored
+tpl is already of type myisam;  Ignored
+# Note that tablespace will be ignored by db1.t2
+SHOW CREATE TABLE db1.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int(11) DEFAULT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  KEY `idx` (`name`(10))
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+SHOW CREATE TABLE db1.t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `comment` char(20) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+backup_id
+#
+DROP DATABASE db1;
+DROP DATABASE db2;
+RESTORE FROM 'db12.bak';
+backup_id
+#
+# Fire Trigger
+DELETE FROM db2.t1 WHERE a=3;
+SELECT * FROM db2.t1 WHERE a=3;
+a	b	c
+SELECT * FROM db1.t2;
+comment
+Firing trigger
+Firing trigger
+# Note that tablepsace will be ignored because of myisam storage engine
+SHOW CREATE TABLE db1.t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `comment` char(20) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+# Restore from db1.bak to get back tablespace
+RESTORE FROM 'db1.bak' OVERWRITE;
+backup_id
+#
+# Verify that tablespace is restored from db1.t2
+SHOW CREATE TABLE db1.t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `comment` char(20) DEFAULT NULL
+) /*!50100 TABLESPACE `ts` */ ENGINE=Falcon DEFAULT CHARSET=latin1
+t2 is already of type falcon;  Ignored
+SHOW CREATE TABLE db1.tpl;
+Table	Create Table
+tpl	CREATE TABLE `tpl` (
+  `id` int(11) DEFAULT NULL,
+  `a` char(20) DEFAULT NULL
+) ENGINE=Falcon DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (id)
+(PARTITION p0 VALUES IN (1,4) ENGINE = Falcon,
+ PARTITION p1 VALUES IN (2,3) ENGINE = Falcon) */
+SHOW CREATE TABLE db1.tph;
+Table	Create Table
+tph	CREATE TABLE `tph` (
+  `name` char(20) DEFAULT NULL,
+  `bdate` date DEFAULT NULL
+) ENGINE=Falcon DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY HASH (YEAR(bdate))
+PARTITIONS 4 */
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+backup_id
+#
+DROP DATABASE db1;
+DROP DATABASE db2;
+RESTORE FROM 'db12.bak';
+backup_id
+#
+SHOW CREATE TABLE db1.tpl;
+Table	Create Table
+tpl	CREATE TABLE `tpl` (
+  `id` int(11) DEFAULT NULL,
+  `a` char(20) DEFAULT NULL
+) ENGINE=Falcon DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (id)
+(PARTITION p0 VALUES IN (1,4) ENGINE = Falcon,
+ PARTITION p1 VALUES IN (2,3) ENGINE = Falcon) */
+SHOW CREATE TABLE db1.tph;
+Table	Create Table
+tph	CREATE TABLE `tph` (
+  `name` char(20) DEFAULT NULL,
+  `bdate` date DEFAULT NULL
+) ENGINE=Falcon DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY HASH (YEAR(bdate))
+PARTITIONS 4 */
+# Fire Trigger
+DELETE FROM db2.t1 WHERE a=4;
+SELECT * FROM db2.t1 WHERE a=4;
+a	b	c
+SELECT * FROM db1.t2;
+comment
+Firing trigger
+Firing trigger
+DROP TABLE db1.tpl;
+DROP TABLE db1.tph;
+DROP TABLE db1.t2;
+DROP VIEW db2.v1;
+# Changing the storage engine back to myisam after restore
+SHOW CREATE TABLE db1.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int(11) DEFAULT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  KEY `idx` (`name`(10))
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+DROP DATABASE db1;
+DROP DATABASE db2;
