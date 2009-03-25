@@ -76,6 +76,7 @@ public:
 	TransId			transactionId;
 	int				savePointId;
 	bool			superceded;
+	bool			queuedForDelete;
 
 private:
 	TransactionState *transState;

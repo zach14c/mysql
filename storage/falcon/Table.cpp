@@ -419,7 +419,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		if (record)
 			{
 			SET_RECORD_ACTIVE(record, false);
-			record->release(REC_HISTORY);
+			record->queueForDelete();
 			}
 
 		throw;
@@ -3114,7 +3114,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		if (record)
 			{
 			SET_RECORD_ACTIVE(record, false);
-			record->release(REC_HISTORY);
+			record->queueForDelete();
 			}
 
 		throw;

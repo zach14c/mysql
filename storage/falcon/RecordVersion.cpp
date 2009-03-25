@@ -52,6 +52,7 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *trans, Rec
 	transactionId = transaction->transactionId;
 	savePointId   = transaction->curSavePointId;
 	superceded    = false;
+	queuedForDelete = false;
 
 	// Add a use count on the transaction state to ensure it lives as long 
 	// as the record version object
@@ -82,7 +83,8 @@ RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(dat
 	transactionId = stream->getInt();
 	int priorType = stream->getInt();
 	superceded = false;
-
+	queuedForDelete = false;
+	
 	if (priorType == 0)
 		priorVersion = new Record(database, stream);
 	else if (priorType == 1)
@@ -152,6 +154,7 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 {
 	// Unless the record is at least as old as the transaction, it's not for us
 
+	ASSERT(!queuedForDelete);
 	Transaction *recTransaction = transaction;
 
 	if (state != recLock)
@@ -289,7 +292,7 @@ void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestAct
 	setPriorVersion(rec);
 	ptr->state = recEndChain;
 	format->table->garbageCollect(prior, this, transaction, false);
-	prior->release();
+	prior->queueForDelete();					// this could probably be a release(), but let's be safe.
 }
 
 Record* RecordVersion::getPriorVersion()
@@ -486,5 +489,7 @@ void RecordVersion::serialize(Serialize* stream)
 
 void RecordVersion::queueForDelete(void)
 {
+	ASSERT(!queuedForDelete);
+	queuedForDelete = true;
 	format->table->queueForDelete(this);
 }
