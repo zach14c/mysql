@@ -152,21 +152,21 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 {
 	// Unless the record is at least as old as the transaction, it's not for us
 
-	Transaction *recTransaction = transaction;
+	TransactionState* recTransState = transState;
 
 	if (state != recLock)
 		{
 		if (IS_READ_COMMITTED(trans->isolationLevel))
 			{
-			int state = (recTransaction) ? recTransaction->transactionState->state : 0;
+			int state = (recTransState) ? recTransState->state : 0;
 			
-			if (!transaction || state == Committed || recTransaction == trans)
+			if (!transaction || state == Committed || recTransState == trans->transactionState)
 				return (getRecordData()) ? this : NULL;
 			}
 		// else IS_REPEATABLE_READ(trans->isolationLevel)
 		else if (transactionId <= trans->transactionId)
 			{
-			if (trans->visible(recTransaction, transactionId, FOR_READING))
+			if (trans->visible(recTransState, FOR_READING))
 				return (getRecordData()) ? this : NULL;
 			}
 		}
