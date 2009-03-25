@@ -1021,11 +1021,12 @@ int Record::getMemUsage(void)
 	return objectSize + getDataMemUsage();
 }
 
-
+/***
 SyncObject* Record::getSyncPrior(void)
 {
 	return format->table->getSyncPrior(this);
 }
+***/
 
 SyncObject* Record::getSyncThaw(void)
 {
@@ -1102,3 +1103,8 @@ void Record::ShowHistory(void)
 		}
 }
 #endif
+
+void Record::queueForDelete(void)
+{
+	release(REC_HISTORY);
+}

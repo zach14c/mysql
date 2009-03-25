@@ -45,13 +45,6 @@ class InfoTable;
 class Thread;
 class TransactionManager;
 
-
-struct TransState {
-	Transaction	*transaction;
-	TransId		transactionId;
-	int			state;
-	};
-
 static const int LOCAL_SAVE_POINTS = 5;
 
 static const int FOR_READING = 0;

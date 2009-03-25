@@ -43,6 +43,8 @@ falcon_headers= Agent.h Alias.h Application.h \
 		CompareAndSwapSparc.il \
 		CompiledStatement.h Configuration.h Connection.h Context.h \
 		Coterie.h CoterieRange.h \
+		CycleLock.h \
+		CycleManager.h \
 		ErrorInjector.h \
 		Database.h \
 		DatabaseBackup.h \
@@ -227,6 +229,8 @@ falcon_sources= Agent.cpp Alias.cpp \
 		CollationManager.cpp \
 		CompiledStatement.cpp Configuration.cpp \
 		Connection.cpp Context.cpp Coterie.cpp \
+		CycleLock.cpp \
+		CycleManager.cpp \
 		ErrorInjector.cpp \
 		CoterieRange.cpp \
 		Database.cpp \

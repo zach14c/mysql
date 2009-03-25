@@ -94,7 +94,7 @@ struct MemObject;
 	WINSTATIC ALWAYS_INLINE void* operator new[](size_t s, MemMgr *pool) THROWS_BAD_ALLOC
 		{ return ::MemMgrPoolAllocate (pool,s); }
 
-	WINSTATIC ALWAYS_INLINE void* operator new(size_t s, const int  &n) THROWS_BAD_ALLOC
+	WINSTATIC ALWAYS_INLINE void* operator new(size_t s, const int &n) THROWS_BAD_ALLOC
 		{ return ::MemMgrAllocate (s); }
 
 	WINSTATIC ALWAYS_INLINE void* operator new[](size_t s) THROWS_BAD_ALLOC
@@ -156,5 +156,6 @@ WINSTATIC ALWAYS_INLINE void operator delete(void *object, MemMgr *pool, const c
 	{ MemMgrRelease (object); }
 
 extern void MemMgrValidate ();
+
 
 #endif

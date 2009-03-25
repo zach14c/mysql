@@ -619,12 +619,12 @@ void Index::update(Record * oldRecord, Record * record, Transaction *transaction
 	// Get key value
 				
 	IndexKey key(this);
-	makeKey (record, &key);
+	makeKey(record, &key);
 
 	// If there is a duplicate in the old version chain, don't bother with another
 
-	Sync syncPrior(record->format->table->getSyncPrior(record), "Index::update");
-	syncPrior.lock(Shared);
+	//Sync syncPrior(record->format->table->getSyncPrior(record), "Index::update");
+	//syncPrior.lock(Shared);
 
 	if (duplicateKey (&key, oldRecord))
 		return;

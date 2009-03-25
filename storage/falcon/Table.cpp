@@ -58,6 +58,8 @@
 #include "Section.h"
 #include "BackLog.h"
 #include "Thread.h"
+#include "CycleLock.h"
+#include "CycleManager.h"
 
 #ifndef STORAGE_ENGINE
 #include "Trigger.h"
@@ -170,6 +172,7 @@ Table::~Table()
 
 Field* Table::findField(const char * fieldName)
 {
+	//const char *name = database->getSymbol(fieldName);
 	const char *name = database->getString(fieldName);
 	Sync sync(&syncObject, "Table::findField");
 	sync.lock(Shared);
@@ -322,6 +325,7 @@ void Table::save()
 void Table::insert(Transaction *transaction, int count, Field **fieldVector, Value **values)
 {
 	database->preUpdate();
+	CycleLock cycleLock(database);
 	
 	if (view)
 		{
@@ -906,8 +910,10 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	syncTriggers.setName("Table::syncTriggers");
 	syncAlter.setName("Table::syncAlter");
 	
+	/***
 	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
 		syncPriorVersions[n].setName("Table::syncPriorVersions");
+	***/
 	
 	for (int n = 0; n < SYNC_THAW_SIZE; n++)
 		syncThaw[n].setName("Table::syncThaw");
@@ -1324,6 +1330,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 	RecordVersion *record = NULL;
 	bool updated = false;
 	int recordNumber = oldRecord->recordNumber;
+	CycleLock cycleLock(database);
 	
 	try
 		{
@@ -1419,6 +1426,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 
 void Table::reIndexInversion(Transaction *transaction)
 {
+	CycleLock cycleLock(database);
 	bool hits = false;
 
 	FOR_FIELDS(field, this)
@@ -1439,8 +1447,8 @@ void Table::reIndexInversion(Transaction *transaction)
 		next = record->recordNumber + 1;
 		
 		{
-			Sync syncPrior(getSyncPrior(record->recordNumber), "Table::reIndexInversion");
-			syncPrior.lock(Shared);
+			//Sync syncPrior(getSyncPrior(record->recordNumber), "Table::reIndexInversion");
+			//syncPrior.lock(Shared);
 	
 			for (Record *version = record; version; version = version->getPriorVersion())
 				if (version->hasRecord())
@@ -1540,11 +1548,14 @@ ForeignKey* Table::findForeignKey(ForeignKey * key)
 void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 {
 	database->preUpdate();
+	CycleLock cycleLock(database);
 
 	// syncPrior is not needed here.  It is handled in fetchVersion()
 	Record *candidate = fetch(orgRecord->recordNumber);
+	
 	if (!candidate)
 		return;
+		
 	RECORD_HISTORY(candidate);
 
 	checkAncestor(candidate, orgRecord);
@@ -1569,6 +1580,7 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 		if (oldVersion != candidate)
 			{
 			candidate->release(REC_HISTORY);
+			
 			throw SQLError(UPDATE_CONFLICT, "delete conflict in table %s.%s record %d", schemaName, name, orgRecord->recordNumber);
 			}
 		
@@ -1879,14 +1891,15 @@ const char* Table::getSchema()
 void Table::populateIndex(Index * index, Transaction *transaction)
 {
 	Record *record;
+	CycleLock cycleLock(database);
 
 	for (int32 next = 0, count = 0; (record = fetchNext(next)); ++count)
 		{
 		next = record->recordNumber + 1;
 
 		{
-			Sync syncPrior(getSyncPrior(record->recordNumber), "Table::populateIndex");
-			syncPrior.lock(Shared);
+			//Sync syncPrior(getSyncPrior(record->recordNumber), "Table::populateIndex");
+			//syncPrior.lock(Shared);
 		
 			for (Record *version = record; version; version = version->getPriorVersion())
 				if (version->hasRecord())
@@ -2065,8 +2078,8 @@ bool Table::duplicateBlob(Value * blob, int fieldId, Record * recordChain)
 			return isDuplicate;
 		}
 
-	Sync syncPrior(getSyncPrior(recordChain), "Table::duplicateBlob");
-	syncPrior.lock(Shared);
+	//Sync syncPrior(getSyncPrior(recordChain), "Table::duplicateBlob");
+	//syncPrior.lock(Shared);
 	
 	for (Record *record = recordChain; record; record = record->getPriorVersion())
 		if (record->hasRecord())
@@ -2152,9 +2165,10 @@ void Table::garbageCollect(Record *leaving, Record *staying, Transaction *transa
 
 	Sync sync (&syncObject, "Table::garbageCollect(Obj)");
 	sync.lock(Shared);
+	CycleLock cycleLock(database);
 	
-	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(prior)");
-	syncPrior.lock(Shared);
+	//Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(prior)");
+	//syncPrior.lock(Shared);
 	
 	// Clean up field indexes
 
@@ -2562,8 +2576,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 	if ( !(rec = fetch(recordNumber)) )
 		return false;	 // Check next record number.
 
-	Sync syncPrior(getSyncPrior(recordNumber), "Table::checkUniqueRecordVersion");
-	syncPrior.lock(Shared);
+	//Sync syncPrior(getSyncPrior(recordNumber), "Table::checkUniqueRecordVersion");
+	//syncPrior.lock(Shared);
 	
 	for (Record *dup = rec; dup; dup = dup->getPriorVersion())
 		{
@@ -2637,7 +2651,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			if (state == Active)
 				{
 				dup->addRef(REC_HISTORY);
-				syncPrior.unlock(); // release lock before wait
+				//syncPrior.unlock(); // release lock before wait
 				syncUnique->unlock(); // release lock before wait
 
 				// Wait for that transaction, then restart checkUniqueIndexes()
@@ -2658,7 +2672,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 			else if (activeTransaction)
 				{
-				syncPrior.unlock(); // release lock before wait
+				//syncPrior.unlock(); // release lock before wait
 				syncUnique->unlock(); // release lock before wait
 
 				state = transaction->getRelativeState(activeTransaction->transactionState,
@@ -2842,14 +2856,15 @@ void Table::validateBlobs(int optionMask)
 	Bitmap references;
 	Record *record;
 	int32 next;
+	CycleLock cycleLock(database);
 
 	for (next = 0; (record = fetchNext(next));)
 		{
 		next = record->recordNumber + 1;
 		
 		{
-			Sync syncPrior(getSyncPrior(record->recordNumber), "Table::validateBlobs");
-			syncPrior.lock(Shared);
+			//Sync syncPrior(getSyncPrior(record->recordNumber), "Table::validateBlobs");
+			//syncPrior.lock(Shared);
 		
 			for (Record *version = record; version; version = version->getPriorVersion())
 				if (version->hasRecord())
@@ -3441,8 +3456,8 @@ void Table::unlockRecord(RecordVersion* record, int verbMark)
 
 void Table::checkAncestor(Record* current, Record* oldRecord)
 {
-	Sync syncPrior(getSyncPrior(current), "Table::checkAncestor");
-	syncPrior.lock(Shared);
+	//Sync syncPrior(getSyncPrior(current), "Table::checkAncestor");
+	//syncPrior.lock(Shared);
 	
 	for (Record *record = current; record; record = record->getPriorVersion())
 		if (record == oldRecord)
@@ -3487,8 +3502,8 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 		// There is only one lock record.  It is at the savepoint 
 		// where it was locked. The prior record is the real record.
 
-		Sync syncPrior(getSyncPrior(source), "Table::fetchForUpdate");
-		syncPrior.lock(Shared);
+		//Sync syncPrior(getSyncPrior(source), "Table::fetchForUpdate");
+		//syncPrior.lock(Shared);
 	
 		Record *prior = source->getPriorVersion();
 		prior->addRef(REC_HISTORY);
@@ -3754,8 +3769,8 @@ bool Table::validateUpdate(int32 recordNumber, TransId transactionId)
 	Record *record = treeFetch(recordNumber);
 	Record *initial = record;
 	
-	Sync syncPrior(getSyncPrior(recordNumber), "Table::validateUpdate");
-	syncPrior.lock(Shared);
+	//Sync syncPrior(getSyncPrior(recordNumber), "Table::validateUpdate");
+	//syncPrior.lock(Shared);
 	
 	while (record)
 		{
@@ -3865,6 +3880,7 @@ void Table::deleteRecordBacklog(int32 recordNumber)
 		}
 }
 
+/***
 SyncObject* Table::getSyncPrior(Record* record)
 {
 	int recNumber = (record->recordNumber == -1) ? 0 : record->recordNumber;
@@ -3877,6 +3893,7 @@ SyncObject* Table::getSyncPrior(int recordNumber)
 	int lockNumber = recordNumber % SYNC_VERSIONS_SIZE;
 	return syncPriorVersions + lockNumber;
 }
+***/
 
 SyncObject* Table::getSyncThaw(Record* record)
 {
@@ -3895,4 +3912,9 @@ static bool needUniqueCheck(Index *index, Record *record)
 	Record *oldRecord = record->getPriorVersion();
 	return (INDEX_IS_UNIQUE(index->type) &&
 		(!oldRecord || index->changed(record, oldRecord)));
+}
+
+void Table::queueForDelete(RecordVersion* record)
+{
+	database->cycleManager->queueForDelete(record);
 }

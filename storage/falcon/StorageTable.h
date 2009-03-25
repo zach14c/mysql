@@ -38,6 +38,19 @@ struct StorageBlob {
 	StorageBlob		*next;
 	};
 
+#ifdef TRACK_RECORDS
+class Record;
+class Transaction;
+
+static const int recordHistorySize	= 10;
+
+struct RecordHistory {
+	Record		*record;
+	Transaction	*transaction;
+	uint		transactionId;
+	int			recordNumber;
+	};
+#endif
 	
 class StorageConnection;
 class StorageTableShare;
@@ -118,6 +131,12 @@ public:
 	StorageTableShare	*share;
 	StorageInterface	*localTable;
 	StorageIndexDesc	*currentIndex;
+
+#ifdef TRACK_RECORDS
+	RecordHistory		recordHistory[recordHistorySize];
+#endif
+
+	int					historyIndex;
 	void				*bitmap;
 	IndexWalker			*indexWalker;
 	StorageKey			lowerKey;

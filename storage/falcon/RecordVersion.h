@@ -59,6 +59,7 @@ public:
 	virtual void		print(void);
 	virtual int			getSize(void);
 	virtual void		serialize(Serialize* stream);
+	virtual void		queueForDelete(void);
 
 	void				commit();
 	bool				committedBefore(TransId);

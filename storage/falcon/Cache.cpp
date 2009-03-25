@@ -49,7 +49,7 @@
 #undef PARAMETER_BOOL
 extern uint falcon_io_threads;
 
-//#define STOP_PAGE		55
+//#define STOP_PAGE		15380
 #define TRACE_FILE	"cache.trace"
 
 static FILE			*traceFile;

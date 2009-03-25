@@ -82,6 +82,8 @@
 #include "Sequence.h"
 #include "BackLog.h"
 #include "Bitmap.h"
+#include "CycleManager.h"
+#include "CycleLock.h"
 
 #ifdef _WIN32
 #define PATH_MAX			_MAX_PATH
@@ -465,6 +467,7 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent) :
 	sessionManager = NULL;
 	filterSetManager = NULL;
 	tableSpaceManager = NULL;
+	cycleManager = NULL;
 	timestamp = time (NULL);
 	tickerThread = NULL;
 	cardinalityThread = NULL;
@@ -536,6 +539,7 @@ void Database::start()
 	transactionManager = new TransactionManager(this);
 	internalScheduler->addEvent(repositoryManager);
 	filterSetManager = new FilterSetManager(this);
+	cycleManager = new CycleManager(this);
 	timestamp = time(NULL);
 	tickerThread = threads->start("Database::Database", &Database::ticker, this);
 	cardinalityThread = threads->start("Database::cardinalityThreadMain", &Database::cardinalityThreadMain, this);
@@ -547,6 +551,7 @@ void Database::start()
 	internalScheduler->addEvent(serialLog);
 	pageWriter->start();
 	cache->setPageWriter(pageWriter);
+	cycleManager->start();
 }
 
 Database::~Database()
@@ -630,6 +635,7 @@ Database::~Database()
 	delete serialLog;
 	delete pageWriter;
 	delete tableSpaceManager;
+	delete cycleManager;
 	delete cache;
 	delete roleModel;
 	delete symbolManager;
@@ -746,6 +752,7 @@ void Database::openDatabase(const char * filename)
 			{
 			if (dbb->logLength)
 				serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
+				
 			serialLog->open(dbb->logRoot, false);
 
 			try 
@@ -756,6 +763,7 @@ void Database::openDatabase(const char * filename)
 				{
 				throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
 				}
+				
 			tableSpaceManager->postRecovery();
 			serialLog->start();
 			}
@@ -1636,6 +1644,9 @@ void Database::shutdown()
 	serialLog->shutdown();
 	cache->shutdown();
 
+	if (cycleManager)
+		cycleManager->shutdown();
+		
 	if (threads)
 		{
 		threads->shutdownAll();
@@ -1786,12 +1797,12 @@ void Database::scavenge(bool forced)
 	if (serialLog)
 		{
 		serialLog->reportStatistics();
+		
 		if (tableSpaceManager && !serialLog->recovering)
 			tableSpaceManager->reportStatistics();
 		}	
 		
 	dbb->reportStatistics();
-
 	repositoryManager->reportStatistics();
 	
 	if (backLog)
@@ -1884,7 +1895,8 @@ void Database::pruneRecords(RecordScavenge *recordScavenge)
 
 	Sync syncTbl(&syncTables, "Database::pruneRecords(tables)");
 	syncTbl.lock(Shared);
-
+	CycleLock cyleLock(this);
+	
 	for (Table *table = tableList; table; table = table->next)
 		{
 		try

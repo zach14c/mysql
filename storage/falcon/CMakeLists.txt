@@ -54,6 +54,8 @@ SET(FALCON_SOURCES
 		Context.cpp 
 		Coterie.cpp
 		CoterieRange.cpp 
+		CycleLock.cpp
+		CycleManager.cpp 
 		Database.cpp 
 		DatabaseBackup.cpp 
 		DatabaseClone.cpp 
@@ -326,6 +328,8 @@ SET(FALCON_SOURCES
 		Context.h 
 		Coterie.h
 		CoterieRange.h 
+		CycleLock.h 
+		CycleManager.h
 		ErrorInjector.h
 		Database.h 
 		DatabaseBackup.h 
