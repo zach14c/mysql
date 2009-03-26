@@ -382,7 +382,6 @@ void Transaction::rollback()
 		releaseDeferredIndexes();
 		
 	releaseSavepoints();
-	Transaction *rollbackTransaction = transactionManager->rolledBackTransaction;
 	chillPoint = &firstRecord;
 	totalRecordData = 0;
 	totalRecords = 0;
