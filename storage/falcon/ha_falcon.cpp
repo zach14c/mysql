@@ -3016,7 +3016,7 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 					// encode it as a BigInt to support unsigned values 
 					// with the MSB set in the index
 
-					if (((Field_num*)field)->unsigned_flag && (temp & QUAD_CONSTANT(0x8000000000000000)))
+					if (((Field_num*)field)->unsigned_flag && (temp & 0x8000000000000000))
 						{
 						BigInt bigInt;
 						bigInt.set((uint64)temp);
