@@ -571,7 +571,7 @@ int Transaction::thaw(RecordVersion * record)
 	
 	// Thaw the record then update the total record data bytes for this transaction
 	
-	ASSERT(record->transactionId == transactionId);
+	ASSERT(record->getTransactionId() == transactionId);
 	bool thawed;
 	int bytesRestored = control.updateRecords.thaw(record, &thawed);
 	

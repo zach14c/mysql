@@ -85,7 +85,7 @@ RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(dat
 	// prior versions from 'stream'
 
 	virtualOffset = stream->getInt64();
-	transactionId = stream->getInt();
+	TransId transactionId = stream->getInt();
 	int priorType = stream->getInt();
 	superceded = false;
 	queuedForDelete = false;
@@ -113,6 +113,14 @@ RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(dat
 		if (!transaction->writePending)
 			transaction = NULL;
 		***/
+		}
+	else
+		{
+		// Creates a transaction state object for storing the transaction id
+
+		transactionState = new TransactionState();
+		transactionState->transactionId = transactionId;
+		transactionState->state = Committed;
 		}
 }
 
@@ -180,7 +188,7 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 			if (state == Committed || recTransState == trans->transactionState)
 				return (getRecordData()) ? this : NULL;
 			}
-		else if (transactionId <= trans->transactionId)
+		else if (recTransState->transactionId <= trans->transactionId)
 			{
 			if (trans->visible(recTransState, FOR_READING))
 				return (getRecordData()) ? this : NULL;
@@ -381,7 +389,7 @@ void RecordVersion::setPriorVersion(Record *oldVersion)
 
 TransId RecordVersion::getTransactionId()
 {
-	return transactionId;
+	return transactionState->transactionId;
 }
 
 int RecordVersion::getSavePointId()
@@ -484,7 +492,7 @@ char* RecordVersion::getRecordData()
 void RecordVersion::print(void)
 {
 	Log::debug("  %p\tId %d, enc %d, state %d, tid %d, use %d, grp %d, prior %p\n",
-			this, recordNumber, encoding, state, transactionId, useCount,
+			this, recordNumber, encoding, state, transactionState->transactionId, useCount,
 			generation, priorVersion);
 	
 	if (priorVersion)
@@ -500,7 +508,7 @@ void RecordVersion::serialize(Serialize* stream)
 {
 	Record::serialize(stream);
 	stream->putInt64(virtualOffset);
-	stream->putInt(transactionId);
+	stream->putInt(transactionState->transactionId);
 	
 	// Recursively serialize the prior version chain
 	
@@ -528,10 +536,9 @@ void RecordVersion::setTransactionState(TransactionState* newTransState)
 	
 	transactionState = newTransState;
 	transactionState->addRef();
-	transactionId = transactionState->transactionId;
 }
 
 Transaction* RecordVersion::findTransaction(void)
 {
-	return format->table->database->transactionManager->findTransaction(transactionId);
+	return format->table->database->transactionManager->findTransaction(transactionState->transactionId);
 }
