@@ -214,7 +214,7 @@ public:
 	Record*			fetchForUpdate(Transaction* transaction, Record* record, bool usingIndex);
 	void			unlockRecord(int recordNumber, int verbMark);
 	void			unlockRecord(RecordVersion* record, int verbMark);
-	void			queueForDelete(RecordVersion* record);
+	void			queueForDelete(Record* record);
 
 	void			insert (Transaction *transaction, int count, Field **fields, Value **values);
 	uint			insert (Transaction *transaction, Stream *stream);

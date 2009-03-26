@@ -9,11 +9,17 @@
 
 static const int CYCLE_SLEEP		= 1000;
 
+#ifdef _DEBUG
+#undef THIS_FILE
+static const char THIS_FILE[]=__FILE__;
+#endif
+
 CycleManager::CycleManager(Database *db)
 {
 	database = db;
 	thread = NULL;
 	records = NULL;
+	recordVersions = NULL;
 	currentCycle = &cycle1;
 	cycle1.setName("CycleManager::cycle1");
 	cycle2.setName("CycleManager::cycle2");
@@ -46,9 +52,21 @@ void CycleManager::cycleManager(void)
 	while (!thread->shutdownInProgress)
 		{
 		thread->sleep(CYCLE_SLEEP);
-		RecordVersion *doomedRecords;
+		RecordVersion *doomedRecordVersions;
+		RecordList *doomedRecords;
 		
 		// Pick up detrius registered for delete during cycle
+		
+		if (recordVersions)
+			for (;;)
+				{
+				doomedRecordVersions = recordVersions;
+				
+				if (COMPARE_EXCHANGE_POINTER(&recordVersions, doomedRecordVersions, NULL))
+					break;
+				}
+		else
+			doomedRecordVersions = NULL;
 		
 		if (records)
 			for (;;)
@@ -72,21 +90,46 @@ void CycleManager::cycleManager(void)
 		sync.lock(Exclusive);
 		sync.unlock();
 		
-		for (RecordVersion *record; (record = doomedRecords);)
+		for (RecordVersion *recordVersion; (recordVersion = doomedRecordVersions);)
 			{
-			doomedRecords = record->nextInTrans;
-			record->release();
+			doomedRecordVersions = recordVersion->nextInTrans;
+			recordVersion->release();
+			}
+		
+		for (RecordList *recordList; (recordList = doomedRecords);)
+			{
+			doomedRecords = recordList->next;
+			recordList->record->release();
+			delete recordList;
 			}
 		}
 }
 
-void CycleManager::queueForDelete(RecordVersion* record)
+void CycleManager::queueForDelete(Record* record)
 {
-	for (;;)
+	if (record->isVersion())
 		{
-		record->nextInTrans = records;
+		RecordVersion *recordVersion = (RecordVersion*) record;
 		
-		if (COMPARE_EXCHANGE_POINTER(&records, record->nextInTrans, record))
-			break;
+		for (;;)
+			{
+			recordVersion->nextInTrans = recordVersions;
+			
+			if (COMPARE_EXCHANGE_POINTER(&recordVersions, recordVersion->nextInTrans, recordVersion))
+				break;
+			}
+		}
+	else
+		{
+		RecordList *recordList = new RecordList;
+		recordList->record = record;
+		
+		for (;;)
+			{
+			recordList->next = records;
+			
+			if (COMPARE_EXCHANGE_POINTER(&records, recordList->next, recordList))
+				break;
+			}
 		}
 }

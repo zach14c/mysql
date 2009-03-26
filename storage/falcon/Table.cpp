@@ -1417,7 +1417,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 				record->deleteData();
 
 			SET_RECORD_ACTIVE(record, false);
-			record->release(REC_HISTORY);
+			record->queueForDelete();
 			}
 
 		throw;
@@ -3249,7 +3249,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 			record->release(REC_HISTORY);
 			}
 
-		oldRecord->release(REC_HISTORY);
+		oldRecord->queueForDelete();
 
 		throw;
 		}
@@ -3918,7 +3918,7 @@ static bool needUniqueCheck(Index *index, Record *record)
 		(!oldRecord || index->changed(record, oldRecord)));
 }
 
-void Table::queueForDelete(RecordVersion* record)
+void Table::queueForDelete(Record* record)
 {
 	database->cycleManager->queueForDelete(record);
 }

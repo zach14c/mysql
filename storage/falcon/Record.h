@@ -53,6 +53,7 @@ static const int recInserting = 8;		// record is being physically inserted
 static const int recDeleting = 9;		// record is being physically deleted
 static const int recPruning	 = 10;		// record is being pruned
 static const int recEndChain = 11;		// end of chain for garbage collection
+static const int recQueuedForDelete = 12;		// end of chain for garbage collection
 
 
 //#define CHECK_RECORD_ACTIVITY
@@ -183,11 +184,11 @@ protected:
 		}		data;
 
 public:
-	volatile INTERLOCK_TYPE useCount;
+	uint64		generation;
 	Format		*format;
+	volatile INTERLOCK_TYPE useCount;
 	int			recordNumber;
 	int			size;
-	uint64		generation;
 	short		highWater;
 	UCHAR		encoding;
 	UCHAR		state;

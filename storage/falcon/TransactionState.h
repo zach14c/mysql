@@ -60,14 +60,14 @@ public:
 	void		waitForTransaction();
 	bool		committedBefore(TransId transactionId);
 	
-	inline bool	isActive() const
+	inline bool	isActive()
 	    {
 		return state == Active || state == Limbo;
 	    }
 
-	inline bool	isCommitted() const
+	inline bool	isCommitted()
 	    {
-		return state == Active || state == Limbo;
+		return state == Committed;
 	    }
 
 

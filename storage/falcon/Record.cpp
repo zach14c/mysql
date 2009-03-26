@@ -1108,5 +1108,7 @@ void Record::ShowHistory(void)
 
 void Record::queueForDelete(void)
 {
-	release(REC_HISTORY);
+	ASSERT(state != recQueuedForDelete);
+	state = recQueuedForDelete;
+	format->table->queueForDelete(this);
 }
