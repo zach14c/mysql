@@ -3227,6 +3227,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 
 		record->scavengeSavepoint(transaction, transaction->curSavePointId);
 		record->release(REC_HISTORY);
+
 		oldRecord->release(REC_HISTORY);	// This reference originated in this function.
 		}
 	catch (...)
@@ -3250,10 +3251,9 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 				record->deleteData();
 
 			SET_RECORD_ACTIVE(record, false);
-			oldRecord->queueForDelete();
+			oldRecord->release(REC_HISTORY);
+			record->queueForDelete();
 			}
-
-		record->release();
 
 		throw;
 		}
