@@ -67,7 +67,7 @@ public:
 
 	inline bool	isCommitted() const
 	    {
-		return state == Active || state == Limbo;
+		return state == Committed;
 	    }
 
 
