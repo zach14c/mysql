@@ -564,10 +564,16 @@ connection default;
 --echo # Waiting for BACKUP to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_started TIMEOUT 3';
 
---echo # Check the state of both statements.
-eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-  WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "CREATE USER%";
+#
+# SELECTs from I_S.PROCESSLIST commented out because such selects are unstable
+# in the current server (v6.0 as of Mar 2009). See bug#37990, bug#41346, 
+# bug#43357. When I_S quality is improved, the following lines could be 
+# re-enabled increasing sensitivity of this test to potential problems.
+#
+#--echo # Check the state of both statements.
+#eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+#  WHERE info LIKE "BACKUP DATABASE%"
+#     OR info LIKE "CREATE USER%";
 --echo # Checking that CREATE USER has not executed yet.
 SELECT User, Password FROM mysql.user WHERE User like 'bml%';
 --echo # Checking that BACKUP is not blocked by DDL.
@@ -637,10 +643,16 @@ connection default;
 --echo # Waiting for RESTORE to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_started TIMEOUT 3';
 
---echo # Check the state of both statements.
-eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-  WHERE info LIKE "RESTORE FROM%"
-     OR info LIKE "DROP SERVER%";
+#
+# SELECTs from I_S.PROCESSLIST commented out because such selects are unstable
+# in the current server (v6.0 as of Mar 2009). See bug#37990, bug#41346, 
+# bug#43357. When I_S quality is improved, the following lines could be 
+# re-enabled increasing sensitivity of this test to potential problems.
+#
+#--echo # Check the state of both statements.
+#eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+#  WHERE info LIKE "RESTORE FROM%"
+#     OR info LIKE "DROP SERVER%";
 --echo # Checking that DROP SERVER has not executed yet.
 SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
 --echo # Checking that RESTORE is not blocked by DDL.

@@ -2953,6 +2953,13 @@ Execute_sql_statement::execute_server_code(THD *thd)
 
   error= mysql_execute_command(thd);
 
+  if (thd->killed_errno())
+  {
+    if (! thd->stmt_da->is_set())
+      thd->send_kill_message();
+  }
+
+  /* report error issued during command execution */
   if (error == 0 && thd->spcont == NULL)
     general_log_write(thd, COM_STMT_EXECUTE,
                       thd->query, thd->query_length);

@@ -559,7 +559,7 @@ INSERT INTO t1 VALUES(1111);
 # Unlock table.
 UNLOCK TABLES;
 # connection conn2.
-# Now the READ lock is taken.
+# Now the READ lock is taken (or timed out).
 # Select from the table.
 SELECT * FROM t1;
 c1
@@ -598,7 +598,7 @@ INSERT INTO t1 VALUES(1111);
 # Unlock table.
 UNLOCK TABLES;
 # connection conn2.
-# Now the READ lock is taken.
+# Now the READ lock is taken (or timed out).
 # Select from the table.
 SELECT * FROM t1;
 c1

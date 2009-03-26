@@ -41,8 +41,14 @@ FLUSH TABLE t1;
 # I add FORCE INDEX to keep the SELECT failing, which is the whole
 # purpose of this test.
 #
-EXPLAIN SELECT COUNT(*) FROM t1 WHERE c2 < 5;
-SET debug='d,key_cache_read_block_error';
+EXPLAIN SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
+#
+# Another chance for failure could be that I did not have '+' in front
+# of 'd,key_cache_read_block_error'. If the test won't fail any more,
+# that was the problem. I just don't understand, why this could make a
+# sporadic difference.
+#
+SET SESSION debug='+d,key_cache_read_block_error';
 --replace_regex /'.*\//'/
 --error 126
 SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;

@@ -70,6 +70,7 @@ public:
   ~Backup_restore_ctx();
 
   bool is_valid() const;
+  bool is_killed() const;
   ulonglong op_id() const;
 
   Backup_info*  prepare_for_backup(String *location, 
@@ -206,6 +207,13 @@ inline
 bool Backup_restore_ctx::is_valid() const
 {
   return m_error == 0;
+}
+
+/// Check if the operation has been interrupted.
+inline
+bool Backup_restore_ctx::is_killed() const
+{
+  return m_thd->killed;
 }
 
 /// Return global id of the backup/restore operation.

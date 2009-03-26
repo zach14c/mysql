@@ -70,6 +70,7 @@ public:
     { 
       mode= CANCEL;
       cleanup();
+      DBUG_EXECUTE_IF("backup_driver_cancel_error", return backup::ERROR;);
       return backup::OK;
     }
     /// Return table list containing all tables
@@ -148,6 +149,7 @@ public:
     { 
       mode= CANCEL;
       cleanup();
+      DBUG_EXECUTE_IF("backup_driver_cancel_error", return backup::ERROR;);
       return backup::OK;
     }
     void free() { delete this; };
