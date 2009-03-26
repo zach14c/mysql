@@ -1,0 +1,5 @@
+This suite is the backup test repository for testing backup and storage engine interaction. It is used for testing conditions where the backup system and the storage engines interact.
+
+Any test designed to find failures in backup features that are known or suspected of directly or indirectly affecting or affected by the storage engine chosen should be placed in this repository.
+
+Examples of valid tests for this repository include testing partioning on backup and restore, and triggers on backup and restore. Note: trigger tests are a border case (there is an indirect relationship between storage engines and backup).

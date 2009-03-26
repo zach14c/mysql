@@ -1,6 +1,7 @@
-create database if not exists mysqltest;
+DROP DATABASE IF EXISTS mysqltest;
+# CREATE generates no entry in the logical log.
+CREATE DATABASE mysqltest;
 use mysqltest;
-drop table if exists t1;
 create table t1 (a int, b varchar(100)) engine=myisam;
 insert into t1 values(1,'life'), (2,'file');
 insert into t1 select a*5, concat("A ",b) from t1;
@@ -14,13 +15,13 @@ a	b
 truncate table t1;
 flush table t1;
 Commands                         Used count    Errors Recover errors
-open                       26         0              0
+open                       16         0              0
 write                       4         0              0
 update                      1         0              0
 delete                      1         0              0
 close                       8         0              0
 extra                       #         0              0
-lock                       82         0              0
+lock                       48         0              0
 Total               #         0                0
 select * from t1;
 a	b
@@ -29,13 +30,13 @@ Trying to update MyISAM files according to log 'MYSQLD_DATADIR/myisam.log'
 Tables updated successfully
 
 Commands                         Used count    Errors Recover errors
-open                       27         0              0
+open                       17         0              0
 write                       4         0              0
 update                      1         0              0
 delete                      1         0              0
 close                       9         0              0
 extra                       #         0              0
-lock                       84         0              0
+lock                       50         0              0
 Total               #         0                0
 select * from t1;
 a	b

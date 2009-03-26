@@ -199,7 +199,7 @@ aa4	28	MS
 aa6	30	Doctor
 aa7	31	Lawyer
 aa5	43	PHD
-SELECT * FROM bup_db2.vv;
+SELECT * FROM bup_db2.vv ORDER BY N;
 N	A	E
 aa1	23	BS
 aa2	24	BE
@@ -277,10 +277,10 @@ DROP DATABASE bup_db2;
 Restore database.
 restore database with view dependency to other, non-existing db
 RESTORE FROM 'bup_objectview1.bak';
-ERROR 42S02: Table 'bup_db2.t2' doesn't exist
+ERROR HY000: Could not restore view `bup_db1`.`v5`. Please check the view definition for possible missing dependencies.
 DROP DATABASE bup_db1;
 RESTORE FROM 'bup_objectview2.bak';
-ERROR 42S02: Table 'bup_db1.t3' doesn't exist
+ERROR HY000: Could not restore view `bup_db2`.`student_details`. Please check the view definition for possible missing dependencies.
 DROP DATABASE bup_db2;
 RESTORE FROM 'bup_objectview.bak';
 backup_id
@@ -327,7 +327,7 @@ character_set_client	latin1
 collation_connection	latin1_swedish_ci
 SHOW CREATE VIEW bup_db2.v3;;
 View	v3
-Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bup_db2`.`v3` AS select `bup_db1`.`t1`.`name` AS `name`,`bup_db2`.`t2`.`age` AS `age`,`bup_db2`.`t2`.`education` AS `education` from (`bup_db1`.`t1` join `bup_db2`.`t2`) where (`bup_db1`.`t1`.`id` = `bup_db2`.`t2`.`idno`)
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v3` AS select `bup_db1`.`t1`.`name` AS `name`,`bup_db2`.`t2`.`age` AS `age`,`bup_db2`.`t2`.`education` AS `education` from (`bup_db1`.`t1` join `bup_db2`.`t2`) where (`bup_db1`.`t1`.`id` = `bup_db2`.`t2`.`idno`)
 character_set_client	latin1
 collation_connection	latin1_swedish_ci
 ****check for view contents after Restore*****
@@ -426,7 +426,7 @@ aa4	28	MS
 aa6	30	Doctor
 aa7	31	Lawyer
 aa5	43	PHD
-SELECT * FROM bup_db2.vv;
+SELECT * FROM bup_db2.vv ORDER BY N;
 N	A	E
 aa1	23	BS
 aa2	24	BE

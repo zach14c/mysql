@@ -8,7 +8,10 @@
 
 --source include/not_embedded.inc
 --source suite/backup_engines/include/backup_engine.inc
---source include/have_debug.inc
+#
+# Cannot run test for archive because archive doesn't support UPDATE
+#
+--source suite/backup_engines/include/not_archive.inc
 
 connect (backup,localhost,root,,);
 connect (breakpoints,localhost,root,,);
@@ -19,9 +22,9 @@ connect (breakpoints,localhost,root,,);
 --echo
 ##############################################################
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_ts.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_ts.bak;
 
 --error 0,1
 --disable_warnings
@@ -294,6 +297,6 @@ SELECT * FROM bup_ts.t4;
 
 DROP DATABASE bup_ts;
 
-remove_file $MYSQLD_DATADIR/bup_ts.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_ts.bak;
 
 

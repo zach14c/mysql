@@ -1,0 +1,1825 @@
+**START TEST**
+**** TEST1 ****
+CREATE DATABASE IF NOT EXISTS ob1;
+CREATE DATABASE IF NOT EXISTS ob2;
+CREATE DATABASE IF NOT EXISTS ob3;
+CREATE USER 'tom'@'%';
+GRANT ALL ON *.* TO tom@'%';
+** create tables in 'ob1' database **
+
+CREATE TABLE ob1.t11(
+id INT, 
+name CHAR(20), 
+pay FLOAT(7,3)
+);
+INSERT INTO ob1.t11 VALUES
+(10, 'ab1', 2200.23),(12, 'ab2',2190.34),(14,'ab3',3123.45),
+(15,'ab4',1236.89),(18,'ab5',3890.78),(20,'ab6',1300);
+SELECT * FROM ob1.t11;
+id	name	pay
+10	ab1	2200.230
+12	ab2	2190.340
+14	ab3	3123.450
+15	ab4	1236.890
+18	ab5	3890.780
+20	ab6	1300.000
+CREATE TABLE ob1.t12(
+scode TINYINT, 
+empcode CHAR(10), 
+join_date DATE
+);
+INSERT INTO ob1.t12 VALUES
+(10, 'E120','1997-10-09'),(12,'E145','1999-01-20'),(14,'C134','2001-09-08'),
+(15, 'C156','2005-09-11'),(18,'E250','2007-08-06');
+SELECT * FROM ob1.t12;
+scode	empcode	join_date
+10	E120	1997-10-09
+12	E145	1999-01-20
+14	C134	2001-09-08
+15	C156	2005-09-11
+18	E250	2007-08-06
+CREATE TABLE ob1.t13(details VARCHAR(40));
+CREATE TABLE ob1.t14(payment_type VARCHAR(30), salary MEDIUMINT);
+INSERT INTO ob1.t14 VALUES('cash',4000),('cheque',5000);
+SELECT * FROM ob1.t14;
+payment_type	salary
+cash	4000
+cheque	5000
+** Create tables in 'ob2' database **
+
+CREATE TABLE ob2.t21(
+ecode CHAR(20),
+company VARCHAR(20), 
+identity CHAR(20), 
+designation ENUM('Engineer','support','sales','lead')
+);
+INSERT INTO ob2.t21 VALUES
+('E250','Mysql','ab2','Engineer'),('E120','SUN','ab3','Sales'),
+('E145','Nokia','ab4','Support'),('C134','Veritas','ab5','sales');
+SELECT * FROM ob2.t21;
+ecode	company	identity	designation
+E250	Mysql	ab2	Engineer
+E120	SUN	ab3	sales
+E145	Nokia	ab4	support
+C134	Veritas	ab5	sales
+CREATE TABLE ob2.t22(
+empcode CHAR(10), 
+bonus DECIMAL(5,2), 
+rating CHAR(20)
+);
+INSERT INTO ob2.t22 VALUES
+('E250','10.12','good'),('E120','7.23','average'),('E145','12','outstanding');
+SELECT * FROM ob2.t22;
+empcode	bonus	rating
+E250	10.12	good
+E120	7.23	average
+E145	12.00	outstanding
+CREATE TABLE ob2.t23 AS SELECT 1 A UNION SELECT 2 UNION SELECT 3;
+CREATE TABLE ob2.t24 AS SELECT * FROM ob2.t23;
+SELECT * FROM ob2.t23 ORDER BY A;
+A
+1
+2
+3
+SELECT * FROM ob2.t24;
+A
+1
+2
+3
+** Create tables in 'ob3' database
+
+CREATE TABLE ob3.t31(
+ccode TINYINT,
+gcode INT,
+company_name CHAR(20),
+company_stocks SMALLINT
+);
+INSERT INTO ob3.t31 VALUES
+(10, 102,'Nokia',2000),(12, 122,'Veritas',1500),(15,152,'Mysql',3000);
+CREATE TABLE ob3.t32(id INT);
+# Table log will contain entries added by firing event.
+CREATE TABLE ob3.log(pos INT UNIQUE AUTO_INCREMENT, msg CHAR(32));
+# Table msg contains a message to be inserted into log by the event.
+CREATE TABLE ob3.msg(m CHAR(32)) AS SELECT (NULL);
+
+------------------------------------------------------------
+CREATE VIEWS, TRIGGERS, EVENTS, PROCEDURES AND FUNCTIONS
+------------------------------------------------------------
+
+** creating views in 'ob1' database **
+
+### Create views from 2 tables(same DB) ###
+CREATE DEFINER=tom@'%' VIEW ob1.v11 AS SELECT id, name, empcode, join_date 
+FROM ob1.t11, ob1.t12 WHERE id=scode;
+SELECT * FROM ob1.v11;
+id	name	empcode	join_date
+10	ab1	E120	1997-10-09
+12	ab2	E145	1999-01-20
+14	ab3	C134	2001-09-08
+15	ab4	C156	2005-09-11
+18	ab5	E250	2007-08-06
+
+### Create views from 2 tables (same/different DB) ###
+CREATE VIEW ob1.v12 AS SELECT ecode, name, company, designation 
+FROM ob1.t11, ob2.t21 WHERE name=identity;
+SELECT * FROM ob1.v12;
+ecode	name	company	designation
+E250	ab2	Mysql	Engineer
+E120	ab3	SUN	sales
+E145	ab4	Nokia	support
+C134	ab5	Veritas	sales
+
+### Create views from 2 tables (diff DB) ###
+CREATE VIEW ob1.v13 AS SELECT identity, bonus, rating 
+FROM ob2.t21, ob2.t22 WHERE ecode=empcode;
+SELECT * FROM ob1.v13;
+identity	bonus	rating
+ab2	10.12	good
+ab3	7.23	average
+ab4	12.00	outstanding
+
+### Create view based on view(same DB) ###
+CREATE VIEW ob1.v17 AS SELECT * FROM ob1.v12;
+SELECT * FROM ob1.v17;
+ecode	name	company	designation
+E250	ab2	Mysql	Engineer
+E120	ab3	SUN	sales
+E145	ab4	Nokia	support
+C134	ab5	Veritas	sales
+
+### Create view from view, table (same DB) ###
+CREATE VIEW ob1.v18 AS SELECT name, empcode, join_date 
+FROM ob1.v12, ob1.t12 WHERE empcode=ecode;
+SELECT * FROM ob1.v18;
+name	empcode	join_date
+ab2	E250	2007-08-06
+ab3	E120	1997-10-09
+ab4	E145	1999-01-20
+ab5	C134	2001-09-08
+
+### Create view from 2 tables (diff DB) ###
+CREATE VIEW ob1.v14 AS SELECT ecode,ccode,gcode 
+FROM ob2.t21, ob3.t31 WHERE company=company_name;
+
+### Create view from table (same DB) ###
+CREATE VIEW ob1.v15 AS SELECT SUM(pay), AVG(pay),MAX(pay),MIN(pay)
+FROM ob1.t11;
+SELECT * FROM ob1.v15;
+SUM(pay)	AVG(pay)	MAX(pay)	MIN(pay)
+13941.690	2323.6150106	3890.780	1236.890
+
+### Create view on tables (diff DB)###
+CREATE VIEW ob1.v16 AS SELECT CONCAT(name," ",empcode) AS emp_details
+FROM ob1.t11, ob1.t12 WHERE id=scode;
+SELECT * FROM ob1.v16;
+emp_details
+ab1 E120
+ab2 E145
+ab3 C134
+ab4 C156
+ab5 E250
+
+** creating views in 'ob2' database **
+
+### Create view from views (diff DB) ###
+CREATE VIEW ob2.v21 AS SELECT designation, bonus 
+FROM ob1.v12, ob1.v13 WHERE name=identity;
+SELECT * FROM ob2.v21;
+designation	bonus
+Engineer	10.12
+sales	7.23
+support	12.00
+
+### Create view from view (same DB) ###
+CREATE VIEW ob2.v22 AS SELECT * FROM ob2.v21;
+SELECT * FROM ob2.v22;
+designation	bonus
+Engineer	10.12
+sales	7.23
+support	12.00
+### Create view from tables (diff DB) ###
+CREATE VIEW ob2.v23 AS SELECT id, designation FROM ob1.t11 
+JOIN ob2.t21 ON name=identity WHERE id>15;
+SELECT * FROM ob2.v23;
+id	designation
+18	sales
+### Create view from table (diff DB) ###
+CREATE VIEW ob2.v24 AS SELECT empcode FROM ob2.t22 WHERE EXISTS 
+(SELECT empcode FROM ob1.t12);
+SELECT * FROM ob2.v24;
+empcode
+E250
+E120
+E145
+
+### Create a simple procedure ###
+CREATE DEFINER=tom@'%' PROCEDURE ob2.p21(x INT, OUT y INT)
+BEGIN
+DECLARE z INT;
+SET z=x+1, y=z;
+END||
+
+### Trigger calls procedure  ###
+CREATE TRIGGER ob2.trg23a AFTER INSERT ON ob2.t23 FOR EACH ROW
+BEGIN
+INSERT INTO ob1.t13 VALUES('TRIGGER FIRED FROM trg11');
+INSERT INTO ob1.t14 VALUES('dd',2000);
+CALL ob2.p21(10, @ob2.p21);
+END;||
+
+### Trigger will in turn trigger trg23b ###
+CREATE TRIGGER ob1.trg11 BEFORE INSERT ON ob1.t11 FOR EACH ROW
+BEGIN
+DELETE FROM ob2.t23 WHERE a < 2;
+END;||
+
+### Trigger on function  and trigger ###
+CREATE TRIGGER ob2.trg23b AFTER DELETE ON ob2.t23 FOR EACH ROW
+BEGIN
+INSERT INTO ob1.t13 VALUES('TRIGGER FIRED FROM trg12');
+INSERT INTO ob3.t32 SELECT ob2.f21();
+END;||
+
+### Trigger trg12 will inturn trigger trg11 ###
+CREATE TRIGGER ob1.trg12 AFTER UPDATE ON ob1.t12 FOR EACH ROW
+BEGIN
+INSERT INTO ob1.t11 VALUES(22,'ab7','4123.23');
+END;
+||
+
+### Trigger trg32 depends on user ###
+CREATE DEFINER=tom@'%' TRIGGER ob3.trg32 AFTER INSERT ON ob3.t32 FOR EACH ROW
+BEGIN
+UPDATE ob1.t14 SET salary=1000 WHERE payment_type='cash';
+END;
+||
+
+### Procedure will trigger trg12 ###
+CREATE PROCEDURE ob2.p22()
+BEGIN
+UPDATE ob1.t12 SET join_date='2008-08-08' WHERE empcode='E250';
+SELECT * FROM ob1.v15;
+END;
+||
+### Procedure depends on function ###
+CREATE PROCEDURE ob1.p11()
+BEGIN
+INSERT INTO ob2.t21 VALUES('E450', 'SUN','ab6','support');
+CREATE VIEW ob1.vp1 AS SELECT 100 AS NUMBER;
+SELECT ob1.f11();
+END;||
+### Function on table ###
+CREATE FUNCTION ob1.f11() RETURNS INT
+RETURN (SELECT SUM(salary) FROM ob1.t14)||
+### Create function with definer ###
+CREATE DEFINER=tom@'%' FUNCTION ob2.f21() RETURNS INTEGER
+BEGIN
+DECLARE retn INTEGER;
+SELECT NUMBER FROM ob1.vp1 INTO retn;
+RETURN retn;
+END;||
+
+## Procedure calling procedure p11 and p22, trigger and function(f21) ##   
+CREATE PROCEDURE ob2.p23(srno INT)
+IF srno < 0 THEN
+DELETE FROM ob1.t11 WHERE name='ab6';
+CALL ob1.p11();
+ELSEIF srno=0 THEN
+INSERT INTO ob2.t23 VALUES(1),(20),(30);
+ELSE
+SELECT ob2.f21();
+CALL ob2.p22();
+END IF||
+
+### Create procedure that alters tables ###
+CREATE PROCEDURE ob1.p12()
+BEGIN
+ALTER TABLE ob2.t23 CONVERT TO CHARACTER SET latin7;
+ALTER TABLE ob3.tp CHANGE id a VARCHAR(4);
+END;||
+### Procedure that creates table and calls ob1.p12 ###
+CREATE PROCEDURE ob3.p31(a CHAR(20))
+BEGIN
+CREATE TABLE IF NOT EXISTS ob3.tp(id INT);
+CALL ob1.p12();
+END;||
+
+### Create procedure that drops table ###
+CREATE PROCEDURE ob3.p32()
+BEGIN
+DROP TABLE IF EXISTS ob3.tp;
+DROP VIEW ob1.vp1;
+END;||
+SET GLOBAL EVENT_SCHEDULER=ON;
+CREATE DEFINER=tom@'%' EVENT ob3.e31 ON SCHEDULE AT NOW()
+ON COMPLETION PRESERVE
+DO INSERT INTO ob1.t14 VALUES('cash',0);
+
+### Create an event that will fire trigger trg12 ###
+CREATE EVENT ob2.e21 ON SCHEDULE AT NOW() ON COMPLETION PRESERVE
+DO DELETE FROM ob2.t23 WHERE A=3;
+
+### Create an event using definer clause ###
+CREATE DEFINER=tom@'%' EVENT ob3.ev ON SCHEDULE AT CURRENT_TIMESTAMP
+ON COMPLETION PRESERVE DISABLE
+DO INSERT INTO ob3.log(msg) SELECT m FROM msg LIMIT 1;
+### Create procedure to check objects in all databases ###
+CREATE PROCEDURE test.show_objects(db CHAR(10))
+BEGIN
+SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.tables
+WHERE TABLE_SCHEMA = db;
+(SELECT routine_name , routine_type FROM information_schema.routines
+WHERE routine_schema = db)
+UNION (SELECT event_name, 'EVENT' FROM information_schema.events
+WHERE event_schema = db)
+UNION (SELECT trigger_name, 'TRIGGER' FROM information_schema.triggers
+WHERE trigger_schema = db) ORDER BY routine_name, routine_type;
+END;||
+### Procedure that will fire an event by enabling it ###
+CREATE PROCEDURE ob3.fire(msg char(32)) 
+BEGIN 
+UPDATE ob3.msg SET m=msg;
+ALTER DEFINER=tom@'%' EVENT ob3.ev ENABLE;
+END;||
+CALL ob3.fire('user1 created');
+SELECT * FROM ob2.t23;
+A
+1
+2
+SELECT * FROM ob1.t13;
+details
+TRIGGER FIRED FROM trg12
+SELECT * FROM ob3.t32;
+id
+CALL ob2.p23(-2);
+ob1.f11()
+9000
+SELECT * FROM ob1.t14;
+payment_type	salary
+cash	4000
+cheque	5000
+cash	0
+SELECT * FROM ob1.vp1;
+NUMBER
+100
+SELECT * FROM ob1.t11;
+id	name	pay
+10	ab1	2200.230
+12	ab2	2190.340
+14	ab3	3123.450
+15	ab4	1236.890
+18	ab5	3890.780
+SELECT * FROM ob2.t21;
+ecode	company	identity	designation
+E250	Mysql	ab2	Engineer
+E120	SUN	ab3	sales
+E145	Nokia	ab4	support
+C134	Veritas	ab5	sales
+E450	SUN	ab6	support
+CALL ob2.p23(0);
+SELECT * FROM ob2.t23 ORDER BY A;
+A
+1
+1
+2
+20
+30
+SELECT * FROM ob2.t24;
+A
+1
+2
+3
+SELECT * FROM ob1.t13;
+details
+TRIGGER FIRED FROM trg12
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+SELECT * FROM ob1.t14;
+payment_type	salary
+cash	4000
+cheque	5000
+cash	0
+dd	2000
+dd	2000
+dd	2000
+SELECT ob1.f11();
+ob1.f11()
+15000
+SELECT @ob2.p21;
+@ob2.p21
+11
+CALL ob2.p23(10);
+ob2.f21()
+100
+SUM(pay)	AVG(pay)	MAX(pay)	MIN(pay)
+16764.920	2794.1533407	4123.230	1236.890
+SELECT * FROM ob1.t12;
+scode	empcode	join_date
+10	E120	1997-10-09
+12	E145	1999-01-20
+14	C134	2001-09-08
+15	C156	2005-09-11
+18	E250	2008-08-08
+SELECT * FROM ob1.v11;
+id	name	empcode	join_date
+10	ab1	E120	1997-10-09
+12	ab2	E145	1999-01-20
+14	ab3	C134	2001-09-08
+15	ab4	C156	2005-09-11
+18	ab5	E250	2008-08-08
+SELECT * FROM ob1.v18;
+name	empcode	join_date
+ab2	E250	2008-08-08
+ab3	E120	1997-10-09
+ab4	E145	1999-01-20
+ab5	C134	2001-09-08
+SELECT * FROM ob1.v16;
+emp_details
+ab1 E120
+ab2 E145
+ab3 C134
+ab4 C156
+ab5 E250
+SELECT * FROM ob2.v24;
+empcode
+E250
+E120
+E145
+SELECT * FROM ob1.t11;
+id	name	pay
+10	ab1	2200.230
+12	ab2	2190.340
+14	ab3	3123.450
+15	ab4	1236.890
+18	ab5	3890.780
+22	ab7	4123.230
+SELECT * FROM ob1.v11;
+id	name	empcode	join_date
+10	ab1	E120	1997-10-09
+12	ab2	E145	1999-01-20
+14	ab3	C134	2001-09-08
+15	ab4	C156	2005-09-11
+18	ab5	E250	2008-08-08
+SELECT * FROM ob1.v12;
+ecode	name	company	designation
+E250	ab2	Mysql	Engineer
+E120	ab3	SUN	sales
+E145	ab4	Nokia	support
+C134	ab5	Veritas	sales
+SELECT * FROM ob1.v18;
+name	empcode	join_date
+ab2	E250	2008-08-08
+ab3	E120	1997-10-09
+ab4	E145	1999-01-20
+ab5	C134	2001-09-08
+SELECT * FROM ob1.v17;
+ecode	name	company	designation
+E250	ab2	Mysql	Engineer
+E120	ab3	SUN	sales
+E145	ab4	Nokia	support
+C134	ab5	Veritas	sales
+SELECT * FROM ob2.v23;
+id	designation
+18	sales
+SELECT * FROM ob2.t23 ORDER BY A;
+A
+2
+20
+30
+SELECT * FROM ob2.t24;
+A
+1
+2
+3
+SELECT * FROM ob1.t13;
+details
+TRIGGER FIRED FROM trg12
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg12
+TRIGGER FIRED FROM trg12
+SELECT * FROM ob1.v16;
+emp_details
+ab1 E120
+ab2 E145
+ab3 C134
+ab4 C156
+ab5 E250
+SELECT * FROM ob3.t32;
+id
+100
+100
+SELECT * FROM ob3.t31;
+ccode	gcode	company_name	company_stocks
+10	102	Nokia	2000
+12	122	Veritas	1500
+15	152	Mysql	3000
+SELECT * FROM ob1.t14 WHERE payment_type='cash';
+payment_type	salary
+cash	1000
+cash	1000
+CALL ob3.p31('TEST');
+SHOW CREATE TABLE ob3.tp;
+Table	Create Table
+tp	CREATE TABLE `tp` (
+  `a` varchar(4) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+SHOW CREATE TABLE ob2.t23;
+Table	Create Table
+t23	CREATE TABLE `t23` (
+  `A` bigint(20) NOT NULL DEFAULT '0'
+) ENGINE=MyISAM DEFAULT CHARSET=latin7
+SHOW CREATE TABLE ob3.tp;
+Table	Create Table
+tp	CREATE TABLE `tp` (
+  `a` varchar(4) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+CALL show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+BACKUP DATABASE ob1, ob2, ob3 TO 'ob.bak';
+backup_id
+#
+BACKUP DATABASE ob1 TO 'ob1.bak';
+backup_id
+#
+BACKUP DATABASE ob2 TO 'ob2.bak';
+backup_id
+#
+DROP DATABASE ob2;
+restore ob2 database and check all objects are included 
+RESTORE FROM 'ob2.bak';
+backup_id
+#
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+CALL ob3.fire('user2 created');
+CALL ob3.p32();
+CALL ob2.p23(-4);
+ob1.f11()
+13000
+SELECT * FROM ob1.vp1;
+NUMBER
+100
+SELECT * FROM ob2.t21;
+ecode	company	identity	designation
+E250	Mysql	ab2	Engineer
+E120	SUN	ab3	sales
+E145	Nokia	ab4	support
+C134	Veritas	ab5	sales
+E450	SUN	ab6	support
+E450	SUN	ab6	support
+CALL ob2.p23(0);
+SELECT * FROM ob2.t23 ORDER BY A;
+A
+1
+2
+20
+20
+30
+30
+SELECT * FROM ob2.t24;
+A
+1
+2
+3
+SELECT * FROM ob1.t13;
+details
+TRIGGER FIRED FROM trg12
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg12
+TRIGGER FIRED FROM trg12
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+SELECT * FROM ob1.t14;
+payment_type	salary
+cash	1000
+cheque	5000
+cash	1000
+dd	2000
+dd	2000
+dd	2000
+dd	2000
+dd	2000
+dd	2000
+SELECT ob1.f11();
+ob1.f11()
+19000
+SELECT @ob2.p21;
+@ob2.p21
+11
+CALL ob2.p23(10);
+ob2.f21()
+100
+SUM(pay)	AVG(pay)	MAX(pay)	MIN(pay)
+20888.150	2984.0214321	4123.230	1236.890
+SELECT * FROM ob1.t12;
+scode	empcode	join_date
+10	E120	1997-10-09
+12	E145	1999-01-20
+14	C134	2001-09-08
+15	C156	2005-09-11
+18	E250	2008-08-08
+SELECT * FROM ob1.v11;
+id	name	empcode	join_date
+10	ab1	E120	1997-10-09
+12	ab2	E145	1999-01-20
+14	ab3	C134	2001-09-08
+15	ab4	C156	2005-09-11
+18	ab5	E250	2008-08-08
+SELECT * FROM ob1.v18;
+name	empcode	join_date
+ab2	E250	2008-08-08
+ab3	E120	1997-10-09
+ab4	E145	1999-01-20
+ab5	C134	2001-09-08
+SELECT * FROM ob1.v16;
+emp_details
+ab1 E120
+ab2 E145
+ab3 C134
+ab4 C156
+ab5 E250
+SELECT * FROM ob1.t11;
+id	name	pay
+10	ab1	2200.230
+12	ab2	2190.340
+14	ab3	3123.450
+15	ab4	1236.890
+18	ab5	3890.780
+22	ab7	4123.230
+22	ab7	4123.230
+SELECT * FROM ob1.v11;
+id	name	empcode	join_date
+10	ab1	E120	1997-10-09
+12	ab2	E145	1999-01-20
+14	ab3	C134	2001-09-08
+15	ab4	C156	2005-09-11
+18	ab5	E250	2008-08-08
+SELECT * FROM ob1.v12;
+ecode	name	company	designation
+E250	ab2	Mysql	Engineer
+E120	ab3	SUN	sales
+E145	ab4	Nokia	support
+C134	ab5	Veritas	sales
+SELECT * FROM ob1.v18;
+name	empcode	join_date
+ab2	E250	2008-08-08
+ab3	E120	1997-10-09
+ab4	E145	1999-01-20
+ab5	C134	2001-09-08
+SELECT * FROM ob1.v17;
+ecode	name	company	designation
+E250	ab2	Mysql	Engineer
+E120	ab3	SUN	sales
+E145	ab4	Nokia	support
+C134	ab5	Veritas	sales
+SELECT * FROM ob2.v23;
+id	designation
+18	sales
+SELECT * FROM ob2.t23 ORDER BY A;
+A
+2
+20
+20
+30
+30
+SELECT * FROM ob1.t13;
+details
+TRIGGER FIRED FROM trg12
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg12
+TRIGGER FIRED FROM trg12
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg11
+TRIGGER FIRED FROM trg12
+SELECT * FROM ob3.t32;
+id
+100
+100
+100
+SELECT * FROM ob1.v16;
+emp_details
+ab1 E120
+ab2 E145
+ab3 C134
+ab4 C156
+ab5 E250
+SELECT * FROM ob3.t31;
+ccode	gcode	company_name	company_stocks
+10	102	Nokia	2000
+12	122	Veritas	1500
+15	152	Mysql	3000
+SELECT * FROM ob1.v14;
+ecode	ccode	gcode
+E250	15	152
+E145	10	102
+C134	12	122
+CALL ob3.p31('TEST');
+SHOW CREATE TABLE ob3.tp;
+Table	Create Table
+tp	CREATE TABLE `tp` (
+  `a` varchar(4) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+SHOW CREATE TABLE ob2.t23;
+Table	Create Table
+t23	CREATE TABLE `t23` (
+  `A` bigint(20) NOT NULL DEFAULT '0'
+) ENGINE=MyISAM DEFAULT CHARSET=latin7
+SHOW CREATE TABLE ob3.tp;
+Table	Create Table
+tp	CREATE TABLE `tp` (
+  `a` varchar(4) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+
+CREATE DEPENDENT TESTS
+======================
+
+# Drop view(ob1.v12), table(ob1.t12) in which a view(v18) depends.
+DROP TABLE ob1.t12;
+DROP VIEW ob1.v12;
+BACKUP DATABASE ob1 TO 'ob1_missing.bak';
+ERROR HY000: Failed to add view `ob1`.`v11` to the catalog
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+SELECT * FROM ob1.v12;
+ecode	name	company	designation
+E250	ab2	Mysql	Engineer
+E120	ab3	SUN	sales
+E145	ab4	Nokia	support
+C134	ab5	Veritas	sales
+SELECT * FROM ob1.t12;
+scode	empcode	join_date
+10	E120	1997-10-09
+12	E145	1999-01-20
+14	C134	2001-09-08
+15	C156	2005-09-11
+18	E250	2008-08-08
+SELECT * FROM ob1.v18;
+name	empcode	join_date
+ab2	E250	2008-08-08
+ab3	E120	1997-10-09
+ab4	E145	1999-01-20
+ab5	C134	2001-09-08
+
+# Drop view(ob1.v12) in which a view(v21) depends.
+DROP VIEW ob1.v12;
+BACKUP DATABASE ob2 TO 'ob2_missing.bak';
+ERROR HY000: Failed to add view `ob2`.`v21` to the catalog
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+SELECT * FROM ob1.v12;
+ecode	name	company	designation
+E250	ab2	Mysql	Engineer
+E120	ab3	SUN	sales
+E145	ab4	Nokia	support
+C134	ab5	Veritas	sales
+SELECT * FROM ob2.v21;
+designation	bonus
+Engineer	10.12
+sales	7.23
+support	12.00
+
+USE DEPENDENT TESTS
+===================
+
+# Drop user(tom) in which view(ob1.v11) depends.
+DROP USER tom@'%';
+BACKUP DATABASE ob1 TO 'ob1_missing.bak';
+ERROR HY000: Failed to add view `ob1`.`v11` to the catalog
+CREATE USER tom@'%';
+GRANT ALL ON *.* TO tom@'%';
+
+# Drop user in which procedure(ob2.p21) and function(ob2.f21)depends.
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP USER tom@'%';
+BACKUP DATABASE ob2 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+Note	#	The user specified as a definer ('tom'@'%') does not exist
+Note	#	The user specified as a definer ('tom'@'%') does not exist
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+SHOW CREATE PROCEDURE ob2.p21;
+Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
+p21		CREATE DEFINER=`tom`@`%` PROCEDURE `p21`(x INT, OUT y INT)
+BEGIN
+DECLARE z INT;
+SET z=x+1, y=z;
+END	latin1	latin1_swedish_ci	latin1_swedish_ci
+SHOW CREATE FUNCTION ob2.f21;
+Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
+f21		CREATE DEFINER=`tom`@`%` FUNCTION `f21`() RETURNS int(11)
+BEGIN
+DECLARE retn INTEGER;
+SELECT NUMBER FROM ob1.vp1 INTO retn;
+RETURN retn;
+END	latin1	latin1_swedish_ci	latin1_swedish_ci
+SELECT ob2.f21();
+ERROR HY000: The user specified as a definer ('tom'@'%') does not exist
+CALL ob2.p21(20, @ob2.p13);
+ERROR HY000: The user specified as a definer ('tom'@'%') does not exist
+CREATE USER tom@'%';
+GRANT ALL ON *.* TO tom@'%';
+
+# Drop user in which trigger(trg32) and event(ev) depends on.
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP USER tom@'%';
+BACKUP DATABASE ob3 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+Note	#	The user specified as a definer ('tom'@'%') does not exist
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+SHOW CREATE TRIGGER ob3.trg32;
+Trigger	sql_mode	SQL Original Statement	character_set_client	collation_connection	Database Collation
+trg32		CREATE DEFINER=`tom`@`%` TRIGGER ob3.trg32 AFTER INSERT ON ob3.t32 FOR EACH ROW
+BEGIN
+UPDATE ob1.t14 SET salary=1000 WHERE payment_type='cash';
+END	latin1	latin1_swedish_ci	latin1_swedish_ci
+Fire trigger trgu
+INSERT INTO ob3.t32 VALUES(98);
+ERROR HY000: The user specified as a definer ('tom'@'%') does not exist
+SELECT * FROM ob1.t14;
+payment_type	salary
+cash	1000
+cheque	5000
+cash	1000
+dd	2000
+dd	2000
+dd	2000
+SELECT * FROM ob1.t11;
+id	name	pay
+10	ab1	2200.230
+12	ab2	2190.340
+14	ab3	3123.450
+15	ab4	1236.890
+18	ab5	3890.780
+22	ab7	4123.230
+CALL ob#.fire('no user');
+Warnings:
+Note	#	The user specified as a definer ('tom'@'%') does not exist
+CREATE USER tom@'%';
+GRANT ALL ON *.* TO tom@'%';
+INSERT INTO ob3.t32 VALUES(97);
+SELECT * FROM ob3.t32;
+id
+100
+100
+98
+97
+SELECT * FROM ob1.t14;
+payment_type	salary
+cash	1000
+cheque	5000
+cash	1000
+dd	2000
+dd	2000
+dd	2000
+
+# Drop the procedure(ob1.p11) in which procedure(ob2.p23) depends
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP PROCEDURE ob1.p11;
+BACKUP DATABASE ob2 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+CALL ob1.p11(-1);
+ERROR 42000: PROCEDURE ob1.p11 does not exist
+
+# Drop the table(ob2.t23) in which a procedure(ob2.p23) depends
+NOTE: This is also test of procedure firing trigger.
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP TABLE ob2.t23;
+BACKUP DATABASE ob2 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+CALL ob2.p23(0);
+ERROR 42S02: Table 'ob2.t23' doesn't exist
+
+# Procedure that alters table(ob1.p12 alter ob2.t23).
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP TABLE ob2.t23;
+BACKUP DATABASE ob1 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+CALL ob1.p12();
+ERROR 42S02: Table 'ob2.t23' doesn't exist
+
+# Procedure that drops table(ob3.p32 drops ob3.tp).
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP TABLE ob3.tp;
+BACKUP DATABASE ob3 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+CALL ob3.p32();
+SHOW WARNINGS;
+Level	Code	Message
+
+# Function that selects from table(ob1.f11 on ob1.t14)
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP TABLE ob1.t14;
+BACKUP DATABASE ob1 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+SELECT ob1.f11();
+ERROR 42S02: Table 'ob1.t14' doesn't exist
+
+# Trigger that depends on table.(ob3.trg32 on ob1.t14)
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP TABLE ob1.t14;
+BACKUP DATABASE ob3 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+INSERT INTO ob3.t32 VALUES(200);
+ERROR 42S02: Table 'ob1.t14' doesn't exist
+
+# Trigger that calls procedure(ob2.trg23a on ob2.p21)
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP PROCEDURE ob2.p21;
+BACKUP DATABASE ob2 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+INSERT INTO ob2.t23 VALUES(200);
+ERROR 42000: PROCEDURE ob2.p21 does not exist
+
+# Procedure that selects values from stored function(ob1.p11 on ob1.f11)
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP FUNCTION ob1.f11;
+BACKUP DATABASE ob1 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+msg	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+DROP VIEW ob1.vp1;
+CALL ob1.p11();
+ERROR 42000: FUNCTION ob1.f11 does not exist
+# Event(ob3.ev) that depends on table(ob3.msg)
+Perform restore again to get all objects back.
+RESTORE FROM 'ob.bak' OVERWRITE;
+backup_id
+#
+DROP TABLE ob3.msg;
+BACKUP DATABASE ob3 TO 'ob_missing.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+RESTORE FROM 'ob_missing.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+SHOW DATABASES LIKE 'ob%';
+Database (ob%)
+ob1
+ob2
+ob3
+CALL test.show_objects('ob1');
+TABLE_NAME	TABLE_TYPE
+t11	BASE TABLE
+t12	BASE TABLE
+t13	BASE TABLE
+t14	BASE TABLE
+v11	VIEW
+v12	VIEW
+v13	VIEW
+v14	VIEW
+v15	VIEW
+v16	VIEW
+v17	VIEW
+v18	VIEW
+vp1	VIEW
+routine_name	routine_type
+f11	FUNCTION
+p11	PROCEDURE
+p12	PROCEDURE
+trg11	TRIGGER
+trg12	TRIGGER
+CALL test.show_objects('ob2');
+TABLE_NAME	TABLE_TYPE
+t21	BASE TABLE
+t22	BASE TABLE
+t23	BASE TABLE
+t24	BASE TABLE
+v21	VIEW
+v22	VIEW
+v23	VIEW
+v24	VIEW
+routine_name	routine_type
+e21	EVENT
+f21	FUNCTION
+p21	PROCEDURE
+p22	PROCEDURE
+p23	PROCEDURE
+trg23a	TRIGGER
+trg23b	TRIGGER
+CALL test.show_objects('ob3');
+TABLE_NAME	TABLE_TYPE
+log	BASE TABLE
+t31	BASE TABLE
+t32	BASE TABLE
+tp	BASE TABLE
+routine_name	routine_type
+e31	EVENT
+ev	EVENT
+fire	PROCEDURE
+p31	PROCEDURE
+p32	PROCEDURE
+trg32	TRIGGER
+SHOW CREATE EVENT ob3.ev;;
+Event	ev
+sql_mode	
+time_zone	SYSTEM
+Create Event	#
+character_set_client	#
+collation_connection	#
+Database Collation	latin1_swedish_ci
+CALL ob3.fire('user3 created');
+ERROR 42S02: Table 'ob3.msg' doesn't exist
+# Test cleanup section
+REVOKE ALL ON *.* FROM tom@'%';
+DROP USER tom@'%';
+FLUSH PRIVILEGES;
+DROP DATABASE ob1;
+DROP DATABASE ob2;
+DROP DATABASE ob3;
+DROP PROCEDURE test.show_objects;
+SET GLOBAL EVENT_SCHEDULER=OFF;

@@ -1,0 +1,38 @@
+# Initial clean-up.
+DROP DATABASE IF EXISTS db1;
+# Prepare objects to backup.
+CREATE DATABASE db1;
+USE db1;
+CREATE TABLE t1(a int, b blob);
+# Fill t1 with approx 80k of data.
+SELECT a, length(b) FROM t1;
+a	length(b)
+10	8192
+9	8192
+8	8192
+7	8192
+6	8192
+5	8192
+4	8192
+3	8192
+2	8192
+1	8192
+CHECK TABLE t1;
+Table	Op	Msg_type	Msg_text
+db1.t1	check	status	OK
+# Backup the table.
+BACKUP DATABASE db1 TO 'db1.bkp';
+backup_id
+#
+SET DEBUG='d,backup_read_simulate_pipe';
+# Restore the table.
+RESTORE FROM 'db1.bkp' OVERWRITE;
+backup_id
+#
+SET DEBUG='d,-';
+# Check for errors.
+CHECK TABLE db1.t1;
+Table	Op	Msg_type	Msg_text
+db1.t1	check	status	OK
+# Final clean-up.
+DROP DATABASE db1;

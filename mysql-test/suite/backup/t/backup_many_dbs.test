@@ -7,9 +7,9 @@
 --echo Starting regression test for bug 33568
 ##############################################################
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_manydbs.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_manydbs.bak;
 
 --disable_warnings
 DROP DATABASE IF EXISTS db1;
@@ -127,5 +127,5 @@ DROP DATABASE db16;
 DROP DATABASE db17;
 DROP DATABASE db18;
 
-remove_file $MYSQLD_DATADIR/bup_manydbs.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_manydbs.bak;
 
