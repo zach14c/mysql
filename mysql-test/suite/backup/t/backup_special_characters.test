@@ -1,0 +1,161 @@
+###########################################################################
+# Author: Hema
+# Date: 2008-12-11
+# Purpose: use special characters as identifiers to define the objects and check# for their Backup and Restore.
+###############################################################################
+--source include/have_innodb.inc
+--source include/not_embedded.inc
+
+let $bdir= `select @@backupdir`;
+
+connect (backup,localhost,root,,);
+connect (breakpoints,localhost,root,,);
+
+##############################################################
+--echo
+--echo starting the test for backup
+--echo
+##############################################################
+
+--error 0,1
+--remove_file $bdir/sp.bak
+
+#Create Database.
+
+--disable_warnings
+DROP DATABASE IF EXISTS `sp!`;
+DROP DATABASE IF EXISTS `sp@`;
+--enable_warnings
+
+SET NAMES utf8;
+SET CHARACTER_SET_SERVER=utf8;
+CREATE DATABASE `sp!` CHARACTER SET utf8;
+CREATE DATABASE `sp@` CHARACTER SET utf8;
+
+#####################################
+#CREATE TABLE WITH SPECIAL CHARACTERS#
+#####################################
+
+--echo
+--echo Creating table
+
+CREATE TABLE `sp!`.`####`(`$$` char(5));
+CREATE TABLE `sp@`.`%%`(`^^` char(20));
+INSERT INTO `sp!`.`####` VALUES 
+('!'),('@'),('#'),('$'),('%'),('^'),('&'),('*'),('('),(')'),
+('-'),('_'),('+'),('='),('|'),('\\'),('`'),('~'),('<'),('>'),
+(','),('.'),('?'),('/'),(';'),(':'),('"'),('['),(']'),('{'),
+('}');
+
+--echo **Creating Views in database sp! **
+--echo
+
+CREATE VIEW `sp!`.`v****` AS SELECT * FROM `sp!`.`####`;
+CREATE VIEW `sp!`.`v2%&` AS SELECT * FROM `sp!`.`v****`;
+CREATE VIEW `sp!`.`v3~~` AS SELECT * FROM `sp!`.`v2%&`;
+
+--echo ** Creating Views in database `sp@` **
+
+CREATE VIEW `sp@`.`v1@` AS SELECT * FROM `sp!`.`v****`;
+CREATE VIEW `sp@`.`v4&$` AS SELECT * FROM `sp!`.`v2%&`;
+
+delimiter ||;
+
+CREATE TRIGGER `sp@`.trai AFTER INSERT ON `sp@`.`%%` FOR EACH ROW
+BEGIN
+INSERT INTO `sp!`.`v2%&` VALUES('(((('),('))))');
+END;
+||
+delimiter ;||
+
+--echo ** Creating procedure**
+
+CREATE TABLE `sp!`.`^^`( special_character char(16) not null default '', data int not null);
+CREATE PROCEDURE `sp!`.`p*&`() INSERT INTO `^^` VALUES('%%%%', 100);
+
+CALL `sp!`.`p*&`();
+SELECT * FROM `sp!`.`^^`;
+
+--echo creating function
+# Bug #38294 Server crash for Backup, if function with orderby clause & 
+#sum groupby operator
+INSERT INTO `sp!`.`^^` VALUES('&&&', 1),('***',10),('$$$',40),('@@@',100);
+CREATE FUNCTION `sp!`.`f@@`() RETURNS INT
+RETURN (SELECT DATA FROM `^^` WHERE DATA <= (SELECT SUM(DATA) FROM `^^`) ORDER BY DATA LIMIT 1);
+SELECT `sp!`.`f@@`();
+SELECT special_character, `sp!`.`f@@`() FROM `sp!`.`^^` ORDER BY special_character;
+
+CREATE FUNCTION `sp!`.`@fun&`() returns INTEGER
+RETURN (SELECT COUNT(*) FROM `sp@`.`v4&$`);
+SELECT `sp!`.`@fun&`();
+
+SELECT COUNT(*) FROM `sp!`.`v2%&`;
+INSERT INTO `sp@`.`%%` VALUES('&&'),('**');
+SELECT * FROM `sp@`.`%%`;
+SELECT COUNT(*) FROM `sp!`.`v2%&`;
+SELECT * FROM `sp!`.`v3~~`;
+SELECT COUNT(*) FROM `sp@`.`v4&$`;
+
+--replace_column 1 #
+BACKUP DATABASE `sp!`, `sp@` to 'sp.bak';
+DROP DATABASE `sp!`;
+DROP DATABASE `sp@`;
+
+--replace_column 1 #
+RESTORE FROM 'sp.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+SHOW DATABASES LIKE 'sp%';
+SHOW FULL TABLES FROM `sp!`;
+SHOW FULL TABLES FROM `sp@`;
+SHOW TRIGGERS FROM `sp@`;
+--replace_column 5 # 6 # 7 #
+SHOW PROCEDURE STATUS WHERE Db='sp!' OR Db='sp@';
+--replace_column 5 # 6 # 7 #
+SHOW FUNCTION STATUS WHERE Db='sp!' OR Db='sp@';
+
+--echo **call procedures**
+CALL `sp!`.`p*&`();
+SELECT * FROM `sp!`.`^^`;
+
+SELECT `sp!`.`@fun&`();
+SELECT * FROM `sp!`.`####`;
+SELECT COUNT(*) FROM `sp@`.`v1@`;
+SELECT COUNT(*) FROM `sp!`.`####`;
+
+SELECT COUNT(*) FROM `sp!`.`v2%&`;
+INSERT INTO `sp@`.`%%` VALUES('*'),('^');
+SELECT * FROM `sp@`.`%%`;
+SELECT COUNT(*) FROM `sp!`.`v2%&`;
+SELECT * FROM `sp!`.`v3~~`;
+SELECT COUNT(*) FROM `sp@`.`v4&$`;
+
+--echo change character set and perform restore again.
+SET NAMES latin5;
+--replace_column 1 #
+RESTORE FROM 'sp.bak' OVERWRITE;
+SHOW DATABASES LIKE 'sp%';
+SHOW FULL TABLES FROM `sp!`;
+SHOW FULL TABLES FROM `sp@`;
+
+#checking character set
+SELECT@@character_set_client;
+SELECT@@character_set_connection;
+SELECT@@character_set_results;
+
+# Test cleanup section
+
+--echo
+--echo ***  DROP sp! and sp@ DATABASE ****
+--echo
+
+DROP DATABASE `sp!`;
+DROP DATABASE `sp@`;
+
+--remove_file $bdir/sp.bak
+
+
+

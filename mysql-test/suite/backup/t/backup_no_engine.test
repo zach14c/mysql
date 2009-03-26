@@ -7,7 +7,7 @@
 --let $table_def=$MYSQL_TEST_DIR/std_data/bug30938.frm
 
 let $MYSQLD_DATADIR= `SELECT @@datadir`;
-
+let $MYSQLD_BACKUPDIR= `SELECT @@backupdir`;
 --disable_warnings
 DROP DATABASE IF EXISTS db;
 --enable_warnings
@@ -37,4 +37,4 @@ SHOW CREATE TABLE db.t1;
 
 # clean up
 DROP DATABASE db;
-remove_file $MYSQLD_DATADIR/db.backup;
+remove_file $MYSQLD_BACKUPDIR/db.backup;

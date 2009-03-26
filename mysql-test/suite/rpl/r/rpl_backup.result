@@ -4,45 +4,49 @@ reset master;
 reset slave;
 drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
 start slave;
-Create some data...
+# Connecting to master...
+# Create some data...
 CREATE DATABASE rpl_backup;
 CREATE TABLE rpl_backup.t1 (a int);
 INSERT INTO rpl_backup.t1 VALUES (1), (2), (3), (4), (5);
-Remove all entries in the backup logs.
+# Remove all entries in the backup logs.
 FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
-Get slave's datadir.
-Remove all entries in the backup logs.
+# Connecting to slave...
+# Get slave's datadir.
+# Remove all entries in the backup logs.
 FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
-Get master's binlog position from the slave before backup.
-Get master's datadir.
-Get master's binlog position before backup.
+# Get master's binlog position from the slave before backup.
+# Connecting to master...
+# Get master's datadir.
+# Get master's binlog position before backup.
 SET SESSION debug="+d,set_backup_id";
-Backup_id = 500.
+# Backup_id = 500.
 BACKUP DATABASE rpl_backup TO 'rpl_bup_m1.bak';
 backup_id
 500
 SET SESSION debug="-d";
-Show any events issued as a result of backup.
-Note: There should be none!
+# Show any events issued as a result of backup.
+# Note: There should be none!
 Log_name	Pos	Event_type	Server_id	End_log_pos	Info
-Verify backup run on master does not advance binlog pos.
-Get master's binlog position after backup.
-Compare the before position of the master's binlog to
-the after position of the master's binlog. The result
-should be 0.
+# Verify backup run on master does not advance binlog pos.
+# Get master's binlog position after backup.
+# Compare the before position of the master's binlog to
+# the after position of the master's binlog. The result
+# should be 0.
 Delta
 0
-Should have count(*) = 0.
+# Connecting to slave...
+# Should have count(*) = 0.
 SELECT count(*) FROM mysql.backup_history;
 count(*)
 0
-Verify backup run on master does not advance binlog pos.
-Get master's binlog position on the slave after backup.
-Compare the before position of the master's binlog to
-the after position of the slave's binlog as shown on
-on the slave. The result should be 0.
+# Verify backup run on master does not advance binlog pos.
+# Get master's binlog position on the slave after backup.
+# Compare the before position of the master's binlog to
+# the after position of the slave's binlog as shown on
+# on the slave. The result should be 0.
 Delta
 0
 SHOW SLAVE STATUS;
@@ -86,22 +90,26 @@ Last_SQL_Errno	0
 Last_SQL_Error	
 Replicate_Ignore_Server_Ids	
 Master_Server_Id	1
-Ensure replication is still working...
-Cleanup from last error on master and slave.
+# Connecting to master...
+# Ensure replication is still working...
+# Cleanup from last error on master and slave.
 DELETE FROM rpl_backup.t1;
 INSERT INTO rpl_backup.t1 VALUES (11), (22), (33);
 SELECT count(*) FROM rpl_backup.t1;
 count(*)
 3
+# Connecting to slave...
 SELECT count(*) FROM rpl_backup.t1;
 count(*)
 3
-Cleanup backup logs.
+# Cleanup backup logs.
 FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
-First, get master's binlog position and filename.
+# Connecting to master...
+# First, get master's binlog position and filename.
+# Connecting to slave...
 SET SESSION debug="+d,set_backup_id";
-Backup_id = 600.
+# Backup_id = 600.
 BACKUP DATABASE rpl_backup TO 'rpl_bup_s1.bak';
 backup_id
 600
@@ -147,50 +155,54 @@ Last_SQL_Errno	0
 Last_SQL_Error	
 Replicate_Ignore_Server_Ids	
 Master_Server_Id	1
-Check saving of master's binlog information.
-Should have count(*) = 1.
+# Check saving of master's binlog information.
+# Should have count(*) = 1.
 count(*)
 1
-Should have count(*) = 1.
+# Should have count(*) = 1.
 SELECT count(*) FROM mysql.backup_history;
 count(*)
 1
+# Connecting to master...
 INSERT INTO rpl_backup.t1 VALUES (10), (20), (30);
-Backup_id = 501.
-BACKUP DATABASE rpl_backup TO 'rpl_bup_m2.bak';
+# Backup_id = 501.
+# BACKUP DATABASE rpl_backup TO 'rpl_bup_m2.bak';
 backup_id
 501
 SELECT count(*) FROM rpl_backup.t1;
 count(*)
 6
+# Connecting to slave...
 SELECT count(*) FROM rpl_backup.t1;
 count(*)
 6
-Make a backup for later use.
-Backup_id = 601.
+# Make a backup for later use.
+# Backup_id = 601.
 BACKUP DATABASE rpl_backup TO 'rpl_bup_s2.bak';
 backup_id
 601
+# Connecting to master...
 CREATE TABLE rpl_backup.t2 (b int);
 INSERT INTO rpl_backup.t2 VALUES (888), (999);
-Get master's binlog position before restore.
-Backup_id = 502.
-RESTORE FROM 'rpl_bup_m2.bak';
+# Get master's binlog position before restore.
+# Backup_id = 502.
+# RESTORE FROM 'rpl_bup_m2.bak';
 backup_id
 502
-Show the incident event issued as a result of restore.
+# Show the incident event issued as a result of restore.
 Log_name	Pos	Event_type	Server_id	End_log_pos	Info
 master-bin.000001	#	Incident	1	#	#2 (RESTORE_ON_MASTER)
 master-bin.000001	#	Rotate	1	#	master-bin.000002;pos=4
-Showing tables on master.
+# Showing tables on master.
 SHOW FULL TABLES FROM rpl_backup;
 Tables_in_rpl_backup	Table_type
 t1	BASE TABLE
 SELECT count(*) FROM rpl_backup.t1;
 count(*)
 6
-Check slave got everything up to incident event.
-Should be two rows: 888, 999.
+# Connecting to slave...
+# Check slave got everything up to incident event.
+# Should be two rows: 888, 999.
 SELECT * FROM rpl_backup.t2 WHERE b > 800;
 b
 888
@@ -236,23 +248,23 @@ Last_SQL_Errno	1590
 Last_SQL_Error	The incident RESTORE_ON_MASTER occured on the master. Message: A restore operation was initiated on the master.
 Replicate_Ignore_Server_Ids	
 Master_Server_Id	1
-Show the slave stopped with an error.
+# Show the slave stopped with an error.
 Last_SQL_Error
 The incident RESTORE_ON_MASTER occured on the master. Message: A restore operation was initiated on the master.
 SET global sql_slave_skip_counter=1;
 STOP SLAVE;
 START SLAVE;
-Showing tables on slave.
+# Showing tables on slave.
 SHOW FULL TABLES FROM rpl_backup;
 Tables_in_rpl_backup	Table_type
 t1	BASE TABLE
 t2	BASE TABLE
 STOP SLAVE;
-Backup_id = 602.
-RESTORE_FROM 'rpl_bup_m2.bak';
+# Backup_id = 602.
+# RESTORE_FROM 'rpl_bup_m2.bak';
 backup_id
 602
-Showing databases on slave.
+# Showing databases on slave.
 SHOW DATABASES LIKE 'rpl_backup%';
 Database (rpl_backup%)
 rpl_backup
@@ -260,21 +272,23 @@ SELECT count(*) FROM rpl_backup.t1;
 count(*)
 6
 START SLAVE;
-Make a backup for later use.
-Backup_id = 603.
+# Make a backup for later use.
+# Backup_id = 603.
 BACKUP DATABASE rpl_backup TO 'rpl_bup_s3.bak';
 backup_id
 603
-Test restore on slave while replication turned on.
+# Connecting to slave...
+# Test restore on slave while replication turned on.
 RESTORE FROM 'rpl_bup_s1.bak' OVERWRITE;
 ERROR HY000: A restore operation was attempted on a slave during replication. You must stop the slave prior to running a restore.
-Stop slave and restart after restore.
+# Stop slave and restart after restore.
 STOP SLAVE;
 RESTORE FROM 'rpl_bup_s3.bak' OVERWRITE;
 backup_id
 #
 START SLAVE;
-Checking affect on replication.
+# Connecting to master...
+# Checking affect on replication.
 INSERT INTO rpl_backup.t1 VALUES (44), (55), (66);
 SELECT * FROM rpl_backup.t1 ORDER BY a;
 a
@@ -287,6 +301,7 @@ a
 44
 55
 66
+# Connecting to slave...
 SELECT * FROM rpl_backup.t1 ORDER BY a;
 a
 10
@@ -298,50 +313,55 @@ a
 44
 55
 66
-Stop replication and turn off binary log.
+# Connecting to slave...
+# Stop replication and turn off binary log.
 STOP SLAVE;
+# Connecting to master...
 SET @orig_sql_log_bin= @@sql_log_bin;
-Turn off binlog.
+# Turn off binlog.
 SET @@sql_log_bin= 0;
 SHOW VARIABLES LIKE '%log_bin';
 Variable_name	Value
 log_bin	ON
 sql_log_bin	OFF
-Backup_id = 503.
+# Backup_id = 503.
 BACKUP DATABASE rpl_backup TO 'rpl_bup_m3.bak';
 backup_id
 503
-Turn on binlog;
+# Turn on binlog;
 SET @@sql_log_bin= @orig_sql_log_bin;
 SHOW VARIABLES LIKE '%log_bin';
 Variable_name	Value
 log_bin	ON
 sql_log_bin	ON
 RESET MASTER;
-Get master's binlog position before restore.
-Backup_id = 504.
+# Get master's binlog position before restore.
+# Backup_id = 504.
 RESTORE FROM 'rpl_bup_m3.bak' OVERWRITE;
 backup_id
 504
-Get master's binlog position after restore.
-Show the incident event issued as a result of restore.
+# Get master's binlog position after restore.
+# Show the incident event issued as a result of restore.
 Log_name	Pos	Event_type	Server_id	End_log_pos	Info
 master-bin.000001	#	Incident	1	#	#2 (RESTORE_ON_MASTER)
 master-bin.000001	#	Rotate	1	#	master-bin.000002;pos=4
-Compute the difference of the binlog positions.
-Result should be 0.
-Compare the before position of the master's binlog to
-the after position of the master's binlog. The result
-should be 0.
+# Compute the difference of the binlog positions.
+# Result should be 0.
+# Compare the before position of the master's binlog to
+# the after position of the master's binlog. The result
+# should be 0.
 Delta
 0
 RESET MASTER;
+# Connecting to slave...
 RESET SLAVE;
 SET DEBUG_SYNC = 'reset';
+# Connecting to slave...
 SET DEBUG_SYNC = 'before_restore_done SIGNAL restore_running WAIT_FOR proceed';
 RESTORE FROM 'rpl_bup_s3.bak' OVERWRITE;
+# Connecting to slave...
 SET DEBUG_SYNC = 'now WAIT_FOR restore_running';
-Try to start the slave while restore is running -- gets error.
+# Try to start the slave while restore is running -- gets error.
 SLAVE START;
 ERROR HY000: Cannot start slave. SLAVE START is blocked by RESTORE.
 SET DEBUG_SYNC = 'now SIGNAL proceed';
@@ -386,10 +406,12 @@ Last_SQL_Errno	0
 Last_SQL_Error	
 Replicate_Ignore_Server_Ids	
 Master_Server_Id	1
-Restore is now complete.
+# Connecting to slave...
+# Restore is now complete.
 backup_id
 #
 SET DEBUG_SYNC = 'now SIGNAL done';
+# Connecting to slave...
 SET DEBUG_SYNC = 'now WAIT_FOR done';
 SHOW DATABASES;
 Database
@@ -399,7 +421,7 @@ mysql
 rpl_backup
 test
 SET DEBUG_SYNC = 'reset';
-Try to start the slave after restore is done -- should succeed.
+# Try to start the slave after restore is done -- should succeed.
 SLAVE START;
 SHOW SLAVE STATUS;
 Slave_IO_State	#
@@ -442,11 +464,67 @@ Last_SQL_Errno	0
 Last_SQL_Error	
 Replicate_Ignore_Server_Ids	
 Master_Server_Id	1
-Now stop the slave.
+# Now stop the slave.
 SLAVE STOP;
+# Connecting to master...
+# First, reset replication. 
+RESET MASTER;
+# Connecting to slave...
+RESET SLAVE;
+SET DEBUG_SYNC = 'reset';
+# Connecting to slave...
+START SLAVE;
+# Connecting to master...
+# Create a new database on the master. 
+CREATE DATABASE not_replicated;
+CREATE TABLE not_replicated.t1 (a int);
+INSERT INTO not_replicated.t1 VALUES (200), (300), (400);
+SHOW DATABASES;
+Database
+information_schema
+mtr
+mysql
+not_replicated
+rpl_backup
+test
+# Connecting to slave...
+# Now let's see if it is replicated on the slave (shouldn't be).
+SHOW DATABASES;
+Database
+information_schema
+mtr
+mysql
+not_replicated
+rpl_backup
+test
+# Connecting to master...
+# Now back to the master to make a backup of the new database.
+# Backup_id = 505.
+BACKUP DATABASE not_replicated TO 'rpl_bup_m4.bak';
+backup_id
+505
+# Now let's run the restore and see if the slave stops.
+# Backup_id = 506.
+RESTORE FROM 'rpl_bup_m4.bak' OVERWRITE SKIP_GAP_EVENT;
+backup_id
+506
+# Let's ensure replication is still running.
+INSERT INTO rpl_backup.t1 VALUES (901), (902), (903);
+# Connecting to slave...
+SELECT * FROM rpl_backup.t1 WHERE a > 900;
+a
+901
+902
+903
+# Now stop the slave.
+SLAVE STOP;
+# Connecting to master...
 FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
 DROP DATABASE rpl_backup;
+DROP DATABASE not_replicated;
+# Connecting to slave...
 FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
 DROP DATABASE rpl_backup;
+DROP DATABASE not_replicated;

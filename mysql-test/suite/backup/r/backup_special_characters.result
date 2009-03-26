@@ -1,0 +1,295 @@
+
+starting the test for backup
+
+DROP DATABASE IF EXISTS `sp!`;
+DROP DATABASE IF EXISTS `sp@`;
+SET NAMES utf8;
+SET CHARACTER_SET_SERVER=utf8;
+CREATE DATABASE `sp!` CHARACTER SET utf8;
+CREATE DATABASE `sp@` CHARACTER SET utf8;
+
+Creating table
+CREATE TABLE `sp!`.`####`(`$$` char(5));
+CREATE TABLE `sp@`.`%%`(`^^` char(20));
+INSERT INTO `sp!`.`####` VALUES 
+('!'),('@'),('#'),('$'),('%'),('^'),('&'),('*'),('('),(')'),
+('-'),('_'),('+'),('='),('|'),('\\'),('`'),('~'),('<'),('>'),
+(','),('.'),('?'),('/'),(';'),(':'),('"'),('['),(']'),('{'),
+('}');
+**Creating Views in database sp! **
+
+CREATE VIEW `sp!`.`v****` AS SELECT * FROM `sp!`.`####`;
+CREATE VIEW `sp!`.`v2%&` AS SELECT * FROM `sp!`.`v****`;
+CREATE VIEW `sp!`.`v3~~` AS SELECT * FROM `sp!`.`v2%&`;
+** Creating Views in database `sp@` **
+CREATE VIEW `sp@`.`v1@` AS SELECT * FROM `sp!`.`v****`;
+CREATE VIEW `sp@`.`v4&$` AS SELECT * FROM `sp!`.`v2%&`;
+CREATE TRIGGER `sp@`.trai AFTER INSERT ON `sp@`.`%%` FOR EACH ROW
+BEGIN
+INSERT INTO `sp!`.`v2%&` VALUES('(((('),('))))');
+END;
+||
+** Creating procedure**
+CREATE TABLE `sp!`.`^^`( special_character char(16) not null default '', data int not null);
+CREATE PROCEDURE `sp!`.`p*&`() INSERT INTO `^^` VALUES('%%%%', 100);
+CALL `sp!`.`p*&`();
+SELECT * FROM `sp!`.`^^`;
+special_character	data
+%%%%	100
+creating function
+INSERT INTO `sp!`.`^^` VALUES('&&&', 1),('***',10),('$$$',40),('@@@',100);
+CREATE FUNCTION `sp!`.`f@@`() RETURNS INT
+RETURN (SELECT DATA FROM `^^` WHERE DATA <= (SELECT SUM(DATA) FROM `^^`) ORDER BY DATA LIMIT 1);
+SELECT `sp!`.`f@@`();
+`sp!`.`f@@`()
+1
+SELECT special_character, `sp!`.`f@@`() FROM `sp!`.`^^` ORDER BY special_character;
+special_character	`sp!`.`f@@`()
+$$$	1
+%%%%	1
+&&&	1
+***	1
+@@@	1
+CREATE FUNCTION `sp!`.`@fun&`() returns INTEGER
+RETURN (SELECT COUNT(*) FROM `sp@`.`v4&$`);
+SELECT `sp!`.`@fun&`();
+`sp!`.`@fun&`()
+31
+SELECT COUNT(*) FROM `sp!`.`v2%&`;
+COUNT(*)
+31
+INSERT INTO `sp@`.`%%` VALUES('&&'),('**');
+SELECT * FROM `sp@`.`%%`;
+^^
+&&
+**
+SELECT COUNT(*) FROM `sp!`.`v2%&`;
+COUNT(*)
+35
+SELECT * FROM `sp!`.`v3~~`;
+$$
+!
+@
+#
+$
+%
+^
+&
+*
+(
+)
+-
+_
++
+=
+|
+\
+`
+~
+<
+>
+,
+.
+?
+/
+;
+:
+"
+[
+]
+{
+}
+((((
+))))
+((((
+))))
+SELECT COUNT(*) FROM `sp@`.`v4&$`;
+COUNT(*)
+35
+BACKUP DATABASE `sp!`, `sp@` to 'sp.bak';
+backup_id
+#
+DROP DATABASE `sp!`;
+DROP DATABASE `sp@`;
+RESTORE FROM 'sp.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW DATABASES LIKE 'sp%';
+Database (sp%)
+sp!
+sp@
+SHOW FULL TABLES FROM `sp!`;
+Tables_in_sp!	Table_type
+####	BASE TABLE
+^^	BASE TABLE
+v2%&	VIEW
+v3~~	VIEW
+v****	VIEW
+SHOW FULL TABLES FROM `sp@`;
+Tables_in_sp@	Table_type
+%%	BASE TABLE
+v1@	VIEW
+v4&$	VIEW
+SHOW TRIGGERS FROM `sp@`;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	%%	BEGIN
+INSERT INTO `sp!`.`v2%&` VALUES('(((('),('))))');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS WHERE Db='sp!' OR Db='sp@';
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+sp!	p*&	PROCEDURE	root@localhost	#	#	#		utf8	utf8_general_ci	utf8_general_ci
+SHOW FUNCTION STATUS WHERE Db='sp!' OR Db='sp@';
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+sp!	@fun&	FUNCTION	root@localhost	#	#	#		utf8	utf8_general_ci	utf8_general_ci
+sp!	f@@	FUNCTION	root@localhost	#	#	#		utf8	utf8_general_ci	utf8_general_ci
+**call procedures**
+CALL `sp!`.`p*&`();
+SELECT * FROM `sp!`.`^^`;
+special_character	data
+%%%%	100
+&&&	1
+***	10
+$$$	40
+@@@	100
+%%%%	100
+SELECT `sp!`.`@fun&`();
+`sp!`.`@fun&`()
+35
+SELECT * FROM `sp!`.`####`;
+$$
+!
+@
+#
+$
+%
+^
+&
+*
+(
+)
+-
+_
++
+=
+|
+\
+`
+~
+<
+>
+,
+.
+?
+/
+;
+:
+"
+[
+]
+{
+}
+((((
+))))
+((((
+))))
+SELECT COUNT(*) FROM `sp@`.`v1@`;
+COUNT(*)
+35
+SELECT COUNT(*) FROM `sp!`.`####`;
+COUNT(*)
+35
+SELECT COUNT(*) FROM `sp!`.`v2%&`;
+COUNT(*)
+35
+INSERT INTO `sp@`.`%%` VALUES('*'),('^');
+SELECT * FROM `sp@`.`%%`;
+^^
+&&
+**
+*
+^
+SELECT COUNT(*) FROM `sp!`.`v2%&`;
+COUNT(*)
+39
+SELECT * FROM `sp!`.`v3~~`;
+$$
+!
+@
+#
+$
+%
+^
+&
+*
+(
+)
+-
+_
++
+=
+|
+\
+`
+~
+<
+>
+,
+.
+?
+/
+;
+:
+"
+[
+]
+{
+}
+((((
+))))
+((((
+))))
+((((
+))))
+((((
+))))
+SELECT COUNT(*) FROM `sp@`.`v4&$`;
+COUNT(*)
+39
+change character set and perform restore again.
+SET NAMES latin5;
+RESTORE FROM 'sp.bak' OVERWRITE;
+backup_id
+#
+SHOW DATABASES LIKE 'sp%';
+Database (sp%)
+sp!
+sp@
+SHOW FULL TABLES FROM `sp!`;
+Tables_in_sp!	Table_type
+####	BASE TABLE
+^^	BASE TABLE
+v2%&	VIEW
+v3~~	VIEW
+v****	VIEW
+SHOW FULL TABLES FROM `sp@`;
+Tables_in_sp@	Table_type
+%%	BASE TABLE
+v1@	VIEW
+v4&$	VIEW
+SELECT@@character_set_client;
+@@character_set_client
+latin5
+SELECT@@character_set_connection;
+@@character_set_connection
+latin5
+SELECT@@character_set_results;
+@@character_set_results
+latin5
+
+***  DROP sp! and sp@ DATABASE ****
+
+DROP DATABASE `sp!`;
+DROP DATABASE `sp@`;
