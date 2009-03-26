@@ -2900,18 +2900,28 @@ ddl_blocker_err:
       else
       {
         ulong save_priv;
-        if (check_access(thd, SELECT_ACL, first_table->db,
+
+        if (check_access(thd, SHOW_CREATE_TABLE_ACLS, first_table->db,
                          &save_priv, FALSE, FALSE,
                          test(first_table->schema_table)))
           goto error;
+
         /*
-          save_priv contains any privileges actually granted by check_access.
-          If there are no global privileges (save_priv == 0) and no table level
-          privileges, access is denied.
+          save_priv contains any privileges actually granted by check_access
+          (i.e. save_priv contains global (user- and database-level)
+          privileges).
+
+          The fact that check_access() returned FALSE does not mean that
+          access is granted. We need to check if save_priv contains any
+          table-specific privilege. If not, we need to check table-level
+          privileges.
+
+          If there are no global privileges and no table-level privileges,
+          access is denied.
         */
-        if (!save_priv &&
-            !has_any_table_level_privileges(thd, TABLE_ACLS,
-                                            first_table))
+
+        if (!(save_priv & (SHOW_CREATE_TABLE_ACLS)) &&
+            !has_any_table_level_privileges(thd, SHOW_CREATE_TABLE_ACLS, first_table))
         {
           my_error(ER_TABLEACCESS_DENIED_ERROR, MYF(0),
                   "SHOW", thd->security_ctx->priv_user,
@@ -2920,9 +2930,8 @@ ddl_blocker_err:
         }
       }
 #endif /* NO_EMBDEDDED_ACCESS_CHECKS */
-      /*
-        Access is granted. Execute command.
-      */
+
+      /* Access is granted. Execute the command.  */
       res= mysqld_show_create(thd, first_table);
       break;
     }
