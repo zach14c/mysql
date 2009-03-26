@@ -68,7 +68,7 @@ class ha_innobase: public handler
 	uint		num_write_row;	/* number of write_row() calls */
 
 	uint store_key_val_for_row(uint keynr, char* buff, uint buff_len,
-                                   const uchar* record);
+				   const uchar* record);
 	int update_thd(THD* thd);
 	int change_active_index(uint keynr);
 	int general_fetch(uchar* buf, uint direction, uint match_mode);
@@ -80,7 +80,7 @@ class ha_innobase: public handler
 	ulong innobase_update_autoinc(ulonglong	auto_inc);
 	ulong innobase_initialize_autoinc();
 	dict_index_t* innobase_get_index(uint keynr);
- 	ulonglong innobase_get_int_col_max_value(const Field* field);
+	ulonglong innobase_get_int_col_max_value(const Field* field);
 
 	/* Init values for the class: */
  public:
@@ -102,8 +102,8 @@ class ha_innobase: public handler
 		  HA_READ_PREV |
 		  HA_READ_ORDER |
 		  HA_READ_RANGE |
-		  HA_KEYREAD_ONLY | 
-                  ((idx == primary_key)? 0 : HA_DO_INDEX_COND_PUSHDOWN));
+		  HA_KEYREAD_ONLY |
+		  ((idx == primary_key) ? 0 : HA_DO_INDEX_COND_PUSHDOWN));
 	}
 	uint max_supported_keys()	   const { return MAX_KEY; }
 				/* An InnoDB page must store >= 2 keys;

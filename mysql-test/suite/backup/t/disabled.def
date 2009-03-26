@@ -11,5 +11,4 @@
 ##############################################################################
 backup_no_engine              : Bug#36021 2008-04-13 rsomla server crashes when openning table with unknown storage engine
 backup_no_data                : Bug#42756 2009-02-11 jorgen Test db state not preserved 
-backup_ddl_blocker            : Bug#42756 2009-02-11 jorgen Test db state not preserved 
 backup_maria_other_instance   : Bug#42924 2009-02-17 serg
