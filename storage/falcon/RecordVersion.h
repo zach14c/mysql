@@ -74,7 +74,7 @@ public:
 	//Transaction		*transaction;
 	RecordVersion	*nextInTrans;
 	RecordVersion	*prevInTrans;
-	TransId			transactionId;
+	//TransId			transactionId;
 	int				savePointId;
 	bool			superceded;
 
