@@ -3001,12 +3001,33 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 				case MYSQL_TYPE_SHORT:
 				case MYSQL_TYPE_INT24:
 				case MYSQL_TYPE_LONG:
-				case MYSQL_TYPE_LONGLONG:
 				case MYSQL_TYPE_DECIMAL:
 				case MYSQL_TYPE_ENUM:
 				case MYSQL_TYPE_SET:
 				case MYSQL_TYPE_BIT:
 					dataStream->encodeInt64(field->val_int());
+					break;
+
+				case MYSQL_TYPE_LONGLONG:
+					{
+					int64 temp = field->val_int();
+
+					// If the field is unsigned and the MSB is set, 
+					// encode it as a BigInt to support unsigned values 
+					// with the MSB set in the index
+
+					if (((Field_num*)field)->unsigned_flag && (temp & 0x8000000000000000))
+						{
+						BigInt bigInt;
+						bigInt.set((uint64)temp);
+						dataStream->encodeBigInt(&bigInt);
+						}
+					else
+						{
+						dataStream->encodeInt64(temp);
+						}
+
+					}
 					break;
 
 				case MYSQL_TYPE_YEAR:
@@ -3207,13 +3228,33 @@ void StorageInterface::decodeRecord(uchar *buf)
 				case MYSQL_TYPE_SHORT:
 				case MYSQL_TYPE_INT24:
 				case MYSQL_TYPE_LONG:
-				case MYSQL_TYPE_LONGLONG:
 				case MYSQL_TYPE_DECIMAL:
 				case MYSQL_TYPE_ENUM:
 				case MYSQL_TYPE_SET:
 				case MYSQL_TYPE_BIT:
 					field->store(dataStream->getInt64(),
 								((Field_num*)field)->unsigned_flag);
+					break;
+
+				case MYSQL_TYPE_LONGLONG:
+					{
+					// If the type is edsTypeBigInt, the value is
+					// unsigned and has the MSB set. This case has 
+					// been handled specially in encodeRecord() to 
+					// support unsigned values with the MSB set in
+					// the index
+
+					if (dataStream->type == edsTypeBigInt)
+						{
+						int64 value = dataStream->bigInt.getInt();
+						field->store(value, ((Field_num*)field)->unsigned_flag);
+						}
+					else
+						{
+						field->store(dataStream->getInt64(),
+									 ((Field_num*)field)->unsigned_flag);
+						}
+					}
 					break;
 
 				case MYSQL_TYPE_YEAR:

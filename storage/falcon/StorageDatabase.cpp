@@ -1023,6 +1023,36 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			break;
 
 		case KEY_FORMAT_ULONGLONG:
+			{
+			uint64 temp = (uint64)
+				((uint64)(((uint32) ((UCHAR) ptr[0])) +
+					(((uint32) ((UCHAR) ptr[1])) << 8) +
+					(((uint32) ((UCHAR) ptr[2])) << 16) +
+					(((uint32) ((UCHAR) ptr[3])) << 24)) +
+				(((uint64)(((uint32) ((UCHAR) ptr[4])) +
+					(((uint32) ((UCHAR) ptr[5])) << 8) +
+					(((uint32) ((UCHAR) ptr[6])) << 16) +
+					(((uint32) ((UCHAR) ptr[7])) << 24)))
+				<< 32));
+
+			// If the MSB is set, we have to set the
+			// value as a BigInt, if it is not set, we 
+			// can use int64
+
+			if (temp & 0x8000000000000000)
+				{
+				BigInt bigInt;
+				bigInt.set(temp);
+				value->setValue(&bigInt);
+				}
+			else
+				{
+				value->setValue((int64)temp);
+				}
+
+			}
+			break;
+
 		case KEY_FORMAT_LONGLONG:
 			{
 			int64 temp = (int64)
