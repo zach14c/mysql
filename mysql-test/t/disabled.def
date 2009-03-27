@@ -11,7 +11,6 @@
 ##############################################################################
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 events_bugs          : Bug#37774 2008-10-08 alik
-innodb               : Bug#41299 2008-12-08 alik
 innodb_bug39438      : BUG#42383 2009-01-28 lsoares "This fails in embedded and on windows.  Note that this test is not run on windows and on embedded in PB for main trees currently"
 kill                     : Bug#37780 2008-12-03 HHunger need some changes to be robust enough for pushbuild.
 #concurrent_innodb_safelog: disabled for embedded server due to bug#43733 Select on processlist let the embedded server crash (concurrent_innodb_safelog).
