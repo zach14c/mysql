@@ -61,14 +61,14 @@ public:
 	bool		committedBefore(TransId transactionId);
 	
 	inline bool	isActive()
-	    {
+		{
 		return state == Active || state == Limbo;
-	    }
+		}
 
 	inline bool	isCommitted()
-	    {
+		{
 		return state == Committed;
-	    }
+		}
 
 
 public:

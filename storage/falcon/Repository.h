@@ -73,7 +73,6 @@ public:
 	static bool				getToken (const char **ptr, int sizeToken, char *token);
 	static void				validateRollovers (const char *string);
 	
-
 	const char		*name;
 	const char		*schema;
 	JString			filePattern;
