@@ -97,6 +97,7 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	firstRecord = NULL;
 	lastRecord = NULL;
 	transactionState = new TransactionState();
+	transactionState->hasTransactionReference = true;
 	initialize(cnct, seq);
 }
 
@@ -201,7 +202,10 @@ Transaction::~Transaction()
 		releaseDeferredIndexes();
 
 	if (transactionState)
+		{
+		transactionState->hasTransactionReference = false;
 		transactionState->release();
+		}
 }
 
 void Transaction::commit()

@@ -77,6 +77,7 @@ public:
 	volatile		INTERLOCK_TYPE state;
 	SyncObject 		syncIsActive;
 	bool			pendingPageWrites;
+	bool			hasTransactionReference;
 	
 	volatile TransactionState* waitingFor; // Used for deadlock detection
 

@@ -328,17 +328,17 @@ void Dbb::logRecord(int32 sectionId, int32 recordId, Stream *stream, Transaction
 		updateRecord(sectionId, recordId, stream, transaction->transactionId, false);
 }
 
-void Dbb::updateBlob(Section *blobSection, int recordNumber, Stream* stream, TransactionState* transaction)
+void Dbb::updateBlob(Section *blobSection, int recordNumber, Stream* stream, TransactionState* transState)
 {
 	if (!serialLog->recovering && stream && stream->totalLength < (int) falcon_large_blob_threshold)
 		{
-		serialLog->logControl->smallBlob.append(this, blobSection->sectionId, transaction->transactionId, recordNumber, stream);
-		updateRecord(blobSection, recordNumber, stream, transaction, false);
+		serialLog->logControl->smallBlob.append(this, blobSection->sectionId, transState->transactionId, recordNumber, stream);
+		updateRecord(blobSection, recordNumber, stream, transState, false);
 		}
 	else
 		{
-		updateRecord(blobSection, recordNumber, stream, transaction, true);
-		transaction->pendingPageWrites = true;
+		updateRecord(blobSection, recordNumber, stream, transState, true);
+		transState->pendingPageWrites = true;
 		}
 }
 

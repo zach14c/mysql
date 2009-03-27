@@ -242,6 +242,7 @@ bool RecordVersion::committedBefore(TransId transId)
 	return transactionState->committedBefore(transId);
 }
 
+// This is called with an exclusive lock on the recordLeaf
 
 bool RecordVersion::retire(RecordScavenge *recordScavenge)
 {
@@ -263,7 +264,7 @@ bool RecordVersion::retire(RecordScavenge *recordScavenge)
 			expungeRecord();  // Allow this record number to be reused
 
 		release();
-		
+
 		return true;
 		}
 

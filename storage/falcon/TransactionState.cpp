@@ -24,6 +24,7 @@ TransactionState::TransactionState()
 {
 	syncIsActive.setName("TransactionState::syncIaActive");
 	pendingPageWrites = false;
+	hasTransactionReference = false;
 	waitingFor = NULL;
 	commitId = 0;
 	useCount = 1;
