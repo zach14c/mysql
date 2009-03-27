@@ -1,0 +1,154 @@
+#
+# Create two database:
+#  * 1 with lower-case name "backupcasetest"
+#  * 1 with upper-case name "BACKUPCASETEST"
+#
+DROP DATABASE IF EXISTS backupcasetest;
+DROP DATABASE IF EXISTS BACKUPCASETEST;
+# Creating database with lower-case name
+CREATE DATABASE backupcasetest;
+CREATE TABLE backupcasetest.lcase (a char(10), b char(10));
+INSERT INTO backupcasetest.lcase VALUES ('L41','1300'),
+('L01','1453'), 
+('L00','1000'),
+('L41','1301'),
+('L41','1305');
+# Creating database with upper-case name
+CREATE DATABASE BACKUPCASETEST;
+CREATE TABLE BACKUPCASETEST.ucase (a char(10), b char(10));
+INSERT INTO BACKUPCASETEST.ucase VALUES ('U41','1300'),
+('U01','1453'), 
+('U00','1000'),
+('U41','1301'),
+('U41','1305');
+
+# BACKUP lower-case database
+BACKUP DATABASE backupcasetest to 'lcase.bup';
+backup_id
+#
+
+# BACKUP upper-case database
+BACKUP DATABASE BACKUPCASETEST to 'ucase.bup';
+backup_id
+#
+
+# BACKUP both database
+BACKUP DATABASE BACKUPCASETEST, backupcasetest to 'bothcases.bup';
+backup_id
+#
+#
+# Print contents of the databases
+#
+#    Lower case database:
+#
+SHOW TABLES IN backupcasetest;
+Tables_in_backupcasetest
+lcase
+SELECT * FROM backupcasetest.lcase;
+a	b
+L41	1300
+L01	1453
+L00	1000
+L41	1301
+L41	1305
+#
+#    Upper case database:
+#
+SHOW TABLES IN BACKUPCASETEST;
+Tables_in_BACKUPCASETEST
+ucase
+SELECT * FROM BACKUPCASETEST.ucase;
+a	b
+U41	1300
+U01	1453
+U00	1000
+U41	1301
+U41	1305
+#
+# Drop the databases
+#
+DROP DATABASE backupcasetest;
+DROP DATABASE BACKUPCASETEST;
+#
+# RESTORE lower case database and verify content
+#
+RESTORE FROM 'lcase.bup';
+backup_id
+#
+
+SHOW DATABASES WHERE `Database` LIKE 'backupcasetest';
+Database
+backupcasetest
+SHOW TABLES IN backupcasetest;
+Tables_in_backupcasetest
+lcase
+SELECT * FROM backupcasetest.lcase;
+a	b
+L41	1300
+L01	1453
+L00	1000
+L41	1301
+L41	1305
+#
+# RESTORE upper case database and verify content
+#
+RESTORE FROM 'ucase.bup';
+backup_id
+#
+
+SHOW DATABASES WHERE `Database` LIKE 'backupcasetest';
+Database
+BACKUPCASETEST
+backupcasetest
+SHOW TABLES IN BACKUPCASETEST;
+Tables_in_BACKUPCASETEST
+ucase
+SELECT * FROM BACKUPCASETEST.ucase;
+a	b
+U41	1300
+U01	1453
+U00	1000
+U41	1301
+U41	1305
+#
+# Drop the databases
+#
+DROP DATABASE backupcasetest;
+DROP DATABASE BACKUPCASETEST;
+#
+# RESTORE backup image with both databases and verify content
+#
+RESTORE FROM 'bothcases.bup';
+backup_id
+#
+
+SHOW DATABASES WHERE `Database` LIKE 'backupcasetest';
+Database
+BACKUPCASETEST
+backupcasetest
+SHOW TABLES IN backupcasetest;
+Tables_in_backupcasetest
+lcase
+SELECT * FROM backupcasetest.lcase;
+a	b
+L41	1300
+L01	1453
+L00	1000
+L41	1301
+L41	1305
+
+SHOW TABLES IN BACKUPCASETEST;
+Tables_in_BACKUPCASETEST
+ucase
+SELECT * FROM BACKUPCASETEST.ucase;
+a	b
+U41	1300
+U01	1453
+U00	1000
+U41	1301
+U41	1305
+#
+# CLEANUP
+#
+DROP DATABASE backupcasetest;
+DROP DATABASE BACKUPCASETEST;

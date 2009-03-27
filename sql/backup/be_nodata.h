@@ -16,7 +16,7 @@ using backup::Buffer;
 /**
   @class Engine
  
-  Encapsulates nodata online backup/restore functionality.
+  Encapsulates nodata backup/restore functionality.
  
   Using this class, the caller can create an instance of the nodata backup
   backup and restore class. The nodata driver does not read or write to any 

@@ -1507,7 +1507,17 @@ int bstream_read_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
 
   IBUF_INV(s->buf);
 
-  /* fill input buffer if we reached end of fragment or of the input block */
+  /*
+    We fill the input buffer if one of these conditions holds:
+
+    a) all bytes from the current fragment have been read 
+       (buf.begin == buf.header), or
+
+    b) all bytes in the current input block have been read
+       (buf.begin == buf.end).
+    
+    (See INPUT BUFFER description above) 
+  */
   if ((s->buf.begin == s->buf.end) || (s->buf.begin == s->buf.header))
   {
     ret= load_buffer(s);
@@ -1520,8 +1530,8 @@ int bstream_read_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
   ASSERT(s->buf.header >= s->buf.begin);
 
   /*
-    If we finished reading a fragment, we should load next one
-    or signal EOC if it was the last fragment of a chunk.
+    If we finished reading a fragment, we should load next one into the
+    input buffer. We signal EOC if this was the last fragment of a chunk.
   */
   if (s->buf.header == s->buf.begin)
   {
@@ -1536,8 +1546,18 @@ int bstream_read_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
   }
 
   /*
-    Determine length of the fragment remainder stored in the input
-    buffer.
+    Determine how much bytes of the current fragment are there in the input
+    buffer (the amount could be 0). There are 2 cases:
+
+    a) the input buffer contains the header of next fragment 
+       (buf.header <= buf.pos) - in this case all the remaining bytes of the
+       current fragment are in the buffer between buf.begin and buf.header,
+
+    b) the header of the next framgment was not yet loaded into the input buffer
+       (buf.pos < buf.header) - inis case all bytes in the buffer belong to the
+       current fragment.
+
+    (See INPUT BUFFER description above)
   */
   if (s->buf.header <= s->buf.pos)
     howmuch= s->buf.header - s->buf.begin;
@@ -1545,11 +1565,15 @@ int bstream_read_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
     howmuch= s->buf.pos - s->buf.begin;
 
   /*
-    If there is some data in the buffer we copy it to the data blob,
-    otherwise we fill data from the stream.
-   */
+    If there is some data in the buffer we copy it to the data blob and return
+    from call. Otherwise we have more work to do.
+  */
   if (howmuch > 0)
   {
+    /*
+      Adjust howmuch if there is more data in the input bufer that would fit
+      into the blob. Copy only as much bytes as fits.
+    */ 
     if ((data->begin + howmuch) > data->end)
       howmuch= data->end - data->begin;
 
@@ -1559,28 +1583,99 @@ int bstream_read_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
   }
   else
   {
-    /* read directly into data area */
-    ASSERT(s->buf.header > s->buf.pos);
+    /*
+      At this point it is not possible that the header of the next fragment is
+      in the buffer. This is because if it were the case, then we would have
+      buf.begin == buf.header (as howmuch == 0). But if buf.begin == buf.header 
+      then load_next_fragment() would be called above and then there should be
+      some bytes of the next fragment in the buffer (i.e. howmuch > 0).
 
+      Thus we know that buf.pos < buf.header. Moreover, as the buffer is empty 
+      (howmuch == 0), we also must have buf.begin == buf.pos. We check these 
+      claims with assertions.
+    */ 
+    ASSERT(s->buf.header > s->buf.pos);
+    ASSERT(s->buf.begin == s->buf.pos);
+
+    /*
+      Determine how much data to read from the stream. We don't want to read 
+      more bytes than there is in the current fragment (buf.header - buf.pos).
+      At the same time there is no point in reading more bytes than would fit 
+      into the data blob.
+    */ 
     howmuch= data->end - data->begin;
     if ((s->buf.pos + howmuch) > s->buf.header)
       howmuch= s->buf.header - s->buf.pos;
 
-    saved= *data;
+    /*
+      We are about to read howmuch bytes from the input stream. Modify data
+      blob to describe the area where these bytes should be stored.
+
+       ________________ original data blob _______________
+      |                                                   |
+
+      [-----------------------------]---------------------]
+
+      |                             |
+       area where bytes will be read
+
+      We save the original data blob to construct correct reply later.
+    */ 
+    saved= *data;       /* note: only begin/end pointers are copied here */
     data->end= data->begin + howmuch;
 
+    /*
+      Now we call as_read() to read bytes from the underlying input stream.
+      The function will move data->begin pointer indicating how much data have
+      been read.
+    */ 
     ret= as_read(&s->stream, data, buf);
     if (ret == BSTREAM_ERROR)
       return SERROR(s);
     if (ret == BSTREAM_EOS)
       s->state= EOS;
 
+    /*
+      After a successful call to as_read(), data blob describes the area which
+      was *not* filled with data from the stream.
+
+       __ original area described by data blob __
+      |                                          |
+      
+      [======================]-------------------]
+    
+      |                      |                   |
+       bytes read from stream                    |
+      |                      |                   data->end
+      saved.begin            data->begin
+ 
+      Thus now data->begin points one byte after the last byte read from the
+      stream, which is as expected. But data->end should point at the end of 
+      the memory area passed by the caller - this can be restored from saved 
+      blob.
+    */ 
+
+    data->end= saved.end;
+
+    /*
+      We have read (data->begin - saved.begin) bytes from the input stream. To
+      preserve input buffer invariants, we must move buf.begin pointer by that
+      amount (so that buf.end - buf.begin is the number of bytes left in the
+      current input block.
+
+      The input buffer is still empty (all bytes were read to the memory area
+      provided by caller). Therefore we set buf.pos = buf.begin.
+    */ 
+
     s->buf.begin += data->begin - saved.begin;
     s->buf.pos= s->buf.begin;
-
-    data->begin= data->end;
-    data->end= saved.end;
   }
+
+  /*
+    Now some data has been copied to the data memory blob, either from input
+    buffer or directly from stream. We check input buffer invariants and return,
+    possibly signalling end of chunk or stream.
+  */ 
 
   IBUF_INV(s->buf);
 

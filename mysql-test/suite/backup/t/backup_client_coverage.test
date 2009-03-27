@@ -1,0 +1,419 @@
+--echo #
+--echo # WL#4534 - Backup client program
+--echo #
+--echo # Coverage tests.
+--echo #
+#
+# Note: Windows cannot parse command line continuation by backspace.
+# So please excuse the long lines in this test case.
+#
+--source include/not_embedded.inc
+--source include/have_debug.inc
+#
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest1;
+DROP DATABASE IF EXISTS mysqltest2;
+DROP DATABASE IF EXISTS mysqltest3;
+--enable_warnings
+#
+# Get backup directory into a variable.
+--let $BACKUPDIR= `SELECT @@backupdir`;
+#
+# Create three databases with one elements each.
+#
+CREATE DATABASE mysqltest1;
+CREATE DATABASE mysqltest2;
+CREATE DATABASE mysqltest3;
+CREATE TABLE mysqltest1.t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest1.t2 (c1 INT) ENGINE=MEMORY;
+CREATE TABLE mysqltest2.t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest2.t2 (c1 INT) ENGINE=MEMORY;
+CREATE VIEW  mysqltest3.v1 AS
+  SELECT mysqltest1.t1.c1 + mysqltest2.t1.c1 AS c1
+    FROM mysqltest1.t1, mysqltest2.t1;
+#
+# Backup.
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bak
+--replace_column 1 #
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bak';
+#
+# Backup with compression.
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bgz
+--replace_column 1 #
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bgz'
+  WITH COMPRESSION;
+#
+# Now running mysqlbackup with error injection.
+# Using --summary to force read until end.
+#
+# Coverage tests for backup_stream.c
+#
+--echo # Injecting error at str_read_z_io_error
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_read_z_io_error  $BACKUPDIR/mysqltest.bgz 2>&1;
+#
+--echo # Injecting error at str_read_z_eof
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_read_z_eof  $BACKUPDIR/mysqltest.bgz 2>&1;
+#
+--echo # Injecting error at str_read_zlib_error
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_read_zlib_error  $BACKUPDIR/mysqltest.bgz 2>&1;
+#
+--echo # Injecting error at str_read_io_error
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_read_io_error  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at str_open_rd: non-existing file
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  $BACKUPDIR/not-existent-file.bak 2>&1;
+#
+--echo # Injecting error at str_open_rd_stat_error
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_open_rd_stat_error  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at str_open_rd_read_error
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_open_rd_read_error  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at str_open_rd_read_length
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_open_rd_read_length  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at str_open_rd_zbuf_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_open_rd_zbuf_malloc  $BACKUPDIR/mysqltest.bgz 2>&1;
+#
+--echo # Injecting error at str_open_rd_zlib_init
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_open_rd_zlib_init  $BACKUPDIR/mysqltest.bgz 2>&1;
+#
+--echo # Injecting error at str_open_rd: not a backup file
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  $BACKUPDIR/mysqltest1/t1.MYI 2>&1;
+#
+--echo # Injecting error at str_open_rd_version
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_open_rd_version  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at str_close_bstream
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_close_bstream  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at str_close_zlib
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_close_zlib  $BACKUPDIR/mysqltest.bgz 2>&1;
+#
+--echo # Injecting error at str_close_file
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,str_close_file  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_global_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_global_malloc  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_global_insert
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_global_insert  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_db_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_db_malloc  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_db_tables
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_db_tables  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_db_perdbs
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_db_perdbs  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_db_insert
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_db_insert  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_table_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_table_malloc  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_table_insert
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_table_insert  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_table_index
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_table_index  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_perdb_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_perdb_malloc  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_perdb_insert
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_perdb_insert  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_add_item_ordered_insert
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_add_item_ordered_insert  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_iterator_get_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_iterator_get_malloc  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_iterator_get_type
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_iterator_get_type  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_create_item_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_create_item_malloc  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_create_item_user
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_create_item_user  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at bcat_create_item_ordered_insert
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,bcat_create_item_ordered_insert  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_catalog_allocate_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_catalog_allocate_malloc  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_catalog_allocate_array
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_catalog_allocate_array  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_image_open_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_image_open_malloc  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_image_open_header
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_image_open_header  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_image_open_snapshot_malloc
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_image_open_snapshot_malloc  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_image_open_index
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_image_open_index  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_image_open_index1
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_image_open_index1  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_image_open_snapshot_insert
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_image_open_snapshot_insert  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_image_open_next_eos
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_image_open_next_eos  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_image_open_next_err
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_image_open_next_err  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_catalog_rd_eos
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_catalog_rd_eos  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_catalog_rd_err
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_catalog_rd_err  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_catalog_next_eos
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_catalog_next_eos  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_catalog_next_err
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_catalog_next_err  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_metadata_rd_eos
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_metadata_rd_eos  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_metadata_rd_err
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_metadata_rd_err  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_metadata_next_eos
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_metadata_next_eos  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_metadata_next_err
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_metadata_next_err  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_snapshot_rd_eos
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_snapshot_rd_eos  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_snapshot_rd_err
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_snapshot_rd_err  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_summary_rd_ok
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_summary_rd_ok  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_read_summary_rd_err
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_read_summary_rd_err  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_locate_global_pos
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_locate_global_pos  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_locate_table_pos
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_locate_table_pos  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+--echo # Injecting error at backup_locate_perdb_pos
+--source suite/backup/include/backup_client_regex_output.inc
+--error 1
+exec $MYSQL_BACKUP -v --summary  --debug=d,backup_locate_perdb_pos  $BACKUPDIR/mysqltest.bak 2>&1;
+#
+# Coverage tests for mysqlbackup.cc
+#
+--echo
+--echo # illegal search string: unrecognized stuff at end
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+--error 1
+exec $MYSQL_BACKUP --search="x z"  $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # illegal search string: unrecognized stuff at end with dot
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+--error 1
+exec $MYSQL_BACKUP --search="x.y z"  $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # illegal search string: improperly quoted
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+--error 1
+exec $MYSQL_BACKUP --search="'x"  $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # illegal search string: improperly quoted with dot
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+--error 1
+exec $MYSQL_BACKUP --search="'x'.'y"  $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # valid search string: quoted with dot
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --search="'x'.'y'"  $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # valid search string: space around dot
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --search="x . y"  $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # illegal option
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+--error 1
+exec $MYSQL_BACKUP --xyz  $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # incorrect number of arguments
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+--error 1
+exec $MYSQL_BACKUP 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # incorrect number of arguments
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+--error 1
+exec $MYSQL_BACKUP  $BACKUPDIR/mysqltest.bak  $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+
+
+#
+--remove_file $BACKUPDIR/mysqltest.bak
+--remove_file $BACKUPDIR/mysqltest.bgz
+DROP DATABASE mysqltest1;
+DROP DATABASE mysqltest2;
+DROP DATABASE mysqltest3;

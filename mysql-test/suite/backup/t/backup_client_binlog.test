@@ -1,0 +1,56 @@
+--echo #
+--echo # WL#4534 - Backup client program
+--echo #
+--echo # Tests with binlog turned on.
+--echo #
+#
+# Note: Windows cannot parse command line continuation by backspace.
+# So please excuse the long lines in this test case.
+#
+--source include/not_embedded.inc
+--source include/have_binlog_format_mixed.inc
+--source include/have_innodb.inc
+#
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest1;
+DROP DATABASE IF EXISTS mysqltest2;
+DROP DATABASE IF EXISTS mysqltest3;
+--enable_warnings
+#
+# Get backup directory into a variable.
+--let $BACKUPDIR= `SELECT @@backupdir`;
+#
+# Create three databases with two elements each.
+#
+CREATE DATABASE mysqltest1;
+CREATE DATABASE mysqltest2;
+CREATE DATABASE mysqltest3;
+CREATE TABLE mysqltest1.t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest1.t2 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest2.t1 (c1 INT) ENGINE=InnoDB;
+CREATE TABLE mysqltest2.t2 (c1 INT) ENGINE=InnoDB;
+CREATE VIEW  mysqltest3.v1 AS
+  SELECT mysqltest1.t1.c1 + mysqltest2.t1.c1 AS c1
+    FROM mysqltest1.t1, mysqltest2.t1;
+CREATE VIEW  mysqltest3.v2 AS
+  SELECT mysqltest1.t2.c1 + mysqltest2.t2.c1 AS c1
+    FROM mysqltest1.t2, mysqltest2.t2;
+#
+# Backup.
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bak
+--replace_column 1 #
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bak';
+#
+--echo
+--echo # Full set of most relevant information plus snapshots and data chunks:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP -v --all --snapshots --data-chunks $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--remove_file $BACKUPDIR/mysqltest.bak
+DROP DATABASE mysqltest1;
+DROP DATABASE mysqltest2;
+DROP DATABASE mysqltest3;

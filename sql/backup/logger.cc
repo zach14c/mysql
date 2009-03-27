@@ -155,7 +155,7 @@ int Logger::v_write_message(log_level::value level, int error_code,
 void Logger::report_stats_pre(const Image_info &info)
 {
   DBUG_ASSERT(m_state == RUNNING);
-  backup_log->num_objects(info.table_count());
+  backup_log->num_objects(info.object_count());
   // Compose list of databases.
 
   Image_info::Db_iterator *it= info.get_dbs();

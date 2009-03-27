@@ -645,7 +645,7 @@ int bstream_rd_db_catalogue(backup_stream*, struct st_bstream_image_header*,
 */
 int bstream_wr_catalogue(backup_stream *s, struct st_bstream_image_header *cat)
 {
-  void *it;
+  void *it= NULL;
   blob *name;
   struct st_bstream_db_info *db_info;
   struct st_bstream_ts_info *ts_info;
@@ -666,6 +666,7 @@ int bstream_wr_catalogue(backup_stream *s, struct st_bstream_image_header *cat)
   CHECK_WR_RES(bstream_wr_byte(s,0x00));
 
   bcat_iterator_free(cat,it);
+  it= NULL;
 
   /* list of users */
 
@@ -682,6 +683,7 @@ int bstream_wr_catalogue(backup_stream *s, struct st_bstream_image_header *cat)
   CHECK_WR_RES(bstream_wr_byte(s,0x00));
 
   bcat_iterator_free(cat,it);
+  it= NULL;
 
   /* list of table spaces */
 
@@ -698,6 +700,7 @@ int bstream_wr_catalogue(backup_stream *s, struct st_bstream_image_header *cat)
   CHECK_WR_RES(bstream_wr_byte(s,0x00));
 
   bcat_iterator_free(cat,it);
+  it= NULL;
 
   /* list of databases */
 
@@ -713,6 +716,7 @@ int bstream_wr_catalogue(backup_stream *s, struct st_bstream_image_header *cat)
   }
 
   bcat_iterator_free(cat,it);
+  it= NULL;
 
   /* db catalogues */
 
@@ -728,8 +732,13 @@ int bstream_wr_catalogue(backup_stream *s, struct st_bstream_image_header *cat)
   }
 
   bcat_iterator_free(cat,it);
+  it= NULL;
 
   wr_error:
+
+  // Free iterator if not already done
+  if (it)
+    bcat_iterator_free(cat,it);
 
   return ret;
 }
@@ -752,7 +761,7 @@ int bstream_rd_catalogue(backup_stream *s, struct st_bstream_image_header *cat)
   int ret= BSTREAM_OK;
   unsigned short int flags;
   unsigned int len;
-  void *iter;
+  void *iter= NULL;
   struct st_bstream_item_info item;
   struct st_bstream_db_info *db_info;
 
@@ -866,18 +875,26 @@ int bstream_rd_catalogue(backup_stream *s, struct st_bstream_image_header *cat)
   while ((db_info= (struct st_bstream_db_info*) bcat_iterator_next(cat,iter)))
   {
     if (ret != BSTREAM_EOC)
+    {
+      bcat_iterator_free(cat,iter);
       return BSTREAM_ERROR;
-
+    }
+    
     CHECK_RD_OK(bstream_next_chunk(s));
     CHECK_RD_RES(bstream_rd_db_catalogue(s,cat,db_info));
   }
 
   bcat_iterator_free(cat,iter);
+  iter= NULL;
 
   if (bcat_close(cat) != BSTREAM_OK)
     return BSTREAM_ERROR;
 
   rd_error:
+
+  // Free iterator if not already done
+  if (iter)
+    bcat_iterator_free(cat,iter);
 
   return ret;
 }
@@ -1014,7 +1031,7 @@ int bstream_rd_item_type(backup_stream *s, enum enum_bstream_item_type *type)
 int bstream_wr_db_catalogue(backup_stream *s, struct st_bstream_image_header *cat,
                             struct st_bstream_db_info *db_info)
 {
-  void *iter;
+  void *iter= NULL;
   struct st_bstream_dbitem_info *item;
   int ret= BSTREAM_OK;
   bool catalogue_empty= TRUE;
@@ -1040,11 +1057,16 @@ int bstream_wr_db_catalogue(backup_stream *s, struct st_bstream_image_header *ca
   }
 
   bcat_db_iterator_free(cat, db_info, iter);
+  iter= NULL;
 
   if (catalogue_empty)
     CHECK_WR_RES(bstream_wr_item_type(s,BSTREAM_IT_LAST));
 
   wr_error:
+
+  // Free iterator if not already done
+  if (iter)
+    bcat_iterator_free(cat,iter);
 
   return ret;
 }
@@ -1202,7 +1224,7 @@ int read_and_create_items(backup_stream *s, struct st_bstream_image_header *cat,
 /** Write meta-data section of a backup image */
 int bstream_wr_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
 {
-  void *iter, *titer;
+  void *iter= NULL, *titer= NULL;
   struct st_bstream_item_info *item;
   struct st_bstream_db_info   *db_info;
   int ret= BSTREAM_OK;
@@ -1227,6 +1249,7 @@ int bstream_wr_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
     CHECK_WR_RES(bstream_wr_item_type(s,BSTREAM_IT_LAST));
 
   bcat_iterator_free(cat,iter);
+  iter= NULL;
 
   /* tables */
 
@@ -1243,7 +1266,10 @@ int bstream_wr_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
     titer= bcat_db_iterator_get(cat,db_info);
 
     if (!titer)
+    {
+      bcat_iterator_free(cat,iter);
       return BSTREAM_ERROR;
+    }
 
     item_written= FALSE;
     while ((item= (struct st_bstream_item_info*)
@@ -1261,9 +1287,11 @@ int bstream_wr_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
       CHECK_WR_RES(bstream_wr_item_type(s,BSTREAM_IT_LAST));
 
     bcat_db_iterator_free(cat,db_info,titer);
+    titer= NULL;
   }
 
   bcat_iterator_free(cat,iter);
+  iter= NULL;
 
   /* if we found no databases in the catalogue, we are done */
   if (!has_db)
@@ -1287,6 +1315,7 @@ int bstream_wr_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
   }
 
   bcat_iterator_free(cat,iter);
+  iter= NULL;
 
   /* per-table items */
 
@@ -1306,7 +1335,13 @@ int bstream_wr_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
   }
 
 wr_error:
-  bcat_iterator_free(cat,iter);
+
+  // Free iterators if not already done
+  if (titer)
+    bcat_iterator_free(cat,titer);
+
+  if (iter) 
+    bcat_iterator_free(cat,iter);
 
   return ret;
 }
@@ -1323,7 +1358,7 @@ wr_error:
 */
 int bstream_rd_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
 {
-  void *iter;
+  void *iter= NULL;
   struct st_bstream_db_info *db_info;
   int ret=BSTREAM_OK;
   bool has_db= FALSE;
@@ -1344,13 +1379,17 @@ int bstream_rd_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
     has_db= TRUE;
 
     if (ret != BSTREAM_EOC)
+    {
+      bcat_iterator_free(cat,iter);
       return BSTREAM_ERROR;
-
+    }
+    
     CHECK_RD_OK(bstream_next_chunk(s));
     CHECK_RD_RES(read_and_create_items(s,cat,TABLE_ITEM));
   }
 
   bcat_iterator_free(cat,iter);
+  iter= NULL;
 
   /* if image has no databases, there is nothing more to read */
 
@@ -1378,6 +1417,10 @@ int bstream_rd_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
   CHECK_RD_RES(read_and_create_items(s,cat,PER_TABLE_ITEM));
 
   rd_error:
+
+  // Free iterator if not already done
+  if (iter) 
+    bcat_iterator_free(cat,iter);
 
   return ret;
 }
@@ -1590,21 +1633,27 @@ int bstream_wr_item_def(backup_stream *s,
   data.end= 0;
   query.begin= 0;
   query.end= 0;
+
+  /* 
+    Fetch item's create query and/or extra metadata data. Note that
+    the BSTREAM_EOS reply from bcat_get_item_create_*() functions
+    indicates lack of the corresponding piece of metadata.
+  */
+
   ret= bcat_get_item_create_query(cat,item,&query);
   if (ret == BSTREAM_OK) 
     flags |= BSTREAM_FLAG_HAS_CREATE_STMT;
   else if (ret == BSTREAM_ERROR) 
     goto wr_error;
 
-  /* bcat_get_item_create_data not in use yet. */
-  /*
   ret= bcat_get_item_create_data(cat,item,&data);
   if (ret == BSTREAM_OK)
     flags |= BSTREAM_FLAG_HAS_EXTRA_DATA;
   else if (ret == BSTREAM_ERROR) 
     goto wr_error;
-  */
   
+  /* save the header of metadata entry, containing item coordinates */
+
   ret= bstream_wr_meta_item(s,kind,flags,item);
   if (ret == BSTREAM_ERROR) 
     goto wr_error;
