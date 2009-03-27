@@ -947,17 +947,16 @@ void THD::cleanup(void)
     xid_cache_delete(&transaction.xid_state);
   }
 
-  /*
-    Thread could be in the middle of a ongoing transaction
-    that just got rolled back. Release any metadata locks.
-  */
-  if (!locked_tables_mode)
-  {
-    DBUG_ASSERT(open_tables == NULL);
-    mdl_context.release_all_locks();
-  }
-
   locked_tables_list.unlock_locked_tables(this);
+
+  /*
+    If the thread was in the middle of an ongoing transaction (rolled
+    back a few lines above) or under LOCK TABLES (unlocked the tables
+    and left the mode a few lines above), there will be outstanding
+    metadata locks. Release them.
+  */
+  DBUG_ASSERT(open_tables == NULL);
+  mdl_context.release_all_locks();
 
 #if defined(ENABLED_DEBUG_SYNC)
   /* End the Debug Sync Facility. See debug_sync.cc. */

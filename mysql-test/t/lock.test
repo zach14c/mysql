@@ -281,5 +281,39 @@ drop table t1;
 drop view v1;
 
 --echo #
+--echo # WL#4284: Transactional DDL locking
+--echo #
+
+--disable_warnings
+drop table if exists t1;
+--enable_warnings
+create table t1 (a int);
+connect(con1,localhost,root,,);
+set autocommit= 0;
+insert into t1 values (1);
+lock table t1 write;
+--echo # Disconnect
+--echo # Ensure that metadata locks will be released if there is an open
+--echo # transaction (autocommit=off) in conjunction with lock tables.
+disconnect con1;
+connection default;
+drop table t1;
+
+--echo # Same problem but now for BEGIN
+
+--disable_warnings
+drop table if exists t1;
+--enable_warnings
+create table t1 (a int);
+connect(con1,localhost,root,,);
+begin;
+insert into t1 values (1);
+--echo # Disconnect
+--echo # Ensure that metadata locks held by the transaction are released.
+disconnect con1;
+connection default;
+drop table t1;
+
+--echo #
 --echo # End of 6.0 tests.
 --echo #
