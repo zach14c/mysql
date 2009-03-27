@@ -1,0 +1,233 @@
+#
+# Create two database:
+#  * 1 with lower-case name "lower"
+#  * 1 with upper-case name "UPPER"
+#
+# (Not supposed to be same name)
+DROP DATABASE IF EXISTS lower;
+DROP DATABASE IF EXISTS UPPER;
+# Creating database with lower-case name
+CREATE DATABASE lower;
+CREATE TABLE lower.lcase (a char(10), b char(10)) ENGINE=MEMORY;
+INSERT INTO lower.lcase VALUES ('L41','1300'),
+('L01','1453'), 
+('L00','1000'),
+('L41','1301'),
+('L41','1305');
+# Creating database with upper-case name
+CREATE DATABASE UPPER;
+CREATE TABLE UPPER.ucase (a char(10), b char(10)) ENGINE=MEMORY;
+INSERT INTO UPPER.ucase VALUES ('U41','1300'),
+('U01','1453'), 
+('U00','1000'),
+('U41','1301'),
+('U41','1305');
+
+# BACKUP lower-case database
+BACKUP DATABASE lower to 'lowlow.bup';
+backup_id
+#
+
+# BACKUP lower-case database using upper-case name
+BACKUP DATABASE LOWER to 'lowup.bup';
+backup_id
+#
+
+# BACKUP upper-case database
+BACKUP DATABASE UPPER to 'upup.bup';
+backup_id
+#
+
+# BACKUP upper-case database using lower-case name
+BACKUP DATABASE upper to 'uplow.bup';
+backup_id
+#
+
+# BACKUP both databases using only lower-case names
+BACKUP DATABASE upper, lower to 'bothcases.bup';
+backup_id
+#
+#
+# Print contents of the databases
+#
+#    Lower case database:
+#
+SHOW DATABASES WHERE `Database` LIKE 'lower';
+Database
+lower
+SHOW TABLES IN lower;
+Tables_in_lower
+lcase
+SELECT * FROM lower.lcase;
+a	b
+L41	1300
+L01	1453
+L00	1000
+L41	1301
+L41	1305
+#
+#    Upper case database:
+#
+SHOW DATABASES WHERE `Database` LIKE 'UPPER';
+Database
+UPPER
+SHOW TABLES IN UPPER;
+Tables_in_upper
+ucase
+SELECT * FROM UPPER.ucase;
+a	b
+U41	1300
+U01	1453
+U00	1000
+U41	1301
+U41	1305
+#
+# Drop the databases
+#
+DROP TABLE lower.lcase;
+DROP TABLE UPPER.ucase;
+DROP DATABASE lower;
+DROP DATABASE UPPER;
+#
+# RESTORE databases with correct case
+#
+# RESTORE lower case database and verify content
+#
+RESTORE FROM 'lowlow.bup';
+backup_id
+#
+
+SHOW DATABASES WHERE `Database` LIKE 'lower';
+Database
+lower
+SHOW TABLES IN lower;
+Tables_in_lower
+lcase
+SELECT * FROM lower.lcase;
+a	b
+L41	1300
+L01	1453
+L00	1000
+L41	1301
+L41	1305
+#
+# RESTORE upper case database and verify content
+#
+RESTORE FROM 'upup.bup';
+backup_id
+#
+
+SHOW DATABASES WHERE `Database` LIKE 'UPPER';
+Database
+UPPER
+SHOW TABLES IN UPPER;
+Tables_in_upper
+ucase
+SELECT * FROM UPPER.ucase;
+a	b
+#
+# Drop the databases
+#
+DROP TABLE lower.lcase;
+DROP TABLE UPPER.ucase;
+DROP DATABASE lower;
+DROP DATABASE UPPER;
+#
+# RESTORE databases with inverted case
+#
+# RESTORE lower case database and verify content
+#
+RESTORE FROM 'lowup.bup';
+backup_id
+#
+
+SHOW DATABASES WHERE `Database` LIKE 'lower';
+Database
+lower
+SHOW TABLES IN lower;
+Tables_in_lower
+lcase
+SELECT * FROM lower.lcase;
+a	b
+L41	1300
+L01	1453
+L00	1000
+L41	1301
+L41	1305
+#
+# RESTORE upper case database and verify content
+#
+RESTORE FROM 'uplow.bup';
+backup_id
+#
+
+SHOW DATABASES WHERE `Database` LIKE 'UPPER';
+Database
+UPPER
+SHOW TABLES IN UPPER;
+Tables_in_upper
+ucase
+SELECT * FROM UPPER.ucase;
+a	b
+#
+# Drop the databases
+#
+DROP TABLE lower.lcase;
+DROP TABLE UPPER.ucase;
+DROP DATABASE lower;
+DROP DATABASE UPPER;
+#
+# RESTORE backup image with both databases and verify content
+#
+RESTORE FROM 'bothcases.bup';
+backup_id
+#
+
+SHOW DATABASES WHERE `Database` LIKE 'lower';
+Database
+lower
+SHOW TABLES IN lower;
+Tables_in_lower
+lcase
+SELECT * FROM lower.lcase;
+a	b
+L41	1300
+L01	1453
+L00	1000
+L41	1301
+L41	1305
+
+SHOW DATABASES WHERE `Database` LIKE 'UPPER';
+Database
+UPPER
+SHOW TABLES IN UPPER;
+Tables_in_upper
+ucase
+SELECT * FROM UPPER.ucase;
+a	b
+#
+# Verify that BACKUP errors if the same database is written twice, 
+# but with different case
+#
+BACKUP DATABASE upper, UPPER to 'notunique.bup';
+ERROR 42000: Not unique database: 'UPPER'
+SHOW WARNINGS;
+Level	Code	Message
+Error	####	Not unique database: 'UPPER'
+Warning	####	Operation aborted
+#
+# Verify that BACKUP error message has lower case dbname when not found
+#
+BACKUP DATABASE NoTThErE to 'notthere.bup';
+ERROR 42000: Unknown database 'NoTThErE'
+SHOW WARNINGS;
+Level	Code	Message
+Error	####	Unknown database 'NoTThErE'
+Warning	####	Operation aborted
+#
+# CLEANUP
+#
+DROP TABLE lower.lcase;
+DROP TABLE UPPER.ucase;
+DROP DATABASE lower;
+DROP DATABASE UPPER;

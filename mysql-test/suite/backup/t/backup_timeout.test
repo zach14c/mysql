@@ -1,5 +1,5 @@
 #
-# This test is for the DDL blocker timeout feature.
+# This test is for the backup metadata lock (BML) timeout feature.
 #
 
 --source include/have_innodb.inc
@@ -7,7 +7,7 @@
 --source include/not_embedded.inc
 --source include/have_debug_sync.inc
 
-let MYSQLD_DATADIR= `select @@datadir`;
+let MYSQLD_BACKUPDIR= `select @@backupdir`;
 
 SET DEBUG_SYNC= 'reset';
 
@@ -16,7 +16,7 @@ SET DEBUG_SYNC= 'reset';
 #
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak;
+--remove_file $MYSQLD_BACKUPDIR/bup_blocker.bak;
 
 #
 # Connections used in this test
@@ -36,19 +36,19 @@ connection con1;
 
 # Create data for this test and tailor it to the test.
 --disable_warnings
-DROP DATABASE IF EXISTS bup_ddl_blocker;
+DROP DATABASE IF EXISTS bup_bml;
 --enable_warnings
 
-CREATE DATABASE bup_ddl_blocker;
+CREATE DATABASE bup_bml;
 
 # Create a table and load it with data.
 --echo con1: Creating tables
-CREATE TABLE bup_ddl_blocker.t1 (col_a CHAR(40)) ENGINE=INNODB;
+CREATE TABLE bup_bml.t1 (col_a CHAR(40)) ENGINE=INNODB;
 
 --echo con1: Loading data
-INSERT INTO bup_ddl_blocker.t1 VALUES ("01 Some data to test");
-INSERT INTO bup_ddl_blocker.t1 VALUES ("02 Some data to test");
-INSERT INTO bup_ddl_blocker.t1 VALUES ("03 Some data to test");
+INSERT INTO bup_bml.t1 VALUES ("01 Some data to test");
+INSERT INTO bup_bml.t1 VALUES ("02 Some data to test");
+INSERT INTO bup_bml.t1 VALUES ("03 Some data to test");
 
 SHOW VARIABLES LIKE 'backup_wait%';
 
@@ -58,27 +58,27 @@ SHOW VARIABLES LIKE 'backup_wait%';
 --echo Part A
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_bml.bak
 
 connection con1;
 
 --echo con1: Activate synchronization points for backup.
-SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_blocked WAIT_FOR timeout_done';
+SET DEBUG_SYNC= 'after_bml_activated SIGNAL bup_blocked WAIT_FOR timeout_done';
 
---echo con1: Get a backup going and stop after the DDL blocker is fired.
-send BACKUP DATABASE bup_ddl_blocker TO "bup_ddl_blocker.bak";
+--echo con1: Get a backup going and stop after BML is activated.
+send BACKUP DATABASE bup_bml TO "bup_bml.bak";
 
 connection con2;
 
 SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
 
---echo Set ddl timeout to 1 second
+--echo Set timeout to 1 second
 SET backup_wait_timeout = 1; 
 SHOW VARIABLES LIKE 'backup_wait%';
 
 --echo con2: Try a ddl operation and watch it expire
 --error ER_DDL_TIMEOUT
-CREATE TABLE bup_ddl_blocker.t2 (col_a CHAR(40)) ENGINE=MEMORY;
+CREATE TABLE bup_bml.t2 (col_a CHAR(40)) ENGINE=MEMORY;
 
 connection con5;
 --echo release the lock.
@@ -98,27 +98,27 @@ reap;
 --echo Part B
 
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_bml.bak
 
 connection con1;
 
 --echo con1: Activate synchronization points for backup.
-SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_blocked WAIT_FOR timeout_done';
+SET DEBUG_SYNC= 'after_bml_activated SIGNAL bup_blocked WAIT_FOR timeout_done';
 
 --echo con1: Get a backup going and stop after the DDL blocker is fired.
-send BACKUP DATABASE bup_ddl_blocker TO "bup_ddl_blocker.bak";
+send BACKUP DATABASE bup_bml TO "bup_bml.bak";
 
 connection con2;
 
 SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
 
---echo Set ddl timeout to 0 seconds
+--echo Set timeout to 0 seconds
 SET backup_wait_timeout = 0; 
 SHOW VARIABLES LIKE 'backup_wait%';
 
 --echo con2: Try a ddl operation and it should expire
 --error ER_DDL_TIMEOUT
-CREATE TABLE bup_ddl_blocker.t3 (col_a CHAR(40)) ENGINE=MEMORY;
+CREATE TABLE bup_bml.t3 (col_a CHAR(40)) ENGINE=MEMORY;
 
 connection con3;
 
@@ -126,7 +126,7 @@ SET backup_wait_timeout = 100;
 SHOW VARIABLES LIKE 'backup_wait%';
 
 --echo con3: Try a ddl operation and it should not expire
-send CREATE TABLE bup_ddl_blocker.t3 (col_a CHAR(40)) ENGINE=MEMORY;
+send CREATE TABLE bup_bml.t3 (col_a CHAR(40)) ENGINE=MEMORY;
 
 connection con5;
 --echo release the lock.
@@ -142,7 +142,7 @@ reap;
 connection con3;
 reap;
 
-USE bup_ddl_blocker;
+USE bup_bml;
 SHOW FULL TABLES;
 
 #
@@ -159,7 +159,8 @@ SHOW VARIABLES LIKE 'backup_wait%';
 SET backup_wait_timeout = DEFAULT; 
 SHOW VARIABLES LIKE 'backup_wait%';
 
-DROP DATABASE bup_ddl_blocker;
+DROP DATABASE bup_bml;
 
 SET DEBUG_SYNC= 'reset';
---remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak
+
+--remove_file $MYSQLD_BACKUPDIR/bup_bml.bak

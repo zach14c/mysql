@@ -300,6 +300,10 @@ void _myisam_log_command(IO_CACHE *log, enum myisam_log_commands command,
   my_bool logical= (log == &myisam_logical_log);
   MYISAM_SHARE *share;
   File file;
+  DBUG_ENTER("_myisam_log_command");
+  DBUG_PRINT("mi_log", ("command: %u '%s'  buffert: '%.*s'  result: %d",
+                        command, mi_log_command_name[command],
+                        length, buffert, result));
 
   /*
     Speed in online backup (physical log) matters more than in debugging
@@ -308,7 +312,7 @@ void _myisam_log_command(IO_CACHE *log, enum myisam_log_commands command,
   if (unlikely(logical))
   {
     file= ((MI_INFO *)info_or_share)->dfile;
-    LINT_INIT(share);
+    share= ((MI_INFO *)info_or_share)->s;
   }
   else
   {
@@ -319,6 +323,13 @@ void _myisam_log_command(IO_CACHE *log, enum myisam_log_commands command,
   DBUG_ASSERT(command == MI_LOG_OPEN  || command == MI_LOG_DELETE ||
               command == MI_LOG_CLOSE || command == MI_LOG_EXTRA ||
               command == MI_LOG_LOCK  || command == MI_LOG_DELETE_ALL);
+
+  /* Do not log operations on temporary tables. */
+  DBUG_PRINT("mi_log", ("table: '%s'  temporary: %d",
+                        share->unresolv_file_name, share->temporary));
+  if (share->temporary)
+    goto end;
+
   old_errno=my_errno;
   DBUG_ASSERT(((uint)result) <= UINT_MAX16);
   if (file >= UINT_MAX16 || length >= UINT_MAX16)
@@ -422,6 +433,8 @@ retry:
   }
   pthread_mutex_unlock(&THR_LOCK_myisam_log);
   my_errno=old_errno;
+ end:
+  DBUG_VOID_RETURN;
 }
 
 
@@ -440,17 +453,26 @@ void _myisam_log_record_logical(enum myisam_log_commands command,
                                 MI_INFO *info, const uchar *record,
                                 my_off_t filepos, int result)
 {
+  MYISAM_SHARE *share= info->s;
   uchar header[22],*pos;
   int error,old_errno;
   uint length, headerlen;
   ulong pid=(ulong) GETPID();
+  DBUG_ENTER("_myisam_log_record_logical");
 
   DBUG_ASSERT(command == MI_LOG_UPDATE || command == MI_LOG_WRITE);
+
+  /* Do not log operations on temporary tables. */
+  DBUG_PRINT("mi_log", ("table: '%s'  temporary: %d",
+                        share->unresolv_file_name, share->temporary));
+  if (share->temporary)
+    goto end;
+
   old_errno=my_errno;
-  if (!info->s->base.blobs)
-    length=info->s->base.reclength;
+  if (!share->base.blobs)
+    length=share->base.reclength;
   else
-    length=info->s->base.reclength+ _mi_calc_total_blob_length(info,record);
+    length=share->base.reclength+ _mi_calc_total_blob_length(info,record);
   DBUG_ASSERT(((uint)result) <= UINT_MAX16);
   if (info->dfile >= UINT_MAX16 || filepos >= UINT_MAX32 ||
       length >= UINT_MAX16)
@@ -479,12 +501,12 @@ void _myisam_log_record_logical(enum myisam_log_commands command,
   error= my_lock(myisam_logical_log.file, F_WRLCK, 0L, F_TO_EOF,
                  MYF(MY_SEEK_NOT_DONE));
   (void) my_b_write(&myisam_logical_log, header, headerlen);
-  (void) my_b_write(&myisam_logical_log, record, info->s->base.reclength);
-  if (info->s->base.blobs)
+  (void) my_b_write(&myisam_logical_log, record, share->base.reclength);
+  if (share->base.blobs)
   {
     MI_BLOB *blob,*end;
 
-    for (end=info->blobs+info->s->base.blobs, blob= info->blobs;
+    for (end=info->blobs+share->base.blobs, blob= info->blobs;
 	 blob != end ;
 	 blob++)
     {
@@ -499,6 +521,8 @@ void _myisam_log_record_logical(enum myisam_log_commands command,
                    MYF(MY_SEEK_NOT_DONE));
   pthread_mutex_unlock(&THR_LOCK_myisam_log);
   my_errno=old_errno;
+ end:
+  DBUG_VOID_RETURN;
 }
 
 

@@ -1971,10 +1971,12 @@ extern ulong specialflag;
 #ifdef MYSQL_SERVER
 extern ulong current_pid;
 extern ulong expire_logs_days;
-extern uint sync_binlog_period, sync_relaylog_period;
+extern uint sync_binlog_period, sync_relaylog_period, 
+            sync_relayloginfo_period, sync_masterinfo_period;
 extern ulong opt_tc_log_size, tc_log_max_pages_used, tc_log_page_size;
 extern ulong tc_log_page_waits;
 extern my_bool relay_log_purge, opt_innodb_safe_binlog, opt_innodb;
+extern my_bool relay_log_recovery;
 extern uint test_flags,select_errors,ha_open_options;
 extern uint protocol_version, mysqld_port, dropping_tables;
 extern uint delay_key_write_options;
@@ -2014,6 +2016,7 @@ extern my_bool opt_readonly, lower_case_file_system;
 extern my_bool opt_enable_named_pipe, opt_sync_frm, opt_allow_suspicious_udfs;
 extern my_bool opt_secure_auth;
 extern char* opt_secure_file_priv;
+extern char* opt_secure_backup_file_priv;
 extern my_bool opt_log_slow_admin_statements, opt_log_slow_slave_statements;
 extern my_bool sp_automatic_privileges, opt_noacl;
 extern my_bool opt_old_style_user_limits, trust_function_creators;
@@ -2104,6 +2107,9 @@ extern SHOW_COMP_OPTION have_geometry, have_rtree_keys;
 extern SHOW_COMP_OPTION have_crypt;
 extern SHOW_COMP_OPTION have_compress;
 
+extern int orig_argc;
+extern char **orig_argv;
+extern const char *load_default_groups[];
 
 #ifndef __WIN__
 extern pthread_t signal_thread;
@@ -2493,7 +2499,8 @@ extern "C" void unireg_abort(int exit_code) __attribute__((noreturn));
 void kill_delayed_threads(void);
 bool check_stack_overrun(THD *thd, long margin, uchar *dummy);
 #else
-#define unireg_abort(exit_code) DBUG_RETURN(exit_code)
+extern "C" void unireg_clear(int exit_code);
+#define unireg_abort(exit_code) do { unireg_clear(exit_code); DBUG_RETURN(exit_code); } while(0)
 inline void kill_delayed_threads(void) {}
 #define check_stack_overrun(A, B, C) 0
 #endif

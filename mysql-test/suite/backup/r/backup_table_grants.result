@@ -1,0 +1,86 @@
+DELETE FROM mysql.user WHERE user='mysqluser1';
+DELETE FROM mysql.db WHERE user="mysqluser1";
+DELETE FROM mysql.tables_priv WHERE user="mysqluser1";
+DELETE FROM mysql.columns_priv WHERE user="mysqluser1";
+FLUSH PRIVILEGES;
+DROP DATABASE IF EXISTS mysqltest1;
+#
+# Bug#41578 - Drop column/table with grants followed by restore fails.
+#
+# Create database and tables
+CREATE DATABASE mysqltest1;
+USE mysqltest1;
+CREATE TABLE t1(col1 INT, col2 CHAR(20));
+CREATE TABLE t2(col1 INT, col2 CHAR(20));
+#
+# Create users and privileges
+CREATE USER 'mysqluser1'@'%';
+GRANT SELECT(col1), UPDATE(col2) ON mysqltest1.t1 TO 'mysqluser1'@'%';
+GRANT INSERT ON mysqltest1.t2 TO 'mysqluser1'@'%';
+SHOW GRANTS FOR 'mysqluser1';
+Grants for mysqluser1@%
+GRANT USAGE ON *.* TO 'mysqluser1'@'%'
+GRANT INSERT ON `mysqltest1`.`t2` TO 'mysqluser1'@'%'
+GRANT SELECT (col1), UPDATE (col2) ON `mysqltest1`.`t1` TO 'mysqluser1'@'%'
+CREATE USER 'mysqluser2'@'%';
+GRANT SELECT(col1), UPDATE(col2) ON mysqltest1.t1 TO 'mysqluser2'@'%';
+GRANT INSERT ON mysqltest1.t2 TO 'mysqluser2'@'%';
+SHOW GRANTS FOR 'mysqluser2';
+Grants for mysqluser2@%
+GRANT USAGE ON *.* TO 'mysqluser2'@'%'
+GRANT INSERT ON `mysqltest1`.`t2` TO 'mysqluser2'@'%'
+GRANT SELECT (col1), UPDATE (col2) ON `mysqltest1`.`t1` TO 'mysqluser2'@'%'
+#
+# Drop objects
+ALTER TABLE mysqltest1.t1 DROP COLUMN col2;
+DROP TABLE t2;
+SHOW GRANTS FOR 'mysqluser1';
+Grants for mysqluser1@%
+GRANT USAGE ON *.* TO 'mysqluser1'@'%'
+GRANT SELECT (col1), UPDATE (col2) ON `mysqltest1`.`t1` TO 'mysqluser1'@'%'
+GRANT INSERT ON `mysqltest1`.`t2` TO 'mysqluser1'@'%'
+SHOW GRANTS FOR 'mysqluser2';
+Grants for mysqluser2@%
+GRANT USAGE ON *.* TO 'mysqluser2'@'%'
+GRANT INSERT ON `mysqltest1`.`t2` TO 'mysqluser2'@'%'
+GRANT SELECT (col1), UPDATE (col2) ON `mysqltest1`.`t1` TO 'mysqluser2'@'%'
+#
+# Backup
+BACKUP DATABASE mysqltest1 TO 'mysqltest1.bak';
+backup_id
+#
+# Remove database including tables and privileges for restore
+DROP DATABASE mysqltest1;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'mysqluser1'@'%';
+SHOW GRANTS FOR 'mysqluser1';
+Grants for mysqluser1@%
+GRANT USAGE ON *.* TO 'mysqluser1'@'%'
+DROP USER 'mysqluser2'@'%';
+SHOW GRANTS FOR 'mysqluser2';
+ERROR 42000: There is no such grant defined for user 'mysqluser2' on host '%'
+#
+# Restore
+RESTORE FROM 'mysqltest1.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+Warning	#	The grant 'INSERT ON mysqltest1.t2' for the user 'mysqluser2'@'%' was skipped because the user does not exist.
+Warning	#	The grant 'SELECT(col1) ON mysqltest1.t1' for the user 'mysqluser2'@'%' was skipped because the user does not exist.
+Warning	#	The grant 'UPDATE(col2) ON mysqltest1.t1' for the user 'mysqluser2'@'%' was skipped because the user does not exist.
+SHOW GRANTS FOR 'mysqluser1';
+Grants for mysqluser1@%
+GRANT USAGE ON *.* TO 'mysqluser1'@'%'
+GRANT SELECT (col1), UPDATE (col2) ON `mysqltest1`.`t1` TO 'mysqluser1'@'%'
+GRANT INSERT ON `mysqltest1`.`t2` TO 'mysqluser1'@'%'
+SHOW GRANTS FOR 'mysqluser2';
+ERROR 42000: There is no such grant defined for user 'mysqluser2' on host '%'
+SELECT * FROM t1;
+col1
+SELECT * FROM t2;
+ERROR 42S02: Table 'mysqltest1.t2' doesn't exist
+#
+# Cleanup
+USE test;
+DROP DATABASE mysqltest1;
+DROP USER 'mysqluser1'@'%';

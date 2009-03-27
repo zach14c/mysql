@@ -481,6 +481,7 @@ SHOW DATABASES;
 Database
 information_schema
 ?
+mtr
 mysql
 test
 SHOW FULL TABLES;
@@ -510,6 +511,7 @@ SHOW DATABASES;
 Database
 information_schema
 ¥
+mtr
 mysql
 test
 SET NAMES utf8;

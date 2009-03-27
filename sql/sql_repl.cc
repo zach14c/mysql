@@ -1415,6 +1415,20 @@ bool change_master(THD* thd, Master_info* mi)
   }
 
   thd_proc_info(thd, "Changing master");
+  /* 
+     We need to check if there is an empty master_host. Otherwise
+     change master succeeds, a master.info file is created containing 
+     empty master_host string and when issuing: start slave; an error
+     is thrown stating that the server is not configured as slave.
+     (See BUG#28796).
+  */
+  if(lex_mi->host && !*lex_mi->host) 
+  {
+    my_error(ER_WRONG_ARGUMENTS, MYF(0), "MASTER_HOST");
+    unlock_slave_threads(mi);
+    DBUG_RETURN(TRUE);
+  }
+
   // TODO: see if needs re-write
   if (init_master_info(mi, master_info_file, relay_log_info_file, 0,
 		       thread_mask))
@@ -2019,7 +2033,6 @@ int log_loaded_block(IO_CACHE* file,
                                    lf_info->log_delayed);
       mysql_bin_log.write(&b);
       lf_info->wrote_create_file= 1;
-      DBUG_SYNC_POINT("debug_lock.created_file_event",10);
     }
   }
   DBUG_RETURN(0);
@@ -2080,6 +2093,16 @@ static sys_var_const    sys_relay_log_info_file(&vars, "relay_log_info_file",
                                       (uchar*) &relay_log_info_file);
 static sys_var_bool_ptr	sys_relay_log_purge(&vars, "relay_log_purge",
 					    &relay_log_purge);
+static sys_var_bool_ptr sys_relay_log_recovery(&vars, "relay_log_recovery",
+                                               &relay_log_recovery);
+static sys_var_int_ptr sys_sync_binlog_period(&vars, "sync_binlog",
+                                              &sync_binlog_period);
+static sys_var_int_ptr sys_sync_relaylog_period(&vars, "sync_relay_log",
+                                                &sync_relaylog_period);
+static sys_var_int_ptr sys_sync_relayloginfo_period(&vars, "sync_relay_log_info",
+                                                    &sync_relayloginfo_period);
+static sys_var_int_ptr sys_sync_masterinfo_period(&vars, "sync_master_info",
+                                                  &sync_masterinfo_period);
 static sys_var_const    sys_relay_log_space_limit(&vars,
                                                   "relay_log_space_limit",
                                                   OPT_GLOBAL, SHOW_LONGLONG,
@@ -2096,8 +2119,6 @@ static sys_var_const    sys_slave_skip_errors(&vars, "slave_skip_errors",
                                               (uchar*) slave_skip_error_names);
 static sys_var_long_ptr	sys_slave_trans_retries(&vars, "slave_transaction_retries",
 						&slave_trans_retries);
-static sys_var_int_ptr sys_sync_binlog_period(&vars, "sync_binlog", &sync_binlog_period);
-static sys_var_int_ptr sys_sync_relaylog_period(&vars, "sync_relay_log", &sync_relaylog_period);
 static sys_var_slave_skip_counter sys_slave_skip_counter(&vars, "sql_slave_skip_counter");
 
 

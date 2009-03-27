@@ -59,7 +59,7 @@
 class Master_info : public Slave_reporting_capability
 {
  public:
-  Master_info();
+  Master_info(bool is_slave_recovery);
   ~Master_info();
   bool shall_ignore_server_id(ulong s_id);
 
@@ -106,6 +106,13 @@ class Master_info : public Slave_reporting_capability
 
   */
   long clock_diff_with_master;
+
+  /*
+   * Keeps track of the number of events before fsyncing.
+   * The option --sync-master-info determines how many
+   * events should happen before fsyncing.
+   */
+  uint sync_counter;
 };
 
 void init_master_log_pos(Master_info* mi);

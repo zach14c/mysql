@@ -27,6 +27,12 @@ extern "C" {
 struct st_thr_lock;
 extern ulong locks_immediate,locks_waited ;
 
+/**
+  Lock types are used to request a lock on a table. Changes in this enumeration
+  might affect transactional locks as well.
+  @see set_handler_table_locks
+  @see read_lock_type_for_table
+*/
 enum thr_lock_type { TL_IGNORE=-1,
 		     TL_UNLOCK,			/* UNLOCK ANY LOCK */
                      /*

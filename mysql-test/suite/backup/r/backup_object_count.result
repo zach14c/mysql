@@ -1,0 +1,81 @@
+#
+# Test 1 - Count database, table and view
+#
+CREATE DATABASE objectcount;
+USE objectcount;
+CREATE TABLE t1(id int);
+CREATE TABLE t2(id int);
+Creating view
+CREATE VIEW v1 AS SELECT * FROM t1;
+CREATE VIEW v2 AS SELECT * FROM t2;
+# Perform backup
+BACKUP DATABASE objectcount to 'objectcount.bak';
+backup_id
+#
+
+# num_objects should be 5: 1 db, 2 tables, 2 views
+SELECT num_objects FROM mysql.backup_history ORDER BY backup_id DESC LIMIT 1;
+num_objects
+5
+
+#
+# Test 2 - Count routines
+#
+CREATE TRIGGER trg BEFORE INSERT ON t1 FOR EACH ROW SET @a:=1;
+CREATE PROCEDURE foo() INSERT INTO t2 VALUES (42);
+CREATE FUNCTION bar(a int) RETURNS INTEGER
+BEGIN
+RETURN a;
+END;
+||
+# Perform backup
+BACKUP DATABASE objectcount to 'objectcount.bak';
+backup_id
+#
+
+# num_objects should be 8: 5 in test 1 + 1 trigger, 1 proc, 1 func
+SELECT num_objects FROM mysql.backup_history ORDER BY backup_id DESC LIMIT 1;
+num_objects
+8
+
+#
+# Test 3 - Count tablespace
+#
+CREATE TABLESPACE ts ADD DATAFILE 'afile' ENGINE=FALCON;
+CREATE TABLE t3 (i INT) ENGINE=FALCON TABLESPACE ts;
+# Perform backup
+BACKUP DATABASE objectcount to 'objectcount.bak';
+backup_id
+#
+
+# num_objects should be 10: 8 in test 2 + 1 ts, 1 table
+SELECT num_objects FROM mysql.backup_history ORDER BY backup_id DESC LIMIT 1;
+num_objects
+10
+
+#
+# Test 4 - Grants and users are *not* counted
+#
+CREATE USER 'bup_user1'@'%';
+GRANT ALL ON objectcount.* TO 'bup_user1'@'%';
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR 'bup_user1'@'%';
+Grants for bup_user1@%
+GRANT USAGE ON *.* TO 'bup_user1'@'%'
+GRANT ALL PRIVILEGES ON `objectcount`.* TO 'bup_user1'@'%'
+# Perform backup
+BACKUP DATABASE objectcount to 'objectcount.bak';
+backup_id
+#
+
+# num_objects should be 10: 10 in test 3 + 0
+SELECT num_objects FROM mysql.backup_history ORDER BY backup_id DESC LIMIT 1;
+num_objects
+10
+
+#
+# Cleanup
+#
+DROP USER bup_user1;
+DROP DATABASE objectcount;
+DROP TABLESPACE ts ENGINE=FALCON;

@@ -186,6 +186,18 @@ extern char *my_strndup(const char *from, size_t length,
 #define ORIG_CALLER_INFO    /* nothing */
 #endif
 
+/*
+  ERROR INJECTION: Non-thread-safe global variable to request error inject.
+  Set this variable to non-zero to request the next my_malloc() to fail.
+  This works with my_malloc.c:my_malloc() and safemalloc.c:_mymalloc().
+  If using this in tests, note that the error messages produced by
+  my_malloc and safemalloc are different. You may need to modify the
+  results with --replace_regex. You may find examples in
+  client/backup_stream.c and backup_client_coverage.test.
+  The global variable is defined in my_static.c.
+*/
+IF_DBUG(extern int my_malloc_error_inject);
+
 #ifdef HAVE_LARGE_PAGES
 extern uint my_get_large_page_size(void);
 extern uchar * my_large_malloc(size_t size, myf my_flags);
@@ -686,6 +698,7 @@ extern void     my_osmaperr(unsigned long last_error);
 extern void TERMINATE(FILE *file, uint flag);
 #endif
 extern void init_glob_errs(void);
+extern void wait_for_free_space(const char *filename, int errors);
 extern FILE *my_fopen(const char *FileName,int Flags,myf MyFlags);
 extern FILE *my_fdopen(File Filedes,const char *name, int Flags,myf MyFlags);
 extern int my_fclose(FILE *fd,myf MyFlags);
@@ -894,14 +907,17 @@ extern void *memdup_root(MEM_ROOT *root,const void *str, size_t len);
 extern int get_defaults_options(int argc, char **argv,
                                 char **defaults, char **extra_defaults,
                                 char **group_suffix);
+extern int my_load_defaults(const char *conf_file, const char **groups,
+                            int *argc, char ***argv, const char ***);
 extern int load_defaults(const char *conf_file, const char **groups,
-			 int *argc, char ***argv);
+                         int *argc, char ***argv);
 extern int modify_defaults_file(const char *file_location, const char *option,
                                 const char *option_value,
                                 const char *section_name, int remove_option);
 extern int my_search_option_files(const char *conf_file, int *argc,
                                   char ***argv, uint *args_used,
-                                  Process_option_func func, void *func_ctx);
+                                  Process_option_func func, void *func_ctx,
+                                  const char **default_directories);
 extern void free_defaults(char **argv);
 extern void my_print_default_files(const char *conf_file);
 extern void print_defaults(const char *conf_file, const char **groups);

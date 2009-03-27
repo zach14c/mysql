@@ -12,14 +12,14 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 
-let $MYSQLD_DATADIR=`select @@datadir`;
+let $MYSQLD_BACKUPDIR=`select @@backupdir`;
 
 --disable_warnings
 DROP DATABASE IF EXISTS backup_fkey;
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup_fkey.bak;
+--remove_file $MYSQLD_BACKUPDIR/backup_fkey.bak;
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup_fkey_orig.bak;
+--remove_file $MYSQLD_BACKUPDIR/backup_fkey_orig.bak;
 --enable_warnings
 
 CREATE DATABASE backup_fkey;
@@ -111,7 +111,7 @@ INSERT INTO backup_fkey.t1 VALUES ("06 Test #2 - foreign key constraints");
 INSERT INTO backup_fkey.t1 VALUES ("07 Test #2 - foreign key constraints"); 
 
 --echo Backup the data
---remove_file $MYSQLD_DATADIR/backup_fkey.bak
+--remove_file $MYSQLD_BACKUPDIR/backup_fkey.bak
 --replace_column 1 #
 BACKUP DATABASE backup_fkey TO 'backup_fkey.bak';
 
@@ -148,6 +148,6 @@ SHOW VARIABLES LIKE 'foreign_key_checks%';
 
 DROP DATABASE backup_fkey;
 
---remove_file $MYSQLD_DATADIR/backup_fkey.bak
---remove_file $MYSQLD_DATADIR/backup_fkey_orig.bak
+--remove_file $MYSQLD_BACKUPDIR/backup_fkey.bak
+--remove_file $MYSQLD_BACKUPDIR/backup_fkey_orig.bak
 

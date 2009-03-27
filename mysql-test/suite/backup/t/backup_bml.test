@@ -1,0 +1,693 @@
+#
+# This test is for the Backup Metadata Lock.
+#
+# Per WL#4644, BML blocks execution of the following statements.
+#
+#  DROP   DATABASE/TABLE/VIEW/FUNCTION/PROCEDURE/EVENT/TRIGGER/INDEX
+#  DROP   USER/TABLESPACE
+#  CREATE DATABASE/TABLE/VIEW/FUNCTION/PROCEDURE/EVENT/TRIGGER/INDEX
+#  ALTER  DATABASE/TABLE/VIEW/FUNCTION/PROCEDURE/EVENT/TABLESPACE
+#  RENAME TABLE/USER
+#  GRANT/REVOKE
+#  TRUNCATE/OPTIMIZE/REPAIR TABLE
+#
+# This gives 32 statements which are blocked by DML.
+#
+# For each blocked statement the following requirements will be checked:
+#
+# a) Statement that is running when BACKUP/RESTORE starts is allowed to complete 
+#    and BACKUP/RESTORE blocks waiting for its completion.
+# b) Once BACKUP/RESTORE is started, the statement is blocked and waits for
+#    the BACKUP/RESTORE statement to complete.
+# c) Statmenents blocked by BML do not block each other. 
+#
+# Additionally:
+#
+# d) Statements not listed above should not be blocked by BML.
+#
+# The above assumptions will be tested using a "subroutine" bml_test.inc.
+#
+# Note: the fact that blocked statement will timeout after specified time is
+# tested in backup_timeout test.
+#
+
+--source include/not_embedded.inc
+--source include/have_innodb.inc
+--source include/have_falcon.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
+
+#
+# Remove backup files (if they exist)
+#
+
+let $bdir=`select @@backupdir`;
+--error 0,1
+--remove_file $bdir/bml_test_orig.bkp;
+--error 0,1
+--remove_file $bdir/bml_test.bkp;
+
+#
+# Connections used by bml_test.inc
+#
+
+connect (con1,localhost,root,,);
+connect (con2,localhost,root,,);
+connect (con3,localhost,root,,);
+connect (con4,localhost,root,,);
+connect (con5,localhost,root,,);
+
+#
+# Create bml_test database
+#
+
+--disable_warnings
+DROP DATABASE IF EXISTS bml_test;
+--enable_warnings
+CREATE DATABASE bml_test;
+
+#
+# Infrastructure for automatic generation of DDL statements.
+#
+
+USE test;
+
+CREATE TABLE objects (pos int, type char(10), name char(16), args text);
+
+--delimiter \\
+
+CREATE FUNCTION drop_stmt(pos_arg int) RETURNS text
+BEGIN
+  DECLARE stmt text;
+  SELECT concat('DROP ', type, ' ', name)
+    INTO stmt
+    FROM test.objects WHERE pos=pos_arg;
+  RETURN stmt;
+END\\
+
+
+CREATE FUNCTION create_stmt(pos_arg int) RETURNS text
+BEGIN
+  DECLARE stmt text;
+  SELECT concat('CREATE ', type, ' ', name, args)
+    INTO stmt
+    FROM test.objects WHERE pos=pos_arg;
+  RETURN stmt;
+END\\
+
+CREATE FUNCTION alter_stmt(pos_arg int) RETURNS text
+BEGIN
+  DECLARE stmt text;
+  SELECT concat('ALTER ', type, ' ', name, args)
+    INTO stmt
+    FROM test.objects WHERE pos=pos_arg;
+  RETURN stmt;
+END\\
+
+--delimiter ;
+
+
+
+################################################################
+# 
+# First group of statements.
+#
+# drop: DATABASE TABLE VIEW FUNCTION PROCEDURE EVENT TRIGGER INDEX
+# create: DATABASE TABLE VIEW FUNCTION PROCEDURE EVENT TRIGGER INDEX
+#
+################################################################
+
+USE test;
+
+TRUNCATE TABLE test.objects;
+INSERT INTO test.objects VALUES 
+  (1, 'DATABASE', 'bml_test_db1', ''), 
+  (2, 'TABLE',    't1',	'(a int)'), 
+  (3, 'VIEW',	  'v1',	' AS SELECT * FROM t2'), 
+  (4, 'FUNCTION', 'f1',	'() RETURNS int RETURN 1'),
+  (5, 'PROCEDURE','p1',	'() SET @foo=1'),
+  (6, 'EVENT',	  'e1',	' ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1'),
+  (7, 'TRIGGER',  'r1',	' AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1'),
+  (8, 'INDEX',	  'i1 ON t2', '(b)');
+
+--delimiter \\
+
+DROP PROCEDURE IF EXISTS test.check_results\\
+CREATE PROCEDURE test.check_results()
+BEGIN
+  # show databases
+  SHOW DATABASES LIKE 'bml%';
+  # show objects in bml_test database
+  SELECT table_name AS name, table_type AS type
+    FROM information_schema.tables
+    WHERE table_schema = 'bml_test'
+  UNION SELECT routine_name , routine_type
+    FROM information_schema.routines
+    WHERE routine_schema = 'bml_test'
+  UNION SELECT event_name, 'EVENT'
+    FROM information_schema.events
+    WHERE event_schema = 'bml_test'
+  UNION SELECT trigger_name, 'TRIGGER'
+    FROM information_schema.triggers
+    WHERE trigger_schema = 'bml_test';
+  # show definiton of t2 to see the index if created
+  SHOW CREATE TABLE bml_test.t2;
+END\\
+
+--delimiter ;
+
+#
+# Populate bml_test database 
+#
+
+USE bml_test;
+
+# base table for the view
+CREATE TABLE t2 (b int);
+
+# all the objects specified in test.objects table
+let $count=`SELECT count(*) FROM test.objects`;
+let $iter= $count;
+while ($iter)
+{
+  let $pos= $count - $iter + 1;
+  # Create objects in correct order - starting from 1
+  let $stmt=`SELECT test.create_stmt($count - $iter + 1)`;
+  --eval $stmt
+  dec $iter;
+}
+
+# Show contents of the database and backup it for the future.
+CALL test.check_results();
+--replace_column 1 #
+BACKUP DATABASE bml_test, bml_test_db1 TO 'bml_test_orig.bkp';
+
+#
+# Test the statements:
+#
+# Let Ci be the CREATE statement for object i in table objects, Di be the 
+# DELETE statement for that object. Statements will be tested in the following
+# order:
+#
+#	DDL1	DDL2	DDL3	DDL4	backup or restore
+#      ==================================================
+#	C3	D4	D1	C2	BACKUP
+#	C1	D2	D3	C4	RESTORE
+#	C7	D8	D5	C6	BACKUP
+#	C3	D4	D7	C8	RESTORE
+#	and so on ...
+#
+# Note: The order *is* important. RESTORE is using the image created by previous
+# BACKUP and it is important that this image does not contain the object to be
+# created by DDL4. 
+# For example, DDL2 drops object 4 before first BACKUP completes and thus this 
+# object will not be included in the backup image. This, when DDL4 is executed 
+# after RESTORE has completed, it will create object 4 without an error.
+#
+
+let $pos=0;
+while (`select $pos < $count`)
+{
+  let $pos1= 1 + (($pos+0) % $count);	  # position of obj1
+  let $pos2= 1 + (($pos+1) % $count);	  # position of obj2
+  let $pos3= 1 + (($pos+2) % $count);	  # position of obj3
+  let $pos4= 1 + (($pos+3) % $count);	  # position of obj4
+
+  let $C1= `select test.create_stmt($pos1)`;
+  let $D1= `select test.drop_stmt($pos1)`;
+  let $C2= `select test.create_stmt($pos2)`;
+  let $D2= `select test.drop_stmt($pos2)`;
+  let $C3= `select test.create_stmt($pos3)`;
+  let $D3= `select test.drop_stmt($pos3)`;
+  let $C4= `select test.create_stmt($pos4)`;
+  let $D4= `select test.drop_stmt($pos4)`;
+
+  #
+  #  Testing BACKUP operation with DDLs on objects at pos ($pos, $pos+1)
+  #
+  #  Note: obj4 will be deleted by DDL2 before BACKUP completes and thus
+  #  will not be included in the backup image.
+  #
+
+  let $DDL1= $C3;
+  let $DDL2= $D4; 
+  let $DDL3= $D1;
+  let $DDL4= $C2;
+
+  # drop obj3 and obj3 to be created by DDL1 and DDL4
+  --eval $D3
+  --eval $D2
+
+  # test BACKUP operation
+  let $backup_to= bml_test.bkp;
+  --source suite/backup/include/bml_test.inc 
+
+  #
+  #  Testing RESTORE operation with DDLs on objects at pos ($pos+2, $pos+3)
+  # 
+
+  let $DDL1= $C1; # obj1 was dropped by DDL3 above
+  let $DDL2= $D2;
+  let $DDL3= $D3;
+  let $DDL4= $C4; # obj4 not present after RESTORE
+
+  # test RESTORE operation
+  let $restore_from= bml_test.bkp;
+  --source suite/backup/include/bml_test.inc 
+
+  # re-create obj3 dropped by DDL3
+  --eval $C3
+
+  # prepare for next iteration
+
+  --remove_file $bdir/bml_test.bkp
+
+  inc $pos;
+  inc $pos;
+  inc $pos;
+  inc $pos;
+}
+
+
+################################################################
+# 
+# Second group of statements.
+#
+# alter: DATABASE TABLE VIEW FUNCTION PROCEDURE EVENT (TABLESPACE)
+#
+################################################################
+
+RESTORE FROM 'bml_test_orig.bkp' OVERWRITE;
+
+TRUNCATE TABLE test.objects;
+INSERT INTO test.objects VALUES
+  (1, 'DATABASE',  'bml_test_db1', ' CHARACTER SET = utf8'),
+  (2, 'TABLE',	   't1', ' ADD INDEX `i` (a)'),
+  (3, 'VIEW',	   'v1', ' AS SELECT 1'),
+  (4, 'FUNCTION',  'f1', " COMMENT 'testing alter'"),
+  (5, 'PROCEDURE', 'p1', " COMMENT 'testing alter'"),
+  (6, 'EVENT',	   'e1', ' RENAME TO e2');
+
+# Note: I could not get ALTER TABLESPACE to work - see Bug#41548
+# When the bug is fixed add the following line to objects table:
+# (7, 'TABLESPACE', 'bml_ts1', " ADD DATAFILE 'bml_ts1.dat' ENGINE=falcon");
+
+--delimiter \\
+
+DROP PROCEDURE IF EXISTS test.check_results\\
+CREATE PROCEDURE test.check_results()
+BEGIN
+  SHOW CREATE DATABASE  bml_test_db1;
+  SHOW CREATE TABLE     bml_test.t1;
+  SHOW CREATE VIEW      bml_test.v1;
+  SHOW CREATE FUNCTION  bml_test.f1;
+  SHOW CREATE PROCEDURE bml_test.p1;
+  SELECT event_name FROM information_schema.events
+                    WHERE event_schema = 'bml_test';
+END\\
+
+--delimiter ;
+
+#
+# check situation before tests
+#
+
+CALL test.check_results();
+
+#
+# Test the statements
+#
+
+let $count= `select count(*) from test.objects`;
+let $pos= 0;
+while (`select $pos < $count`)
+{
+  #
+  # Testing BACKUP and DDLs for objects at positions: 0,1,2,3
+  #
+  
+  let $DDL1= `select test.alter_stmt(1 + (($pos+0) % $count))`;
+  let $DDL2= `select test.alter_stmt(1 + (($pos+1) % $count))`;
+  let $DDL3= `select test.alter_stmt(1 + (($pos+2) % $count))`;
+  let $DDL4= `select test.alter_stmt(1 + (($pos+3) % $count))`;
+
+  # test BACKUP operation
+  let $backup_to= bml_test.bkp;
+  --source suite/backup/include/bml_test.inc 
+
+  RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
+  
+  #
+  # Testing RESTORE and DDLs for objects at positions: 2,3,4,5
+  #
+
+  inc $pos;
+  inc $pos;
+
+  let $DDL1= `select test.alter_stmt(1 + (($pos+0) % $count))`;
+  let $DDL2= `select test.alter_stmt(1 + (($pos+1) % $count))`;
+  let $DDL3= `select test.alter_stmt(1 + (($pos+2) % $count))`;
+  let $DDL4= `select test.alter_stmt(1 + (($pos+3) % $count))`;
+
+  # test RESTORE operation
+  let $restore_from= bml_test.bkp;
+  --source suite/backup/include/bml_test.inc 
+
+  --remove_file $bdir/bml_test.bkp
+  RESTORE FROM 'bml_test_orig.bkp'  OVERWRITE;
+
+  inc $pos;
+  inc $pos;
+}
+
+#
+# Cleanup
+#
+
+--disable_warnings
+DROP DATABASE IF EXISTS bml_test_db1;
+--remove_file $bdir/bml_test_orig.bkp
+DROP TABLE test.objects;
+DROP FUNCTION test.drop_stmt;
+DROP FUNCTION test.create_stmt;
+DROP FUNCTION test.alter_stmt;
+--enable_warnings
+
+################################################################
+# 
+# Third group of statements.
+#
+# drop:       USER TABLESPACE
+# privileges: GRANT REVOKE
+# rename:     TABLE USER
+#
+################################################################
+
+DROP DATABASE bml_test;
+CREATE DATABASE bml_test;
+
+CREATE USER bml_u1;
+CREATE USER bml_u2;
+CREATE USER bml_u3;
+CREATE TABLESPACE bml_ts1 ADD DATAFILE 'bml_ts1.dat' ENGINE=falcon;
+CREATE TABLESPACE bml_ts2 ADD DATAFILE 'bml_ts2.dat' ENGINE=falcon;
+
+CREATE TABLE bml_test.t1 (a int);
+CREATE TABLE bml_test.t2 (b int);
+
+--delimiter \\
+
+DROP PROCEDURE IF EXISTS test.check_results\\
+CREATE PROCEDURE test.check_results()
+BEGIN
+  SHOW TABLES IN bml_test;
+  # show users
+  SELECT DISTINCT grantee AS user 
+    FROM information_schema.user_privileges
+    WHERE grantee like '%bml%';
+  # show privileges
+  SELECT grantee, count(*) > 0 AS has_privileges
+    FROM information_schema.schema_privileges
+    WHERE grantee like '%bml%'
+    GROUP BY grantee;
+  # show tablespaces
+  SELECT tablespace_name, file_name 
+    FROM information_schema.files
+    WHERE tablespace_name like 'bml%';
+END\\
+
+--delimiter ;
+
+#
+# Round 1
+#
+let $DDL1= RENAME TABLE t1 TO t1_renamed;
+let $DDL2= DROP USER bml_u1;
+let $DDL3= RENAME USER bml_u2 TO bml_u2_renamed;
+let $DDL4= DROP TABLESPACE bml_ts1 ENGINE=falcon;
+let $backup_to= bml_test.bkp;
+--source suite/backup/include/bml_test.inc 
+
+
+#
+# Round 2
+#
+let $DDL1= RENAME USER bml_u2_renamed TO bml_u2;
+let $DDL2= GRANT ALL ON bml_test.* TO bml_u3;
+let $DDL3= RENAME TABLE t1_renamed TO t1;
+let $DDL4= GRANT ALL ON bml_test.* TO bml_u2;
+let $restore_from= bml_test.bkp;
+--source suite/backup/include/bml_test.inc 
+
+--remove_file $bdir/bml_test.bkp
+
+#
+# Round 3
+#
+let $DDL1= DROP TABLESPACE bml_ts2 ENGINE=falcon;
+let $DDL2= REVOKE ALL ON bml_test.* FROM bml_u2;
+let $DDL3= DROP USER bml_u2;
+let $DDL4= REVOKE ALL ON bml_test.* FROM bml_u3;
+let $backup_to= bml_test.bkp;
+--source suite/backup/include/bml_test.inc 
+
+#
+# Cleanup
+# 
+
+--remove_file $bdir/bml_test.bkp
+DROP USER bml_u3;
+# check that no global objects are  left-over
+CALL test.check_results();
+
+
+################################################################
+# 
+# Fourth group of statements.
+#
+# table maintenance: TRUNCATE OPTIMIZE REPAIR
+#
+################################################################
+
+DROP DATABASE bml_test;
+CREATE DATABASE bml_test;
+
+USE bml_test;
+
+CREATE TABLE t1 (a int) ENGINE=myisam;
+CREATE TABLE t2 (a int) ENGINE=myisam;
+
+INSERT INTO t1 VALUES (1),(2);
+INSERT INTO t2 VALUES (3),(4);
+
+--delimiter \\
+
+DROP PROCEDURE IF EXISTS test.check_results\\
+CREATE PROCEDURE test.check_results()
+BEGIN
+ SHOW TABLES IN bml_test;
+ SELECT count(*) AS rows_in_t1 FROM bml_test.t1;
+ SELECT count(*) AS rows_in_t2 FROM bml_test.t2;
+ CHECKSUM TABLE bml_test.t1, bml_test.t2 EXTENDED;
+END\\
+
+--delimiter ;
+
+#
+# Check with BACKUP
+#
+let $DDL1= OPTIMIZE TABLE t1;
+let $DDL2= REPAIR TABLE t2 USE_FRM;
+let $DDL3= TRUNCATE TABLE t1;
+let $DDL4= TRUNCATE TABLE t2;
+let $backup_to= bml_test.bkp;
+--source suite/backup/include/bml_test.inc 
+
+INSERT INTO t1 VALUES (1);
+INSERT INTO t2 VALUES (3);
+
+#
+# Check with RESTORE
+#
+let $DDL1= TRUNCATE t1;
+let $DDL2= TRUNCATE t2;
+let $DDL3= REPAIR TABLE t1;
+let $DDL4= OPTIMIZE TABLE t2;
+let $restore_from= bml_test.bkp;
+--source suite/backup/include/bml_test.inc 
+
+#
+# Cleanup
+#
+
+--remove_file $bdir/bml_test.bkp
+DROP DATABASE bml_test;
+DROP PROCEDURE test.check_results;
+
+--echo
+--echo ########################################################
+--echo #
+--echo # Test BACKUP with statements not blocked by BML: 
+--echo #   CREATE USER and CREATE SERVER
+--echo #
+--echo ########################################################
+--echo
+
+connection default;
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+CREATE DATABASE bml_test;
+
+ connection con1;
+ --echo # con1: Start CREATE USER statement and make it stop after it has started.
+ SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl1_started  
+                                             WAIT_FOR continue_ddl';
+ --send CREATE USER bml_usr;
+
+# Start BACKUP
+ 
+         connection con5;
+         --echo # con5: Wait for DDL to reach its synchronization point.
+         SET DEBUG_SYNC= 'now WAIT_FOR ddl1_started TIMEOUT 3';
+         # To be safe clear before_execute_sql_command which is hit by
+         # every executed statement
+         SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+
+         --echo # con5: Start BACKUP command making it to stop in the middle.
+         SET DEBUG_SYNC= 'after_backup_start_backup SIGNAL bup_started 
+         					    WAIT_FOR finish_bup';
+         # arrange for deterministic backup_id = 500
+         SET SESSION debug="+d,set_backup_id";
+         --send BACKUP DATABASE bml_test TO 'bml_test.bkp';
+ 
+connection default;
+--echo # Waiting for BACKUP to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_started TIMEOUT 3';
+
+--echo # Check the state of both statements.
+eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+  WHERE info LIKE "BACKUP DATABASE%"
+     OR info LIKE "CREATE USER%";
+--echo # Checking that CREATE USER has not executed yet.
+SELECT User, Password FROM mysql.user WHERE User like 'bml%';
+--echo # Checking that BACKUP is not blocked by DDL.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+
+--echo # Resume and reap CREATE USER;
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+
+ connection con1;
+ --reap
+ --echo # Check that CREATE USER has executed.
+ SELECT User, Password FROM mysql.user WHERE User like 'bml%';
+ 
+ --echo # See that bml_srv does not exist at this point.
+ SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
+ --echo # Start CREATE SERVER while BACKUP is in progress.
+ CREATE SERVER bml_srv FOREIGN DATA WRAPPER mysql OPTIONS  (USER 'user');
+ --echo # See that it has executed.
+ SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
+
+ --echo # Let BACKUP finish its operation.
+ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+
+         connection con5;
+         --echo # Reap BACKUP.
+         --reap
+         SET debug="-d";
+	 SET DEBUG_SYNC= 'reset';
+
+--echo
+--echo ########################################################
+--echo #
+--echo # Test RESTORE with statements not blocked by BML: 
+--echo #   DROP SERVER and SET PASSWORD
+--echo #
+--echo ########################################################
+--echo
+
+connection default;
+SET DEBUG_SYNC= 'reset';
+PURGE BACKUP LOGS;
+
+ connection con1;
+ SET DEBUG_SYNC= 'reset';
+ --echo # con1: Start DROP SERVER statement and make it stop after it has started.
+ SET DEBUG_SYNC= 'before_execute_sql_command SIGNAL ddl_started  
+ 					     WAIT_FOR continue_ddl';
+ --send DROP SERVER bml_srv;
+
+# Start RESTORE
+ 
+         connection con5;
+        --echo # con5: Wait for DDL to reach its synchronization point.
+         SET DEBUG_SYNC= 'now WAIT_FOR ddl_started TIMEOUT 3';
+         # To be safe clear before_execute_sql_command which is hit by
+         # every executed statement
+         SET DEBUG_SYNC='before_execute_sql_command CLEAR';
+
+         --echo # con5: Start RESTORE command making it to stop in the middle.
+         SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL bup_started 
+         					     WAIT_FOR finish_bup';
+         # arrange for deterministic backup_id = 500
+         SET SESSION debug="+d,set_backup_id";
+         --send RESTORE FROM 'bml_test.bkp' OVERWRITE;
+ 
+connection default;
+--echo # Waiting for RESTORE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_started TIMEOUT 3';
+
+--echo # Check the state of both statements.
+eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+  WHERE info LIKE "RESTORE FROM%"
+     OR info LIKE "DROP SERVER%";
+--echo # Checking that DROP SERVER has not executed yet.
+SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
+--echo # Checking that RESTORE is not blocked by DDL.
+SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
+
+--echo # Resume and reap DROP SERVER;
+SET DEBUG_SYNC= 'now SIGNAL continue_ddl';
+
+ connection con1;
+ --reap
+ --echo # Check that DROP SERVER has executed.
+ SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
+ 
+ --echo # Check current user's pasword.
+ SELECT User, Password FROM mysql.user WHERE User like 'bml%';
+ --echo # Start SET PASSWORD while RESTORE is in progress.
+ SET PASSWORD FOR bml_usr = PASSWORD('password');
+ --echo # See that password was set.
+ SELECT User, Password FROM mysql.user WHERE User like 'bml%';
+
+ --echo # Let RESTORE finish its operation.
+ SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+
+         connection con5;
+         --echo # Reap RESTORE.
+         --reap
+         SET debug="-d";
+         SET DEBUG_SYNC= 'reset';
+
+ connection con1;
+ SET DEBUG_SYNC= 'reset';
+
+#
+# Cleanup
+#
+
+
+--remove_file $bdir/bml_test.bkp
+DROP DATABASE bml_test;
+DROP USER bml_usr;
+
+connection default;
+disconnect con1;
+disconnect con2;
+disconnect con3;
+disconnect con4;
+disconnect con5;
+
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC= 'reset';

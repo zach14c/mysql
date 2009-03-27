@@ -1687,18 +1687,18 @@ drop table t4,t3,t2,t1;
 #
 # Test that we can create a large (>1K) key
 #
-create table t1 (a varchar(255) character set utf8,
-                 b varchar(255) character set utf8,
-                 c varchar(255) character set utf8,
-                 d varchar(255) character set utf8,
+create table t1 (a varchar(255) character set utf8mb3,
+                 b varchar(255) character set utf8mb3,
+                 c varchar(255) character set utf8mb3,
+                 d varchar(255) character set utf8mb3,
                  key (a,b,c,d)) engine=innodb;
 drop table t1;
 --error ER_TOO_LONG_KEY
-create table t1 (a varchar(255) character set utf8,
-                 b varchar(255) character set utf8,
-                 c varchar(255) character set utf8,
-                 d varchar(255) character set utf8,
-                 e varchar(255) character set utf8,
+create table t1 (a varchar(255) character set utf8mb3,
+                 b varchar(255) character set utf8mb3,
+                 c varchar(255) character set utf8mb3,
+                 d varchar(255) character set utf8mb3,
+                 e varchar(255) character set utf8mb3,
                  key (a,b,c,d,e)) engine=innodb;
 
 
@@ -2229,7 +2229,7 @@ CREATE TABLE t2 (
   KEY idx_t2_b_c (b,c(200)),
   CONSTRAINT t_fk FOREIGN KEY (a) REFERENCES t1 (a) 
    ON DELETE CASCADE
- ) ENGINE=INNODB DEFAULT CHARSET=UTF8;
+ ) ENGINE=INNODB DEFAULT CHARSET=UTF8MB3;
 
 INSERT INTO t1 VALUES (1);
 INSERT INTO t2 VALUES (1, 'bar', 'vbar');

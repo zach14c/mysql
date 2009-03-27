@@ -180,10 +180,8 @@ size_t my_pwrite(File Filedes, const uchar *Buffer, size_t Count,
     if ((my_errno == ENOSPC || my_errno == EDQUOT) &&
         (MyFlags & MY_WAIT_IF_FULL))
     {
-      if (!(errors++ % MY_WAIT_GIVE_USER_A_MESSAGE))
-         my_error(EE_DISK_FULL,MYF(ME_BELL | ME_NOREFRESH),
-                  my_filename(Filedes),my_errno,MY_WAIT_FOR_USER_TO_FIX_PANIC);
-      sleep(MY_WAIT_FOR_USER_TO_FIX_PANIC);
+      wait_for_free_space(my_filename(Filedes), errors);
+      errors++;
       continue;
     }
     if ((writtenbytes && writtenbytes != (size_t) -1) || my_errno == EINTR)
