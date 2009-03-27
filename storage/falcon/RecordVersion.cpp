@@ -174,7 +174,6 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 {
 	// Unless the record is at least as old as the transaction, it's not for us
 
-	ASSERT(state != recQueuedForDelete);
 	TransactionState* recTransState = transactionState;
 
 	if (state != recLock)
