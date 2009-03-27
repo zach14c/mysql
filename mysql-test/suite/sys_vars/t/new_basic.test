@@ -130,11 +130,8 @@ SET @@global.new = test;
 SET @@session.new = ONN;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.new = ONF;
-
+--error ER_WRONG_VALUE_FOR_VAR
 SET @@session.new = OF;
-SELECT @@session.new;
---echo 'Bug# 34828: FN_DYNVARS_113_05 - OF is also working as OFF and no error is coming';
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.new = 'OFN';
 --Error ER_WRONG_VALUE_FOR_VAR
