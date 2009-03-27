@@ -2901,7 +2901,20 @@ ddl_blocker_err:
       {
         ulong save_priv;
 
-        if (check_access(thd, SHOW_CREATE_TABLE_ACLS, first_table->db,
+        /*
+          If it is an INFORMATION_SCHEMA table, SELECT_ACL privilege is the
+          only privilege allowed. For any other privilege check_access()
+          reports an error. That's how internal implementation protects
+          INFORMATION_SCHEMA from updates.
+
+          For ordinary tables any privilege from the SHOW_CREATE_TABLE_ACLS
+          set is sufficient.
+        */
+
+        ulong check_privs= test(first_table->schema_table) ?
+                           SELECT_ACL : SHOW_CREATE_TABLE_ACLS;
+
+        if (check_access(thd, check_privs, first_table->db,
                          &save_priv, FALSE, FALSE,
                          test(first_table->schema_table)))
           goto error;
