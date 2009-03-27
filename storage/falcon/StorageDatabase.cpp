@@ -354,6 +354,7 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 	Connection *connection = storageConnection->connection;
 	Transaction *transaction = connection->getTransaction();
 	Record *candidate = NULL;;
+	CycleLock cycleLock(table->database);
 	
 	try
 		{
