@@ -20,7 +20,7 @@
   @brief Contains the nodata backup algorithm driver.
  
   This file contains the nodata backup algorithm (also called a "driver"
-  in the online backup terminology. The nodata driver does not read or
+  in the MySQL backup terminology. The nodata driver does not read or
   write to any files or tables. It is used to allow the backup and 
   restore of storage engines that do not store data. These include:
 

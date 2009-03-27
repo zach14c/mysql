@@ -20,7 +20,8 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
                     ${CMAKE_SOURCE_DIR}/libmysql
                     ${CMAKE_SOURCE_DIR}/regex
                     ${CMAKE_SOURCE_DIR}/sql
-                    ${CMAKE_SOURCE_DIR}/strings)
+                    ${CMAKE_SOURCE_DIR}/strings
+                    ${CMAKE_SOURCE_DIR}/sql/backup)
 
 ADD_EXECUTABLE(mysql completion_hash.cc mysql.cc readline.cc sql_string.cc ../mysys/my_conio.c)
 TARGET_LINK_LIBRARIES(mysql mysqlclient)
@@ -44,6 +45,12 @@ ADD_DEPENDENCIES(mysql_upgrade GenFixPrivs)
 
 ADD_EXECUTABLE(mysqlshow mysqlshow.c)
 TARGET_LINK_LIBRARIES(mysqlshow mysqlclient)
+
+ADD_EXECUTABLE(mysqlbackup mysqlbackup.cc
+                           backup_stream.c
+                           ../sql/backup/stream_v1.c
+                           ../sql/backup/stream_v1_transport.c)
+TARGET_LINK_LIBRARIES(mysqlbackup mysqlclient ws2_32)
 
 ADD_EXECUTABLE(mysqlbinlog mysqlbinlog.cc
 			   ../mysys/mf_tempdir.c
@@ -71,6 +78,7 @@ IF(EMBED_MANIFESTS)
   MYSQL_EMBED_MANIFEST("mysqlimport" "asInvoker")
   MYSQL_EMBED_MANIFEST("mysql_upgrade" "asInvoker")
   MYSQL_EMBED_MANIFEST("mysqlshow" "asInvoker")
+  MYSQL_EMBED_MANIFEST("mysqlbackup" "asInvoker")
   MYSQL_EMBED_MANIFEST("mysqlbinlog" "asInvoker")
   MYSQL_EMBED_MANIFEST("mysqladmin" "asInvoker")
   MYSQL_EMBED_MANIFEST("echo" "asInvoker")
