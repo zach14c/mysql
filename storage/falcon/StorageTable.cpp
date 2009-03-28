@@ -1,4 +1,4 @@
-/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
+/* Copyright ï¿½ 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include "Bitmap.h"
 #include "Index.h"
 #include "IndexWalker.h"
+#include "SQLError.h"
 #include "SQLException.h"
 #include "Record.h"
 #include "Table.h"
@@ -468,6 +469,9 @@ int StorageTable::compareKey(const unsigned char* key, int keyLength)
 			Value keyValue;
 			int len = storageDatabase->getSegmentValue(segment, p, &keyValue, index->fields[segmentNumber]);
 			Field *field = index->fields[segmentNumber];
+			
+			if (!record->hasRecord())
+				throw SQLError(INTERNAL_ERROR, "invalid record, state = %d", record->state);
 
 			if (nullFlag)
 				{
@@ -541,6 +545,7 @@ int StorageTable::compareKey(const unsigned char* key, int keyLength)
 		}
 	catch (SQLException& exception)
 		{
+		ASSERT(exception.getSqlcode() != INTERNAL_ERROR);
 		return translateError(&exception, StorageErrorDupKey);
 		}
 }
@@ -593,6 +598,9 @@ int StorageTable::translateError(SQLException *exception, int defaultStorageErro
 			case IO_ERROR_SERIALLOG:
 				errorCode = StorageErrorIOErrorSerialLog;
 				break;
+				
+			case INTERNAL_ERROR:
+				errorCode = StorageErrorInternalError;
 
 			default:
 				errorCode = defaultStorageError;
