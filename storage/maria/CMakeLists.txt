@@ -12,13 +12,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+INCLUDE("${PROJECT_SOURCE_DIR}/storage/mysql_storage_engine.cmake")
 INCLUDE("${PROJECT_SOURCE_DIR}/win/mysql_manifest.cmake")
 
-
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/zlib
-                    ${CMAKE_SOURCE_DIR}/sql
-                    ${CMAKE_SOURCE_DIR}/regex
-                    ${CMAKE_SOURCE_DIR}/extra/yassl/include)
 SET(MARIA_SOURCES ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c 
             ma_rnext.c ma_rnext_same.c 
             ma_search.c ma_page.c ma_key_recover.c ma_key.c 
@@ -46,11 +43,9 @@ SET(MARIA_SOURCES ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c
             maria_backup_engine.cc
 )
 
-IF(NOT SOURCE_SUBLIBS)
+MYSQL_STORAGE_ENGINE(MARIA)
 
-ADD_LIBRARY(maria ${MARIA_SOURCES})
-ADD_DEPENDENCIES(maria GenError)
-
+IF (NOT SOURCE_SUBLIBS)
 ADD_EXECUTABLE(maria_ftdump maria_ftdump.c)
 TARGET_LINK_LIBRARIES(maria_ftdump maria myisam mysys dbug strings zlib)
 
@@ -92,5 +87,6 @@ IF(EMBED_MANIFESTS)
   MYSQL_EMBED_MANIFEST("maria_non_trans_log" "asInvoker")
   MYSQL_EMBED_MANIFEST("maria_pack" "asInvoker")
 ENDIF(EMBED_MANIFESTS)
+ADD_SUBDIRECTORY(unittest)
+ENDIF (NOT SOURCE_SUBLIBS)
 
-ENDIF(NOT SOURCE_SUBLIBS)

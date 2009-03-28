@@ -21,12 +21,24 @@
 
 typedef struct st_mysql MYSQL;
 
+
+/*
+  On Windows, exports from DLL need to be declared
+*/
+#if (defined(_WIN32) && defined(MYSQL_DYNAMIC_PLUGIN))
+#define MYSQL_PLUGIN_EXPORT __declspec(dllexport)
+#else
+#define MYSQL_PLUGIN_EXPORT
+#endif
+
 #ifdef __cplusplus
 class THD;
 class Item;
 #define MYSQL_THD THD*
+#define MYSQL_EXTERN_C_PLUGIN_EXPORT extern "C" MYSQL_PLUGIN_EXPORT
 #else
 #define MYSQL_THD void*
+#define MYSQL_EXTERN_C_PLUGIN_EXPORT MYSQL_PLUGIN_EXPORT
 #endif
 
 #ifndef _m_string_h
@@ -97,9 +109,9 @@ int PSIZE= sizeof(struct st_mysql_plugin);                                    \
 struct st_mysql_plugin DECLS[]= {
 #else
 #define __MYSQL_DECLARE_PLUGIN(NAME, VERSION, PSIZE, DECLS)                   \
-int _mysql_plugin_interface_version_= MYSQL_PLUGIN_INTERFACE_VERSION;         \
-int _mysql_sizeof_struct_st_plugin_= sizeof(struct st_mysql_plugin);          \
-struct st_mysql_plugin _mysql_plugin_declarations_[]= {
+MYSQL_EXTERN_C_PLUGIN_EXPORT int _mysql_plugin_interface_version_= MYSQL_PLUGIN_INTERFACE_VERSION;         \
+MYSQL_EXTERN_C_PLUGIN_EXPORT int _mysql_sizeof_struct_st_plugin_= sizeof(struct st_mysql_plugin);          \
+MYSQL_EXTERN_C_PLUGIN_EXPORT struct st_mysql_plugin _mysql_plugin_declarations_[]= {
 #endif
 
 #define mysql_declare_plugin(NAME) \

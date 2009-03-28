@@ -12,17 +12,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-
+INCLUDE("${PROJECT_SOURCE_DIR}/storage/mysql_storage_engine.cmake")
 ADD_DEFINITIONS(-D_REENTRANT
                 -DFALCONDB -DSTORAGE_ENGINE -DMEM_DEBUG
                 -DNAMESPACE=Nfs
                 -DMYSQL_SERVER)
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
-                    ${CMAKE_SOURCE_DIR}/regex
-                    ${CMAKE_SOURCE_DIR}/sql 
-                    . TransformLib
-                    ${CMAKE_SOURCE_DIR}/extra/yassl/include
-                    ${CMAKE_SOURCE_DIR}/zlib)
+
+INCLUDE_DIRECTORIES(
+  ${CMAKE_SOURCE_DIR}/storage/falcon
+  ${CMAKE_SOURCE_DIR}/storage/falcon/TransformLib
+)
+
 IF(MSVC)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
   SET(CMAKE_CXX_FLAGS_INIT "${CMAKE_CXX_FLAGS_INIT} /EHsc")
@@ -611,7 +611,4 @@ SET(FALCON_SOURCES
 		TransFormLib/TransformUtil.h
 		../../sql/handler.h
 )
-IF(NOT SOURCE_SUBLIBS)
-	ADD_LIBRARY(ha_falcon ${FALCON_SOURCES} )
-	ADD_DEPENDENCIES(ha_falcon GenError)
-ENDIF(NOT SOURCE_SUBLIBS)
+MYSQL_STORAGE_ENGINE(FALCON)
