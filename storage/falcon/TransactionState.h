@@ -60,15 +60,15 @@ public:
 	void		waitForTransaction();
 	bool		committedBefore(TransId transactionId);
 	
-	inline bool	isActive() const
-	    {
+	inline bool	isActive()
+		{
 		return state == Active || state == Limbo;
-	    }
+		}
 
-	inline bool	isCommitted() const
-	    {
-		return state == Active || state == Limbo;
-	    }
+	inline bool	isCommitted()
+		{
+		return state == Committed;
+		}
 
 
 public:
@@ -77,6 +77,7 @@ public:
 	volatile		INTERLOCK_TYPE state;
 	SyncObject 		syncIsActive;
 	bool			pendingPageWrites;
+	bool			hasTransactionReference;
 	
 	volatile TransactionState* waitingFor; // Used for deadlock detection
 

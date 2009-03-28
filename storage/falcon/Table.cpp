@@ -1272,27 +1272,30 @@ void Table::makeNotSearchable(Field *field, Transaction *transaction)
 			If a duplicate is found, an exception should be caught by the caller.
 		non-unique indexes are  updated without any check
 **/
+
 void Table::updateIndexes(Transaction *transaction, RecordVersion *record, Record *oldRecord)
 {
 	if (indexes)
-	{
-	FOR_INDEXES(index, this);
-		Sync sync(&(index->syncUnique), "Table::updateIndexes");
-		if(needUniqueCheck(index,record))
-			for(;;)
-			{
-			sync.lock(Exclusive);
-			if (!checkUniqueIndex(index, transaction, record , &sync))
-				break;
-			}
-		index->update(oldRecord, record, transaction);
-	END_FOR;
-	}
+		FOR_INDEXES(index, this);
+			Sync sync(&(index->syncUnique), "Table::updateIndexes");
+			
+			if (needUniqueCheck(index,record))
+				for (;;)
+					{
+					sync.lock(Exclusive);
+					
+					if (!checkUniqueIndex(index, transaction, record , &sync))
+						break;
+					}
+					
+			index->update(oldRecord, record, transaction);
+		END_FOR;
 }
 
 /**
 @brief		Uniqueness check combined with index insert (atomic)
 **/
+
 void Table::insertIndexes(Transaction *transaction, RecordVersion *record)
 {
 	if (indexes)
@@ -1303,7 +1306,7 @@ void Table::insertIndexes(Transaction *transaction, RecordVersion *record)
 			Sync syncUnique(&index->syncUnique, "Table::insertIndexes");
 			
 			if (needUniqueCheck(index,record))
-				for(;;)
+				for (;;)
 					{
 					syncUnique.lock(Exclusive);
 					
@@ -1417,7 +1420,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 				record->deleteData();
 
 			SET_RECORD_ACTIVE(record, false);
-			record->release(REC_HISTORY);
+			record->queueForDelete();
 			}
 
 		throw;
@@ -3130,8 +3133,10 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	database->preUpdate();
 	
 	Record *candidate = fetch(orgRecord->recordNumber);
+	
 	if (!candidate)
 		return;
+		
 	RECORD_HISTORY(candidate);
 
 	checkAncestor(candidate, orgRecord);
@@ -3246,10 +3251,9 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 				record->deleteData();
 
 			SET_RECORD_ACTIVE(record, false);
-			record->release(REC_HISTORY);
+			oldRecord->release(REC_HISTORY);
+			record->queueForDelete();
 			}
-
-		oldRecord->release(REC_HISTORY);
 
 		throw;
 		}
@@ -3918,7 +3922,7 @@ static bool needUniqueCheck(Index *index, Record *record)
 		(!oldRecord || index->changed(record, oldRecord)));
 }
 
-void Table::queueForDelete(RecordVersion* record)
+void Table::queueForDelete(Record* record)
 {
 	database->cycleManager->queueForDelete(record);
 }

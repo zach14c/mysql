@@ -58,7 +58,6 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *transactio
 	//transactionId = transaction->transactionId;
 	savePointId   = transaction->curSavePointId;
 	superceded    = false;
-	queuedForDelete = false;
 
 	// Add a use count on the transaction state to ensure it lives as long 
 	// as the record version object
@@ -85,10 +84,9 @@ RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(dat
 	// prior versions from 'stream'
 
 	virtualOffset = stream->getInt64();
-	transactionId = stream->getInt();
+	TransId transactionId = stream->getInt();
 	int priorType = stream->getInt();
 	superceded = false;
-	queuedForDelete = false;
 	transactionState = NULL;
 	
 	if (priorType == 0)
@@ -113,6 +111,14 @@ RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(dat
 		if (!transaction->writePending)
 			transaction = NULL;
 		***/
+		}
+	else
+		{
+		// Creates a transaction state object for storing the transaction id
+
+		transactionState = new TransactionState();
+		transactionState->transactionId = transactionId;
+		transactionState->state = Committed;
 		}
 }
 
@@ -168,7 +174,6 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 {
 	// Unless the record is at least as old as the transaction, it's not for us
 
-	ASSERT(!queuedForDelete);
 	TransactionState* recTransState = transactionState;
 
 	if (state != recLock)
@@ -180,7 +185,7 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 			if (state == Committed || recTransState == trans->transactionState)
 				return (getRecordData()) ? this : NULL;
 			}
-		else if (transactionId <= trans->transactionId)
+		else if (recTransState->transactionId <= trans->transactionId)
 			{
 			if (trans->visible(recTransState, FOR_READING))
 				return (getRecordData()) ? this : NULL;
@@ -236,6 +241,7 @@ bool RecordVersion::committedBefore(TransId transId)
 	return transactionState->committedBefore(transId);
 }
 
+// This is called with an exclusive lock on the recordLeaf
 
 bool RecordVersion::retire(RecordScavenge *recordScavenge)
 {
@@ -257,7 +263,7 @@ bool RecordVersion::retire(RecordScavenge *recordScavenge)
 			expungeRecord();  // Allow this record number to be reused
 
 		release();
-		
+
 		return true;
 		}
 
@@ -381,7 +387,7 @@ void RecordVersion::setPriorVersion(Record *oldVersion)
 
 TransId RecordVersion::getTransactionId()
 {
-	return transactionId;
+	return transactionState->transactionId;
 }
 
 int RecordVersion::getSavePointId()
@@ -484,7 +490,7 @@ char* RecordVersion::getRecordData()
 void RecordVersion::print(void)
 {
 	Log::debug("  %p\tId %d, enc %d, state %d, tid %d, use %d, grp %d, prior %p\n",
-			this, recordNumber, encoding, state, transactionId, useCount,
+			this, recordNumber, encoding, state, transactionState->transactionId, useCount,
 			generation, priorVersion);
 	
 	if (priorVersion)
@@ -500,7 +506,7 @@ void RecordVersion::serialize(Serialize* stream)
 {
 	Record::serialize(stream);
 	stream->putInt64(virtualOffset);
-	stream->putInt(transactionId);
+	stream->putInt(transactionState->transactionId);
 	
 	// Recursively serialize the prior version chain
 	
@@ -513,14 +519,6 @@ void RecordVersion::serialize(Serialize* stream)
 		stream->putInt(2);
 }
 
-
-void RecordVersion::queueForDelete(void)
-{
-	ASSERT(!queuedForDelete);
-	queuedForDelete = true;
-	format->table->queueForDelete(this);
-}
-
 void RecordVersion::setTransactionState(TransactionState* newTransState)
 {
 	if (transactionState)
@@ -528,10 +526,9 @@ void RecordVersion::setTransactionState(TransactionState* newTransState)
 	
 	transactionState = newTransState;
 	transactionState->addRef();
-	transactionId = transactionState->transactionId;
 }
 
 Transaction* RecordVersion::findTransaction(void)
 {
-	return format->table->database->transactionManager->findTransaction(transactionId);
+	return format->table->database->transactionManager->findTransaction(transactionState->transactionId);
 }

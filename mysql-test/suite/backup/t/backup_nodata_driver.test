@@ -29,11 +29,11 @@ INSTALL PLUGIN example SONAME 'ha_example.so';
 DROP DATABASE IF EXISTS bup_nodata;
 DROP DATABASE IF EXISTS bup_data;
 
-let $MYSQLD_DATADIR= `SELECT @@datadir`;
+let $MYSQLD_BACKUPDIR= `SELECT @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_data.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_data.bak;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_nodata.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_nodata.bak;
 --enable_warnings
 
 --echo #
@@ -244,8 +244,8 @@ SELECT * FROM bup_nodata.e1;
 --echo #
 DROP DATABASE bup_nodata;
 
-remove_file $MYSQLD_DATADIR/bup_data.bak;
-remove_file $MYSQLD_DATADIR/bup_nodata.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_data.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_nodata.bak;
 
 UNINSTALL PLUGIN example;
 

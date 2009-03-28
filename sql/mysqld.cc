@@ -26,7 +26,7 @@
 #include "mysqld_suffix.h"
 #include "mysys_err.h"
 #include "events.h"
-#include "ddl_blocker.h"
+#include "bml.h"
 #include "sql_audit.h"
 #include "debug_sync.h"
 #include <waiting_threads.h>
@@ -429,7 +429,7 @@ static pthread_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 /* Global variables */
 
-extern DDL_blocker_class *DDL_blocker;
+extern BML_class *BML_instance;
 bool opt_update_log, opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log;
 my_bool opt_backup_history_log;
@@ -497,9 +497,11 @@ extern const char *opt_ndb_distribution;
 extern enum ndb_distribution opt_ndb_distribution_id;
 #endif
 my_bool opt_readonly, use_temp_pool, relay_log_purge;
+my_bool relay_log_recovery;
 my_bool opt_sync_frm, opt_allow_suspicious_udfs;
 my_bool opt_secure_auth= 0;
 char* opt_secure_file_priv= 0;
+char* opt_secure_backup_file_priv= 0;
 my_bool opt_log_slow_admin_statements= 0;
 my_bool opt_log_slow_slave_statements= 0;
 my_bool lower_case_file_system= 0;
@@ -580,7 +582,8 @@ ulong max_prepared_stmt_count;
 ulong prepared_stmt_count=0;
 ulong thread_id=1L,current_pid;
 ulong slow_launch_threads = 0;
-uint sync_binlog_period= 0, sync_relaylog_period= 0;
+uint sync_binlog_period= 0, sync_relaylog_period= 0,
+     sync_relayloginfo_period= 0, sync_masterinfo_period= 0;
 ulong expire_logs_days = 0;
 ulong rpl_recovery_rank=0;
 const char *log_output_str= "FILE";
@@ -1404,6 +1407,7 @@ void clean_up(bool print_message)
   x_free(opt_bin_logname);
   x_free(opt_relay_logname);
   x_free(opt_secure_file_priv);
+  x_free(opt_secure_backup_file_priv);
   bitmap_free(&temp_pool);
   free_max_user_conn();
 #ifdef HAVE_REPLICATION
@@ -1522,7 +1526,7 @@ static void clean_up_mutexes()
   (void) pthread_cond_destroy(&COND_thread_cache);
   (void) pthread_cond_destroy(&COND_flush_thread_cache);
   (void) pthread_cond_destroy(&COND_manager);
-  DDL_blocker_class::destroy_DDL_blocker_class_instance();
+  BML_class::destroy_BML_class_instance();
   DBUG_VOID_RETURN;
 }
 
@@ -3729,7 +3733,7 @@ static int init_thread_environment()
   /*
     Initialize the DDL blocker
   */
-  DDL_blocker= DDL_blocker_class::get_DDL_blocker_class_instance();
+  BML_instance= BML_class::get_BML_class_instance();
 
   sp_cache_init();
 #ifdef HAVE_EVENT_SCHEDULER
@@ -4089,7 +4093,7 @@ server.");
 #ifndef EMBEDDED_LIBRARY
   if (backup_init())
   {
-    sql_print_error("Failed to initialize online backup.");
+    sql_print_error("Failed to initialize MySQL backup.");
     unireg_abort(1);
   }
 #endif
@@ -5796,6 +5800,7 @@ enum options_mysqld
   OPT_QUERY_CACHE_TYPE, OPT_QUERY_CACHE_WLOCK_INVALIDATE, OPT_RECORD_BUFFER,
   OPT_RECORD_RND_BUFFER, OPT_DIV_PRECINCREMENT, OPT_RELAY_LOG_SPACE_LIMIT,
   OPT_RELAY_LOG_PURGE,
+  OPT_RELAY_LOG_RECOVERY,
   OPT_SLAVE_NET_TIMEOUT, OPT_SLAVE_COMPRESSED_PROTOCOL, OPT_SLOW_LAUNCH_TIME,
   OPT_SLAVE_TRANS_RETRIES, OPT_READONLY, OPT_DEBUGGING,
   OPT_SORT_BUFFER, OPT_TABLE_OPEN_CACHE, OPT_TABLE_DEF_CACHE,
@@ -5855,6 +5860,7 @@ enum options_mysqld
   OPT_THREAD_HANDLING,
   OPT_INNODB_ROLLBACK_ON_TIMEOUT,
   OPT_SECURE_FILE_PRIV,
+  OPT_SECURE_BACKUP_FILE_PRIV,
   OPT_MIN_EXAMINED_ROW_LIMIT,
   OPT_LOG_SLOW_SLAVE_STATEMENTS,
 #if defined(ENABLED_DEBUG_SYNC)
@@ -5873,6 +5879,8 @@ enum options_mysqld
   OPT_GENERAL_LOG_FILE,
   OPT_SLOW_QUERY_LOG_FILE,
   OPT_SYNC_RELAY_LOG,
+  OPT_SYNC_RELAY_LOG_INFO,
+  OPT_SYNC_MASTER_INFO,
   OPT_BACKUP_HISTORY_LOG_FILE,
   OPT_BACKUP_PROGRESS_LOG_FILE,
   OPT_IGNORE_BUILTIN_INNODB
@@ -6574,6 +6582,10 @@ Can't be set to 1 if --log-slave-updates is used.",
    "Limit LOAD DATA, SELECT ... OUTFILE, and LOAD_FILE() to files within specified directory",
    (uchar**) &opt_secure_file_priv, (uchar**) &opt_secure_file_priv, 0,
    GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"secure-backup-file-priv", OPT_SECURE_BACKUP_FILE_PRIV,
+   "Limit BACKUP and RESTORE to files within specified directory",
+   (uchar**) &opt_secure_backup_file_priv, (uchar**) &opt_secure_backup_file_priv, 0,
+   GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"server-id",	OPT_SERVER_ID,
    "Uniquely identifies the server instance in the community of replication partners.",
    (uchar**) &server_id, (uchar**) &server_id, 0, GET_ULONG, REQUIRED_ARG, 0, 0, UINT_MAX32,
@@ -7145,6 +7157,13 @@ The minimum value for this variable is 4096.",
    (uchar**) &relay_log_purge,
    (uchar**) &relay_log_purge, 0, GET_BOOL, NO_ARG,
    1, 0, 1, 0, 1, 0},
+  {"relay_log_recovery", OPT_RELAY_LOG_RECOVERY,
+   "Enables automatic relay log recovery right after the database startup, "
+   "which means that the IO Thread starts re-fetching from the master " 
+   "right after the last transaction processed.",
+   (uchar**) &relay_log_recovery,
+   (uchar**) &relay_log_recovery, 0, GET_BOOL, NO_ARG,
+   0, 0, 1, 0, 1, 0},
   {"relay_log_space_limit", OPT_RELAY_LOG_SPACE_LIMIT,
    "Maximum space to use for all relay logs.",
    (uchar**) &relay_log_space_limit,
@@ -7189,6 +7208,16 @@ The minimum value for this variable is 4096.",
    "Synchronously flush relay log to disk after every #th event. "
    "Use 0 (default) to disable synchronous flushing.",
    (uchar**) &sync_relaylog_period, (uchar**) &sync_relaylog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
+  {"sync-relay-log-info", OPT_SYNC_RELAY_LOG_INFO,
+   "Synchronously flush relay log info to disk after #th transaction. "
+   "Use 0 (default) to disable synchronous flushing.",
+   (uchar**) &sync_relayloginfo_period, (uchar**) &sync_relayloginfo_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
+  {"sync-master-info", OPT_SYNC_MASTER_INFO,
+   "Synchronously flush master info to disk after every #th event. "
+   "Use 0 (default) to disable synchronous flushing.",
+   (uchar**) &sync_masterinfo_period, (uchar**) &sync_masterinfo_period, 0, GET_UINT,
    REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
   {"sync-frm", OPT_SYNC_FRM, "Sync .frm to disk on create. Enabled by default.",
    (uchar**) &opt_sync_frm, (uchar**) &opt_sync_frm, 0, GET_BOOL, NO_ARG, 1, 0,
@@ -7317,7 +7346,8 @@ static int show_slave_running(THD *thd, SHOW_VAR *var, char *buff)
   var->type= SHOW_MY_BOOL;
   pthread_mutex_lock(&LOCK_active_mi);
   var->value= buff;
-  *((my_bool *)buff)= (my_bool) (active_mi && active_mi->slave_running &&
+  *((my_bool *)buff)= (my_bool) (active_mi && 
+                                 active_mi->slave_running == MYSQL_SLAVE_RUN_CONNECT &&
                                  active_mi->rli.slave_running);
   pthread_mutex_unlock(&LOCK_active_mi);
   return 0;
@@ -7901,6 +7931,7 @@ static int mysql_init_variables(void)
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
   opt_secure_file_priv= 0;
+  opt_secure_backup_file_priv= 0;
   opt_bootstrap= opt_myisam_logical_log= 0;
   mqh_used= 0;
   segfaulted= kill_in_progress= 0;
@@ -8981,6 +9012,17 @@ static int fix_paths(void)
     convert_dirname(buff, opt_secure_file_priv, NullS);
     my_free(opt_secure_file_priv, MYF(0));
     opt_secure_file_priv= my_strdup(buff, MYF(MY_FAE));
+  }
+
+  /*
+    Convert the secure-backup-file-priv option to system format, allowing
+    a quick strcmp to check if read or write is in an allowed dir
+   */
+  if (opt_secure_backup_file_priv)
+  {
+    convert_dirname(buff, opt_secure_backup_file_priv, NullS);
+    my_free(opt_secure_backup_file_priv, MYF(0));
+    opt_secure_backup_file_priv= my_strdup(buff, MYF(MY_FAE));
   }
   return 0;
 }

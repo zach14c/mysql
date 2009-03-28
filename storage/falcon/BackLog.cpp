@@ -99,7 +99,7 @@ void BackLog::rollbackRecords(Bitmap* records, Transaction *transaction)
 		{
 		RecordVersion *record = fetch(backlogId);
 		
-		if (record->transactionId != transaction->transactionId)
+		if (record->getTransactionId() != transaction->transactionId)
 			{
 			record->release(REC_HISTORY);
 			

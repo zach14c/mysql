@@ -220,6 +220,7 @@ result_t
 read_header(Image_info &info, Input_stream &s)
 {
   int ret= bstream_rd_header(&s, static_cast<st_bstream_image_header*>(&info));
+  DBUG_EXECUTE_IF("restore_read_header", ret= BSTREAM_ERROR;);
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 
@@ -236,6 +237,7 @@ result_t
 read_catalog(Image_info &info, Input_stream &s)
 {
   int ret= bstream_rd_catalogue(&s, static_cast<st_bstream_image_header*>(&info));
+  DBUG_EXECUTE_IF("restore_read_catalog", ret= BSTREAM_ERROR;);
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 
@@ -252,6 +254,7 @@ result_t
 read_meta_data(Image_info &info, Input_stream &s)
 {
   int ret= bstream_rd_meta_data(&s, static_cast<st_bstream_image_header*>(&info));
+  DBUG_EXECUTE_IF("restore_read_meta_data", ret= BSTREAM_ERROR;);
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 
@@ -268,6 +271,7 @@ result_t
 read_summary(Image_info &info, Input_stream &s)
 {
   int ret= bstream_rd_summary(&s, static_cast<st_bstream_image_header*>(&info));
+  DBUG_EXECUTE_IF("restore_read_summary",ret= BSTREAM_ERROR;);
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 

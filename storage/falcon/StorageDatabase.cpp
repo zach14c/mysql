@@ -354,6 +354,7 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 	Connection *connection = storageConnection->connection;
 	Transaction *transaction = connection->getTransaction();
 	Record *candidate = NULL;;
+	CycleLock cycleLock(table->database);
 	
 	try
 		{
@@ -1039,7 +1040,7 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			// value as a BigInt, if it is not set, we 
 			// can use int64
 
-			if (temp & 0x8000000000000000)
+			if (temp & 0x8000000000000000ULL)
 				{
 				BigInt bigInt;
 				bigInt.set(temp);

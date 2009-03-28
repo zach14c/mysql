@@ -9,7 +9,7 @@
  @file backup_engine.h
  @brief Backup engine and backup/restore driver API
 
- The interface between online backup kernel and a backup solution has form of
+ The interface between MySQL backup kernel and a backup solution has form of
  two abstract classes: @c Backup_driver implementing backup
  functionality and @c Restore_driver for restore functionality.
  Instances of these two classes are created by a factory class
@@ -27,9 +27,9 @@ class Restore_driver;
 
 /**
  @class Engine
- @brief Encapsulates online backup/restore functionality.
+ @brief Encapsulates backup/restore functionality.
 
- Any backup solution is represented in the online backup kernel by an instance
+ Any backup solution is represented in the MySQL backup kernel by an instance
  of this class, so called <em>backup engine</em>. This object is used to find
  out general information about the solution (e.g. version number). It also
  constructs backup and restore drivers (instances of @c Backup_driver

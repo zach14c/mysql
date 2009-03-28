@@ -59,7 +59,6 @@ public:
 	virtual void		print(void);
 	virtual int			getSize(void);
 	virtual void		serialize(Serialize* stream);
-	virtual void		queueForDelete(void);
 	virtual Transaction* findTransaction(void);
 
 	void				commit();
@@ -75,10 +74,9 @@ public:
 	//Transaction		*transaction;
 	RecordVersion	*nextInTrans;
 	RecordVersion	*prevInTrans;
-	TransId			transactionId;
+	//TransId			transactionId;
 	int				savePointId;
 	bool			superceded;
-	bool			queuedForDelete;
 
 //private:
 	TransactionState *transactionState;

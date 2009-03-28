@@ -97,6 +97,7 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	firstRecord = NULL;
 	lastRecord = NULL;
 	transactionState = new TransactionState();
+	transactionState->hasTransactionReference = true;
 	initialize(cnct, seq);
 }
 
@@ -191,7 +192,6 @@ Transaction::~Transaction()
 	
 	for (RecordVersion *record; (record = firstRecord);)
 		{
-		//record->transaction = NULL;
 		removeRecordNoLock(record);
 		}
 		
@@ -202,7 +202,10 @@ Transaction::~Transaction()
 		releaseDeferredIndexes();
 
 	if (transactionState)
+		{
+		transactionState->hasTransactionReference = false;
 		transactionState->release();
+		}
 }
 
 void Transaction::commit()
@@ -571,7 +574,7 @@ int Transaction::thaw(RecordVersion * record)
 	
 	// Thaw the record then update the total record data bytes for this transaction
 	
-	ASSERT(record->transactionId == transactionId);
+	ASSERT(record->getTransactionId() == transactionId);
 	bool thawed;
 	int bytesRestored = control.updateRecords.thaw(record, &thawed);
 	
@@ -729,7 +732,7 @@ bool Transaction::visible(Transaction * transaction, TransId transId, int forWha
 	if (!transaction)
 		return true;
 
-    return visible(transaction->transactionState, forWhat);
+	return visible(transaction->transactionState, forWhat);
 }
 
 
@@ -778,7 +781,6 @@ bool Transaction::visible(const TransactionState* transState, int forWhat) const
 
 	return true;
 }
-
 
 /***
 @brief		Determine if there is a need to lock this record for update.
@@ -874,7 +876,6 @@ State Transaction::getRelativeState(Record* record, uint32 flags)
 	return state;
 }
 
-
 /***
 @brief		Get the relative state between this transaction and another.
 ***/
@@ -938,7 +939,6 @@ State Transaction::getRelativeState(TransactionState* transState, TransId transI
 
 	return (State) transState->state;
 }
-
 
 void Transaction::dropTable(Table* table)
 {
