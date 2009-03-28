@@ -264,7 +264,7 @@ Table* StorageDatabase::findTable(const char* tableName, const char *schemaName)
 
 int StorageDatabase::insert(Connection* connection, Table* table, Stream* stream)
 {
-	CycleLock cycleLock(table->database);
+	CycleLock cycleLock(connection->database);
 
 	return table->insert(connection->getTransaction(), stream);
 }
@@ -277,7 +277,7 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 	Transaction *transaction = connection->getTransaction();
 	Record *candidate = NULL;
 	Record *record = NULL;
-	CycleLock cycleLock(table->database);
+	CycleLock cycleLock(connection->database);
 	
 	try
 		{
@@ -423,7 +423,7 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 	Table *table = storageTable->share->table;
 	Transaction *transaction = connection->getTransaction();
 	Record *candidate = NULL;
-	CycleLock cycleLock(table->database);
+	CycleLock cycleLock(connection->database);
 	
 	try
 		{
@@ -550,6 +550,8 @@ int StorageDatabase::savepointSet(Connection* connection)
 
 int StorageDatabase::savepointRollback(Connection* connection, int savePoint)
 {
+	CycleLock cycleLock(connection->database);
+
 	Transaction *transaction = connection->getTransaction();
 	transaction->rollbackSavepoint(savePoint);
 	
@@ -558,6 +560,8 @@ int StorageDatabase::savepointRollback(Connection* connection, int savePoint)
 
 int StorageDatabase::savepointRelease(Connection* connection, int savePoint)
 {
+	CycleLock cycleLock(connection->database);
+
 	Transaction *transaction = connection->getTransaction();
 	transaction->releaseSavepoint(savePoint);
 	
@@ -653,7 +657,7 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 	Connection *connection = storageConnection->connection;
 	Transaction *transaction = connection->transaction;
 	Record *candidate = NULL, *record = NULL;
-	CycleLock cycleLock(table->database);
+	CycleLock cycleLock(connection->database);
 	
 	try
 		{
@@ -723,7 +727,7 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 int StorageDatabase::updateRow(StorageConnection* storageConnection, Table* table, Record *oldRecord, Stream* stream)
 {
 	Connection *connection = storageConnection->connection;
-	CycleLock cycleLock(table->database);
+	CycleLock cycleLock(connection->database);
 	table->update (connection->getTransaction(), oldRecord, stream);
 	
 	return 0;

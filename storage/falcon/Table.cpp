@@ -3427,6 +3427,7 @@ void Table::waitForWriteComplete()
 
 void Table::unlockRecord(int recordNumber, int verbMark)
 {
+	CycleLock cycleLock(database);
 	Record *record = fetch(recordNumber);
 
 	if (record)

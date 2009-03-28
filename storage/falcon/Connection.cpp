@@ -53,6 +53,7 @@
 #include "Configuration.h"
 #include "Server.h"
 #include "IOx.h"
+#include "CycleLock.h"
 
 #ifndef STORAGE_ENGINE
 #include "DataResourceLocator.h"
@@ -260,6 +261,8 @@ Transaction* Connection::getTransaction()
 
 void Connection::commit()
 {
+	CycleLock cycleLock(database);
+
 	Transaction *trans;
 
 	for (int n = 0; (trans = transaction); ++n)
@@ -277,6 +280,8 @@ void Connection::commit()
 
 void Connection::rollback()
 {
+	CycleLock cycleLock(database);
+
 	if (transaction)
 		{
 		transaction->rollback();
@@ -303,6 +308,8 @@ void Connection::transactionEnded()
 
 void Connection::prepare(int xidSize, const UCHAR *xid)
 {
+	CycleLock cycleLock(database);
+
 	if (transaction)
 		transaction->prepare(xidSize, xid);
 }

@@ -506,6 +506,7 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent) :
 
 void Database::start()
 {
+	cycleManager = new CycleManager(this);
 	symbolManager = new SymbolManager;
 
 #ifdef LICENSE
@@ -539,7 +540,6 @@ void Database::start()
 	transactionManager = new TransactionManager(this);
 	internalScheduler->addEvent(repositoryManager);
 	filterSetManager = new FilterSetManager(this);
-	cycleManager = new CycleManager(this);
 	timestamp = time(NULL);
 	tickerThread = threads->start("Database::Database", &Database::ticker, this);
 	cardinalityThread = threads->start("Database::cardinalityThreadMain", &Database::cardinalityThreadMain, this);
