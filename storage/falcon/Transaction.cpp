@@ -1083,11 +1083,15 @@ State Transaction::waitForTransaction(TransactionState* transState, TransId tran
 			break;
 			}
 
+	// Release the lock on the active transaction list because we will
+	// possibly be blocked and will re-take the lock exclusively
+
+	syncActiveTransactions.unlock();
+
 	if (!(*deadlock))
 		{
 		try
 			{
-			syncActiveTransactions.unlock();
 			CycleLock *cycleLock = CycleLock::unlock();
 			transState->waitForTransaction();
 			
@@ -1098,6 +1102,11 @@ State Transaction::waitForTransaction(TransactionState* transState, TransId tran
 			{
 			if (!COMPARE_EXCHANGE_POINTER(&transactionState->waitingFor, transState, NULL))
 				FATAL("waitingFor was not %p", transState);
+
+			// See comments about this locking further down
+
+			syncActiveTransactions.lock(Exclusive);
+			transState->release();
 				
 			throw;
 			}
@@ -1105,6 +1114,18 @@ State Transaction::waitForTransaction(TransactionState* transState, TransId tran
 
 	if (!COMPARE_EXCHANGE_POINTER(&transactionState->waitingFor, transState, NULL))
 		FATAL("waitingFor was not %p", transState);
+
+	// Before releasing the reference count on the transaction state object we
+	// need to aquire a exclusive lock on the active transaction list. The 
+	// cause for this is that another thread might have used this 
+	// transaction state object's waitingFor pointer to navigate to the next 
+	// transaction state object - and this thread might be the only one that 
+	// has a reference count on that transaction state object. So to avoid that 
+	// the transaction state object is released and deleted while another 
+	// thread is transversing the waitingFor list (code above) with a shared
+	// lock on it we lock it exclusively.
+
+	syncActiveTransactions.lock(Exclusive);
 
 	state = (State) transState->state;
 	transState->release();
