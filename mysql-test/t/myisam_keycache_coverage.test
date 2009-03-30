@@ -42,8 +42,24 @@ FLUSH TABLE t1;
 # purpose of this test.
 #
 EXPLAIN SELECT COUNT(*) FROM t1 WHERE c2 < 5;
-SET debug='d,key_cache_read_block_error';
---replace_regex /'.*\//'/
+#
+# The EXPLAIN shows that the index is used. It fails sporadically anyway.
+# It fails frequently on my machine, but curiously on the first attempt.
+# Both retries were always successful. Running the test stand alone or
+# in a small group does never fail. So I wonder if the setting of the
+# 'debug' server variable might fail. I had "SET debug='d,..." here.
+# Perhaps this is vulnerable to some preset of the variable.
+# So I set it with "+d" as we do at many other places.
+#
+SET debug='+d,key_cache_read_block_error';
+#
+# Changing to "+d" did not help. Trying a full flush of all tables.
+# This shouldn't make a difference, but...
+# Flushing shouldn't play a role since the error injection happens
+# after the copy from cache block to MyISAM buffer.
+#
+FLUSH TABLES;
+--replace_regex /'.*[\/\\]/'/
 --error 126
 SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
 FLUSH TABLE t1;
@@ -59,7 +75,7 @@ FLUSH TABLE t1;
 --echo # Inject error key_cache_write_block_error
 --echo #
 SET debug='d,key_cache_write_block_error';
---replace_regex /'.*\//'/
+--replace_regex /'.*[\/\\]/'/
 --error 126
 UPDATE t1 SET c2=1;
 FLUSH TABLE t1;
