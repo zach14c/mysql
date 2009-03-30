@@ -1,8 +1,9 @@
 #
-# This test is designed to ensure the backup can successfully
-# backup and retore databases with upper case names when the
-# --lower_case_table_names = 2 on the Windows platform.
+# This test is designed to ensure the backup can successfully backup
+# and retore databases with upper case names when the
+# --lower_case_table_names = 2 on plattforms with case insensitive
+# file systems (Windows, Mac)
 #
 
---source include/windows.inc
+--source include/have_case_insensitive_file_system.inc
 --source suite/backup/t/backup_dbname_lctn1.test

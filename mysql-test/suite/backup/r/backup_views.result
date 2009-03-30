@@ -327,7 +327,7 @@ character_set_client	latin1
 collation_connection	latin1_swedish_ci
 SHOW CREATE VIEW bup_db2.v3;;
 View	v3
-Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bup_db2`.`v3` AS select `bup_db1`.`t1`.`name` AS `name`,`bup_db2`.`t2`.`age` AS `age`,`bup_db2`.`t2`.`education` AS `education` from (`bup_db1`.`t1` join `bup_db2`.`t2`) where (`bup_db1`.`t1`.`id` = `bup_db2`.`t2`.`idno`)
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v3` AS select `bup_db1`.`t1`.`name` AS `name`,`bup_db2`.`t2`.`age` AS `age`,`bup_db2`.`t2`.`education` AS `education` from (`bup_db1`.`t1` join `bup_db2`.`t2`) where (`bup_db1`.`t1`.`id` = `bup_db2`.`t2`.`idno`)
 character_set_client	latin1
 collation_connection	latin1_swedish_ci
 ****check for view contents after Restore*****

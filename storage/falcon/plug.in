@@ -73,7 +73,6 @@ fi
 
 # Generate Makefile for TransformLib.
 MYSQL_PLUGIN_ACTIONS(falcon,[
-  AC_CONFIG_FILES(storage/falcon/TransformLib/Makefile)
 
   AC_LANG_PUSH([C++])
   ac_save_CXXFLAGS="$CXXFLAGS"
