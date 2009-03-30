@@ -59,6 +59,13 @@ SET debug='+d,key_cache_read_block_error';
 # after the copy from cache block to MyISAM buffer.
 #
 FLUSH TABLES;
+#
+# As expected FLUSH TABLES didn't help either.
+# Now duplicating the offending SELECT, ignoring success on the first attempt.
+#
+--replace_regex /'.*[\/\\]/'/
+--error 0,126
+SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
 --replace_regex /'.*[\/\\]/'/
 --error 126
 SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
