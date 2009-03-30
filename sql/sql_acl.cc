@@ -2972,7 +2972,12 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
                                          column->column.ptr(), NULL, NULL,
                                          NULL, TRUE, FALSE,
                                          &unused_field_idx, FALSE, &dummy);
-        if (f == (Field*)0)
+        /*
+          During RESTORE, we want to restore all privileges that existed
+          at backup time. This includes privileges for non-existing
+          colums.
+        */
+        if ((f == (Field*)0) && (thd->backup_in_progress != SQLCOM_RESTORE))
         {
           my_error(ER_BAD_FIELD_ERROR, MYF(0),
                    column->column.c_ptr(), table_list->alias);
@@ -2986,7 +2991,12 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
     }
     else
     {
-      if (!(rights & CREATE_ACL))
+      /*
+        During RESTORE, we want to restore all privileges that existed
+        at backup time. This includes privileges for non-existing
+        tables.
+      */
+      if (!(rights & CREATE_ACL) && (thd->backup_in_progress != SQLCOM_RESTORE))
       {
         char buf[FN_REFLEN];
         build_table_filename(buf, sizeof(buf), table_list->db,

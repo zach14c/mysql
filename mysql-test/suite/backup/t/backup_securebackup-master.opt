@@ -1,0 +1,2 @@
+--secure-backup-file-priv=$MYSQLTEST_VARDIR/mysqld.1/data/securebackup_path
+--secure-file-priv=$MYSQLTEST_VARDIR/mysqld.1/data/securefilepriv_path

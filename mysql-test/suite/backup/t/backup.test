@@ -16,9 +16,9 @@ DROP DATABASE IF EXISTS db1;
 DROP DATABASE IF EXISTS db2;
 DROP DATABASE IF EXISTS db3;
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/bup_default.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_default.bak;
 --enable_warnings
 
 CREATE DATABASE db1;
@@ -115,10 +115,6 @@ connection breakpoints;
 --echo breakpoints: Wait for BACKUP to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_thread_added';
 
---replace_column 1 #
-query_vertical SELECT id, command, state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%" OR state LIKE "%holding table locks%";
-
 --echo breakpoints: Sending finish signal to wake BACKUP.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 
@@ -156,7 +152,7 @@ RESTORE FROM 'test.ba';
 # determine id of RESTORE operation
 SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
 
-remove_file $MYSQLD_DATADIR/test.ba;
+remove_file $MYSQLD_BACKUPDIR/test.ba;
 
 SHOW CREATE DATABASE db1;
 SHOW CREATE DATABASE db2;
@@ -199,7 +195,7 @@ SET DEBUG_SYNC= 'RESET';
 #
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/db1.bkp
+--remove_file $MYSQLD_BACKUPDIR/db1.bkp
 CREATE DATABASE db1;
 
 --replace_column 1 #
@@ -235,7 +231,7 @@ FROM mysql.backup_history
 WHERE backup_id = @bid; 
 
 DROP DATABASE db1;
---remove_file $MYSQLD_DATADIR/db1.bkp
+--remove_file $MYSQLD_BACKUPDIR/db1.bkp
 
 
 #
@@ -421,7 +417,7 @@ SELECT * FROM bup_default.t2;
 SELECT COUNT(*) FROM bup_default.t1_blob;
 SELECT COUNT(*) FROM bup_default.wide;
 
-remove_file $MYSQLD_DATADIR/bup_default.bak;
+remove_file $MYSQLD_BACKUPDIR/bup_default.bak;
 --replace_column 1 #
 BACKUP DATABASE bup_default TO 'bup_default.bak';
 
@@ -539,9 +535,40 @@ DROP DATABASE IF EXISTS bup_delete;
 DROP DATABASE IF EXISTS bup_default;
 --enable_warnings
 
-remove_file $MYSQLD_DATADIR/bup_delete.bak;
-remove_file $MYSQLD_DATADIR/bup_default_timestamp.bak;
-remove_file $MYSQLD_DATADIR/bup_default.bak;
+--echo # 
+--echo # Bug#38294 - Backup fails if no database selected.
+--echo #
+
+CREATE DATABASE bup_usedb;
+CREATE FUNCTION bup_usedb.f1() RETURNS INT RETURN (SELECT 1);
+
+# The SHOW TABLES below is used to ensure that no database is
+# selected. If something changes to the other tests in this file so
+# that SHOW TABLES does not fail as expected, the following
+# create/use/drop sequence will result in the expected bahavior of no
+# database selected.
+
+# CREATE DATABASE dbuseme;
+# USE dbuseme;
+# DROP DATABASE dbuseme;
+
+--error ER_NO_DB_ERROR
+SHOW TABLES;
+
+# Calling backup without calling 'use db' first
+--replace_column 1 #
+BACKUP DATABASE bup_usedb TO 'bup_usedb.bak';
+
+DROP DATABASE bup_usedb;
+
+--echo #
+--echo # Cleanup
+--echo #
+
+--remove_file $MYSQLD_BACKUPDIR/bup_usedb.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_delete.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_default_timestamp.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_default.bak
 --error 0,1
-remove_file $MYSQLD_DATADIR/test.ba;
+--remove_file $MYSQLD_BACKUPDIR/test.bak
 

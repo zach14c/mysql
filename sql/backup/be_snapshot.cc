@@ -20,7 +20,7 @@
    @brief Contains the snapshot backup algorithm driver.
   
    This file contains the snapshot backup algorithm (also called a "driver"
-   in the online backup terminology. The snapshot backup algorithm may be
+   in the MySQL backup terminology. The snapshot backup algorithm may be
    used in place of an engine-specific driver if one does not exist or if
    chosen by the user.
   

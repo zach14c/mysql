@@ -1,0 +1,609 @@
+--echo #
+--echo # WL#4534 - Backup client program
+--echo #
+--echo # Tests with no binlog turned on.
+--echo #
+#
+# Note: Windows cannot parse command line continuation by backspace.
+# So please excuse the long lines in this test case.
+#
+--source include/not_embedded.inc
+--source include/have_falcon.inc
+#
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest1;
+DROP DATABASE IF EXISTS mysqltest2;
+DROP DATABASE IF EXISTS mysqltest3;
+--enable_warnings
+#
+# Get backup directory into a variable.
+--let $BACKUPDIR= `SELECT @@backupdir`;
+#
+--echo #
+--echo # Create some databases.
+--echo #
+CREATE DATABASE mysqltest1;
+CREATE DATABASE mysqltest2;
+CREATE DATABASE mysqltest3;
+--echo #
+--echo # Create table spaces.
+--echo #
+CREATE TABLESPACE mysqltest_ts1 ADD DATAFILE 'mysqltest_ts1.dat'
+  COMMENT = 'test tablespace backup 1' ENGINE=Falcon;
+CREATE TABLESPACE mysqltest_ts2 ADD DATAFILE 'mysqltest_ts2.dat'
+  COMMENT = 'test tablespace backup 2' ENGINE=Falcon;
+--echo #
+--echo # Create a table.
+--echo #
+CREATE TABLE mysqltest1.t1 (
+  c1 INT PRIMARY KEY AUTO_INCREMENT,
+  c2 VARCHAR(30000)) ENGINE=MyISAM;
+INSERT INTO mysqltest1.t1 VALUES(NULL, REPEAT('A', 30000));
+INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+#
+# When re-activating the below inserts, you must also reactivate this:
+# SET SESSION max_heap_table_size=67108864;
+#
+#INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+#INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+#INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+#INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+#INSERT INTO mysqltest1.t1 SELECT NULL, c2 FROM mysqltest1.t1;
+#
+#SELECT COUNT(*) FROM mysqltest1.t1;
+#SELECT c1, SUBSTR(c2 FROM 1 FOR 30) FROM mysqltest1.t1;
+--echo #
+--echo # Create more tables.
+--echo #
+CREATE TABLE mysqltest1.t2 ENGINE=Falcon AS SELECT * FROM mysqltest1.t1;
+#SELECT COUNT(*) FROM mysqltest1.t2;
+#SELECT c1, SUBSTR(c2 FROM 1 FOR 30) FROM mysqltest1.t2;
+CREATE TABLE mysqltest1.t3 ENGINE=MEMORY AS SELECT * FROM mysqltest1.t1;
+#
+CREATE TABLE mysqltest2.t1 ENGINE=Falcon TABLESPACE mysqltest_ts1
+  AS SELECT * FROM mysqltest1.t1;
+CREATE TABLE mysqltest2.t2 ENGINE=MEMORY AS SELECT * FROM mysqltest1.t1;
+CREATE TABLE mysqltest2.t3 ENGINE=MyISAM AS SELECT * FROM mysqltest1.t1;
+#
+CREATE TABLE mysqltest3.t1 ENGINE=MEMORY AS SELECT * FROM mysqltest1.t1;
+CREATE TABLE mysqltest3.t2 ENGINE=MyISAM AS SELECT * FROM mysqltest1.t1;
+CREATE TABLE mysqltest3.t3 ENGINE=Falcon TABLESPACE mysqltest_ts2
+  AS SELECT * FROM mysqltest1.t1;
+--echo #
+--echo # Create views.
+--echo #
+CREATE VIEW mysqltest1.v1 (c1, c2, c3, c4) AS
+  SELECT c1, c2, c1 IN (SELECT c1+2 FROM mysqltest1.t1),
+  c1 = ALL (SELECT c1 FROM mysqltest1.t1) FROM mysqltest1.t1;
+#SHOW CREATE VIEW mysqltest1.v1;
+CREATE VIEW mysqltest1.v2 AS SELECT c2, c3 FROM mysqltest1.v1;
+#SHOW CREATE VIEW mysqltest1.v2;
+#
+CREATE VIEW mysqltest2.v1 (c1, c2, c3, c4) AS
+  SELECT connection_id(), pi(), current_user(), version();
+#SHOW CREATE VIEW mysqltest2.v1;
+CREATE VIEW mysqltest2.v2 AS
+  SELECT mysqltest2.t2.c1 AS c1, mysqltest2.t2.c2 AS c2
+    FROM mysqltest2.t2, mysqltest2.t3 UNION ALL
+  SELECT mysqltest2.t2.c1 AS c3, mysqltest2.t2.c2 AS c4
+    FROM mysqltest2.t2, mysqltest2.t3;
+#SHOW CREATE VIEW mysqltest2.v2;
+#
+CREATE VIEW mysqltest3.v1 (c1, c2) AS
+  SELECT mysqltest1.v1.c1 AS c1, mysqltest2.v2.c1 AS c2
+  FROM mysqltest1.v1, mysqltest2.v2
+  WHERE mysqltest1.v1.c1 = mysqltest2.v2.c1;
+#SHOW CREATE VIEW mysqltest3.v1;
+CREATE VIEW mysqltest3.v2 (c1, c2) AS
+  SELECT mysqltest1.v1.c1 AS c1, mysqltest2.v2.c1 AS c2
+  FROM mysqltest1.v1 LEFT JOIN mysqltest2.v2
+  ON (mysqltest1.v1.c1 = mysqltest2.v2.c1);
+#SHOW CREATE VIEW mysqltest3.v2;
+#
+--echo #
+--echo # Create stored procedures
+--echo #
+#
+delimiter |;
+#
+CREATE PROCEDURE mysqltest1.p1()
+BEGIN
+  UPDATE mysqltest1.t1 SET c2='from mysqltest1.p1';
+END;
+|
+CREATE PROCEDURE mysqltest1.p2()
+BEGIN
+  UPDATE mysqltest1.t2 SET c2='from mysqltest1.p2';
+END;
+|
+CREATE PROCEDURE mysqltest2.p1()
+BEGIN
+  UPDATE mysqltest2.t1 SET c2='from mysqltest2.p1';
+END;
+|
+CREATE PROCEDURE mysqltest2.p2()
+BEGIN
+  UPDATE mysqltest2.t2 SET c2='from mysqltest2.p2';
+END;
+|
+delimiter ;|
+#
+--echo #
+--echo # Create stored functions
+--echo #
+#
+delimiter |;
+#
+CREATE FUNCTION mysqltest1.f1(arg1 INT) RETURNS INTEGER
+BEGIN
+  RETURN arg1 * 11;
+END;
+|
+CREATE FUNCTION mysqltest1.f2(arg1 INT) RETURNS INTEGER
+BEGIN
+  RETURN arg1 * 12;
+END;
+|
+CREATE FUNCTION mysqltest3.f1(arg1 INT) RETURNS INTEGER
+BEGIN
+  RETURN arg1 * 31;
+END;
+|
+CREATE FUNCTION mysqltest3.f2(arg1 INT) RETURNS INTEGER
+BEGIN
+  RETURN arg1 * 32;
+END;
+|
+delimiter ;|
+#
+--echo #
+--echo # Create triggers
+--echo #
+#
+delimiter |;
+#
+CREATE TRIGGER mysqltest2.r1 AFTER INSERT ON mysqltest2.t1 FOR EACH ROW
+BEGIN
+  DELETE FROM mysqltest2.t2 WHERE mysqltest2.t2.c1=NEW.c1;
+END;
+|
+CREATE TRIGGER mysqltest2.r2 AFTER INSERT ON mysqltest2.t2 FOR EACH ROW
+BEGIN
+  DELETE FROM mysqltest2.t1 WHERE mysqltest2.t1.c1=NEW.c1;
+END;
+|
+CREATE TRIGGER mysqltest3.r1 AFTER INSERT ON mysqltest3.t1 FOR EACH ROW
+BEGIN
+  DELETE FROM mysqltest3.t2 WHERE mysqltest3.t2.c1=NEW.c1;
+END;
+|
+CREATE TRIGGER mysqltest3.r2 AFTER INSERT ON mysqltest3.t2 FOR EACH ROW
+BEGIN
+  DELETE FROM mysqltest3.t1 WHERE mysqltest3.t1.c1=NEW.c1;
+END;
+|
+delimiter ;|
+#
+--echo #
+--echo # Create events
+--echo #
+#
+delimiter |;
+#
+CREATE EVENT mysqltest1.e1 ON SCHEDULE EVERY 1 YEAR DO
+  DELETE FROM mysqltest1.t1 WHERE c1 > 100;
+|
+CREATE EVENT mysqltest1.e2 ON SCHEDULE EVERY 1 YEAR DO
+  DELETE FROM mysqltest1.t2 WHERE c1 > 100;
+|
+CREATE EVENT mysqltest2.e1 ON SCHEDULE EVERY 1 YEAR DO
+  DELETE FROM mysqltest2.t1 WHERE c1 > 100;
+|
+CREATE EVENT mysqltest2.e2 ON SCHEDULE EVERY 1 YEAR DO
+  DELETE FROM mysqltest2.t2 WHERE c1 > 100;
+|
+delimiter ;|
+#
+--echo #
+--echo # Create users and grants
+--echo #
+CREATE USER 'bup_user1'@'%';
+CREATE USER 'bup_user2';
+CREATE USER 'bup_user3'@'%';
+REVOKE ALL ON *.* FROM 'bup_user1'@'%';
+REVOKE ALL ON *.* FROM 'bup_user2';
+GRANT ALL ON mysqltest2.* TO 'bup_user1'@'%';
+GRANT SELECT ON mysqltest1.* TO 'bup_user1'@'%';
+GRANT INSERT ON mysqltest1.* TO 'bup_user2';
+GRANT ALL ON mysqltest1.* TO 'no_user'@'%';
+GRANT SELECT (c1) ON mysqltest1.t1 TO 'bup_user1'@'%';
+GRANT SELECT (c2), INSERT (c2) ON mysqltest1.t2 TO 'bup_user2';
+FLUSH PRIVILEGES;
+#
+#SHOW GRANTS FOR 'bup_user1'@'%';
+#SHOW GRANTS FOR 'bup_user2';
+#SHOW GRANTS FOR 'bup_user3'@'%';
+#SHOW GRANTS FOR 'no_user'@'%';
+#
+--echo #
+--echo # Backup.
+--echo #
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bak
+--replace_column 1 #
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bak';
+#
+# Make a copy of the backup file for manual testing.
+--error 0, 1
+--remove_file mysqlbackup-test.bak
+--copy_file $BACKUPDIR/mysqltest.bak mysqlbackup-test.bak
+#
+--echo
+--echo # Show help output with --help:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+exec $MYSQL_BACKUP --help 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Show help output with -?:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+exec $MYSQL_BACKUP -? 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Show version with --version:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+exec $MYSQL_BACKUP --version 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Show version with -V:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_usage.inc
+exec $MYSQL_BACKUP -V 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Minimal output without options:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Catalog summary:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --catalog-summary $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Catalog details:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --catalog-details $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Catalog details, image order:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --catalog-details --image-order $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Metadata statements:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --metadata-statements $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Metadata statements, image order:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --metadata-statements --image-order $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Metadata extra:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --metadata-extra $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Metadata extra verbose:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --metadata-extra --verbose $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Data chunks:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --data-chunks $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Data totals:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --data-totals $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Summary:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --summary $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Full set of most relevant information:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --all $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Full set of most relevant information, verbosely:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP -v --all $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Snapshots:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --snapshots $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Snapshots, verbosely:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP -v --snapshots $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Data chunks:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --data-chunks $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Snapshots and data chunks:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --snapshots --data-chunks $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Snapshots and data chunks, exact numbers:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --snapshots --data-chunks --exact $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Search for an object:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --search=utf8 $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Search for another object:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --search=mysqltest2 $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Search for another object:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --search=mysqltest_ts2 $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Search for an object in databases:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --search=%.t2 $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Search for an object in databases, image order:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --search=%.t2 --image-order $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Search for an object in databases and show create statement:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --search=%.t2 --metadata-statements $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--echo
+--echo # Search for another object in databases and show create statement:
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP --search=%.v2 --metadata-statements $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--remove_file $BACKUPDIR/mysqltest.bak
+#
+--echo #
+--echo # Backup with compression.
+--echo #
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bgz
+--replace_column 1 #
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bgz'
+  WITH COMPRESSION;
+#
+#
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP -v --all --snapshots $BACKUPDIR/mysqltest.bgz 2>&1;
+--echo #========^^^^^^^^========
+#
+--remove_file $BACKUPDIR/mysqltest.bgz
+DROP DATABASE mysqltest1;
+DROP DATABASE mysqltest2;
+DROP DATABASE mysqltest3;
+DROP USER 'bup_user1'@'%';
+DROP USER 'bup_user2';
+DROP USER 'bup_user3'@'%';
+DROP USER 'no_user'@'%';
+#
+--echo #
+--echo # Create one empty database.
+--echo #
+#
+CREATE DATABASE mysqltest1;
+#
+# Backup.
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bak
+--replace_column 1 #
+BACKUP DATABASE mysqltest1 TO 'mysqltest.bak';
+#
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP -v --all --snapshots --data-chunks $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--remove_file $BACKUPDIR/mysqltest.bak
+DROP DATABASE mysqltest1;
+#
+--echo #
+--echo # Create three empty databases.
+--echo #
+#
+CREATE DATABASE mysqltest1;
+CREATE DATABASE mysqltest2;
+CREATE DATABASE mysqltest3;
+#
+# Backup.
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bak
+--replace_column 1 #
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bak';
+#
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP -v --all --snapshots --data-chunks $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--remove_file $BACKUPDIR/mysqltest.bak
+DROP DATABASE mysqltest1;
+DROP DATABASE mysqltest2;
+DROP DATABASE mysqltest3;
+#
+--echo #
+--echo # Create three databases with one element each.
+--echo #
+#
+CREATE DATABASE mysqltest1;
+CREATE DATABASE mysqltest2;
+CREATE DATABASE mysqltest3;
+CREATE TABLE mysqltest1.t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest2.t1 (c1 INT) ENGINE=Falcon;
+CREATE VIEW  mysqltest3.v1 AS
+  SELECT mysqltest1.t1.c1 + mysqltest2.t1.c1 AS c1
+    FROM mysqltest1.t1, mysqltest2.t1;
+#
+# Backup.
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bak
+--replace_column 1 #
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bak';
+#
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP -v --all --snapshots --data-chunks $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--remove_file $BACKUPDIR/mysqltest.bak
+DROP DATABASE mysqltest1;
+DROP DATABASE mysqltest2;
+DROP DATABASE mysqltest3;
+#
+--echo #
+--echo # Create three databases with two elements each.
+--echo #
+#
+CREATE DATABASE mysqltest1;
+CREATE DATABASE mysqltest2;
+CREATE DATABASE mysqltest3;
+CREATE TABLE mysqltest1.t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest1.t2 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest2.t1 (c1 INT) ENGINE=Falcon;
+CREATE TABLE mysqltest2.t2 (c1 INT) ENGINE=Falcon;
+CREATE VIEW  mysqltest3.v1 AS
+  SELECT mysqltest1.t1.c1 + mysqltest2.t1.c1 AS c1
+    FROM mysqltest1.t1, mysqltest2.t1;
+CREATE VIEW  mysqltest3.v2 AS
+  SELECT mysqltest1.t2.c1 + mysqltest2.t2.c1 AS c1
+    FROM mysqltest1.t2, mysqltest2.t2;
+#
+# Backup.
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bak
+--replace_column 1 #
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bak';
+#
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP -v --all --snapshots --data-chunks $BACKUPDIR/mysqltest.bak 2>&1;
+--echo #========^^^^^^^^========
+#
+--remove_file $BACKUPDIR/mysqltest.bak
+DROP DATABASE mysqltest1;
+DROP DATABASE mysqltest2;
+DROP DATABASE mysqltest3;
+#
+--echo #
+--echo # Create one empty database.
+--echo #
+#
+CREATE DATABASE mysqltest1;
+#
+--echo #
+--echo # Backup with compression.
+--echo #
+#
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bgz
+--replace_column 1 #
+BACKUP DATABASE mysqltest1 TO 'mysqltest.bgz' WITH COMPRESSION;
+#
+--echo #========vvvvvvvv========
+--source suite/backup/include/backup_client_regex_output.inc
+exec $MYSQL_BACKUP -v --all --snapshots --data-chunks $BACKUPDIR/mysqltest.bgz 2>&1;
+--echo #========^^^^^^^^========
+#
+--remove_file $BACKUPDIR/mysqltest.bgz
+DROP DATABASE mysqltest1;
+

@@ -1,0 +1,292 @@
+#
+# This test is for BUG#39056. (Mysql Server crash for concurrent backup
+# operations with one of them is backup to pipe)
+# Verify that,
+# a) Backup / Restore can be performed to / from pipe
+# b) Execute concurrent backup / restore operation when one of them is backup
+# to pipe.
+#
+# Note: At present backup to named pipes cannot be executed in standard windows
+# installs. Therefore, this test is not designed to run in windows.
+
+--source include/have_innodb.inc
+--source include/not_embedded.inc
+--source include/not_windows.inc
+--source include/have_debug_sync.inc
+
+# Suppress warning about expected backup/restore errors
+disable_query_log;
+call mtr.add_suppression("Backup:");
+call mtr.add_suppression("Restore:");
+enable_query_log;
+
+let $MYSQLD_DATADIR= `select @@datadir`;
+
+--disable_warnings
+SET DEBUG_SYNC= 'reset';
+--enable_warnings
+
+connect (con1,localhost,root,,);
+connect (con2,localhost,root,,);
+connect (con3,localhost,root,,);
+
+--echo Verify that backup can be performed to pipe
+--echo con1:
+connection con1;
+
+--echo Create database, tables and load data.
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE TABLE db1.t1(id int);
+INSERT INTO db1.t1 VALUES(1),(2),(3),(4),(5),(6),(7),(8),(9);
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+
+CREATE TABLE db2.t2(a char(5));
+INSERT INTO db2.t2 VALUES('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h');
+INSERT INTO db2.t2 SELECT * FROM db2.t2;
+INSERT INTO db2.t2 SELECT * FROM db2.t2;
+INSERT INTO db2.t2 SELECT * FROM db2.t2;
+
+SELECT COUNT(*) FROM db1.t1;
+SELECT COUNT(*) FROM db2.t2;
+
+--echo con2:
+connection con2;
+
+--echo Create pipe.
+# mkfifo helps to create a pipe(something similar to file).
+# chmod helps for providing specific access mode to the file. chmod 666
+# provides read and write access to user.
+# "chmod 666 pipe_name" allows to read and write to the pipe.
+
+--exec mkfifo $MYSQLD_DATADIR/db1_pipe
+--exec chmod 666 $MYSQLD_DATADIR/db1_pipe
+
+--echo con1:
+connection con1;
+PURGE BACKUP LOGS;
+--echo Start backup to pipe.
+send BACKUP DATABASE db1 TO 'db1_pipe';
+
+--echo con2:
+connection con2;
+--echo Cat the output to a file.
+# cat helps in redirecting the output from pipe to another file.
+--exec cat $MYSQLD_DATADIR/db1_pipe > $MYSQLD_DATADIR/db1_file
+
+--echo con1:
+connection con1;
+--replace_column 1 #
+reap;
+
+--echo verify backup history log:
+SELECT backup_state, command, operation, num_objects FROM mysql.backup_history;
+--echo Drop database and perform restore from a pipe.
+DROP DATABASE db1;
+
+PURGE BACKUP LOGS;
+--echo Performing restore from pipe
+send RESTORE FROM 'db1_pipe';
+
+--echo con2:
+connection con2;
+--echo Cat the output to a pipe (for restore)
+--exec cat $MYSQLD_DATADIR/db1_file > $MYSQLD_DATADIR/db1_pipe
+
+--echo con1:
+connection con1;
+--replace_column 1 #
+reap;
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+SELECT COUNT(*) FROM db1.t1;
+SELECT COUNT(*) FROM db2.t2;
+SELECT backup_state, command, operation, num_objects FROM mysql.backup_history;
+
+DROP DATABASE db1;
+
+--echo verify that restore can be performed from output file that reads from
+--echo pipe
+
+PURGE BACKUP LOGS;
+--replace_column 1 #
+RESTORE FROM 'db1_file';
+
+--echo verify data contents are intact
+
+SHOW TABLES FROM db1;
+SELECT COUNT(*) FROM db1.t1;
+SELECT backup_state, command, operation,  num_objects FROM mysql.backup_history;
+--remove_file $MYSQLD_DATADIR/db1_file
+
+#
+# Test 2: Concurrent backup / restore operation(Test case for bug#39056)
+#
+
+--echo con1:
+--echo Start backup to pipe:
+SET DEBUG_SYNC= 'before_backup_open_stream SIGNAL running WAIT_FOR backup';
+send BACKUP DATABASE db1 TO 'db1_pipe';
+
+--echo con3:
+connection con3;
+--echo Attempt to run a backup while another is in progress.
+SET DEBUG_SYNC= 'now WAIT_FOR running';
+--error ER_BACKUP_RUNNING
+BACKUP DATABASE db2 TO 'db2.bak';
+
+--echo Wait for first backup to complete
+SET DEBUG_SYNC= 'now SIGNAL backup';
+
+--echo con2:
+connection con2;
+--echo Cat the output to a file.
+--exec cat $MYSQLD_DATADIR/db1_pipe > $MYSQLD_DATADIR/db1_file
+
+--echo con1:
+connection con1;
+--replace_column 1 #
+reap;
+
+--echo con3:
+connection con3;
+--echo Start another backup to the same pipe.
+send BACKUP DATABASE db2 TO 'db1_pipe';
+
+--echo con2:
+connection con2;
+
+--echo Cat the output to a file.
+--exec cat $MYSQLD_DATADIR/db1_pipe > $MYSQLD_DATADIR/db2_file
+
+--echo con3:
+connection con3;
+--replace_column 1 #
+reap;
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--echo # con1:
+--echo # Perform concurrent restore operation and ensure that there is
+--echo # no server crash
+connection con1;
+--echo Execute restore operation
+SET DEBUG_SYNC= 'before_restore_open_stream SIGNAL running WAIT_FOR restore';
+send RESTORE FROM 'db1_pipe';
+
+--echo con3:
+connection con3;
+--echo Attempt to run a restore while another is in progress.
+SET DEBUG_SYNC= 'now WAIT_FOR running';
+--error ER_BACKUP_RUNNING
+RESTORE FROM 'db1_pipe';
+
+--echo Attempt to run a backup while restore is in progress.
+--error ER_BACKUP_RUNNING
+BACKUP DATABASE db2 TO 'db2.bak';
+
+--echo Wait for first restore to complete
+SET DEBUG_SYNC= 'now SIGNAL restore';
+
+--echo con2:
+connection con2;
+--echo Cat the output to pipe
+--exec cat $MYSQLD_DATADIR/db1_file > $MYSQLD_DATADIR/db1_pipe
+
+--echo con1:
+connection con1;
+--replace_column 1 #
+reap;
+
+--echo con3:
+connection con3;
+--echo Perform restore from same pipe
+send RESTORE FROM 'db1_pipe';
+
+--echo con2:
+connection con2;
+--echo Cat the output to pipe
+--exec cat $MYSQLD_DATADIR/db2_file > $MYSQLD_DATADIR/db1_pipe
+
+--echo con3:
+connection con3;
+--replace_column 1 #
+reap;
+
+--echo verify the tables and data in db1 & db2.
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+SELECT COUNT(*) FROM db1.t1;
+SELECT COUNT(*) FROM db2.t2;
+--remove_file $MYSQLD_DATADIR/db2_file
+
+DROP DATABASE db1;
+
+--echo
+--echo # Perform concurrent backup in one connection and restore in another
+connection con1;
+--echo Execute backup operation
+SET DEBUG_SYNC= 'before_backup_open_stream SIGNAL running WAIT_FOR backup';
+send BACKUP DATABASE db2 TO 'db1_pipe';
+
+--echo con3:
+connection con3;
+--echo Attempt to perform backup while restore is in progress.
+SET DEBUG_SYNC= 'now WAIT_FOR running';
+--error ER_BACKUP_RUNNING
+RESTORE FROM 'db1_pipe';
+
+--echo Wait for first backup to complete
+SET DEBUG_SYNC= 'now SIGNAL backup';
+
+--echo con2:
+connection con2;
+--echo Cat the output to pipe
+--exec cat $MYSQLD_DATADIR/db1_pipe > $MYSQLD_DATADIR/db2_file
+
+--echo con1:
+connection con1;
+--replace_column 1 #
+reap;
+
+--echo con3:
+connection con3;
+--echo Perform backup to same pipe
+send RESTORE FROM 'db1_pipe';
+
+--echo con2:
+connection con2;
+--echo Cat the output to file
+--exec cat $MYSQLD_DATADIR/db1_file > $MYSQLD_DATADIR/db1_pipe
+
+--echo con3:
+connection con3;
+--replace_column 1 #
+reap;
+
+--echo verify the tables and data in db1 & db2.
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+SELECT COUNT(*) FROM db1.t1;
+SELECT COUNT(*) FROM db2.t2;
+
+--disable_warnings
+SET DEBUG_SYNC= 'reset';
+--enable_warnings
+
+--echo Test cleanup
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+--remove_file $MYSQLD_DATADIR/db1_pipe
+--remove_file $MYSQLD_DATADIR/db1_file
+--remove_file $MYSQLD_DATADIR/db2_file
+
+

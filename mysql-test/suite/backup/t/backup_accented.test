@@ -1,0 +1,801 @@
+###########################################################################
+# Author: Hema
+# Date: 2008-12-11
+# Purpose: use accented characters to define the objects and check for their
+# Backup and Restore.
+###############################################################################
+--source include/have_innodb.inc
+--source include/not_embedded.inc
+
+let $bdir= `select @@backupdir`;
+
+connect (backup,localhost,root,,);
+connect (breakpoints,localhost,root,,);
+
+##############################################################
+--echo
+--echo starting the test for backup
+--echo
+##############################################################
+
+--error 0,1
+--remove_file $bdir/acc.bak
+#Create Database.
+
+--disable_warnings
+DROP DATABASE IF EXISTS acc1;
+DROP DATABASE IF EXISTS acc2;
+--enable_warnings
+
+SET NAMES utf8;
+SET CHARACTER_SET_SERVER=utf8;
+CREATE DATABASE acc1 CHARACTER SET utf8;
+CREATE DATABASE acc2 CHARACTER SET utf8;
+USE acc1;
+
+####################################
+#CREATE TABLE WITH ACCENTED LETTERS#
+####################################
+
+--echo
+--echo Creating table
+
+CREATE TABLE `фывапр`(`ë` char(20) CHARACTER SET utf8);
+CREATE TABLE acc2.t1(a char(20)CHARACTER SET utf8);
+
+disable_warnings;
+INSERT INTO  `фывапр` VALUES
+('á'),( 'Ë'),('Ö'),('Ä'),('ÿáúëêà'),('ë'),('ï'),('ö'),('ü'),('ÿ'),('Ã'),('Ñ'),
+('Õ'),('ã'),('ñ'),('õ'),('ñ'),('Â'),('Ê'),('Î'),('Ô'),('Û'),('â'),('ê'),
+('î'),('ô'),('û'),('Æ'),('æ'),('Þ'),('þ'),('Ø'),('ø'),('€'),('¥'),('£'),
+('¢'),('µ'),('±'),('¬'),('°'),('÷'),('Œ'),('œ'),('Ÿ'),('©'),('®'),('§'),
+('¶'),('П'),('Ф'),('щҖ'),('βϋ');
+
+--echo **Creating Views in database acc1 **
+--echo
+
+CREATE VIEW `ÿáúëêà` AS SELECT * FROM `фывапр`;
+CREATE VIEW v2 AS SELECT * FROM `ÿáúëêà`;
+CREATE VIEW v3 AS SELECT * FROM v2;
+
+--echo ** Creating Views in database acc2 **
+
+CREATE VIEW acc2.v1 AS SELECT * FROM acc1.`ÿáúëêà`;
+CREATE VIEW acc2.v4 AS SELECT * FROM acc1.v2;
+
+delimiter ||;
+
+CREATE TRIGGER acc2.trai AFTER INSERT ON acc2.t1 FOR EACH ROW
+BEGIN
+INSERT INTO acc1.v2 VALUES('ÆæÞþØ'),('áÏËÖÄ'),('£¢µ±');
+END;
+||
+
+--echo **Creating procedures**
+CREATE TABLE acc1.t1 (a CHAR(16) NOT NULL DEFAULT '', data INT NOT NULL)||
+
+CREATE PROCEDURE acc1.p1(x char(16), y int)
+BEGIN
+  DECLARE z INT;
+  SET @z = y, z = 666;
+  INSERT INTO acc1.t1 VALUES (x, z);
+END||
+CALL acc1.p1("æÞþ", 19)||
+SELECT a,data,@z FROM t1||
+SELECT * FROM acc1.t1||
+
+delimiter ;||
+
+--echo **creating functions**
+
+CREATE FUNCTION append(s1 char(10), s2 char(10)) RETURNS CHAR(20)
+RETURN concat(s1, s2);
+
+SELECT append("œŸ","€¥");
+
+SELECT COUNT(*) FROM acc1.v2;
+INSERT INTO acc2.t1 VALUES('÷'),('Œ'),('œ');
+SELECT * FROM acc2.t1;
+SELECT COUNT(*) FROM acc1.v2;
+SELECT * FROM acc1.v3;
+SELECT COUNT(*) FROM acc2.v4;
+
+SELECT * FROM `фывапр`;
+SELECT COUNT(*) FROM  `фывапр`;
+SELECT COUNT(*) FROM `ÿáúëêà`;
+SELECT COUNT(*) FROM acc2.v1;
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+
+--replace_column 1 #
+BACKUP DATABASE acc1, acc2 to 'acc.bak';
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("µ", 20);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("ëï", "ø");
+SELECT * FROM acc1.t1;
+
+SELECT * FROM acc1.`фывапр`;
+SELECT COUNT(*) FROM acc2.v1;
+SELECT COUNT(*) FROM acc1.`фывапр`;
+
+SELECT COUNT(*) FROM acc1.v2;
+INSERT INTO acc2.t1 VALUES('Ώ'),('β'),('βЊ');
+SELECT * FROM acc2.t1;
+SELECT COUNT(*) FROM acc1.v2;
+SELECT * FROM acc1.v3;
+SELECT COUNT(*) FROM acc2.v4;
+
+--echo **change character set and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES latin5;
+SET CHARACTER_SET_SERVER=latin5;
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 10);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("TestingŸ®", "ActivityŒœ");
+SELECT * FROM acc1.t1;
+
+SELECT count(*) FROM acc2.v1;
+SELECT COUNT(*) FROM acc1.v2;
+INSERT INTO acc2.t1 VALUES('p');
+SELECT * FROM acc2.t1;
+SELECT COUNT(*) FROM acc1.v2;
+SELECT * FROM acc1.v3;
+SELECT COUNT(*) FROM acc2.v4;
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES latin7;
+SET CHARACTER_SET_SERVER=latin7;
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+SELECT * FROM acc1.t1;
+
+SELECT count(*) FROM acc2.v1;
+SELECT COUNT(*) FROM acc1.v2;
+INSERT INTO acc2.t1 VALUES('œ'),('œž');
+SELECT * FROM acc2.t1;
+SELECT COUNT(*) FROM acc1.v2;
+SELECT * FROM acc1.v3;
+SELECT COUNT(*) FROM acc2.v4;
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES swe7;
+SET CHARACTER_SET_SERVER=swe7;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+SELECT count(*) FROM acc2.v1;
+SELECT COUNT(*) FROM acc1.v2;
+INSERT INTO acc2.t1 VALUES('Ÿ'),('Ÿ@');
+SELECT * FROM acc2.t1;
+SELECT COUNT(*) FROM acc1.v2;
+SELECT * FROM acc1.v3;
+SELECT COUNT(*) FROM acc2.v4;
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES big5;
+SET CHARACTER_SET_SERVER=big5;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES euckr;
+SET CHARACTER_SET_SERVER=euckr;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES armscii8;
+SET CHARACTER_SET_SERVER=armscii8;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES dec8;
+SET CHARACTER_SET_SERVER=dec8;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+SELECT * FROM acc1.t1;
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES cp850;
+SET CHARACTER_SET_SERVER=cp850;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES hp8;
+SET CHARACTER_SET_SERVER=hp8;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES koi8r;
+SET CHARACTER_SET_SERVER=koi8r;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+SELECT * FROM acc1.t1;
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES ujis;
+SET CHARACTER_SET_SERVER=ujis;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 109);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "done");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES sjis;
+SET CHARACTER_SET_SERVER=sjis;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 120);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+SELECT * FROM acc1.t1;
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES hebrew;
+SET CHARACTER_SET_SERVER=hebrew;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 200);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES cp866;
+SET CHARACTER_SET_SERVER=cp866;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 200);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES keybcs2;
+SET CHARACTER_SET_SERVER=keybcs2;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("test", 240);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("backup", "AŒœ");
+SELECT * FROM acc1.t1;
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES geostd8;
+SET CHARACTER_SET_SERVER=geostd8;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES cp1256;
+SET CHARACTER_SET_SERVER=cp1256;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES cp1257;
+SET CHARACTER_SET_SERVER=cp1257;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("§¶", 100);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Test", "AŒœ");
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES gbk;
+SET CHARACTER_SET_SERVER=gbk;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("ñÂÊ", 300);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Ïœ±Ïœ±åå", "AŒœ");
+SELECT * FROM acc1.t1;
+
+--echo **change character sets and again perform restore**
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+SET NAMES eucjpms;
+SET CHARACTER_SET_SERVER=eucjpms;
+
+--replace_column 1 #
+RESTORE FROM 'acc.bak';
+
+--echo
+--echo **Results after Restore**
+--echo
+
+
+SHOW FULL TABLES FROM acc1;
+SHOW FULL TABLES FROM acc2;
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SHOW TRIGGERS FROM acc2;
+
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
+--replace_column 5 # 6 # 7 #
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
+
+CALL acc1.p1("ñÂÊ", 300);
+SELECT a,data,@z FROM acc1.t1;
+SELECT acc1.append("Ïœ±Ïœ±åå", "attach");
+SELECT * FROM acc1.t1;
+
+# Test cleanup section
+
+--echo
+--echo ***  DROP bup_accented DATABASE ****
+--echo
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+
+--remove_file $bdir/acc.bak
+
