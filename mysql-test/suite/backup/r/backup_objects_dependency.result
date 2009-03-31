@@ -1021,6 +1021,8 @@ backup_id
 SHOW WARNINGS;
 Level	Code	Message
 Note	#	The user specified as a definer ('tom'@'%') does not exist
+Note	#	The user specified as a definer ('tom'@'%') does not exist
+Note	#	The user specified as a definer ('tom'@'%') does not exist
 SHOW DATABASES LIKE 'ob%';
 Database (ob%)
 ob1
