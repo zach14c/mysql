@@ -1023,7 +1023,6 @@ bool Transaction::waitForTransaction(TransId transId)
 State Transaction::waitForTransaction(TransactionState* transState, TransId transId,
 										bool *deadlock)
 {
-	ASSERT(transState != NULL);
 	*deadlock = false;
 	State state;
 
