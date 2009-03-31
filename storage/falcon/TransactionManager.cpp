@@ -38,13 +38,6 @@ static const int EXTRA_TRANSACTIONS = 10;
 static const char THIS_FILE[]=__FILE__;
 #endif
 
-volatile int tAlloc = 0;  // Temp. will be removed. Used for tracing
-volatile int tDelete = 0; // new and delete of trans objects.
-
-// These are for debugging to trac number of object allocations
-extern volatile INTERLOCK_TYPE TSalloc;
-extern volatile INTERLOCK_TYPE TSdelete;
-
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction

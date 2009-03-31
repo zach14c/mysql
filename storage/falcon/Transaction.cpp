@@ -52,10 +52,6 @@
 
 extern uint		falcon_lock_wait_timeout;
 
-extern volatile int tAlloc;   // These are temporary for debug tracing
-extern volatile int tDelete;  // of number of allocated transaction objects.
-
-
 static const char *stateNames [] = {
 	"Active",
 	"Limbo",
@@ -85,8 +81,6 @@ static const char THIS_FILE[]=__FILE__;
 
 Transaction::Transaction(Connection *cnct, TransId seq)
 {
-	tAlloc++;
-
 	savePoints = NULL;
 	freeSavePoints = NULL;
 	useCount = 1;
@@ -168,8 +162,6 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 
 Transaction::~Transaction()
 {
-	tDelete++;
-
 	if (transactionState->state == Active)
 		{
 		Log::debug("Deleting apparently active transaction %d\n", transactionId);
