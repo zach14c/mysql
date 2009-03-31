@@ -1493,6 +1493,8 @@ bool show_master_info(THD* thd, Master_info* mi)
 
     pthread_mutex_lock(&mi->data_lock);
     pthread_mutex_lock(&mi->rli.data_lock);
+    pthread_mutex_lock(&mi->err_lock);
+    pthread_mutex_lock(&mi->rli.err_lock);
     protocol->store(mi->host, &my_charset_bin);
     protocol->store(mi->user, &my_charset_bin);
     protocol->store((uint32) mi->port);
@@ -1619,6 +1621,8 @@ bool show_master_info(THD* thd, Master_info* mi)
     // Master_Server_id
     protocol->store((uint32) mi->master_id);
 
+    pthread_mutex_unlock(&mi->rli.err_lock);
+    pthread_mutex_unlock(&mi->err_lock);
     pthread_mutex_unlock(&mi->rli.data_lock);
     pthread_mutex_unlock(&mi->data_lock);
 
