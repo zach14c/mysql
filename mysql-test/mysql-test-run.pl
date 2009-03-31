@@ -526,6 +526,7 @@ sub run_test_server ($$$) {
 	      }
 	    }
 	    $num_saved_datadir++;
+	    $num_failed_test++ unless $result->{retries};
 
 	    if ( !$opt_force ) {
 	      # Test has failed, force is off
@@ -540,7 +541,6 @@ sub run_test_server ($$$) {
 			 "Terminating...");
 	      return undef;
 	    }
-	    $num_failed_test++;
 	  }
 
 	  # Retry test run after test failure
