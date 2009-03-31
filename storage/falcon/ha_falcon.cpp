@@ -288,6 +288,8 @@ int StorageInterface::falcon_deinit(void *p)
 {
 	if(storageHandler)
 		{
+		storageHandler->deleteNfsLogger(StorageInterface::mysqlLogger, NULL);
+		storageHandler->deleteNfsLogger(StorageInterface::logger, NULL);
 		storageHandler->shutdownHandler();
 		freeFalconStorageHandler();
 		}
