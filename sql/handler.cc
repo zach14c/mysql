@@ -1130,7 +1130,7 @@ int ha_commit_trans(THD *thd, bool all)
     uint rw_ha_count;
     bool rw_trans;
 
-    DBUG_EXECUTE_IF("crash_commit_before", abort(););
+    DBUG_EXECUTE_IF("crash_commit_before", DBUG_ABORT(););
 
     /* Close all cursors that can not survive COMMIT */
     if (is_real_trans)                          /* not a statement commit */
