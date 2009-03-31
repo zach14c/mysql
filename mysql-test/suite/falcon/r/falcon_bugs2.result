@@ -290,6 +290,7 @@ SET autocommit=0;
 SELECT * FROM t1;
 a
 DROP TABLE t1;
+COMMIT;
 ***************** falcon_bugs2_022 *****************
 SET autocommit=0;
 SET tx_isolation="READ-COMMITTED";
@@ -306,6 +307,8 @@ a
 SELECT * FROM t1;
 a
 1
+COMMIT;
+COMMIT;
 DROP TABLE t1;
 ***************** falcon_bugs2_023 *****************
 CREATE TABLE t1 (a int);
