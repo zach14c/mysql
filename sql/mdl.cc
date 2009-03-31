@@ -101,7 +101,7 @@ public:
 
   bool is_empty() const
   {
-    return (waiting_shared == 0 && active_shared  == 0 &&
+    return (waiting_shared == 0 && active_shared == 0 &&
             active_intention_exclusive == 0);
   }
   bool is_lock_type_compatible(enum_mdl_type type, bool is_upgrade) const;
@@ -491,7 +491,7 @@ void MDL_ticket::destroy(MDL_ticket *ticket)
   @sa THD::enter_cond()/exit_cond()/killed.
 
   @note We can't use THD::enter_cond()/exit_cond()/killed directly here
-        since this will make metadata subsystem dependant on THD class
+        since this will make metadata subsystem dependent on THD class
         and thus prevent us from writing unit tests for it. And usage of
         wrapper functions to access THD::killed/enter_cond()/exit_cond()
         will probably introduce too much overhead.
@@ -1090,7 +1090,6 @@ MDL_ticket::upgrade_shared_lock_to_exclusive()
 
   old_msg= MDL_ENTER_COND(thd, mysys_var);
 
-
   /*
     Since we should have already acquired an intention exclusive
     global lock this call is only enforcing asserts.
@@ -1165,7 +1164,7 @@ MDL_ticket::upgrade_shared_lock_to_exclusive()
   @param conflict   [out] Indicates that conflicting lock exists
 
   @retval TRUE  Failure either conflicting lock exists or some error
-                occured (probably OOM).
+                occurred (probably OOM).
   @retval FALSE Success, lock was acquired.
 
   FIXME: Compared to lock_table_name_if_not_cached()
