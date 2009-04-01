@@ -65,6 +65,9 @@ my_bool my_use_large_pages= 0;
 uint    my_large_page_size= 0;
 #endif
 
+/* ERROR INJECTION: Described in my_sys.h. */
+IF_DBUG(int my_malloc_error_inject= 0);
+
 	/* from safe_malloc */
 uint sf_malloc_prehunc=0,		/* If you have problem with core- */
      sf_malloc_endhunc=0,		/* dump when malloc-message.... */

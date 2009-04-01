@@ -1,0 +1,174 @@
+#
+# Coverage testing of MyISAM logical logging and the myisamlog utility
+#
+
+--source include/have_debug.inc
+--source include/not_embedded.inc
+
+--disable_warnings
+--connection default
+DROP DATABASE IF EXISTS mysqltest;
+--enable_warnings
+
+#
+# get data directory.
+#
+--let $MYSQLD_DATADIR= `select @@datadir`
+
+#
+# This test needs to restart the server when run together with other
+# tests that use the --log-isam option, e.g. myisamlog.test. If these
+# would run in one server process without restart, the myisam.log file
+# would be kept open over the test cases. The later running test case
+# would append to the myisam.log file, which would give a different
+# myisam.log file than when running each standalone.
+#
+# Write mysqld.1.expect file to make mysql-test-run.pl expect shutdown
+# and wait before restarting the server.
+#
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+wait-myisamlog_coverage.test
+EOF
+#
+# Shutdown
+#
+--exec $MYSQLADMIN --no-defaults -S $MASTER_MYSOCK -P $MASTER_MYPORT  -u root --password= shutdown 2>&1
+#
+# Delete the old log file, if exists.
+#
+--error 0,1
+--remove_file $MYSQLD_DATADIR/myisam.log
+#
+# Write mysqld.1.expect file to make mysql-test-run.pl restart the server.
+#
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+restart-myisamlog_coverage.test
+EOF
+#
+# Turn on reconnect, to be sure.
+#
+--enable_reconnect
+#
+# Call script that will poll the server waiting for it to be back online again.
+#
+--source include/wait_until_connected_again.inc
+
+#
+# Start of tests.
+#
+
+--echo # CREATE generates no entry in the logical log.
+CREATE DATABASE mysqltest;
+USE mysqltest;
+CREATE TABLE t1 (c1 INT, c2 VARCHAR(100)) ENGINE=MyISAM;
+#
+--echo # Generate log entries.
+INSERT INTO t1 VALUES(1,'life'), (2,'file');
+INSERT INTO t1 SELECT c1*5, CONCAT("A ",c2) FROM t1;
+UPDATE t1 SET c2="A knife" WHERE c1=5;
+DELETE FROM t1 WHERE c1=10;
+SELECT * FROM t1;
+#
+# Make a copy of the log file for manual testing.
+--error 0,1
+--remove_file myisam-test.log
+--copy_file $MYSQLD_DATADIR/myisam.log myisam-test.log
+#
+--echo # Wipe it out (TRUNCATE generates no entry in the logical log).
+TRUNCATE TABLE t1;
+--echo # Close the table (as we are going to change it outsid of the server).
+FLUSH TABLE t1;
+#
+--echo # Examine log.
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+exec $MYISAMLOG $MYSQLD_DATADIR/myisam.log 2>&1;
+#
+--echo # Reopen the table and verify that it did not change.
+SELECT * FROM t1;
+--echo # Close the table (as we are going to change it outsid of the server).
+FLUSH TABLE t1;
+#
+--echo # Apply log to empty table.
+--replace_result $MYSQLD_DATADIR DATADIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+exec $MYISAMLOG -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log 2>&1;
+#
+--echo # Reopen the table and verify that content is back.
+SELECT * FROM t1;
+CHECK TABLE t1 EXTENDED;
+#
+#
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+--echo # Command line option without argument
+--replace_result $MYSQLD_DATADIR DATADIR
+--error 1
+exec $MYISAMLOG -F 2>&1;
+#
+#
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+--echo # Inject error at mi_examine_log_files0
+--replace_result $MYSQLD_DATADIR DATADIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+--error 1
+exec $MYISAMLOG -#d,mi_examine_log_files0 -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log 2>&1;
+#
+#
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+--echo # Inject error at mi_examine_log_files1
+--replace_result $MYSQLD_DATADIR DATADIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/ /[0-9]+ re-open/# re-open/
+exec $MYISAMLOG -#d,mi_examine_log_files1 -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log 2>&1;
+#
+#
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+--echo # Inject error at mi_examine_log_command
+--replace_result $MYSQLD_DATADIR DATADIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+--error 1
+exec $MYISAMLOG -#d,mi_examine_log_command -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log 2>&1;
+#
+#
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+--echo # Inject error at mi_examine_log_close_extra
+--replace_result $MYSQLD_DATADIR DATADIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+--error 1
+exec $MYISAMLOG -#d,mi_examine_log_close_extra,mi_examine_log_files1 -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log 2>&1;
+#
+#
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+--echo # Inject error at mi_examine_log_lock_result
+--replace_result $MYSQLD_DATADIR DATADIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+--error 1
+exec $MYISAMLOG -#d,mi_examine_log_lock_result -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log 2>&1;
+#
+#
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+--echo # Inject error at close_some_file_none
+--replace_result $MYSQLD_DATADIR DATADIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+--error 1
+exec $MYISAMLOG -#d,close_some_file_none,mi_examine_log_files1 -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log 2>&1;
+#
+#
+TRUNCATE TABLE t1;
+FLUSH TABLE t1;
+--echo # Inject error at reopen_closed_file_name
+--replace_result $MYSQLD_DATADIR DATADIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+--error 1
+exec $MYISAMLOG -#d,reopen_closed_file_name,mi_examine_log_files1 -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log 2>&1;
+#
+#
+# Cleanup.
+USE test;
+DROP DATABASE mysqltest;
+

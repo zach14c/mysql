@@ -314,6 +314,10 @@ client/mysql_upgrade
 client/mysqladmin
 client/mysqladmin.c
 client/mysqladmin.cpp
+client/mysqlbackup
+client/stream_v1.h
+client/stream_v1_services.h
+mysql-test/mysqlbackup-test.bak
 client/mysqlbinlog
 client/mysqlbinlog.cpp
 client/mysqlcheck
@@ -769,6 +773,8 @@ mysql-test/load_sysvars.inc
 mysql-test/maria_recovery.trace
 mysql-test/mtr
 mysql-test/mysql-test-run
+mysql-test/mysql-test-gcov.err
+mysql-test/mysql-test-gcov.msg
 mysql-test/mysql-test-run-shell
 mysql-test/mysql-test-run.log
 mysql-test/mysql_test_run_new
@@ -2014,3 +2020,4 @@ unittest/tmp
 libmysqld/sql_join_cache.cc
 storage/maria/maria_non_trans_log
 libmysqld/examples/mysqltest.cc
+libmysqld/bml.cc

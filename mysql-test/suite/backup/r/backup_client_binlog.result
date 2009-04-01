@@ -1,0 +1,149 @@
+#
+# WL#4534 - Backup client program
+#
+# Tests with binlog turned on.
+#
+DROP DATABASE IF EXISTS mysqltest1;
+DROP DATABASE IF EXISTS mysqltest2;
+DROP DATABASE IF EXISTS mysqltest3;
+CREATE DATABASE mysqltest1;
+CREATE DATABASE mysqltest2;
+CREATE DATABASE mysqltest3;
+CREATE TABLE mysqltest1.t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest1.t2 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest2.t1 (c1 INT) ENGINE=InnoDB;
+CREATE TABLE mysqltest2.t2 (c1 INT) ENGINE=InnoDB;
+CREATE VIEW  mysqltest3.v1 AS
+SELECT mysqltest1.t1.c1 + mysqltest2.t1.c1 AS c1
+FROM mysqltest1.t1, mysqltest2.t1;
+CREATE VIEW  mysqltest3.v2 AS
+SELECT mysqltest1.t2.c1 + mysqltest2.t2.c1 AS c1
+FROM mysqltest1.t2, mysqltest2.t2;
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bak';
+backup_id
+#
+
+# Full set of most relevant information plus snapshots and data chunks:
+#========vvvvvvvv========
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Image options: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+Snapshot count:      2
+
+Snapshots:
+
+  Snapshot 0 type    native from 'MyISAM'  version 1.0
+  Snapshot 0 version 1
+  Snapshot 0 tables  1
+  Snapshot 0 table   'mysqltest1'.'t1'
+  Snapshot 0 table   'mysqltest1'.'t2'
+  Snapshot 1 type    logical from consistent snapshot
+  Snapshot 1 version 1
+  Snapshot 1 tables  1
+  Snapshot 1 table   'mysqltest2'.'t1'
+  Snapshot 1 table   'mysqltest2'.'t2'
+
+Catalog summary:
+
+  Databases:              3
+  Tables:                 4
+  Non-table db objects:   2
+
+Catalog details:
+
+  Database  'mysqltest1'
+    Table     'mysqltest1'.'t1'
+    Table     'mysqltest1'.'t2'
+  Database  'mysqltest2'
+    Table     'mysqltest2'.'t1'
+    Table     'mysqltest2'.'t2'
+  Database  'mysqltest3'
+    View      'mysqltest3'.'v1'
+    View      'mysqltest3'.'v2'
+
+Meta data:
+
+  Database 'mysqltest1' statement: '69 CREATE DATABASE `mysqltest1` /*!40100 DEFAULT CHARACTER SET latin1 */
+'
+  Database 'mysqltest1' extra data length: 0
+
+    Table 'mysqltest1'.'t1' statement: '16 USE `mysqltest1`
+86 CREATE TABLE `t1` (
+  `c1` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+'
+    Table 'mysqltest1'.'t1' extra data length: 0
+
+    Table 'mysqltest1'.'t2' statement: '16 USE `mysqltest1`
+86 CREATE TABLE `t2` (
+  `c1` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+'
+    Table 'mysqltest1'.'t2' extra data length: 0
+
+  Database 'mysqltest2' statement: '69 CREATE DATABASE `mysqltest2` /*!40100 DEFAULT CHARACTER SET latin1 */
+'
+  Database 'mysqltest2' extra data length: 0
+
+    Table 'mysqltest2'.'t1' statement: '16 USE `mysqltest2`
+86 CREATE TABLE `t1` (
+  `c1` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+'
+    Table 'mysqltest2'.'t1' extra data length: 0
+
+    Table 'mysqltest2'.'t2' statement: '16 USE `mysqltest2`
+86 CREATE TABLE `t2` (
+  `c1` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+'
+    Table 'mysqltest2'.'t2' extra data length: 0
+
+  Database 'mysqltest3' statement: '69 CREATE DATABASE `mysqltest3` /*!40100 DEFAULT CHARACTER SET latin1 */
+'
+  Database 'mysqltest3' extra data length: 0
+
+    View 'mysqltest3'.'v1' statement: '16 USE `mysqltest3`
+33 SET character_set_client = latin1
+44 SET collation_connection = latin1_swedish_ci
+213 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `mysqltest3`.`v1` AS select (`mysqltest1`.`t1`.`c1` + `mysqltest2`.`t1`.`c1`) AS `c1` from (`mysqltest1`.`t1` join `mysqltest2`.`t1`)
+'
+    View 'mysqltest3'.'v1' extra data length: 0
+
+    View 'mysqltest3'.'v2' statement: '16 USE `mysqltest3`
+33 SET character_set_client = latin1
+44 SET collation_connection = latin1_swedish_ci
+213 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `mysqltest3`.`v2` AS select (`mysqltest1`.`t2`.`c1` + `mysqltest2`.`t2`.`c1`) AS `c1` from (`mysqltest1`.`t2` join `mysqltest2`.`t2`)
+'
+    View 'mysqltest3'.'v2' extra data length: 0
+
+Data chunks:
+  Chunk 1 has 1025 bytes for table 'mysqltest1'.'t1' from snapshot 0
+  Chunk 2 has 1025 bytes for table 'mysqltest1'.'t2' from snapshot 0
+
+Data totals:
+
+  Backup has 1025 bytes for table 'mysqltest1'.'t1' in snapshot 0
+  Backup has 1025 bytes for table 'mysqltest1'.'t2' in snapshot 0
+  Backup has 0 bytes for table 'mysqltest2'.'t1' in snapshot 1
+  Backup has 0 bytes for table 'mysqltest2'.'t2' in snapshot 1
+
+Summary:
+
+Creation time: #
+Validity time: #
+Finish   time: #
+Binlog coordinates: #
+Binlog group coords: #
+#========^^^^^^^^========
+DROP DATABASE mysqltest1;
+DROP DATABASE mysqltest2;
+DROP DATABASE mysqltest3;

@@ -9,6 +9,7 @@
 --source include/have_innodb.inc
 
 let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR=`select @@backupdir`;
 
 connect (con1,localhost,root,,);
 connect (con2,localhost,root,,);
@@ -119,13 +120,13 @@ SELECT count(*) FROM mysql.backup_progress;
 --echo Cleanup the logs and images for later testing.
 PURGE BACKUP LOGS;
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup1.bak
+--remove_file $MYSQLD_BACKUPDIR/backup1.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup2.bak
+--remove_file $MYSQLD_BACKUPDIR/backup2.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup3.bak
+--remove_file $MYSQLD_BACKUPDIR/backup3.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup4.bak
+--remove_file $MYSQLD_BACKUPDIR/backup4.bak
 
 SET @@time_zone = '+00:00';
 
@@ -240,13 +241,13 @@ PURGE BACKUP LOGS;
 
 --echo Get rid of any lingering image files.
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup1.bak
+--remove_file $MYSQLD_BACKUPDIR/backup1.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup2.bak
+--remove_file $MYSQLD_BACKUPDIR/backup2.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup3.bak
+--remove_file $MYSQLD_BACKUPDIR/backup3.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup4.bak
+--remove_file $MYSQLD_BACKUPDIR/backup4.bak
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/mysqld.1/bup_logs_dir.bak
 
@@ -366,11 +367,11 @@ SELECT count(*) FROM mysql.backup_progress;
 # removal of all entries.
 #
 
---remove_file $MYSQLD_DATADIR/backup1.bak
---remove_file $MYSQLD_DATADIR/backup2.bak
---remove_file $MYSQLD_DATADIR/backup3.bak
---remove_file $MYSQLD_DATADIR/backup4.bak
---remove_file $MYSQLD_DATADIR/backup5.bak
+--remove_file $MYSQLD_BACKUPDIR/backup1.bak
+--remove_file $MYSQLD_BACKUPDIR/backup2.bak
+--remove_file $MYSQLD_BACKUPDIR/backup3.bak
+--remove_file $MYSQLD_BACKUPDIR/backup4.bak
+--remove_file $MYSQLD_BACKUPDIR/backup5.bak
 
 --echo First, run some backups.
 
@@ -410,11 +411,11 @@ PURGE BACKUP LOGS TO 999999999;
 SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
---remove_file $MYSQLD_DATADIR/backup1.bak
---remove_file $MYSQLD_DATADIR/backup2.bak
---remove_file $MYSQLD_DATADIR/backup3.bak
---remove_file $MYSQLD_DATADIR/backup4.bak
---remove_file $MYSQLD_DATADIR/backup5.bak
+--remove_file $MYSQLD_BACKUPDIR/backup1.bak
+--remove_file $MYSQLD_BACKUPDIR/backup2.bak
+--remove_file $MYSQLD_BACKUPDIR/backup3.bak
+--remove_file $MYSQLD_BACKUPDIR/backup4.bak
+--remove_file $MYSQLD_BACKUPDIR/backup5.bak
 
 --echo Run some more backups to generate more rows.
 
@@ -449,15 +450,15 @@ SET DEBUG_SYNC= 'RESET';
 
 DROP DATABASE backup_logs;
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup1.bak
+--remove_file $MYSQLD_BACKUPDIR/backup1.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup2.bak
+--remove_file $MYSQLD_BACKUPDIR/backup2.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup3.bak
+--remove_file $MYSQLD_BACKUPDIR/backup3.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup4.bak
+--remove_file $MYSQLD_BACKUPDIR/backup4.bak
 --error 0,1
---remove_file $MYSQLD_DATADIR/backup5.bak
+--remove_file $MYSQLD_BACKUPDIR/backup5.bak
 
 PURGE BACKUP LOGS;
 

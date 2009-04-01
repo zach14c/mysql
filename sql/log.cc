@@ -1916,6 +1916,7 @@ bool LOGGER::slow_log_print(THD *thd, const char *query, uint query_length,
   uint user_host_len= 0;
   ulonglong query_utime, lock_utime;
 
+  DBUG_ASSERT(thd->enable_slow_log);
   /*
     Print the message to the buffer if we have slow log enabled
   */
@@ -6543,10 +6544,14 @@ bool flush_error_log()
       uchar buf[IO_SIZE];
 
       freopen(err_temp,"a+",stderr);
+      setbuf(stderr, NULL);
       (void) my_delete(err_renamed, MYF(0));
       my_rename(log_error_file,err_renamed,MYF(0));
       if (freopen(log_error_file,"a+",stdout))
+      {
         freopen(log_error_file,"a+",stderr);
+        setbuf(stderr, NULL);
+      }
 
       if ((fd = my_open(err_temp, O_RDONLY, MYF(0))) >= 0)
       {
@@ -6562,7 +6567,10 @@ bool flush_error_log()
 #else
    my_rename(log_error_file,err_renamed,MYF(0));
    if (freopen(log_error_file,"a+",stdout))
+   {
      freopen(log_error_file,"a+",stderr);
+     setbuf(stderr, NULL);
+   }
    else
      result= 1;
 #endif

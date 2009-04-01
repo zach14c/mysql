@@ -1130,6 +1130,7 @@ int ha_commit_trans(THD *thd, bool all)
     uint rw_ha_count;
     bool rw_trans;
 
+    /* Use DBUG_ABORT() instead of abort() to avoid a pop-up on Windows. */
     DBUG_EXECUTE_IF("crash_commit_before", DBUG_ABORT(););
 
     /* Close all cursors that can not survive COMMIT */

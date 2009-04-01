@@ -394,6 +394,7 @@ THD::THD()
    rli_fake(0),
    lock_id(&main_lock_id),
    user_time(0), in_sub_stmt(0),
+   sql_log_bin_toplevel(false),
    binlog_table_maps(0), binlog_flags(0UL),
    table_map_for_update(0),
    arg_of_last_insert_id_function(FALSE),
@@ -415,13 +416,14 @@ THD::THD()
    spcont(NULL),
    m_parser_state(NULL),
   /*
-    @todo The following is a work around for online backup and the DDL blocker.
-          It should be removed when the generalized solution is in place.
-          This is needed to ensure the restore (which uses DDL) is not blocked
-          when the DDL blocker is engaged.
+    @todo The following is a work around for MySQL backup and the Backup 
+    Metadata Lock (BML). It should be removed when the generalized solution 
+    is in place. This is needed to ensure the restore thread (which uses BML) 
+    is not blocked by the lock.
   */
-   DDL_exception(FALSE),
+   BML_exception(FALSE),
    backup_wait_timeout(BACKUP_WAIT_TIMEOUT_DEFAULT),
+   backup_in_progress(0),
 #if defined(ENABLED_DEBUG_SYNC)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */
@@ -868,6 +870,7 @@ void THD::init(void)
   update_charset();
   reset_current_stmt_binlog_row_based();
   bzero((char *) &status_var, sizeof(status_var));
+  sql_log_bin_toplevel= options & OPTION_BIN_LOG;
 
 #if defined(ENABLED_DEBUG_SYNC)
   /* Initialize the Debug Sync Facility. See debug_sync.cc. */
@@ -946,7 +949,17 @@ void THD::cleanup(void)
     trans_rollback(this);
     xid_cache_delete(&transaction.xid_state);
   }
+
   locked_tables_list.unlock_locked_tables(this);
+
+  /*
+    If the thread was in the middle of an ongoing transaction (rolled
+    back a few lines above) or under LOCK TABLES (unlocked the tables
+    and left the mode a few lines above), there will be outstanding
+    metadata locks. Release them.
+  */
+  DBUG_ASSERT(open_tables == NULL);
+  mdl_context.release_all_locks();
 
 #if defined(ENABLED_DEBUG_SYNC)
   /* End the Debug Sync Facility. See debug_sync.cc. */
@@ -3785,7 +3798,7 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
     If we are in statement mode and trying to log an unsafe statement,
     we should print a warning.
   */
-  if (lex->is_stmt_unsafe() &&
+  if (sql_log_bin_toplevel && lex->is_stmt_unsafe() &&
       variables.binlog_format == BINLOG_FORMAT_STMT)
   {
     push_warning(this, MYSQL_ERROR::WARN_LEVEL_WARN,

@@ -1,0 +1,22 @@
+#
+# This test is created as part of WL#4408 to test all the error conditions for
+# backup command with compression. There is already an existing 
+# test(backup_errors) which tests all the error conditions for backup.
+# The same error conditions needs to be checked for backup command with 
+# compression option. In such case, there is no need to repeat the entire test
+# for backup with compression option.
+# 
+# In backup_errors test, the original BACKUP statement is extended with 
+# $compression variable (and eval must be used so that the value of $compression# is substituted). 
+# This way a single test script backup_errors will define all the error 
+# scenarios and we will be able to run them with and without compression. 
+# To run without compression, backup_errors will be executed as before. 
+# NOTE: When backup_errors test is executed, nothing will change
+# because variable $compression is undefined and expands to empty string
+#
+# To run the same tests with compression, the backup_errors_compression.test is 
+# created.
+
+
+let $compression=WITH COMPRESSION;
+--source suite/backup/t/backup_errors.test 

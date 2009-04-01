@@ -13,11 +13,11 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-/*
-  === Debug Sync Facility. ===
+/**
+  == Debug Sync Facility ==
 
-  The Debug Sync Facility allows to place synchronization points in the
-  code:
+  The Debug Sync Facility allows placement of synchronization points in
+  the server code by using the DEBUG_SYNC macro:
 
       open_tables(...)
 
@@ -27,7 +27,7 @@
 
   When activated, a sync point can
 
-    - Send a signal and/or
+    - Emit a signal and/or
     - Wait for a signal
 
   Nomenclature:
@@ -38,7 +38,7 @@
                           or "flag mast". Then the signal is what is
                           attached to the "signal post" or "flag mast".
 
-    - send a signal:      Assign the value (the signal) to the global
+    - emit a signal:      Assign the value (the signal) to the global
                           variable ("set a flag") and broadcast a
                           global condition to wake those waiting for
                           a signal.
@@ -46,16 +46,17 @@
     - wait for a signal:  Loop over waiting for the global condition until
                           the global value matches the wait-for signal.
 
-  By default, all sync points are inactive. They do nothing (except of
-  burning a couple of CPU cycles for checking if they are active).
+  By default, all sync points are inactive. They do nothing (except to
+  burn a couple of CPU cycles for checking if they are active).
 
-  A sync point becomes active when an action is requested for it:
+  A sync point becomes active when an action is requested for it.
+  To do so, put a line like this in the test case file:
 
       SET DEBUG_SYNC= 'after_open_tables SIGNAL opened WAIT_FOR flushed';
 
   This activates the sync point 'after_open_tables'. It requests it to
-  send the signal 'opened' and wait for another thread to send the signal
-  'flushed' when the threads execution runs through the sync point.
+  emit the signal 'opened' and wait for another thread to emit the signal
+  'flushed' when the thread's execution runs through the sync point.
 
   For every sync point there can be one action per thread only. Every
   thread can request multiple actions, but only one per sync point. In
@@ -73,14 +74,14 @@
 
   When conn1 runs through the INSERT statement, it hits the sync point
   'after_open_tables'. It notices that it is active and executes its
-  action. It sends the signal 'opened' and waits for another thread to
-  send the signal 'flushed'.
+  action. It emits the signal 'opened' and waits for another thread to
+  emit the signal 'flushed'.
 
   conn2 waits immediately at the special sync point 'now' for another
-  thread to send the 'opened' signal.
+  thread to emit the 'opened' signal.
 
   A signal remains in effect until it is overwritten. If conn1 signals
-  'opened' before conn2 reaches 'now', it will still find the 'opened'
+  'opened' before conn2 reaches 'now', conn2 will still find the 'opened'
   signal. It does not wait in this case.
 
   When conn2 reaches 'after_abort_locks', it signals 'flushed', which lets
@@ -92,16 +93,16 @@
 
       SET DEBUG_SYNC= 'name SIGNAL sig EXECUTE 3';
 
-  This will set an activation counter to 3. Each execution decrements the
-  counter. After the third execution the sync point becomes inactive in
-  this example.
+  This sets the signal point's activation counter to 3. Each execution
+  decrements the counter. After the third execution the sync point
+  becomes inactive.
 
   One of the primary goals of this facility is to eliminate sleeps from
   the test suite. In most cases it should be possible to rewrite test
   cases so that they do not need to sleep. (But this facility cannot
-  synchronize multiple processes.) However to support developing of the
-  tests, and as a last resort, sync point waiting times out. There is a
-  default timeout, but it can be overridden:
+  synchronize multiple processes.) However, to support test development,
+  and as a last resort, sync point waiting times out. There is a default
+  timeout, but it can be overridden:
 
       SET DEBUG_SYNC= 'name WAIT_FOR sig TIMEOUT 10 EXECUTE 2';
 
@@ -120,7 +121,7 @@
 
       SET DEBUG_SYNC= 'name SIGNAL sig EXECUTE 2 HIT_LIMIT 3';
 
-  Here the first two hits send the signal, the third hit returns the error
+  Here the first two hits emit the signal, the third hit returns the error
   message and kills the query.
 
   For cases where you are not sure that an action is taken and thus
@@ -134,13 +135,13 @@
 
   This is the only way to reset the global signal to an empty string.
 
-  For testing of the facility itself you can test a sync point just as
-  if it had been hit:
+  For testing of the facility itself you can execute a sync point just
+  as if it had been hit:
 
       SET DEBUG_SYNC= 'name TEST';
 
 
-  ==== Formal Syntax ====
+  === Formal Syntax ===
 
   The string to "assign" to the DEBUG_SYNC variable can contain:
 
@@ -155,9 +156,10 @@
   separated by '&|' must be present or both of them.
 
 
-  ==== Activation/Deactivation ====
+  === Activation/Deactivation ===
 
   The facility is an optional part of the MySQL server.
+  It is enabled in a debug server by default.
 
       ./configure --enable-debug-sync
 
@@ -178,8 +180,27 @@
 
       mysql-test-run.pl ... --debug-sync-timeout=10 ...
 
+  The command line option influences the readable value of the system
+  variable 'debug_sync'.
 
-  ==== Implementation ====
+  * If the facility is not compiled in, the system variable does not exist.
+
+  * If --debug-sync-timeout=0 the value of the variable reads as "OFF".
+
+  * Otherwise the value reads as "ON - current signal: " followed by the
+    current signal string, which can be empty.
+
+  The readable variable value is the same, regardless if read as global
+  or session value.
+
+  Setting the 'debug-sync' system variable requires 'SUPER' privilege.
+  You can never read back the string that you assigned to the variable,
+  unless you assign the value that the variable does already have. But
+  that would give a parse error. A syntactically correct string is
+  parsed into a debug sync action and stored apart from the variable value.
+
+
+  === Implementation ===
 
   Pseudo code for a sync point:
 
@@ -195,7 +216,95 @@
   new action, the array is sorted again.
 
 
-  ==== Further reading ====
+  === A typical synchronization pattern ===
+
+  There are quite a few places in MySQL, where we use a synchronization
+  pattern like this:
+
+  pthread_mutex_lock(&mutex);
+  thd->enter_cond(&condition_variable, &mutex, new_message);
+  #if defined(ENABLE_DEBUG_SYNC)
+  if (!thd->killed && !end_of_wait_condition)
+     DEBUG_SYNC(thd, "sync_point_name");
+  #endif
+  while (!thd->killed && !end_of_wait_condition)
+    pthread_cond_wait(&condition_variable, &mutex);
+  thd->exit_cond(old_message);
+
+  Here some explanations:
+
+  thd->enter_cond() is used to register the condition variable and the
+  mutex in thd->mysys_var. This is done to allow the thread to be
+  interrupted (killed) from its sleep. Another thread can find the
+  condition variable to signal and mutex to use for synchronization in
+  this thread's THD::mysys_var.
+
+  thd->enter_cond() requires the mutex to be acquired in advance.
+
+  thd->exit_cond() unregisters the condition variable and mutex and
+  releases the mutex.
+
+  If you want to have a Debug Sync point with the wait, please place it
+  behind enter_cond(). Only then you can safely decide, if the wait will
+  be taken. Also you will have THD::proc_info correct when the sync
+  point emits a signal. DEBUG_SYNC sets its own proc_info, but restores
+  the previous one before releasing its internal mutex. As soon as
+  another thread sees the signal, it does also see the proc_info from
+  before entering the sync point. In this case it will be "new_message",
+  which is associated with the wait that is to be synchronized.
+
+  In the example above, the wait condition is repeated before the sync
+  point. This is done to skip the sync point, if no wait takes place.
+  The sync point is before the loop (not inside the loop) to have it hit
+  once only. It is possible that the condition variable is signaled
+  multiple times without the wait condition to be true.
+
+  A bit off-topic: At some places, the loop is taken around the whole
+  synchronization pattern:
+
+  while (!thd->killed && !end_of_wait_condition)
+  {
+    pthread_mutex_lock(&mutex);
+    thd->enter_cond(&condition_variable, &mutex, new_message);
+    if (!thd->killed [&& !end_of_wait_condition])
+    {
+      [DEBUG_SYNC(thd, "sync_point_name");]
+      pthread_cond_wait(&condition_variable, &mutex);
+    }
+    thd->exit_cond(old_message);
+  }
+
+  Note that it is important to repeat the test for thd->killed after
+  enter_cond(). Otherwise the killing thread may kill this thread after
+  it tested thd->killed in the loop condition and before it registered
+  the condition variable and mutex in enter_cond(). In this case, the
+  killing thread does not know that this thread is going to wait on a
+  condition variable. It would just set THD::killed. But if we would not
+  test it again, we would go asleep though we are killed. If the killing
+  thread would kill us when we are after the second test, but still
+  before sleeping, we hold the mutex, which is registered in mysys_var.
+  The killing thread would try to acquire the mutex before signaling
+  the condition variable. Since the mutex is only released implicitly in
+  pthread_cond_wait(), the signaling happens at the right place. We
+  have a safe synchronization.
+
+  === Co-work with the DBUG facility ===
+
+  When running the MySQL test suite with the --debug command line
+  option, the Debug Sync Facility writes trace messages to the DBUG
+  trace. The following shell commands proved very useful in extracting
+  relevant information:
+
+  egrep 'query:|debug_sync_exec:' mysql-test/var/log/mysqld.1.trace
+
+  It shows all executed SQL statements and all actions executed by
+  synchronization points.
+
+  Sometimes it is also useful to see, which synchronization points have
+  been run through (hit) with or without executing actions. Then add
+  "|debug_sync_point:" to the egrep pattern.
+
+  === Further reading ===
 
   For a discussion of other methods to synchronize threads see
   http://forge.mysql.com/wiki/MySQL_Internals_Test_Synchronization
@@ -210,6 +319,13 @@
 
 #if defined(ENABLED_DEBUG_SYNC)
 
+/*
+  Due to weaknesses in our include files, we need to include
+  mysql_priv.h here. To have THD declared, we need to include
+  sql_class.h. This includes log_event.h, which in turn requires
+  declarations from mysql_priv.h (e.g. OPTION_AUTO_IS_NULL).
+  mysql_priv.h includes almost everything, so is sufficient here.
+*/
 #include "mysql_priv.h"
 
 /*
@@ -225,7 +341,7 @@ struct st_debug_sync_action
   ulong         hit_limit;              /* hits before kill query */
   ulong         execute;                /* executes before self-clear */
   ulong         timeout;                /* wait_for timeout */
-  String        signal;                 /* signal to send */
+  String        signal;                 /* signal to emit */
   String        wait_for;               /* signal to wait for */
   String        sync_point;             /* sync point name */
   bool          need_sort;              /* if new action, array needs sort */
@@ -246,7 +362,7 @@ struct st_debug_sync_control
 /**
   Definitions for the debug sync facility.
   1. Global string variable to hold a "signal" ("signal post", "flag mast").
-  2. Global condition variable for signalling and waiting.
+  2. Global condition variable for signaling and waiting.
   3. Global mutex to synchronize access to the above.
 */
 struct st_debug_sync_globals
@@ -443,6 +559,12 @@ void debug_sync_end_thread(THD *thd)
   if (thd->debug_sync_control)
   {
     st_debug_sync_control *ds_control= thd->debug_sync_control;
+
+    /*
+      This synchronization point can be used to synchronize on thread end.
+      This is the latest point in a THD's life, where this can be done.
+    */
+    DEBUG_SYNC(thd, "thread_end");
 
     if (ds_control->ds_action)
     {
@@ -955,11 +1077,12 @@ static bool debug_sync_set_action(THD *thd, st_debug_sync_action *action)
       The calling functions will not call send_ok(), if we return TRUE
       from this function.
 
-      To detect, if an error message has been reported, we can check one
-      of the above conditions. That is, either examine the error message
-      stack for an entry, or check thd->killed. We do the latter below.
+      thd->killed is also set if the wait is interrupted from a
+      KILL or KILL QUERY statement. In this case, no error is reported
+      and shall not be reported as a result of SET DEBUG_SYNC.
+      Hence, we check for the first condition above.
     */
-    if (thd->killed)
+    if (thd->is_error())
       DBUG_RETURN(TRUE);
   }
 
@@ -970,9 +1093,9 @@ static bool debug_sync_set_action(THD *thd, st_debug_sync_action *action)
 /**
   Extract a token from a string.
 
-  @param[out]   token_p         returns start of token
-  @param[out]   token_length_p  returns length of token
-  @param[in]    ptr             current string pointer
+  @param[out]     token_p         returns start of token
+  @param[out]     token_length_p  returns length of token
+  @param[in,out]  ptr             current string pointer, adds '\0' terminators
 
   @return       string pointer or NULL
     @retval     != NULL         ptr behind token terminator or at string end
@@ -1454,26 +1577,40 @@ bool sys_var_debug_sync::check(THD *thd, set_var *var)
     "Setting" of the system variable 'debug_sync' does not mean to
     assign a value to it as usual. Instead a debug sync action is parsed
     from the input string and stored apart from the variable value.
+
+  @note
+    For efficiency reasons, the action string parser places '\0'
+    terminators in the string. So we need to take a copy here.
 */
 
 bool sys_var_debug_sync::update(THD *thd, set_var *var)
 {
-  char *val_str, buff[STRING_BUFFER_USUAL_SIZE], empty= '\0';
-  String *strres, str(buff, sizeof(buff), system_charset_info);
-
+  char   *val_str;
+  String *val_ptr;
+  String val_buf;
   DBUG_ENTER("sys_var_debug_sync::update");
   DBUG_ASSERT(thd);
 
-  if (var)
+  /*
+    Depending on the value type (string literal, user variable, ...)
+    val_buf receives a copy of the value or not. But we always need
+    a copy. So we take a copy, if it is not done by val_str().
+    If val_str() puts a copy into val_buf, then it returns &val_buf,
+    otherwise it returns a pointer to the string object that we need
+    to copy.
+  */
+  val_ptr= var ? var->value->val_str(&val_buf) : &val_buf;
+  if (val_ptr != &val_buf)
   {
-    if ((strres= var->value->val_str(&str)) == NULL)
-      DBUG_RETURN(TRUE);
-    val_str= strres->c_ptr();
+    val_buf.copy(*val_ptr);
   }
-  else
-    val_str= &empty;
+  val_str= val_buf.c_ptr();
   DBUG_PRINT("debug_sync", ("set action: '%s'", val_str));
 
+  /*
+    debug_sync_eval_action() places '\0' in the string, which itself
+    must be '\0' terminated.
+  */
   DBUG_RETURN(opt_debug_sync_timeout ?
               debug_sync_eval_action(thd, val_str) :
               FALSE);
@@ -1591,6 +1728,7 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       threads just reads an old cached version of the signal.
     */
     pthread_mutex_lock(&debug_sync_global.ds_mutex);
+
     if (action->signal.length())
     {
       /* Copy the signal to the global variable. */
@@ -1659,9 +1797,16 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
         }
         error= 0;
       }
-      DBUG_PRINT("debug_sync_exec", ("%s from '%s'  at: '%s'",
-                                     error ? "timeout" : "resume",
-                                     sig_wait, dsp_name));
+      DBUG_EXECUTE("debug_sync_exec",
+                   if (thd->killed)
+                     DBUG_PRINT("debug_sync_exec",
+                                ("killed %d from '%s'  at: '%s'",
+                                 thd->killed, sig_wait, dsp_name));
+                   else
+                     DBUG_PRINT("debug_sync_exec",
+                                ("%s from '%s'  at: '%s'",
+                                 error ? "timeout" : "resume",
+                                 sig_wait, dsp_name)););
 
       /*
         We don't use enter_cond()/exit_cond(). They do not save old
@@ -1677,12 +1822,12 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       thd_proc_info(thd, old_proc_info);
       pthread_mutex_unlock(&thd->mysys_var->mutex);
 
-    } /* end if (action->wait_for.length()) */
+    }
     else
     {
-      // Make sure to realease mutex also when there is no WAIT_FOR
+      /* In case we don't wait, we just release the mutex. */
       pthread_mutex_unlock(&debug_sync_global.ds_mutex);
-    }
+    } /* end if (action->wait_for.length()) */
 
   } /* end if (action->execute) */
 

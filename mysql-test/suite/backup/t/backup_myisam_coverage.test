@@ -9,11 +9,12 @@
 # Precautionary cleanup
 #
 let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR=`select @@backupdir`;
 --disable_warnings
 USE test;
 DROP DATABASE IF EXISTS mysql_db1;
 --error 0,1
---remove_file $MYSQLD_DATADIR/bup_myisam3.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_myisam3.bak
 --enable_warnings
 
 #
@@ -50,5 +51,5 @@ SELECT COUNT(*) FROM mysql_db1.t1 WHERE c2 < 5;
 SET debug='';
 DROP TABLE mysql_db1.t1;
 DROP DATABASE mysql_db1;
---remove_file $MYSQLD_DATADIR/bup_myisam3.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_myisam3.bak
 

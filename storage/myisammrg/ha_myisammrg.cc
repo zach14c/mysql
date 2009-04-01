@@ -478,17 +478,16 @@ static MI_INFO *myisammrg_attach_children_callback(void *callback_param)
   TABLE         *parent= ha_myrg->table_ptr();
   TABLE         *child;
   TABLE_LIST    *child_l;
-  MI_INFO       *myisam;
+  MI_INFO       *myisam= NULL;
   DBUG_ENTER("myisammrg_attach_children_callback");
-
-  my_errno= 0;
 
   /* Get child list item. */
   child_l= ha_myrg->next_child_attach;
   if (!child_l)
   {
     DBUG_PRINT("myrg", ("No more children to attach"));
-    DBUG_RETURN(NULL);
+    my_errno= 0; /* Ok, no more child tables. */
+    goto end;
   }
   child= child_l->table;
   /*
@@ -531,7 +530,7 @@ static MI_INFO *myisammrg_attach_children_callback(void *callback_param)
     DBUG_PRINT("error", ("temporary table mismatch parent: %d  child: %d",
                          parent->s->tmp_table, child->s->tmp_table));
     my_errno= HA_ERR_WRONG_MRG_TABLE_DEF;
-    goto err;
+    goto end;
   }
 
   /* Extract the MyISAM table structure pointer from the handler object. */
@@ -546,8 +545,8 @@ static MI_INFO *myisammrg_attach_children_callback(void *callback_param)
   DBUG_PRINT("myrg", ("MyISAM handle: %p  my_errno: %d",
                       myisam, my_errno));
 
- err:
-  DBUG_RETURN(my_errno ? NULL : myisam);
+ end:
+  DBUG_RETURN(myisam);
 }
 
 
@@ -1075,6 +1074,16 @@ int ha_myisammrg::info(uint flag)
     table->s->crashed= 1;
 #endif
   stats.data_file_length= mrg_info.data_file_length;
+  if (mrg_info.errkey >= (int) table_share->keys)
+  {
+    /*
+     If value of errkey is higher than the number of keys
+     on the table set errkey to MAX_KEY. This will be
+     treated as unknown key case and error message generator
+     won't try to locate key causing segmentation fault.
+    */
+    mrg_info.errkey= MAX_KEY;
+  }
   errkey= mrg_info.errkey;
   table->s->keys_in_use.set_prefix(table->s->keys);
   stats.mean_rec_length= mrg_info.reclength;

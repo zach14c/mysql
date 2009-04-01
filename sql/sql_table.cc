@@ -4360,7 +4360,14 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
           view_checksum(thd, table) == HA_ADMIN_WRONG_CHECKSUM)
         push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                      ER_VIEW_CHECKSUM, ER(ER_VIEW_CHECKSUM));
-      result_code= HA_ADMIN_CORRUPT;
+      if (thd->stmt_da->is_error() && 
+          (thd->stmt_da->sql_errno() == ER_NO_SUCH_TABLE ||
+           thd->stmt_da->sql_errno() == ER_FILE_NOT_FOUND))
+        /* A missing table is just issued as a failed command */
+        result_code= HA_ADMIN_FAILED;
+      else
+        /* Default failure code is corrupt table */
+        result_code= HA_ADMIN_CORRUPT;
       goto send_result;
     }
 
@@ -4393,6 +4400,8 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       trans_commit_stmt(thd);
       trans_commit(thd);
       close_thread_tables(thd);
+      if (!thd->locked_tables_mode)
+        thd->mdl_context.release_all_locks();
       lex->reset_query_tables_list(FALSE);
       table->table=0;				// For query cache
       if (protocol->write())
@@ -4442,7 +4451,10 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       {
         DBUG_PRINT("admin", ("recreating table"));
         trans_rollback_stmt(thd);
+        trans_rollback(thd);
         close_thread_tables(thd);
+        if (!thd->locked_tables_mode)
+          thd->mdl_context.release_all_locks();
         tmp_disable_binlog(thd); // binlogging is done by caller if wanted
         result_code= mysql_recreate_table(thd, table);
         reenable_binlog(thd);
@@ -4556,13 +4568,16 @@ send_result_message:
         We have to end the row, so analyze could return more rows.
       */
       trans_commit_stmt(thd);
+      trans_commit(thd);
+      close_thread_tables(thd);
+      if (!thd->locked_tables_mode)
+        thd->mdl_context.release_all_locks();
       protocol->store(STRING_WITH_LEN("note"), system_charset_info);
       protocol->store(STRING_WITH_LEN(
           "Table does not support optimize, doing recreate + analyze instead"),
                       system_charset_info);
       if (protocol->write())
         goto err;
-      close_thread_tables(thd);
       DBUG_PRINT("info", ("HA_ADMIN_TRY_ALTER, trying analyze..."));
       TABLE_LIST *save_next_local= table->next_local,
                  *save_next_global= table->next_global;
@@ -4579,7 +4594,10 @@ send_result_message:
       if (thd->stmt_da->is_ok())
         thd->stmt_da->reset_diagnostics_area();
       trans_commit_stmt(thd);
+      trans_commit(thd);
       close_thread_tables(thd);
+      if (!thd->locked_tables_mode)
+        thd->mdl_context.release_all_locks();
       if (!result_code) // recreation went ok
       {
         if ((table->table= open_ltable(thd, table, lock_type, 0)) &&
@@ -4673,6 +4691,7 @@ send_result_message:
         query_cache_invalidate3(thd, table->table, 0);
       }
     }
+    /* Error path, a admin command failed. */
     trans_commit_stmt(thd);
     trans_commit_implicit(thd);
     close_thread_tables(thd);
