@@ -1272,7 +1272,7 @@ select *, f8() from v1|
 
 # Let us test what will happen if function is missing
 drop function f1|
---error 1356
+--error ER_VIEW_INVALID
 select * from v1|
 
 # And what will happen if we have recursion which involves
