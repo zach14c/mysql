@@ -3770,6 +3770,8 @@ void Table::findSections(void)
 
 bool Table::validateUpdate(int32 recordNumber, TransId transactionId)
 {
+	CycleLock cycleLock(database);
+
 	if (deleting)
 		return false;
 
