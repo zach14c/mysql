@@ -232,6 +232,7 @@ select (@after:=unix_timestamp())*0;
 select (@after-@before) >= 2;
 (@after-@before) >= 2
 1
+commit;
 drop table t1,t2;
 commit;
 begin;
@@ -272,6 +273,10 @@ master-bin.000001	#	Query	#	#	use `test`; BEGIN
 master-bin.000001	#	Table_map	#	#	table_id: # (test.t1)
 master-bin.000001	#	Write_rows	#	#	table_id: # flags: STMT_END_F
 master-bin.000001	#	Xid	#	#	COMMIT /* XID */
+master-bin.000001	#	Query	#	#	use `test`; BEGIN
+master-bin.000001	#	Table_map	#	#	table_id: # (test.t2)
+master-bin.000001	#	Write_rows	#	#	table_id: # flags: STMT_END_F
+master-bin.000001	#	Query	#	#	use `test`; COMMIT
 master-bin.000001	#	Query	#	#	use `test`; drop table t1,t2
 master-bin.000001	#	Query	#	#	use `test`; create table t0 (n int)
 master-bin.000001	#	Query	#	#	use `test`; BEGIN
