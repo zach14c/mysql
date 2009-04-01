@@ -1,0 +1,1184 @@
+#
+# WL#4534 - Backup client program
+#
+# Coverage tests.
+#
+DROP DATABASE IF EXISTS mysqltest1;
+DROP DATABASE IF EXISTS mysqltest2;
+DROP DATABASE IF EXISTS mysqltest3;
+CREATE DATABASE mysqltest1;
+CREATE DATABASE mysqltest2;
+CREATE DATABASE mysqltest3;
+CREATE TABLE mysqltest1.t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest1.t2 (c1 INT) ENGINE=MEMORY;
+CREATE TABLE mysqltest2.t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE mysqltest2.t2 (c1 INT) ENGINE=MEMORY;
+CREATE VIEW  mysqltest3.v1 AS
+SELECT mysqltest1.t1.c1 + mysqltest2.t1.c1 AS c1
+FROM mysqltest1.t1, mysqltest2.t1;
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bak';
+backup_id
+#
+BACKUP DATABASE mysqltest1, mysqltest2, mysqltest3 TO 'mysqltest.bgz'
+  WITH COMPRESSION;
+backup_id
+#
+# Injecting error at str_read_z_io_error
+
+ERROR: ERROR_INJECT("str_read_z_io_error")
+
+
+ERROR: cannot read compressed image #: Input output error
+
+# Injecting error at str_read_z_eof
+
+ERROR: ERROR_INJECT("str_read_z_eof")
+
+
+ERROR: end of stream within header on image #
+
+# Injecting error at str_read_zlib_error
+
+ERROR: ERROR_INJECT("str_read_zlib_error")
+
+
+ERROR: cannot decompress image #: -2: error injected
+
+# Injecting error at str_read_io_error
+
+ERROR: ERROR_INJECT("str_read_io_error")
+
+
+ERROR: cannot read image #: Input output error
+
+
+ERROR: cannot open stream library on #.
+
+# Injecting error at str_open_rd: non-existing file
+
+ERROR: cannot open backup image #: No such file or directory
+
+# Injecting error at str_open_rd_stat_error
+
+ERROR: ERROR_INJECT("str_open_rd_stat_error")
+
+
+ERROR: cannot fstat open backup image #: Bad file descriptor or number
+
+# Injecting error at str_open_rd_read_error
+
+ERROR: ERROR_INJECT("str_open_rd_read_error")
+
+
+ERROR: cannot read image #: Input output error
+
+# Injecting error at str_open_rd_read_length
+
+ERROR: ERROR_INJECT("str_open_rd_read_length")
+
+
+ERROR: image # has only 9 bytes of at least 10 required
+
+# Injecting error at str_open_rd_zbuf_malloc
+
+ERROR: ERROR_INJECT("str_open_rd_zbuf_malloc")
+
+mysqlbackup: Out of memory
+# Injecting error at str_open_rd_zlib_init
+
+ERROR: ERROR_INJECT("str_open_rd_zlib_init")
+
+
+ERROR: cannot init zlib on image #: -2: error injected
+
+# Injecting error at str_open_rd: not a backup file
+
+ERROR: not a backup image file: #. Magic number mismatch.
+
+# Injecting error at str_open_rd_version
+
+ERROR: ERROR_INJECT("str_open_rd_version")
+
+
+ERROR: backup image version 0 is not supported
+
+# Injecting error at str_close_bstream
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+Summary:
+
+Creation time: #
+Validity time: #
+Finish   time: #
+No binlog information
+
+ERROR: ERROR_INJECT("str_close_bstream")
+
+
+ERROR: cannot close stream library on #.
+
+# Injecting error at str_close_zlib
+
+Image path: #
+Image size: #
+Image compression:   gzip
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+Summary:
+
+Creation time: #
+Validity time: #
+Finish   time: #
+No binlog information
+
+ERROR: ERROR_INJECT("str_close_zlib")
+
+
+ERROR: cannot close zlib on image #: -2: error injected
+
+# Injecting error at str_close_file
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+Summary:
+
+Creation time: #
+Validity time: #
+Finish   time: #
+No binlog information
+
+ERROR: ERROR_INJECT("str_close_file")
+
+
+ERROR: cannot close image #: Input output error
+
+# Injecting error at bcat_add_item_global_malloc
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_global_malloc")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_global_insert
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_global_insert")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_db_malloc
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_db_malloc")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_db_tables
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_db_tables")
+
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_db_perdbs
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_db_perdbs")
+
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_db_insert
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_db_insert")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_table_malloc
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_table_malloc")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_table_insert
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_table_insert")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_table_index
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_table_index")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_perdb_malloc
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_perdb_malloc")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_perdb_insert
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_perdb_insert")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_add_item_ordered_insert
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_add_item_ordered_insert")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_iterator_get_malloc
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_iterator_get_malloc")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_iterator_get_type
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("bcat_iterator_get_type")
+
+
+ERROR: iterator type not yet implemented: pertable
+
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at bcat_create_item_malloc
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("bcat_create_item_malloc")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of meta data.
+
+# Injecting error at bcat_create_item_user
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("bcat_create_item_user")
+
+
+ERROR: non-existent User position: # in catalog.
+
+
+ERROR: error on stream library read of meta data.
+
+# Injecting error at bcat_create_item_ordered_insert
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("bcat_create_item_ordered_insert")
+
+mysqlbackup: Out of memory
+
+ERROR: error on stream library read of meta data.
+
+# Injecting error at backup_catalog_allocate_malloc
+
+ERROR: ERROR_INJECT("backup_catalog_allocate_malloc")
+
+mysqlbackup: Out of memory
+# Injecting error at backup_catalog_allocate_array
+
+ERROR: ERROR_INJECT("backup_catalog_allocate_array")
+
+
+ERROR: ERROR_INJECT("backup_catalog_allocate_array")
+
+# Injecting error at backup_image_open_malloc
+
+ERROR: ERROR_INJECT("backup_image_open_malloc")
+
+mysqlbackup: Out of memory
+# Injecting error at backup_image_open_header
+
+ERROR: ERROR_INJECT("backup_image_open_header")
+
+
+ERROR: error on stream library read of header.
+
+# Injecting error at backup_image_open_snapshot_malloc
+
+ERROR: ERROR_INJECT("backup_image_open_snapshot_malloc")
+
+mysqlbackup: Out of memory
+# Injecting error at backup_image_open_index
+
+ERROR: ERROR_INJECT("backup_image_open_index")
+
+# Injecting error at backup_image_open_index1
+
+ERROR: ERROR_INJECT("backup_image_open_index1")
+
+
+ERROR: ERROR_INJECT("backup_image_open_index1")
+
+# Injecting error at backup_image_open_snapshot_insert
+
+ERROR: ERROR_INJECT("backup_image_open_snapshot_insert")
+
+mysqlbackup: Out of memory
+# Injecting error at backup_image_open_next_eos
+
+ERROR: ERROR_INJECT("backup_image_open_next_eos")
+
+
+ERROR: end of stream after header.
+
+# Injecting error at backup_image_open_next_err
+
+ERROR: ERROR_INJECT("backup_image_open_next_err")
+
+
+ERROR: cannot find catalog after header.
+
+# Injecting error at backup_read_catalog_rd_eos
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("backup_read_catalog_rd_eos")
+
+
+ERROR: end of stream within catalog.
+
+# Injecting error at backup_read_catalog_rd_err
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("backup_read_catalog_rd_err")
+
+
+ERROR: error on stream library read of catalog.
+
+# Injecting error at backup_read_catalog_next_eos
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("backup_read_catalog_next_eos")
+
+
+ERROR: end of stream after catalog.
+
+# Injecting error at backup_read_catalog_next_err
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+
+ERROR: ERROR_INJECT("backup_read_catalog_next_err")
+
+
+ERROR: cannot find meta data after catalog.
+
+# Injecting error at backup_read_metadata_rd_eos
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_read_metadata_rd_eos")
+
+
+ERROR: end of stream within meta data.
+
+# Injecting error at backup_read_metadata_rd_err
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_read_metadata_rd_err")
+
+
+ERROR: error on stream library read of meta data.
+
+# Injecting error at backup_read_metadata_next_eos
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_read_metadata_next_eos")
+
+
+ERROR: end of stream after meta data.
+
+# Injecting error at backup_read_metadata_next_err
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_read_metadata_next_err")
+
+
+ERROR: cannot find next chunk after meta data.
+
+# Injecting error at backup_read_snapshot_rd_eos
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_read_snapshot_rd_eos")
+
+
+ERROR: end of stream after meta data.
+
+# Injecting error at backup_read_snapshot_rd_err
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_read_snapshot_rd_err")
+
+
+ERROR: error on stream library read of snapshot.
+
+# Injecting error at backup_read_summary_rd_ok
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_read_summary_rd_ok")
+
+
+ERROR: stream not at end after reading summary.
+
+# Injecting error at backup_read_summary_rd_err
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_read_summary_rd_err")
+
+
+ERROR: error on stream library read of summary.
+
+# Injecting error at backup_locate_global_pos
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_locate_global_pos")
+
+
+ERROR: non-existent Database position: # in catalog.
+
+
+ERROR: error on stream library read of meta data.
+
+
+ERROR: ERROR_INJECT("backup_locate_global_pos")
+
+
+ERROR: non-existent Database position: # in catalog.
+
+
+ERROR: ERROR_INJECT("backup_locate_global_pos")
+
+
+ERROR: non-existent Database position: # in catalog.
+
+
+ERROR: ERROR_INJECT("backup_locate_global_pos")
+
+
+ERROR: non-existent Database position: # in catalog.
+
+# Injecting error at backup_locate_table_pos
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_locate_table_pos")
+
+
+ERROR: non-existent table position: # in table index of snapshot: 0
+
+
+ERROR: error on stream library read of meta data.
+
+# Injecting error at backup_locate_perdb_pos
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+Backup image chrset: 'utf8'
+
+ERROR: ERROR_INJECT("backup_locate_perdb_pos")
+
+
+ERROR: non-existent perdb position: # in database: 'mysqltest3'
+
+
+ERROR: error on stream library read of meta data.
+
+
+# illegal search string: unrecognized stuff at end
+#========vvvvvvvv========
+
+ERROR: Cannot parse search name, unrecognized syntax at 'z'
+
+mysqlbackup Ver # for # at #
+
+Copyright (c) 2008 Sun Microsystems, Inc.
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+
+This program displays information from a backup image.
+
+Usage: mysqlbackup [options] backup-image-file
+  -?, --help          Display this help and exit.
+  -v, --verbose       Print verbose information.
+  -V, --version       Print version and exit.
+  --open_files_limit=# 
+                      Used to reserve file descriptors for usage by this
+                      program.
+  --catalog-summary   Print summary from the database objects catalog.
+  --catalog-details   Print details from the database objects catalog.
+  --metadata-statements 
+                      Print SQL statements to create the database objects.
+  --metadata-extra    Print extra meta data for the database objects.
+  --snapshots         Print information about snapshots contained in the backup
+                      image.
+  --data-chunks       Print length of every data chunk contained in the backup
+                      image.
+  --data-totals       Print length of data contained in the backup image for
+                      each object.
+  --summary           Print summary information from end of the backup image.
+  --all               Print everything except snapshots and data-chunks.
+  --exact             Print exact number of bytes instead of human readable
+                      form.
+  --image-order       Print catalog items and meta data in the order of the
+                      backup image.
+  --search=name       Search object in the backup image. Name can be object or
+                      database.object. Quoting of database and/or object with
+                      ", ', or ` is allowed. Wildcards % and _ are available.
+                      Use with --metadata-* options to see meta data. Plain
+                      name finds global objects, name1.name2 finds per db
+                      objects.
+
+Variables (--variable-name=value)
+and boolean options {FALSE|TRUE}  Value (after reading options)
+--------------------------------- -----------------------------
+open_files_limit #
+search                            x z
+#========^^^^^^^^========
+
+# illegal search string: unrecognized stuff at end with dot
+#========vvvvvvvv========
+
+ERROR: Cannot parse search name, unrecognized syntax at 'z'
+
+mysqlbackup Ver # for # at #
+
+Copyright (c) 2008 Sun Microsystems, Inc.
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+
+This program displays information from a backup image.
+
+Usage: mysqlbackup [options] backup-image-file
+  -?, --help          Display this help and exit.
+  -v, --verbose       Print verbose information.
+  -V, --version       Print version and exit.
+  --open_files_limit=# 
+                      Used to reserve file descriptors for usage by this
+                      program.
+  --catalog-summary   Print summary from the database objects catalog.
+  --catalog-details   Print details from the database objects catalog.
+  --metadata-statements 
+                      Print SQL statements to create the database objects.
+  --metadata-extra    Print extra meta data for the database objects.
+  --snapshots         Print information about snapshots contained in the backup
+                      image.
+  --data-chunks       Print length of every data chunk contained in the backup
+                      image.
+  --data-totals       Print length of data contained in the backup image for
+                      each object.
+  --summary           Print summary information from end of the backup image.
+  --all               Print everything except snapshots and data-chunks.
+  --exact             Print exact number of bytes instead of human readable
+                      form.
+  --image-order       Print catalog items and meta data in the order of the
+                      backup image.
+  --search=name       Search object in the backup image. Name can be object or
+                      database.object. Quoting of database and/or object with
+                      ", ', or ` is allowed. Wildcards % and _ are available.
+                      Use with --metadata-* options to see meta data. Plain
+                      name finds global objects, name1.name2 finds per db
+                      objects.
+
+Variables (--variable-name=value)
+and boolean options {FALSE|TRUE}  Value (after reading options)
+--------------------------------- -----------------------------
+open_files_limit #
+search                            x.y z
+#========^^^^^^^^========
+
+# illegal search string: improperly quoted
+#========vvvvvvvv========
+
+ERROR: Cannot parse search name, improperly quoted.
+
+mysqlbackup Ver # for # at #
+
+Copyright (c) 2008 Sun Microsystems, Inc.
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+
+This program displays information from a backup image.
+
+Usage: mysqlbackup [options] backup-image-file
+  -?, --help          Display this help and exit.
+  -v, --verbose       Print verbose information.
+  -V, --version       Print version and exit.
+  --open_files_limit=# 
+                      Used to reserve file descriptors for usage by this
+                      program.
+  --catalog-summary   Print summary from the database objects catalog.
+  --catalog-details   Print details from the database objects catalog.
+  --metadata-statements 
+                      Print SQL statements to create the database objects.
+  --metadata-extra    Print extra meta data for the database objects.
+  --snapshots         Print information about snapshots contained in the backup
+                      image.
+  --data-chunks       Print length of every data chunk contained in the backup
+                      image.
+  --data-totals       Print length of data contained in the backup image for
+                      each object.
+  --summary           Print summary information from end of the backup image.
+  --all               Print everything except snapshots and data-chunks.
+  --exact             Print exact number of bytes instead of human readable
+                      form.
+  --image-order       Print catalog items and meta data in the order of the
+                      backup image.
+  --search=name       Search object in the backup image. Name can be object or
+                      database.object. Quoting of database and/or object with
+                      ", ', or ` is allowed. Wildcards % and _ are available.
+                      Use with --metadata-* options to see meta data. Plain
+                      name finds global objects, name1.name2 finds per db
+                      objects.
+
+Variables (--variable-name=value)
+and boolean options {FALSE|TRUE}  Value (after reading options)
+--------------------------------- -----------------------------
+open_files_limit #
+search                            'x
+#========^^^^^^^^========
+
+# illegal search string: improperly quoted with dot
+#========vvvvvvvv========
+
+ERROR: Cannot parse search name, improperly quoted.
+
+mysqlbackup Ver # for # at #
+
+Copyright (c) 2008 Sun Microsystems, Inc.
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+
+This program displays information from a backup image.
+
+Usage: mysqlbackup [options] backup-image-file
+  -?, --help          Display this help and exit.
+  -v, --verbose       Print verbose information.
+  -V, --version       Print version and exit.
+  --open_files_limit=# 
+                      Used to reserve file descriptors for usage by this
+                      program.
+  --catalog-summary   Print summary from the database objects catalog.
+  --catalog-details   Print details from the database objects catalog.
+  --metadata-statements 
+                      Print SQL statements to create the database objects.
+  --metadata-extra    Print extra meta data for the database objects.
+  --snapshots         Print information about snapshots contained in the backup
+                      image.
+  --data-chunks       Print length of every data chunk contained in the backup
+                      image.
+  --data-totals       Print length of data contained in the backup image for
+                      each object.
+  --summary           Print summary information from end of the backup image.
+  --all               Print everything except snapshots and data-chunks.
+  --exact             Print exact number of bytes instead of human readable
+                      form.
+  --image-order       Print catalog items and meta data in the order of the
+                      backup image.
+  --search=name       Search object in the backup image. Name can be object or
+                      database.object. Quoting of database and/or object with
+                      ", ', or ` is allowed. Wildcards % and _ are available.
+                      Use with --metadata-* options to see meta data. Plain
+                      name finds global objects, name1.name2 finds per db
+                      objects.
+
+Variables (--variable-name=value)
+and boolean options {FALSE|TRUE}  Value (after reading options)
+--------------------------------- -----------------------------
+open_files_limit #
+search                            'x'.'y
+#========^^^^^^^^========
+
+# valid search string: quoted with dot
+#========vvvvvvvv========
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+
+Searching for 'x'.'y'
+#========^^^^^^^^========
+
+# valid search string: space around dot
+#========vvvvvvvv========
+
+Image path: #
+Image size: #
+Image compression:   none
+Image version:       1
+Creation time: #
+Server version: #
+Server byte order: #
+Server charset:      'utf8'
+
+Searching for 'x'.'y'
+#========^^^^^^^^========
+
+# illegal option
+#========vvvvvvvv========
+mysqlbackup: unknown option '--xyz'
+mysqlbackup Ver # for # at #
+
+Copyright (c) 2008 Sun Microsystems, Inc.
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+
+This program displays information from a backup image.
+
+Usage: mysqlbackup [options] backup-image-file
+  -?, --help          Display this help and exit.
+  -v, --verbose       Print verbose information.
+  -V, --version       Print version and exit.
+  --open_files_limit=# 
+                      Used to reserve file descriptors for usage by this
+                      program.
+  --catalog-summary   Print summary from the database objects catalog.
+  --catalog-details   Print details from the database objects catalog.
+  --metadata-statements 
+                      Print SQL statements to create the database objects.
+  --metadata-extra    Print extra meta data for the database objects.
+  --snapshots         Print information about snapshots contained in the backup
+                      image.
+  --data-chunks       Print length of every data chunk contained in the backup
+                      image.
+  --data-totals       Print length of data contained in the backup image for
+                      each object.
+  --summary           Print summary information from end of the backup image.
+  --all               Print everything except snapshots and data-chunks.
+  --exact             Print exact number of bytes instead of human readable
+                      form.
+  --image-order       Print catalog items and meta data in the order of the
+                      backup image.
+  --search=name       Search object in the backup image. Name can be object or
+                      database.object. Quoting of database and/or object with
+                      ", ', or ` is allowed. Wildcards % and _ are available.
+                      Use with --metadata-* options to see meta data. Plain
+                      name finds global objects, name1.name2 finds per db
+                      objects.
+
+Variables (--variable-name=value)
+and boolean options {FALSE|TRUE}  Value (after reading options)
+--------------------------------- -----------------------------
+open_files_limit #
+search                            (No default value)
+#========^^^^^^^^========
+
+# incorrect number of arguments
+#========vvvvvvvv========
+
+ERROR: incorrect number of arguments.
+
+mysqlbackup Ver # for # at #
+
+Copyright (c) 2008 Sun Microsystems, Inc.
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+
+This program displays information from a backup image.
+
+Usage: mysqlbackup [options] backup-image-file
+  -?, --help          Display this help and exit.
+  -v, --verbose       Print verbose information.
+  -V, --version       Print version and exit.
+  --open_files_limit=# 
+                      Used to reserve file descriptors for usage by this
+                      program.
+  --catalog-summary   Print summary from the database objects catalog.
+  --catalog-details   Print details from the database objects catalog.
+  --metadata-statements 
+                      Print SQL statements to create the database objects.
+  --metadata-extra    Print extra meta data for the database objects.
+  --snapshots         Print information about snapshots contained in the backup
+                      image.
+  --data-chunks       Print length of every data chunk contained in the backup
+                      image.
+  --data-totals       Print length of data contained in the backup image for
+                      each object.
+  --summary           Print summary information from end of the backup image.
+  --all               Print everything except snapshots and data-chunks.
+  --exact             Print exact number of bytes instead of human readable
+                      form.
+  --image-order       Print catalog items and meta data in the order of the
+                      backup image.
+  --search=name       Search object in the backup image. Name can be object or
+                      database.object. Quoting of database and/or object with
+                      ", ', or ` is allowed. Wildcards % and _ are available.
+                      Use with --metadata-* options to see meta data. Plain
+                      name finds global objects, name1.name2 finds per db
+                      objects.
+
+Variables (--variable-name=value)
+and boolean options {FALSE|TRUE}  Value (after reading options)
+--------------------------------- -----------------------------
+open_files_limit #
+search                            (No default value)
+#========^^^^^^^^========
+
+# incorrect number of arguments
+#========vvvvvvvv========
+
+ERROR: incorrect number of arguments.
+
+mysqlbackup Ver # for # at #
+
+Copyright (c) 2008 Sun Microsystems, Inc.
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+
+This program displays information from a backup image.
+
+Usage: mysqlbackup [options] backup-image-file
+  -?, --help          Display this help and exit.
+  -v, --verbose       Print verbose information.
+  -V, --version       Print version and exit.
+  --open_files_limit=# 
+                      Used to reserve file descriptors for usage by this
+                      program.
+  --catalog-summary   Print summary from the database objects catalog.
+  --catalog-details   Print details from the database objects catalog.
+  --metadata-statements 
+                      Print SQL statements to create the database objects.
+  --metadata-extra    Print extra meta data for the database objects.
+  --snapshots         Print information about snapshots contained in the backup
+                      image.
+  --data-chunks       Print length of every data chunk contained in the backup
+                      image.
+  --data-totals       Print length of data contained in the backup image for
+                      each object.
+  --summary           Print summary information from end of the backup image.
+  --all               Print everything except snapshots and data-chunks.
+  --exact             Print exact number of bytes instead of human readable
+                      form.
+  --image-order       Print catalog items and meta data in the order of the
+                      backup image.
+  --search=name       Search object in the backup image. Name can be object or
+                      database.object. Quoting of database and/or object with
+                      ", ', or ` is allowed. Wildcards % and _ are available.
+                      Use with --metadata-* options to see meta data. Plain
+                      name finds global objects, name1.name2 finds per db
+                      objects.
+
+Variables (--variable-name=value)
+and boolean options {FALSE|TRUE}  Value (after reading options)
+--------------------------------- -----------------------------
+open_files_limit #
+search                            (No default value)
+#========^^^^^^^^========
+DROP DATABASE mysqltest1;
+DROP DATABASE mysqltest2;
+DROP DATABASE mysqltest3;

@@ -3032,19 +3032,7 @@ int LEX::add_db_to_list(LEX_STRING *name)
 {
   DBUG_ASSERT(name);
     
-  List_iterator<LEX_STRING> it(db_list);
-  LEX_STRING *copy;
-  
-  while ((copy= it++))
-   if (!my_strnncoll(system_charset_info, 
-                     (const uchar*) name->str, name->length , 
-                     (const uchar*) copy->str, copy->length ))
-   {    
-     my_error(ER_NONUNIQ_DB, MYF(0), name->str);
-     return ER_NONUNIQ_DB;
-   }
-
-  copy= (LEX_STRING*) sql_memdup(name, sizeof(LEX_STRING));
+  LEX_STRING *copy= (LEX_STRING*) sql_memdup(name, sizeof(LEX_STRING));
   if (copy == NULL)
     return ER_OUT_OF_RESOURCES;
     

@@ -897,6 +897,8 @@ CREATE PROCEDURE p1 ()
 BEGIN
   DECLARE i INT DEFAULT 50;
   DECLARE cnt INT;
+  # Continue even in the presence of ER_LOCK_DEADLOCK.
+  DECLARE CONTINUE HANDLER FOR 1213 BEGIN END;
   START TRANSACTION;
     ALTER TABLE t1 ENGINE=InnoDB;
   COMMIT;
@@ -1371,6 +1373,7 @@ SELECT * FROM t1;
 connection con2;
 --reap
 SELECT * FROM t1;
+COMMIT;
 
 --echo # Switch to connection con1
 connection con1;

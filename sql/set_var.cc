@@ -608,6 +608,8 @@ sys_query_cache_wlock_invalidate(&vars, "query_cache_wlock_invalidate",
 static sys_var_bool_ptr	sys_secure_auth(&vars, "secure_auth", &opt_secure_auth);
 static sys_var_const_str_ptr sys_secure_file_priv(&vars, "secure_file_priv",
                                              &opt_secure_file_priv);
+static sys_var_const_str_ptr sys_secure_backup_file_priv(&vars, "secure_backup_file_priv",
+                                             &opt_secure_backup_file_priv);
 static sys_var_long_ptr	sys_server_id(&vars, "server_id", &server_id, fix_server_id);
 static sys_var_bool_ptr	sys_slave_compressed_protocol(&vars, "slave_compressed_protocol",
 						      &opt_slave_compressed_protocol);
@@ -2598,7 +2600,17 @@ static int  sys_check_log_path(THD *thd,  set_var *var)
   if (!(res= var->value->val_str(&str)))
     goto err;
 
-  log_file_str= res->c_ptr();
+  /*
+    Check maximum string length and error if too long.
+    Do not set the value.
+  */
+  if (res->length() > FN_REFLEN)
+  {
+    my_error(ER_PATH_LENGTH, MYF(0), var->var->name);
+    return 1;
+  }
+
+  log_file_str= res->c_ptr_safe();
   bzero(&f_stat, sizeof(MY_STAT));
 
   path_length= unpack_filename(path, log_file_str);
@@ -2805,7 +2817,7 @@ static bool sys_update_backup_history_log_path(THD *thd, set_var * var)
   String str(buff,sizeof(buff), system_charset_info), *res;
 
   res= var->value->val_str(&str);
-  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+  if (my_strcasecmp(system_charset_info, res->c_ptr_safe(), 
       sys_var_backup_progress_log_path.value) == 0)
   {
     my_error(ER_BACKUP_LOGPATHS, MYF(0));
@@ -2833,7 +2845,7 @@ static bool sys_update_backup_progress_log_path(THD *thd, set_var * var)
   String str(buff,sizeof(buff), system_charset_info), *res;
 
   res= var->value->val_str(&str);
-  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+  if (my_strcasecmp(system_charset_info, res->c_ptr_safe(), 
       sys_var_backup_history_log_path.value) == 0)
   {
     my_error(ER_BACKUP_LOGPATHS, MYF(0));
@@ -3010,7 +3022,7 @@ static int sys_check_backupdir(THD *thd, set_var *var)
   if (!(res= var->value->val_str(&str)))
     goto err;
 
-  log_file_str= res->c_ptr();
+  log_file_str= res->c_ptr_safe();
   bzero(&f_stat, sizeof(MY_STAT));
 
   /* Get dirname of the file path. */
@@ -3052,7 +3064,7 @@ err:
 static bool sys_update_backupdir(THD *thd, set_var * var)
 {
   char buff[FN_REFLEN];
-  char *res= 0, *old_value= NULL;
+  char *new_value= 0, *copied_value= NULL;
   bool result= 0;
   uint str_length;
   String str(buff, sizeof(buff), system_charset_info);
@@ -3063,16 +3075,26 @@ static bool sys_update_backupdir(THD *thd, set_var * var)
 
     if (!(strres= var->value->val_str(&str)))
       goto err;
-    old_value= strres->c_ptr();
+    copied_value= strres->c_ptr_safe();
     str_length= strres->length();
   }
   else
   {
-    old_value= make_default_backupdir(buff);
-    str_length= strlen(old_value);
+    copied_value= make_default_backupdir(buff);
+    str_length= strlen(copied_value);
   }
 
-  if (!(res= my_strndup(old_value, str_length, MYF(MY_FAE+MY_WME))))
+  /*
+    Check maximum string length and error if too long.
+    Do not set the value.
+  */
+  if (str_length > FN_REFLEN)
+  {
+    my_error(ER_PATH_LENGTH, MYF(0), var->var->name);
+    return 1;
+  }
+
+  if (!(new_value= my_strndup(copied_value, str_length, MYF(MY_FAE+MY_WME))))
   {
     result= 1;
     goto err;
@@ -3080,8 +3102,8 @@ static bool sys_update_backupdir(THD *thd, set_var * var)
 
   pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
-  old_value= sys_var_backupdir.value;
-  sys_var_backupdir.value= res;
+  my_free(sys_var_backupdir.value, MYF(MY_ALLOW_ZERO_PTR));
+  sys_var_backupdir.value= new_value;
   sys_var_backupdir.value_length= str_length;
   logger.unlock();
   pthread_mutex_unlock(&LOCK_global_system_variables);
@@ -3579,9 +3601,15 @@ static bool set_option_autocommit(THD *thd, set_var *var)
     need to commit any outstanding transactions.
    */
   if (var->save_result.ulong_value != 0 &&
-      (thd->options & OPTION_NOT_AUTOCOMMIT) &&
-      trans_commit(thd))
-    return 1;
+      (thd->options & OPTION_NOT_AUTOCOMMIT))
+  {
+    if (trans_commit(thd))
+      return TRUE;
+
+    close_thread_tables(thd);
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
+  }
 
   if (var->save_result.ulong_value != 0)
     thd->options&= ~((sys_var_thd_bit*) var->var)->bit_flag;

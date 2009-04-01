@@ -1,8 +1,10 @@
-call mtr.add_suppression("Restore: Tablespace .* needed by tables being restored, but the current tablespace definition differs");
 DROP TABLE IF EXISTS backup_ts.not_ts;
 DROP TABLE IF EXISTS backup_ts.has_ts;
 DROP DATABASE IF EXISTS backup_ts;
 CREATE DATABASE backup_ts;
+#
+# Test 1 - Test backup of database with a table that uses a tablespace
+#
 Test 1:
 Create a tablespace.
 CREATE TABLESPACE bup_ts ADD DATAFILE 'bup_ts.dat' COMMENT = 'test tablespace backup' ENGINE=FALCON;
@@ -45,13 +47,198 @@ id	comment
 54	Table has a tablespace 54
 55	Table has a tablespace 55
 DROP DATABASE backup_ts;
-Test 2:
-Alter the tablespace.
-DROP TABLESPACE bup_ts ENGINE=FALCON;
-CREATE TABLESPACE bup_ts ADD DATAFILE 'different.dat' ENGINE=FALCON;
-Now restore the database.
-RESTORE FROM 'backup_ts.bak';
-ERROR HY000: Tablespace `BUP_TS` needed by tables being restored, but the current tablespace definition differs from how it was when backup was made.
-Cleanup
-DROP DATABASE IF EXISTS backup_ts;
-DROP TABLESPACE bup_ts ENGINE=FALCON;
+#
+# Test 2 - Test that restore of tablespaces work when the 
+#          tablespace has been modified since backup was made
+#
+# Test 2.1: Backup ts with lowercase name, restore after 
+# dropping it and creating a ts with uppercase name
+#
+Create ts with lowercase name
+CREATE TABLESPACE tb ADD DATAFILE 'tblspace' ENGINE=FALCON;
+Create a database using the ts
+CREATE DATABASE backup_ts;
+USE backup_ts;
+CREATE TABLE t (s1 INT) ENGINE=FALCON TABLESPACE tb;
+INSERT INTO t VALUES (1);
+
+Backup database
+
+BACKUP DATABASE backup_ts TO 'ts_lc.bak';
+backup_id
+#
+Drop database and recreate ts with uppercase name
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+CREATE TABLESPACE TB ADD DATAFILE 'tblspace' ENGINE=FALCON;
+
+Restore database
+RESTORE FROM 'ts_lc.bak';
+backup_id
+#
+
+Do inverse: Backup with uppercase ts, restore with lowercase ts
+
+BACKUP DATABASE backup_ts TO 'ts_uc.bak';
+backup_id
+#
+Drop database and recreate ts with lowecase name
+DROP DATABASE backup_ts;
+DROP TABLESPACE TB ENGINE=FALCON;
+CREATE TABLESPACE tb ADD DATAFILE 'tblspace' ENGINE=FALCON;
+
+Restore database
+
+RESTORE FROM 'ts_uc.bak';
+backup_id
+#
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+#
+# Test 2.2: Backup ts with lowercase filename, restore after 
+# dropping it and creating a ts with uppercase filename
+#
+Create ts with lowercase filename
+CREATE TABLESPACE tb ADD DATAFILE 'tblspace' ENGINE=FALCON;
+Create a database using the ts
+CREATE DATABASE backup_ts;
+USE backup_ts;
+CREATE TABLE t (s1 INT) ENGINE=FALCON TABLESPACE tb;
+INSERT INTO t VALUES (1);
+
+Backup database
+
+BACKUP DATABASE backup_ts TO 'ts_lcfile.bak';
+backup_id
+#
+Drop database and recreate ts with uppercase filename
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+CREATE TABLESPACE tb ADD DATAFILE 'TBLSPACE' ENGINE=FALCON;
+
+Restore database
+
+RESTORE FROM 'ts_lcfile.bak';
+backup_id
+#
+
+Do inverse: Backup with uppercase filename, 
+restore with lowercase ts filename
+
+BACKUP DATABASE backup_ts TO 'ts_ucfile.bak';
+backup_id
+#
+Drop database and recreate ts with lowercase filename
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+CREATE TABLESPACE tb ADD DATAFILE 'tblspace' ENGINE=FALCON;
+
+Restore database
+
+RESTORE FROM 'ts_ucfile.bak';
+backup_id
+#
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+#
+# Test 2.3: Backup ts, restore after dropping it and creating a ts with
+# a different extent_size
+#
+CREATE TABLESPACE tb ADD DATAFILE 'tblspace' ENGINE=FALCON;
+CREATE DATABASE backup_ts;
+USE backup_ts;
+CREATE TABLE t (s1 INT) ENGINE=FALCON TABLESPACE tb;
+INSERT INTO t VALUES (1);
+BACKUP DATABASE backup_ts TO 'ts_extent.bak';
+backup_id
+#
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+CREATE TABLESPACE tb ADD DATAFILE 'tblspace' EXTENT_SIZE = 1024 ENGINE=FALCON;
+RESTORE FROM 'ts_extent.bak';
+backup_id
+#
+
+Do inverse: Backup with extent_size 1024, restore without setting it
+
+BACKUP DATABASE backup_ts TO 'ts_extent2.bak';
+backup_id
+#
+Drop database and recreate ts with lowecase name
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+CREATE TABLESPACE tb ADD DATAFILE 'tblspace' ENGINE=FALCON;
+
+Restore database
+
+RESTORE FROM 'ts_extent2.bak';
+backup_id
+#
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+#
+# Test 2.4: Backup ts, restore after dropping it and creating a ts with
+# a different filename
+#
+CREATE TABLESPACE tb ADD DATAFILE 'tblspace' ENGINE=FALCON;
+CREATE DATABASE backup_ts;
+USE backup_ts;
+CREATE TABLE t (s1 INT) ENGINE=FALCON TABLESPACE tb;
+INSERT INTO t VALUES (1);
+BACKUP DATABASE backup_ts TO 'ts_newfname.bak';
+backup_id
+#
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+CREATE TABLESPACE tb ADD DATAFILE 'tblspace2' ENGINE=FALCON;
+RESTORE FROM 'ts_newfname.bak';
+backup_id
+#
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+
+# Test 3: Restore after deleting a tablespace the backed up database 
+#         depends on.
+
+CREATE TABLESPACE `TB` ADD DATAFILE 'tblspace' ENGINE=FALCON;
+CREATE DATABASE backup_ts;
+USE backup_ts;
+CREATE TABLE t (s1 INT) ENGINE=FALCON TABLESPACE tb;
+INSERT INTO t VALUES (1);
+BACKUP DATABASE backup_ts TO 'ts_drop.bak';
+backup_id
+#
+
+# Show tablespace info
+SELECT t1.tablespace_name, t1.engine, t1.tablespace_type, t2.file_name, t2.file_type FROM INFORMATION_SCHEMA.TABLESPACES AS t1, INFORMATION_SCHEMA.FILES AS t2 WHERE t1.tablespace_name = t2.tablespace_name AND t1.tablespace_name = 'TB';;
+tablespace_name	TB
+engine	Falcon
+tablespace_type	USER DEFINED
+file_name	tblspace.fts
+file_type	USER DATAFILE
+
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;
+
+# Restore and verify database content
+
+RESTORE FROM 'ts_drop.bak';
+backup_id
+#
+SHOW TABLES IN backup_ts;
+Tables_in_backup_ts
+t
+SELECT * FROM backup_ts.t;
+s1
+1
+
+# Show tablespace info
+SELECT t1.tablespace_name, t1.engine, t1.tablespace_type, t2.file_name, t2.file_type FROM INFORMATION_SCHEMA.TABLESPACES AS t1, INFORMATION_SCHEMA.FILES AS t2 WHERE t1.tablespace_name = t2.tablespace_name AND t1.tablespace_name = 'TB';;
+tablespace_name	TB
+engine	Falcon
+tablespace_type	USER DEFINED
+file_name	tblspace.fts
+file_type	USER DATAFILE
+
+DROP DATABASE backup_ts;
+DROP TABLESPACE tb ENGINE=FALCON;

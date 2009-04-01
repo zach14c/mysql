@@ -98,6 +98,10 @@ bool trans_begin(THD *thd, uint flags)
 
   thd->locked_tables_list.unlock_locked_tables(thd);
 
+  DBUG_ASSERT(!thd->locked_tables_mode);
+
+  thd->mdl_context.release_all_locks();
+
   if (trans_commit_implicit(thd))
     DBUG_RETURN(TRUE);
 
@@ -336,6 +340,13 @@ bool trans_savepoint(THD *thd, LEX_STRING name)
   newsv->prev= thd->transaction.savepoints;
   thd->transaction.savepoints= newsv;
 
+  /*
+    Remember the last acquired lock before the savepoint was set.
+    This is used as a marker to only release locks acquired after
+    the setting of this savepoint.
+  */
+  newsv->mdl_savepoint = thd->mdl_context.mdl_savepoint();
+
   DBUG_RETURN(FALSE);
 }
 
@@ -379,6 +390,10 @@ bool trans_rollback_to_savepoint(THD *thd, LEX_STRING name)
                  ER(ER_WARNING_NOT_COMPLETE_ROLLBACK));
 
   thd->transaction.savepoints= sv;
+
+  /* Release metadata locks that were acquired during this savepoint unit. */
+  if (!res && !thd->locked_tables_mode)
+    thd->mdl_context.rollback_to_savepoint(sv->mdl_savepoint);
 
   DBUG_RETURN(test(res));
 }

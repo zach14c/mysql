@@ -1,19 +1,67 @@
+#
 # Test of MyISAM logical logging and the myisamlog utility:
 # see if they can repopulate a table.
+#
+
+#--let $MYISAMLOG = ../storage/myisam/myisamlog
 
 --source include/not_embedded.inc
 
-#
-# This test fails on win platforms currently. See BUG#38133.
-#
---source include/not_windows.inc
+--disable_warnings
+--connection default
+DROP DATABASE IF EXISTS mysqltest;
+--enable_warnings
 
-disable_warnings;
-create database if not exists mysqltest;
+#
+# get data directory.
+#
+--let $MYSQLD_DATADIR= `select @@datadir`
+
+#
+# This test needs to restart the server when run together with other
+# tests that use the --log-isam option, e.g. myisamlog_coverage.test. If
+# these would run in one server process without restart, the myisam.log
+# file would be kept open over the test cases. The later running test
+# case would append to the myisam.log file, which would give a different
+# myisam.log file than when running each standalone.
+#
+# Write mysqld.1.expect file to make mysql-test-run.pl expect shutdown
+# and wait before restarting the server.
+#
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+wait-myisamlog.test
+EOF
+#
+# Shutdown
+#
+--exec $MYSQLADMIN --no-defaults -S $MASTER_MYSOCK -P $MASTER_MYPORT  -u root --password= shutdown 2>&1
+#
+# Delete the old log file, if exists.
+#
+--error 0,1
+--remove_file $MYSQLD_DATADIR/myisam.log
+#
+# Write mysqld.1.expect file to make mysql-test-run.pl restart the server.
+#
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+restart-myisamlog.test
+EOF
+#
+# Turn on reconnect, to be sure.
+#
+--enable_reconnect
+#
+# Call script that will poll the server waiting for it to be back online again.
+#
+--source include/wait_until_connected_again.inc
+
+#
+# Start of tests.
+#
+
+--echo # CREATE generates no entry in the logical log.
+CREATE DATABASE mysqltest;
 use mysqltest;
-drop table if exists t1;
-enable_warnings;
-# CREATE generates no entry in the logical log
 create table t1 (a int, b varchar(100)) engine=myisam;
 
 # we put some data into the table
@@ -28,7 +76,11 @@ truncate table t1;
 # close the table (as we are going to change it out of the server process)
 flush table t1;
 
-let $MYSQLD_DATADIR= `SELECT @@datadir`;
+#
+# Make a copy of the log file for manual testing.
+--error 0,1
+--remove_file myisam-test.log
+--copy_file $MYSQLD_DATADIR/myisam.log myisam-test.log
 
 # look at log
 --replace_regex /extra......................../extra                       #/ /Total................/Total               #/
@@ -46,3 +98,4 @@ exec $MYISAMLOG -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log ;
 select * from t1;
 check table t1 extended;
 drop database mysqltest;
+

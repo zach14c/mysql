@@ -1,0 +1,4 @@
+This suite is the backup test repository for testing backup and point-in-time recovery (PTR) across replication modes.
+
+Any test designed to find failures in backup features that are known or suspected of directly or indirectly affecting or affected by the replication mode with respect to point-in-time recovery should be placed here.
+

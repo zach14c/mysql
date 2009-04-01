@@ -262,5 +262,25 @@ unlock tables;
 drop table t1;
 drop view v1;
 #
+# WL#4284: Transactional DDL locking
+#
+drop table if exists t1;
+create table t1 (a int);
+set autocommit= 0;
+insert into t1 values (1);
+lock table t1 write;
+# Disconnect
+# Ensure that metadata locks will be released if there is an open
+# transaction (autocommit=off) in conjunction with lock tables.
+drop table t1;
+# Same problem but now for BEGIN
+drop table if exists t1;
+create table t1 (a int);
+begin;
+insert into t1 values (1);
+# Disconnect
+# Ensure that metadata locks held by the transaction are released.
+drop table t1;
+#
 # End of 6.0 tests.
 #

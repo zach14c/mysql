@@ -1,0 +1,181 @@
+#
+# Purpose: Backup images should only be allowed to be written to the
+# path specified by --secure-backup-file-priv option or a sub-path of it.
+#
+# See backup_securefilepriv-master.opt for --secure-backup-file-priv command line option
+#
+# backupdir              is MYSQLD_DATADIR/
+# secure-file-priv       is MYSQLD_DATADIR/securefilepriv_path/
+# secure-backupfile-priv is MYSQLD_DATADIR/securebackup_path/
+
+--source include/not_embedded.inc
+
+--echo Initializing tests
+
+let $MYSQLD_DATADIR = `select @@datadir`;
+
+--error 0,1
+rmdir $MYSQLD_DATADIR/securefilepriv_path/subpath;
+--error 0,1
+rmdir $MYSQLD_DATADIR/securebackup_path/subpath;
+--error 0,1
+rmdir $MYSQLD_DATADIR/securefilepriv_path;
+--error 0,1
+rmdir $MYSQLD_DATADIR/securebackup_path;
+
+--echo Create directories for backup images
+mkdir $MYSQLD_DATADIR/securefilepriv_path;
+mkdir $MYSQLD_DATADIR/securebackup_path;
+mkdir $MYSQLD_DATADIR/securefilepriv_path/subpath;
+mkdir $MYSQLD_DATADIR/securebackup_path/subpath;
+
+--echo Creating database and populating tables
+
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest;
+--enable_warnings
+
+CREATE DATABASE mysqltest;
+
+CREATE TABLE mysqltest.t1 (i int);
+
+INSERT INTO mysqltest.t1 VALUES (1),(2),(3),(4),(5),(10),(15),(100);
+
+--echo 
+--echo Starting tests
+
+--echo 
+--echo Backup to path specified by --secure-backup-file-priv option
+--echo (MYSQLD_DATADIR/securebackup_path)
+--replace_column 1 #
+BACKUP DATABASE mysqltest TO 'securebackup_path/bup_sfp1.bak';
+
+--echo Ensure backup image file went to the correct location
+--file_exists $MYSQLD_DATADIR/securebackup_path/bup_sfp1.bak
+
+--error 0,1
+--remove_file $MYSQLD_DATADIR/securebackup_path/bup_sfp1.bak
+
+--echo  
+--echo Backup to subpath of path specified by --secure-backup-file-priv option
+--echo (MYSQLD_DATADIR/securebackup_path/subpath)
+--replace_column 1 #
+BACKUP DATABASE mysqltest TO 'securebackup_path/subpath/bup_sfp2.bak';
+
+--echo Ensure backup image file went to the correct location
+--file_exists $MYSQLD_DATADIR/securebackup_path/subpath/bup_sfp2.bak
+
+--error 0,1
+--remove_file $MYSQLD_DATADIR/securebackup_path/subpath/bup_sfp2.bak
+
+--echo  
+--echo Change backupdir to securebackup_path/subpath 
+--echo (MYSQLD_DATADIR/securebackup_path/subpath)
+SET @@global.backupdir = 'securebackup_path/subpath';
+
+--echo  
+--echo Backup to subpath of path specified by --secure-backup-file-priv option, 
+--echo no dir in backup file name
+--echo (MYSQLD_DATADIR/securebackup_path/subpath)
+--replace_column 1 #
+BACKUP DATABASE mysqltest TO 'bup_sfp3.bak';
+
+--echo Ensure backup image file went to the correct location
+--file_exists $MYSQLD_DATADIR/securebackup_path/subpath/bup_sfp3.bak
+
+--error 0,1
+--remove_file $MYSQLD_DATADIR/securebackup_path/subpath/bup_sfp3.bak
+
+--echo  
+--echo Backup to path specified by --secure-backup-file-priv, 
+--echo relative path in backup file name
+--echo (MYSQLD_DATADIR/securebackup_path)
+--replace_column 1 #
+BACKUP DATABASE mysqltest TO '../bup_sfp4.bak';
+
+--echo Ensure backup image file went to the correct location
+--file_exists $MYSQLD_DATADIR/securebackup_path/bup_sfp4.bak
+
+--error 0,1
+--remove_file $MYSQLD_DATADIR/securebackup_path/bup_sfp4.bak
+
+# Tests that fail
+
+--echo  
+--echo Backup to relative path outside path specified by --secure-backup-file-priv 
+--echo option should fail
+--error ER_OPTION_PREVENTS_STATEMENT
+BACKUP DATABASE mysqltest TO '../../bup_sfp_fail1.bak';
+
+--echo  
+--echo Reset backupdir to MYSQLD_DATADIR/
+SET @@global.backupdir = @@global.datadir;
+
+--echo  
+--echo Backup to other path than specified by --secure-backup-file-priv should fail
+--error ER_OPTION_PREVENTS_STATEMENT
+BACKUP DATABASE mysqltest TO 'bup_sfp_fail2.bak';
+
+#
+# Now check to ensure backup cannot write to the --secure-file-priv location and
+# should fail.
+#
+--echo (MYSQLD_DATADIR/securefilepriv_path)
+--error ER_OPTION_PREVENTS_STATEMENT
+BACKUP DATABASE mysqltest TO 'securefilepriv_path/bup_sfp5.bak';
+
+#
+# Now check to ensure restore cannot read the --secure-file-priv location and
+# should fail.
+#
+# Note: The error will still be correct even though the file doesn't
+# exist and the system should not report the file is missing.
+#
+--echo (MYSQLD_DATADIR/securefilepriv_path)
+--error ER_OPTION_PREVENTS_STATEMENT
+RESTORE FROM 'securefilepriv_path/bup_sfp5.bak';
+
+#
+# Now set the backupdir to the secure-file-priv location.
+#
+--echo  
+--echo Change backupdir to securebackup_path/subpath 
+--echo (MYSQLD_DATADIR/securefilepriv_path/subpath)
+SET @@global.backupdir = 'securefilepriv_path/subpath';
+
+#
+# Now check to ensure backup cannot write to the --secure-file-priv location even
+# if the backupdir is set to the same as --secure-file-priv location.
+#
+--echo (MYSQLD_DATADIR/securefilepriv_path)
+--error ER_OPTION_PREVENTS_STATEMENT
+BACKUP DATABASE mysqltest TO 'securefilepriv_path/bup_sfp5.bak';
+
+#
+# Now make sure restore cannot read from the --secure-file-priv location even
+# if the backupdir is set to the same as --secure-file-priv location.
+#
+# Note: The error will still be correct even though the file doesn't
+# exist and the system should not report the file is missing.
+#
+--echo (MYSQLD_DATADIR/securefilepriv_path)
+--error ER_OPTION_PREVENTS_STATEMENT
+RESTORE FROM 'securefilepriv_path/bup_sfp1.bak';
+
+--echo 
+--echo Cleanup
+--echo 
+
+DROP TABLE mysqltest.t1;
+DROP DATABASE mysqltest;
+
+SET @@global.backupdir = @@global.datadir;
+
+--error 0,1,2
+rmdir $MYSQLD_DATADIR/securefilepriv_path/subpath;
+--error 0,1,2
+rmdir $MYSQLD_DATADIR/securefilepriv_path;
+--error 0,1,2
+rmdir $MYSQLD_DATADIR/securebackup_path/subpath;
+--error 0,1,2
+rmdir $MYSQLD_DATADIR/securebackup_path;
