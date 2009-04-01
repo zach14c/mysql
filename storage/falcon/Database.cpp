@@ -2478,6 +2478,12 @@ void Database::cardinalityThreadMain(void)
 
 	thread->sleep(1000);
 
+	// Wait for recovery to finish.
+
+	while (   (!thread->shutdownInProgress) 
+	       && ((!serialLog) || (serialLog->recovering)))
+		thread->sleep(1000);
+
 	while (!thread->shutdownInProgress)
 		{
 		updateCardinalities();
