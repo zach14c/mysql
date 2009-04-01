@@ -512,7 +512,11 @@ SELECT * FROM t1;
 
 # Final cleanup
 connection default;
-DROP TABLE t1;
+send DROP TABLE t1;
+connection con1;
+COMMIT;
+connection default;
+--reap
 --disconnect con1
 
 #
@@ -539,6 +543,10 @@ SELECT * FROM t1;
 
 connection con1;
 SELECT * FROM t1;
+COMMIT;
+
+connection default;
+COMMIT;
 
 # Final cleanup
 DROP TABLE t1;

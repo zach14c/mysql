@@ -1,0 +1,191 @@
+SET DEBUG_SYNC= 'reset';
+Verify that backup can be performed to pipe
+con1:
+Create database, tables and load data.
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE TABLE db1.t1(id int);
+INSERT INTO db1.t1 VALUES(1),(2),(3),(4),(5),(6),(7),(8),(9);
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+CREATE TABLE db2.t2(a char(5));
+INSERT INTO db2.t2 VALUES('a'),('b'),('c'),('d'),('e'),('f'),('g'),('h');
+INSERT INTO db2.t2 SELECT * FROM db2.t2;
+INSERT INTO db2.t2 SELECT * FROM db2.t2;
+INSERT INTO db2.t2 SELECT * FROM db2.t2;
+SELECT COUNT(*) FROM db1.t1;
+COUNT(*)
+144
+SELECT COUNT(*) FROM db2.t2;
+COUNT(*)
+64
+con2:
+Create pipe.
+con1:
+PURGE BACKUP LOGS;
+Start backup to pipe.
+BACKUP DATABASE db1 TO 'db1_pipe';
+con2:
+Cat the output to a file.
+con1:
+backup_id
+#
+verify backup history log:
+SELECT backup_state, command, operation, num_objects FROM mysql.backup_history;
+backup_state	command	operation	num_objects
+complete	BACKUP DATABASE db1 TO 'db1_pipe'	backup	2
+Drop database and perform restore from a pipe.
+DROP DATABASE db1;
+PURGE BACKUP LOGS;
+Performing restore from pipe
+RESTORE FROM 'db1_pipe';
+con2:
+Cat the output to a pipe (for restore)
+con1:
+backup_id
+#
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+SHOW TABLES FROM db2;
+Tables_in_db2
+t2
+SELECT COUNT(*) FROM db1.t1;
+COUNT(*)
+144
+SELECT COUNT(*) FROM db2.t2;
+COUNT(*)
+64
+SELECT backup_state, command, operation, num_objects FROM mysql.backup_history;
+backup_state	command	operation	num_objects
+complete	RESTORE FROM 'db1_pipe'	restore	2
+DROP DATABASE db1;
+verify that restore can be performed from output file that reads from
+pipe
+PURGE BACKUP LOGS;
+RESTORE FROM 'db1_file';
+backup_id
+#
+verify data contents are intact
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+SELECT COUNT(*) FROM db1.t1;
+COUNT(*)
+144
+SELECT backup_state, command, operation,  num_objects FROM mysql.backup_history;
+backup_state	command	operation	num_objects
+complete	RESTORE FROM 'db1_file'	restore	2
+con1:
+Start backup to pipe:
+SET DEBUG_SYNC= 'before_backup_open_stream SIGNAL running WAIT_FOR backup';
+BACKUP DATABASE db1 TO 'db1_pipe';
+con3:
+Attempt to run a backup while another is in progress.
+SET DEBUG_SYNC= 'now WAIT_FOR running';
+BACKUP DATABASE db2 TO 'db2.bak';
+ERROR HY000: Can't execute this command because another BACKUP/RESTORE operation is in progress
+Wait for first backup to complete
+SET DEBUG_SYNC= 'now SIGNAL backup';
+con2:
+Cat the output to a file.
+con1:
+backup_id
+#
+con3:
+Start another backup to the same pipe.
+BACKUP DATABASE db2 TO 'db1_pipe';
+con2:
+Cat the output to a file.
+con3:
+backup_id
+#
+DROP DATABASE db1;
+DROP DATABASE db2;
+# con1:
+# Perform concurrent restore operation and ensure that there is
+# no server crash
+Execute restore operation
+SET DEBUG_SYNC= 'before_restore_open_stream SIGNAL running WAIT_FOR restore';
+RESTORE FROM 'db1_pipe';
+con3:
+Attempt to run a restore while another is in progress.
+SET DEBUG_SYNC= 'now WAIT_FOR running';
+RESTORE FROM 'db1_pipe';
+ERROR HY000: Can't execute this command because another BACKUP/RESTORE operation is in progress
+Attempt to run a backup while restore is in progress.
+BACKUP DATABASE db2 TO 'db2.bak';
+ERROR HY000: Can't execute this command because another BACKUP/RESTORE operation is in progress
+Wait for first restore to complete
+SET DEBUG_SYNC= 'now SIGNAL restore';
+con2:
+Cat the output to pipe
+con1:
+backup_id
+#
+con3:
+Perform restore from same pipe
+RESTORE FROM 'db1_pipe';
+con2:
+Cat the output to pipe
+con3:
+backup_id
+#
+verify the tables and data in db1 & db2.
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+SHOW TABLES FROM db2;
+Tables_in_db2
+t2
+SELECT COUNT(*) FROM db1.t1;
+COUNT(*)
+144
+SELECT COUNT(*) FROM db2.t2;
+COUNT(*)
+64
+DROP DATABASE db1;
+
+# Perform concurrent backup in one connection and restore in another
+Execute backup operation
+SET DEBUG_SYNC= 'before_backup_open_stream SIGNAL running WAIT_FOR backup';
+BACKUP DATABASE db2 TO 'db1_pipe';
+con3:
+Attempt to perform backup while restore is in progress.
+SET DEBUG_SYNC= 'now WAIT_FOR running';
+RESTORE FROM 'db1_pipe';
+ERROR HY000: Can't execute this command because another BACKUP/RESTORE operation is in progress
+Wait for first backup to complete
+SET DEBUG_SYNC= 'now SIGNAL backup';
+con2:
+Cat the output to pipe
+con1:
+backup_id
+#
+con3:
+Perform backup to same pipe
+RESTORE FROM 'db1_pipe';
+con2:
+Cat the output to file
+con3:
+backup_id
+#
+verify the tables and data in db1 & db2.
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+SHOW TABLES FROM db2;
+Tables_in_db2
+t2
+SELECT COUNT(*) FROM db1.t1;
+COUNT(*)
+144
+SELECT COUNT(*) FROM db2.t2;
+COUNT(*)
+64
+SET DEBUG_SYNC= 'reset';
+Test cleanup
+DROP DATABASE db1;
+DROP DATABASE db2;

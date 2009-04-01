@@ -200,13 +200,23 @@ SET DEBUG_SYNC= 7;
 SET GLOBAL DEBUG_SYNC= 'p0 CLEAR';
 
 #
+# Syntax. The variable value does not need to be a string literal.
+#
+SET @myvar= 'now SIGNAL from_myvar';
+SET DEBUG_SYNC= @myvar;
+SHOW VARIABLES LIKE 'DEBUG_SYNC';
+#
+SET DEBUG_SYNC= LEFT('now SIGNAL from_function_cut_here', 24);
+SHOW VARIABLES LIKE 'DEBUG_SYNC';
+
+#
 # Functional tests.
 #
 # NOTE: There is the special synchronization point 'now'. It is placed
 #       immediately after setting of the DEBUG_SYNC variable.
 #       So it is executed before the SET statement ends.
 #
-# NOTE: There is only on global signal (say "signal post" or "flag mast").
+# NOTE: There is only one global signal (say "signal post" or "flag mast").
 #       A SIGNAL action writes its signal into it ("sets a flag").
 #       The signal persists until explicitly overwritten.
 #       To avoid confusion for later tests, it is recommended to clear

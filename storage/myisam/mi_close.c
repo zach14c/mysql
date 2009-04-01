@@ -115,7 +115,10 @@ int mi_close(register MI_INFO *info)
       }
     }
 #endif
-    my_free((uchar*) info->s,MYF(0));
+    /*
+      Do not free the share here. myisam_log_command_logical() needs
+      to test for share->temporary.
+    */
   }
   pthread_mutex_unlock(&THR_LOCK_myisam);
   if (info->ftparser_param)
@@ -127,6 +130,9 @@ int mi_close(register MI_INFO *info)
     error = my_errno;
 
   myisam_log_command_logical(MI_LOG_CLOSE, info, NULL, 0, error);
+
+  if (flag)
+    my_free((uchar*) info->s,MYF(0));
   my_free((uchar*) info,MYF(0));
 
   if (error)

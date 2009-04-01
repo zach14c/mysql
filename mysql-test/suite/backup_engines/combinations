@@ -10,3 +10,12 @@
 [innodb]
 --innodb=1
 --default-storage-engine=innodb
+
+[csv]
+--default-storage-engine=csv
+
+[blackhole]
+--default-storage-engine=blackhole
+
+[archive]
+--default-storage-engine=archive

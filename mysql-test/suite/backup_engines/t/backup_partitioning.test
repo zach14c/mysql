@@ -7,8 +7,17 @@
 # character set.
 ###############################################################################
 --source include/not_embedded.inc
---source include/have_debug.inc
+--source include/have_partition.inc
 --source suite/backup_engines/include/backup_engine.inc
+--source suite/backup_engines/include/not_csv.inc
+
+#
+# BUG#43030 : Partitioning has issues in archive. Remove the following directive
+#             when this bug is fixed.
+#
+--source suite/backup_engines/include/not_archive.inc
+
+let $bdir=`select @@backupdir`;
 
 connect (backup,localhost,root,,);
 connect (breakpoints,localhost,root,,);
@@ -20,7 +29,7 @@ connect (breakpoints,localhost,root,,);
 ##############################################################
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/partitions.bak
+--remove_file $bdir/partitions.bak
 
 #Create Database and and tables with different types of partitions.
 
@@ -158,7 +167,7 @@ DROP DATABASE `¥`;
 --echo Restore
 --replace_column 1 #
 RESTORE FROM 'partitions.bak';
---remove_file $MYSQLTEST_VARDIR/master-data/partitions.bak
+--remove_file $bdir/partitions.bak
 
 --echo
 --echo ** RESULTS AFTER RESTORE **
@@ -224,7 +233,7 @@ BACKUP DATABASE `¥` TO 'partitions.bak';
 DROP DATABASE `¥`;
 --replace_column 1 #
 RESTORE FROM 'partitions.bak';
---remove_file $MYSQLTEST_VARDIR/master-data/partitions.bak
+--remove_file $bdir/partitions.bak
 
 #show data and create statements
 --echo showing objects and create statements
@@ -313,5 +322,5 @@ SET NAMES utf8;
 --echo
 DROP DATABASE `¥`;
 
---remove_file $MYSQLTEST_VARDIR/master-data/partitions.bak
+--remove_file $bdir/partitions.bak
 

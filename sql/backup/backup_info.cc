@@ -641,47 +641,59 @@ int Backup_info::add_dbs(THD *thd, List< ::LEX_STRING > &dbs)
   {
     backup::String db_name(*s);
 
-    // Ignore the database if it has already been inserted into the catalogue.    
-    if (has_db(db_name))
-      continue;
-    
     if (is_internal_db_name(&db_name))
     {
       m_log.report_error(ER_BACKUP_CANNOT_INCLUDE_DB, db_name.c_ptr());
       goto error;
     }
     
-    obs::Obj *obj= get_database_stub(&db_name); // reports errors
-
-    if (obj && !check_db_existence(thd, &db_name))
-    {    
-      if (!unknown_dbs.is_empty()) // we just compose unknown_dbs list
-      {
-        delete obj;
-        continue;
-      }
-      
-      Db *db= add_db(obj);  // reports errors
-
-      if (!db)
-      {
-        delete obj;
-        goto error;
-      }
-
-      if (add_db_items(*db))  // reports errors
-        goto error;
+    obs::Obj *obj= get_database_stub(thd, &db_name); // reports errors
+    
+    if (!obj)
+    {
+      m_log.report_error(ER_BACKUP_CATALOG_ADD_DB, db_name.c_ptr());
+      goto error;
     }
-    else if (obj)
+
+    if (check_db_existence(thd, obj->get_db_name()))
     {
       if (!unknown_dbs.is_empty())
         unknown_dbs.append(",");
-      unknown_dbs.append(*obj->get_name());
+      unknown_dbs.append(obj->get_db_name()->ptr());
       
       delete obj;
+      continue;
+    } 
+    else if (!unknown_dbs.is_empty()) // we just compose unknown_dbs list
+    {
+      delete obj;
+      continue;
     }
-    else
-      goto error; // error was reported in get_database()
+
+
+    // Normalize DB name; if case insensitive server, obj->get_db_name
+    // returns name in lower case
+    db_name= obj->get_db_name()->ptr();
+
+    // Error if the same database is requested twice in the database list
+    if (has_db(db_name))
+    {
+      m_log.report_error(ER_NONUNIQ_DB, db_name.c_ptr());;
+      delete obj;
+      goto error;
+    }
+    
+    Db *db= add_db(obj);  // reports errors
+
+    if (!db)
+    {
+      delete obj;
+      goto error;
+    }
+
+    if (add_db_items(*db))  // reports errors
+      goto error;
+      
   }
 
   if (!unknown_dbs.is_empty())

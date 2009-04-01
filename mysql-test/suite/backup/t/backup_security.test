@@ -97,7 +97,7 @@ DROP USER bup_no_rights;
 DROP USER bup_with_rights;
 DROP DATABASE backup_test;
 
-let $MYSQLD_DATADIR= `select @@datadir`;
-remove_file $MYSQLD_DATADIR/bup_with_rights.bak;
-remove_file $MYSQLD_DATADIR/backup_test_orig.bak;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
+remove_file $MYSQLD_BACKUPDIR/bup_with_rights.bak;
+remove_file $MYSQLD_BACKUPDIR/backup_test_orig.bak;
 
