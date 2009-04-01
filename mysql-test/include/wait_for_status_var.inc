@@ -28,7 +28,7 @@
 #     let $status_var_comparsion= !=;
 #
 # $status_timeout
-#   The default timeout is 1 minute. You can change the timeout by
+#   The default timeout is 10 minute. You can change the timeout by
 #   setting $status_timeout. The unit is tenths of seconds.
 #
 
@@ -41,7 +41,7 @@ if (`SELECT STRCMP('$status_type', '') * STRCMP(UPPER('$status_type'), 'SESSION'
 let $_status_timeout_counter= $status_timeout;
 if (!$_status_timeout_counter)
 {
-  let $_status_timeout_counter= 600;
+  let $_status_timeout_counter= 6000;
 }
 
 let $_status_var_comparsion= $status_var_comparsion;
@@ -55,7 +55,7 @@ while (`SELECT NOT('$_show_status_value' $_status_var_comparsion '$status_var_va
 {
   if (!$_status_timeout_counter)
   {
-    --echo **** ERROR: failed while waiting for $status_type $status_var $_status_var_comparison $status_var_value ****
+    --echo **** ERROR: failed while waiting for $status_type $status_var $_status_var_comparsion $status_var_value ****
     --echo Note: the following output may have changed since the failure was detected
     --echo **** Showing STATUS, PROCESSLIST ****
     eval SHOW $status_type STATUS LIKE '$status_var';

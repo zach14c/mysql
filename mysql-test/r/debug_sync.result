@@ -131,6 +131,15 @@ SET DEBUG_SYNC= 7;
 ERROR 42000: Incorrect argument type to variable 'debug_sync'
 SET GLOBAL DEBUG_SYNC= 'p0 CLEAR';
 ERROR HY000: Variable 'debug_sync' is a SESSION variable and can't be used with SET GLOBAL
+SET @myvar= 'now SIGNAL from_myvar';
+SET DEBUG_SYNC= @myvar;
+SHOW VARIABLES LIKE 'DEBUG_SYNC';
+Variable_name	Value
+debug_sync	ON - current signal: 'from_myvar'
+SET DEBUG_SYNC= LEFT('now SIGNAL from_function_cut_here', 24);
+SHOW VARIABLES LIKE 'DEBUG_SYNC';
+Variable_name	Value
+debug_sync	ON - current signal: 'from_function'
 SET DEBUG_SYNC= 'now SIGNAL something';
 SHOW VARIABLES LIKE 'DEBUG_SYNC';
 Variable_name	Value

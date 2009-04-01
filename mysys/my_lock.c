@@ -71,6 +71,29 @@ static int win_lock(File fd, int locktype, my_off_t start, my_off_t length,
     /* write lock is mapped to an exclusive lock. */
     dwFlags= LOCKFILE_EXCLUSIVE_LOCK;
 
+  /*
+    Drop old lock first to avoid double locking.
+    During analyze of Bug#38133 (Myisamlog test fails on Windows)
+    I met the situation that the program myisamlog locked the file
+    exclusively, then additionally shared, then did one unlock, and
+    then blocked on an attempt to lock it exclusively again.
+    Unlocking before every lock fixed the problem.
+    Note that this introduces a race condition. When the application
+    wants to convert an exclusive lock into a shared one, it will now
+    first unlock the file and then lock it shared. A waiting exclusive
+    lock could step in here. For reasons described in Bug#38133 and
+    Bug#41124 (Server hangs on Windows with --external-locking after
+    INSERT...SELECT) and in the review thread at
+    http://lists.mysql.com/commits/60721 it seems to be the better
+    option than not to unlock here.
+    If one day someone notices a way how to do file lock type changes
+    on Windows without unlocking before taking the new lock, please
+    change this code accordingly to fix the race condition.
+  */
+  if (!UnlockFileEx(hFile, 0, liLength.LowPart, liLength.HighPart, &ov) &&
+      (GetLastError() != ERROR_NOT_LOCKED))
+    goto error;
+
   if (timeout_sec == WIN_LOCK_INFINITE)
   {
     if (LockFileEx(hFile, dwFlags, 0, liLength.LowPart, liLength.HighPart, &ov))

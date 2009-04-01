@@ -1,0 +1,81 @@
+#
+# Test for problem reported in BUG#40975. 
+#
+# Due to errors in stream library code, RESTORE was confused when reading 
+# image from a pipe in a situation when read call returns less bytes than 
+# requested. This manifested in getting corrupted table after restore. In 
+# this test we simulate this situation using error injection code. We check 
+# that table is no longer corrupted.
+#
+# To have a similar setup as the one presented in the bug report (the word.bak 
+# database) we create a table with enough data to span several blocks in the 
+# backup image.
+# 
+--source include/not_embedded.inc
+--source include/have_debug.inc
+
+let $bdir=`SELECT @@backupdir`;
+
+--echo # Initial clean-up.
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+--error 0,1
+--remove_file $bdir/db1.bkp
+--enable_warnings
+
+--echo # Prepare objects to backup.
+
+CREATE DATABASE db1;
+USE db1;
+
+CREATE TABLE t1(a int, b blob);
+
+# Single block in backup stream is 16k by default.
+# We need table data to span several such blocks.
+# We will fill t1 with 10 rows, each approx 8k long.
+
+# Create $data string of length 8k
+
+let $data=12345678;
+let $n=10;
+while ($n)
+{
+  let $data=$data$data;
+  dec $n;
+}
+
+--echo # Fill t1 with approx 80k of data.
+
+--disable_query_log
+let $n=10;
+while ($n)
+{
+  eval INSERT INTO t1 VALUES ($n,'$data');
+  dec $n;
+}
+--enable_query_log
+SELECT a, length(b) FROM t1;
+CHECK TABLE t1;
+
+--echo # Backup the table.
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'db1.bkp';
+
+# Enable simulation of reading from a pipe.
+SET DEBUG='d,backup_read_simulate_pipe';
+
+--echo # Restore the table.
+--replace_column 1 #
+RESTORE FROM 'db1.bkp' OVERWRITE;
+
+SET DEBUG='d,-';
+
+--echo # Check for errors.
+
+CHECK TABLE db1.t1;
+
+--echo # Final clean-up.
+
+DROP DATABASE db1;
+--remove_file $bdir/db1.bkp

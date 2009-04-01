@@ -1,0 +1,3 @@
+This suite is the main backup test repository. It is used for testing the backup system.
+
+All tests should be placed here that do not require iteration over a set of parameters (e.g. storage engines, replication modes).

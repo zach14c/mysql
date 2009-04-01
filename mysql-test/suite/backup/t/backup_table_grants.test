@@ -1,0 +1,82 @@
+#
+# Test the backup of table grants
+#
+
+--source include/not_embedded.inc
+
+# Preparatory cleanup
+--disable_warnings
+# Unfortunately we do not have a DROP USER IF EXISTS statement.
+DELETE FROM mysql.user WHERE user='mysqluser1';
+DELETE FROM mysql.db WHERE user="mysqluser1";
+DELETE FROM mysql.tables_priv WHERE user="mysqluser1";
+DELETE FROM mysql.columns_priv WHERE user="mysqluser1";
+FLUSH PRIVILEGES;
+#
+DROP DATABASE IF EXISTS mysqltest1;
+--enable_warnings
+
+--echo #
+--echo # Bug#41578 - Drop column/table with grants followed by restore fails.
+--echo #
+#
+--echo # Create database and tables
+CREATE DATABASE mysqltest1;
+USE mysqltest1;
+CREATE TABLE t1(col1 INT, col2 CHAR(20));
+CREATE TABLE t2(col1 INT, col2 CHAR(20));
+#
+--echo #
+--echo # Create users and privileges
+CREATE USER 'mysqluser1'@'%';
+GRANT SELECT(col1), UPDATE(col2) ON mysqltest1.t1 TO 'mysqluser1'@'%';
+GRANT INSERT ON mysqltest1.t2 TO 'mysqluser1'@'%';
+SHOW GRANTS FOR 'mysqluser1';
+#
+CREATE USER 'mysqluser2'@'%';
+GRANT SELECT(col1), UPDATE(col2) ON mysqltest1.t1 TO 'mysqluser2'@'%';
+GRANT INSERT ON mysqltest1.t2 TO 'mysqluser2'@'%';
+SHOW GRANTS FOR 'mysqluser2';
+#
+--echo #
+--echo # Drop objects
+ALTER TABLE mysqltest1.t1 DROP COLUMN col2;
+DROP TABLE t2;
+SHOW GRANTS FOR 'mysqluser1';
+SHOW GRANTS FOR 'mysqluser2';
+#
+--echo #
+--echo # Backup
+--replace_column 1 #
+BACKUP DATABASE mysqltest1 TO 'mysqltest1.bak';
+#
+--echo # Remove database including tables and privileges for restore
+DROP DATABASE mysqltest1;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'mysqluser1'@'%';
+SHOW GRANTS FOR 'mysqluser1';
+DROP USER 'mysqluser2'@'%';
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR 'mysqluser2';
+#
+--echo #
+--echo # Restore
+--disable_warnings
+--replace_column 1 #
+RESTORE FROM 'mysqltest1.bak';
+--enable_warnings
+--replace_column 2 #
+SHOW WARNINGS;
+#
+SHOW GRANTS FOR 'mysqluser1';
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR 'mysqluser2';
+SELECT * FROM t1;
+--error ER_NO_SUCH_TABLE
+SELECT * FROM t2;
+#
+--echo #
+--echo # Cleanup
+USE test;
+DROP DATABASE mysqltest1;
+DROP USER 'mysqluser1'@'%';
+

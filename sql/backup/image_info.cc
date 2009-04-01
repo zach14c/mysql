@@ -13,8 +13,14 @@
 
 namespace backup {
 
-Image_info::Image_info()
-  :data_size(0), m_table_count(0), m_dbs(16, 16), m_ts_map(16,16)
+Image_info::Image_info() :
+  data_size(0),
+  m_table_count(0),
+  m_view_count(0),
+  m_routine_count(0),
+  m_priv_count(0),
+  m_dbs(16, 16),
+  m_ts_map(16,16)
 {
   init_alloc_root(&mem_root, 4 * 1024, 0);      // Never errors
 
@@ -246,6 +252,7 @@ Image_info::Dbobj* Image_info::add_db_object(Db &db,
     return NULL;
     
   o->base.pos= pos;
+  count_object(type);
 
   return o;
 }
@@ -310,7 +317,7 @@ Image_info::add_table(Db &db, const ::String &table_name,
   t->snap_num= snap.m_num - 1;
   t->base.base.pos= pos;
 
-  m_table_count++;
+  count_object(BSTREAM_IT_TABLE);
 
   return t;  
 }

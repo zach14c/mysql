@@ -30,6 +30,7 @@
 #include <stdarg.h>
 #include "sp_head.h"
 #include "sp.h"
+#include "transaction.h"
 
 time_t mysql_db_table_last_check= 0L;
 
@@ -676,9 +677,6 @@ my_bool acl_reload(THD *thd)
   my_bool return_val= 1;
   DBUG_ENTER("acl_reload");
 
-  /* Can't have locked tables here. */
-  thd->locked_tables_list.unlock_locked_tables(thd);
-
   /*
     To avoid deadlocks we should obtain table locks before
     obtaining acl_cache->lock mutex.
@@ -732,7 +730,10 @@ my_bool acl_reload(THD *thd)
   if (old_initialized)
     pthread_mutex_unlock(&acl_cache->lock);
 end:
+  trans_commit_implicit(thd);
   close_thread_tables(thd);
+  if (!thd->locked_tables_mode)
+    thd->mdl_context.release_all_locks();
   DBUG_RETURN(return_val);
 }
 
@@ -2972,7 +2973,12 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
                                          column->column.ptr(), NULL, NULL,
                                          NULL, TRUE, FALSE,
                                          &unused_field_idx, FALSE, &dummy);
-        if (f == (Field*)0)
+        /*
+          During RESTORE, we want to restore all privileges that existed
+          at backup time. This includes privileges for non-existing
+          colums.
+        */
+        if ((f == (Field*)0) && (thd->backup_in_progress != SQLCOM_RESTORE))
         {
           my_error(ER_BAD_FIELD_ERROR, MYF(0),
                    column->column.c_ptr(), table_list->alias);
@@ -2986,7 +2992,12 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
     }
     else
     {
-      if (!(rights & CREATE_ACL))
+      /*
+        During RESTORE, we want to restore all privileges that existed
+        at backup time. This includes privileges for non-existing
+        tables.
+      */
+      if (!(rights & CREATE_ACL) && (thd->backup_in_progress != SQLCOM_RESTORE))
       {
         char buf[FN_REFLEN];
         build_table_filename(buf, sizeof(buf), table_list->db,
@@ -3823,7 +3834,10 @@ my_bool grant_reload(THD *thd)
     free_root(&old_mem,MYF(0));
   }
   rw_unlock(&LOCK_grant);
+  trans_commit_implicit(thd);
   close_thread_tables(thd);
+  if (!thd->locked_tables_mode)
+    thd->mdl_context.release_all_locks();
 
   /*
     It is OK failing to load procs_priv table because we may be

@@ -439,6 +439,19 @@ ERROR 0A000: LOCK is not allowed in stored procedures
 CREATE TRIGGER t1_ai AFTER INSERT ON t1 FOR EACH ROW
 LOCK TABLE t2 IN EXCLUSIVE MODE;
 ERROR 0A000: LOCK is not allowed in stored procedures
+#
+# WL#4284: Transactional DDL locking
+#
+SET AUTOCOMMIT= 0;
+LOCK TABLES t1 WRITE, t2 WRITE;
+SAVEPOINT sp1;
+INSERT INTO t1 VALUES (1);
+SAVEPOINT sp2;
+INSERT INTO t2 VALUES (2);
+ROLLBACK TO SAVEPOINT sp1;
+Warnings:
+Warning	1196	Some non-transactional changed tables couldn't be rolled back
+UNLOCK TABLES;
 ## Cleanup.
 SET AUTOCOMMIT= 1;
 UNLOCK TABLES;
