@@ -367,7 +367,6 @@ SET global general_log_file = @old_general_log_file;
 SET global slow_query_log = @old_slow_query_log;
 SET global slow_query_log_file = @old_slow_query_log_file;
 
-# Remove the log files that was created in the "default location"
+# Remove the log file that was created in the "default location"
 # i.e var/run
---remove_file $MYSQLTEST_VARDIR/run/mysqld.log
 --remove_file $MYSQLTEST_VARDIR/tmp/log.master
