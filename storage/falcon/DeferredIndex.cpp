@@ -753,7 +753,6 @@ void DeferredIndex::detachTransaction(void)
 {
 	Sync sync(&syncObject, "DeferredIndex::detachTransaction");
 	sync.lock(Exclusive);
-	transaction = NULL;
 
 	if (index)
 		{
@@ -761,12 +760,11 @@ void DeferredIndex::detachTransaction(void)
 		Index *myIndex = index;
 		sync.unlock();
 		myIndex->detachDeferredIndex(this);
+		sync.lock(Exclusive);
 		index = NULL;
 		}
-	else
-		sync.unlock();
 
-	//releaseRef();
+	transaction = NULL;
 }
 
 bool DeferredIndex::chill(Dbb *dbb)
