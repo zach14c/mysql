@@ -132,14 +132,12 @@ CREATE FUNCTION function_for_routines() RETURNS INT RETURN 0;
 SELECT specific_name,routine_catalog,routine_schema,routine_name,routine_type,
 routine_body,external_name,external_language,parameter_style,sql_path
 FROM information_schema.routines
-WHERE routine_catalog   IS NOT NULL OR external_name   IS NOT NULL
+WHERE routine_schema = 'test' AND
+(routine_catalog   IS NOT NULL OR external_name   IS NOT NULL
 OR external_language IS NOT NULL OR sql_path        IS NOT NULL
 OR routine_body      <> 'SQL'    OR parameter_style <> 'SQL'
-   OR specific_name     <> routine_name;
+   OR specific_name     <> routine_name);
 specific_name	routine_catalog	routine_schema	routine_name	routine_type	routine_body	external_name	external_language	parameter_style	sql_path
-add_suppression	def	mtr	add_suppression	PROCEDURE	SQL	NULL	NULL	SQL	NULL
-check_testcase	def	mtr	check_testcase	PROCEDURE	SQL	NULL	NULL	SQL	NULL
-check_warnings	def	mtr	check_warnings	PROCEDURE	SQL	NULL	NULL	SQL	NULL
 function_for_routines	def	test	function_for_routines	FUNCTION	SQL	NULL	NULL	SQL	NULL
 sp_for_routines	def	test	sp_for_routines	PROCEDURE	SQL	NULL	NULL	SQL	NULL
 DROP PROCEDURE sp_for_routines;
