@@ -836,8 +836,9 @@ yuck:
  *  DESCRIPTION
  *
  *      Given pointer to a debug control string in "control",
- *      parses the control string, and sets
- *      up a current debug settings.
+ *      parses the control string, and sets up a current debug
+ *      settings. Pushes a new debug settings if the current is
+ *      set to the initial debugger settings.
  *
  */
 
@@ -847,6 +848,8 @@ void _db_set_(const char *control)
   uint old_fflags;
   get_code_state_or_return;
   old_fflags=fflags(cs);
+  if (cs->stack == &init_settings)
+    PushState(cs);
   if (DbugParse(cs, control))
     FixTraceFlags(old_fflags, cs);
 }
@@ -865,7 +868,7 @@ void _db_set_(const char *control)
  *
  *      Given pointer to a debug control string in "control", pushes
  *      the current debug settings, parses the control string, and sets
- *      up a new debug settings
+ *      up a new debug settings with DbugParse()
  *
  */
 

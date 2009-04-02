@@ -461,6 +461,10 @@ static void libevent_add_connection(THD *thd)
     libevent_connection_close(thd);
     DBUG_VOID_RETURN;
   }
+
+  thd->set_time();
+  thd->thr_create_utime= my_micro_time();
+
   threads.append(thd);
   libevent_thd_add(thd);
 
