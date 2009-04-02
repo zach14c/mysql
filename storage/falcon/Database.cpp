@@ -748,31 +748,24 @@ void Database::openDatabase(const char * filename)
 		
 	if (serialLog)
 		{
-		if (COMBINED_VERSION(dbb->odsVersion, dbb->odsMinorVersion) >= VERSION_SERIAL_LOG)
-			{
-			if (dbb->logLength)
-				serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
-				
-			serialLog->open(dbb->logRoot, false);
+		ASSERT (COMBINED_VERSION(dbb->odsVersion, dbb->odsMinorVersion) >= VERSION_SERIAL_LOG);
 
-			try 
-				{
-				serialLog->recover();
-				}
-			catch(SQLError &e)
-				{
-				throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
-				}
+		if (dbb->logLength)
+			serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
 				
-			tableSpaceManager->postRecovery();
-			serialLog->start();
-			}
-		else
+		serialLog->open(dbb->logRoot, false);
+
+		try 
 			{
-			dbb->enableSerialLog();
-			serialLog->open(dbb->logRoot, true);
-			serialLog->start();
+			serialLog->recover();
 			}
+		catch(SQLError &e)
+			{
+			throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
+			}
+				
+		tableSpaceManager->postRecovery();
+		serialLog->start();
 		}
 
 	sequence = dbb->sequence;

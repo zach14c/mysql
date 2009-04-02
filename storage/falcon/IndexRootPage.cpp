@@ -541,9 +541,9 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 
 		// The order of adding these to the serial log is important.
 		// Recovery must write them in this order incase recovery itself crashes.
-		IndexPage::logIndexPage(splitBdb, transId);
-		IndexPage::logIndexPage(leftBdb, transId);
-		IndexPage::logIndexPage(bdb, transId);
+		IndexPage::logIndexPage(splitBdb, transId, indexKey->index);
+		IndexPage::logIndexPage(leftBdb, transId, indexKey->index);
+		IndexPage::logIndexPage(bdb, transId, indexKey->index);
 		
 		if (dbb->debug & DEBUG_PAGE_LEVEL)
 			{
@@ -566,10 +566,10 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 	int splitPageLevel = splitPage->level;
 	int splitPageNumber = splitBdb->pageNumber;
 
-	IndexPage::logIndexPage(splitBdb, transId);
+	IndexPage::logIndexPage(splitBdb, transId, indexKey->index);
 	splitBdb->release(REL_HISTORY);
 
-	IndexPage::logIndexPage(bdb, transId);
+	IndexPage::logIndexPage(bdb, transId, indexKey->index);
 	bdb->release(REL_HISTORY);
 
 	// We need to insert the first key of the newly created parent page
@@ -594,7 +594,7 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 			// Log parent page.
 			if (result == NodeAdded)
 				{
-				IndexPage::logIndexPage(parentBdb,transId);
+				IndexPage::logIndexPage(parentBdb,transId, indexKey->index);
 				}
 
 			parentBdb->release(REL_HISTORY);

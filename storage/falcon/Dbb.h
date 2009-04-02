@@ -115,7 +115,6 @@ public:
 
 	void	createSection(int32 sectionId, TransId transId);
 	void	dropDatabase();
-	void	enableSerialLog();
 	void	updateRecord(int32 sectionId, int32 recordId, Stream *stream, TransId transId, bool earlyWrite);
 	void	reportStatistics();
 	bool	hasDirtyPages();
