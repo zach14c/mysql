@@ -551,6 +551,19 @@ Cache* Dbb::open(const char * fileName, int64 cacheSize, TransId transId)
 	return cache;
 }
 
+
+void Dbb::setODSMinorVersion(int minor)
+{
+	odsMinorVersion = minor;
+	Bdb *bdb = fetchPage (HEADER_PAGE, PAGE_header, Exclusive);
+	BDB_HISTORY(bdb);
+	bdb->mark(NO_TRANSACTION);
+	Hdr *headerPage = (Hdr*) bdb->buffer;
+	headerPage->odsMinorVersion = minor;
+	bdb->release(REL_HISTORY);
+}
+
+
 void Dbb::deleteIndex(int32 indexId, int indexVersion, TransId transId)
 {
 	if (serialLog)

@@ -144,6 +144,7 @@ public:
 	void	setDebug();
 	void	deleteIndex (int32 indexId, int indexVersion, TransId transId);
 	Cache*	open (const char *fileName, int64 cacheSize, TransId transId);
+	void	setODSMinorVersion(int minor);
 	void	flush();
 	bool	addIndexEntry (int32 indexId, int indexVersion, IndexKey *key, int32 recordNumber, TransId transId);
 	int32	createIndex(TransId transId, int indexVersion);

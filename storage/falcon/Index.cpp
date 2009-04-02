@@ -384,6 +384,10 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 	int n;
 	UCHAR *key = indexKey->key;
 
+	bool ODSVersion23OrOlder = 
+		(COMBINED_VERSION(database->dbb->odsVersion, database->dbb->odsMinorVersion) <=
+		COMBINED_VERSION(2,3));
+
 	for (n = 0; (n < count) && values[n]; ++n)
 		{
 		Field *field = fields[n];
@@ -415,7 +419,14 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 
 		if (n < numberFields - 1)
 			{
-			char padByte = PAD_BYTE(field);
+			char padByte;
+
+			if (ODSVersion23OrOlder)
+				//PAD_BYTE is incorrect in these versions
+				//(has type of the next field)
+				padByte = PAD_BYTE(fields[n+1]);
+			else
+				padByte = PAD_BYTE(field);
 
 			while (p % RUN != 0)
 				key[p++] = padByte;

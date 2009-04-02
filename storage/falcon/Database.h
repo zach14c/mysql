@@ -34,7 +34,8 @@
 #define ODS_MINOR_VERSION1	1		// Has serial log
 #define ODS_MINOR_VERSION2	2		// Has SequencePages external to the section tree
 #define ODS_MINOR_VERSION3	3		// Switch to variable length record numbers in index
-#define ODS_MINOR_VERSION	ODS_MINOR_VERSION3
+#define ODS_MINOR_VERSION4	4		// Accidentially fixed multisegment keys wrt padding
+#define ODS_MINOR_VERSION	ODS_MINOR_VERSION4
 
 #define COMBINED_VERSION(major,minor)	(major * 100 + minor)
 #define VERSION_CURRENT					COMBINED_VERSION(ODS_VERSION, ODS_MINOR_VERSION)					
@@ -182,6 +183,7 @@ public:
 	User*			findUser (const char *account);
 	User*			createUser (const char *account, const char *password, bool encrypted, Coterie *coterie);
 	int				getMaxKeyLength(void);
+	void			checkODSVersion23();
 
 #ifndef STORAGE_ENGINE
 	void		startSessionManager();
