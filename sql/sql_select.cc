@@ -4501,7 +4501,8 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
     while ((sj_nest= sj_list_it++))
     {
       /* semi-join nests with only constant tables are not valid */
-      DBUG_ASSERT(sj_nest->sj_inner_tables & ~join->const_tables);
+      DBUG_ASSERT(!sj_nest->sj_inner_tables ||
+                  (sj_nest->sj_inner_tables & ~join->const_table_map));
 
       sj_nest->sj_mat_info= NULL;
       if (sj_nest->sj_inner_tables && /* not everything was pulled out */
