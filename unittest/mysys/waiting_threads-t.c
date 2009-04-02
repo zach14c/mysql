@@ -181,7 +181,7 @@ void do_one_test()
 void do_tests()
 {
   DBUG_ENTER("do_tests");
-  plan(14);
+  plan(12);
   compile_time_assert(THREADS >= 4);
 
   DBUG_PRINT("wt", ("================= initialization ==================="));
