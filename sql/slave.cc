@@ -30,7 +30,9 @@
 #include <myisam.h>
 #include "slave.h"
 #include "rpl_mi.h"
+#include "rpl_mi_file.h"
 #include "rpl_rli.h"
+#include "rpl_rli_file.h"
 #include "sql_repl.h"
 #include "rpl_filter.h"
 #include "repl_failsafe.h"
@@ -68,7 +70,6 @@ ulonglong relay_log_space_limit = 0;
 */
 
 int disconnect_slave_event_count = 0, abort_slave_event_count = 0;
-int events_till_abort = -1;
 
 static pthread_key(Master_info*, RPL_MASTER_INFO);
 
@@ -169,7 +170,7 @@ static bool check_io_slave_killed(THD *thd, Master_info *mi, const char *info);
 
 void init_thread_mask(int* mask,Master_info* mi,bool inverse)
 {
-  bool set_io = mi->slave_running, set_sql = mi->rli.slave_running;
+  bool set_io = mi->slave_running, set_sql = mi->rli->slave_running;
   register int tmp_mask=0;
   DBUG_ENTER("init_thread_mask");
 
@@ -194,7 +195,7 @@ void lock_slave_threads(Master_info* mi)
 
   //TODO: see if we can do this without dual mutex
   pthread_mutex_lock(&mi->run_lock);
-  pthread_mutex_lock(&mi->rli.run_lock);
+  pthread_mutex_lock(&mi->rli->run_lock);
   DBUG_VOID_RETURN;
 }
 
@@ -208,7 +209,7 @@ void unlock_slave_threads(Master_info* mi)
   DBUG_ENTER("unlock_slave_threads");
 
   //TODO: see if we can do this without dual mutex
-  pthread_mutex_unlock(&mi->rli.run_lock);
+  pthread_mutex_unlock(&mi->rli->run_lock);
   pthread_mutex_unlock(&mi->run_lock);
   DBUG_VOID_RETURN;
 }
@@ -220,6 +221,7 @@ int init_slave()
 {
   DBUG_ENTER("init_slave");
   int error= 0;
+  int thread_mask= SLAVE_SQL | SLAVE_IO;
 
   /*
     This is called when mysqld starts. Before client connections are
@@ -235,16 +237,21 @@ int init_slave()
   if (pthread_key_create(&RPL_MASTER_INFO, NULL))
   {
     error= 1;
+    DBUG_RETURN(error);
+  }
+
+  Relay_log_info* rli= new Relay_log_info_file(relay_log_recovery,
+                                               relay_log_info_file);
+
+  if (!rli)
+  {
+    sql_print_error("Failed to allocate memory for the master info structure");
+    error= 1;
     goto err;
   }
 
-  active_mi= new Master_info(relay_log_recovery);
+  active_mi= new Master_info_file(master_info_file);
 
-  /*
-    If master_host is not specified, try to read it from the master_info file.
-    If master_host is specified, create the master_info file if it doesn't
-    exists.
-  */
   if (!active_mi)
   {
     sql_print_error("Failed to allocate memory for the master info structure");
@@ -252,24 +259,30 @@ int init_slave()
     goto err;
   }
 
-  if (init_master_info(active_mi,master_info_file,relay_log_info_file,
-                       1, (SLAVE_IO | SLAVE_SQL)))
+  /*
+    Setting the cross dependency used all over the code.
+  */ 
+  active_mi->inject_relay_log_info(rli);
+  rli->inject_master_info(active_mi);
+
+  /*
+    We do not need to check which one should be configured.
+    This is the startup routine and as such we try to 
+    configure both.
+  */
+  if (init_info(active_mi, TRUE, thread_mask))
   {
     sql_print_error("Failed to initialize the master info structure");
     error= 1;
     goto err;
   }
 
-  /* If server id is not set, start_slave_thread() will say it */
-
   if (active_mi->host[0] && !opt_skip_slave_start)
   {
     if (start_slave_threads(1 /* need mutex */,
                             0 /* no wait for start*/,
                             active_mi,
-                            master_info_file,
-                            relay_log_info_file,
-                            SLAVE_IO | SLAVE_SQL))
+                            thread_mask))
     {
       sql_print_error("Failed to create slave threads");
       error= 1;
@@ -286,7 +299,7 @@ err:
   Updates the master info based on the information stored in the
   relay info and ignores relay logs previously retrieved by the IO 
   thread, which thus starts fetching again based on to the  
-  group_master_log_pos and group_master_log_name. Eventually, the old
+  master_log_pos and master_log_name. Eventually, the old
   relay logs will be purged by the normal purge mechanism.
 
   In the feature, we should improve this routine in order to avoid throwing
@@ -313,7 +326,7 @@ int init_recovery(Master_info* mi, const char** errmsg)
 {
   DBUG_ENTER("init_recovery");
  
-  Relay_log_info *rli= &mi->rli;
+  Relay_log_info *rli= mi->rli;
   if (rli->group_master_log_name[0])
   {
     mi->master_log_pos= max(BIN_LOG_HEADER_SIZE,
@@ -327,14 +340,105 @@ int init_recovery(Master_info* mi, const char** errmsg)
     strmake(rli->group_relay_log_name, rli->relay_log.get_log_fname(),
             sizeof(rli->group_relay_log_name)-1);
     strmake(rli->event_relay_log_name, rli->relay_log.get_log_fname(),
-            sizeof(mi->rli.event_relay_log_name)-1);
+            sizeof(mi->rli->event_relay_log_name)-1);
  
     rli->group_relay_log_pos= rli->event_relay_log_pos= BIN_LOG_HEADER_SIZE;
   }
 
   DBUG_RETURN(0);
 }
- 
+
+int init_info(Master_info* mi, bool abort_if_no_info, int thread_mask)
+{
+  int error= 0;
+
+  DBUG_ENTER("init_info");
+  DBUG_ASSERT(mi != NULL && mi->rli != NULL);
+  
+  /*
+    We need a mutex while we are changing master info parameters to
+    keep other threads from reading bogus info
+  */
+  pthread_mutex_lock(&mi->data_lock);
+  pthread_mutex_lock(&mi->rli->data_lock);
+
+  /*
+    This takes care of the startup dependency between the master_info
+    and relay_info. If a user wants to start just the SLAVE_IO Thread 
+    but the SLAVE_SQL is not properly configure it.
+
+    In the future, we should try to improve this by making the
+    init_info idempotent.
+  */
+  if (((thread_mask & SLAVE_IO) && mi->init_info(abort_if_no_info)) ||
+     (((thread_mask & SLAVE_SQL) || !(mi->rli->inited)) && 
+     mi->rli->init_info(abort_if_no_info)))
+    error= 1;
+
+  pthread_mutex_unlock(&mi->rli->data_lock);
+  pthread_mutex_unlock(&mi->data_lock);
+
+  DBUG_RETURN(error);
+}
+
+void end_info(Master_info* mi)
+{
+  DBUG_ENTER("end_info");
+  DBUG_ASSERT(mi != NULL && mi->rli != NULL);
+  
+  /*
+    The previous implementation was not acquiring locks.
+    We do the same here. However, this is quite strange.
+  */
+  mi->end_info();
+  mi->rli->end_info();
+
+  DBUG_VOID_RETURN;
+}
+
+int reset_info(Master_info* mi)
+{
+  int error= 0;
+  DBUG_ENTER("reset_info");
+  DBUG_ASSERT(mi != NULL && mi->rli != NULL);
+
+  /*
+    The previous implementation was not acquiring locks.
+    We do the same here. However, this is quite strange.
+  */
+  /*
+    Reset errors (the idea is that we forget about the
+    old master).
+  */
+  mi->clear_error();
+  mi->rli->clear_error();
+  mi->rli->clear_until_condition();
+
+  mi->end_info();
+  mi->rli->end_info();
+
+  if (mi->reset_info() || mi->rli->reset_info())
+    error= 1;
+
+  DBUG_RETURN(error);
+}
+
+int flush_master_info(Master_info* mi)
+{
+  DBUG_ENTER("flush_master_info");
+  DBUG_ASSERT(mi != NULL && mi->rli != NULL);
+  /*
+    The previous implementation was not acquiring locks.
+    We do the same here. However, this is quite strange.
+  */
+  /*
+    With the appropriate recovery process, we will not need to flush 
+    the content of the current log. This indirection is here just to 
+    remember that in the future, we need to remove it.
+   */
+  DBUG_RETURN(mi->rli->flush_current_log() ||  mi->flush_info());
+}
+
 /**
   Convert slave skip errors bitmap into a printable string.
 */
@@ -445,13 +549,13 @@ int terminate_slave_threads(Master_info* mi,int thread_mask,bool skip_lock)
   if (!mi->inited)
     DBUG_RETURN(0); /* successfully do nothing */
   int error,force_all = (thread_mask & SLAVE_FORCE_ALL);
-  pthread_mutex_t *sql_lock = &mi->rli.run_lock, *io_lock = &mi->run_lock;
+  pthread_mutex_t *sql_lock = &mi->rli->run_lock, *io_lock = &mi->run_lock;
 
   if ((thread_mask & (SLAVE_IO|SLAVE_FORCE_ALL)))
   {
     DBUG_PRINT("info",("Terminating IO thread"));
     mi->abort_slave=1;
-    if ((error=terminate_slave_thread(mi->io_thd,io_lock,
+    if ((error=terminate_slave_thread(mi->info_thd,io_lock,
                                       &mi->stop_cond,
                                       &mi->slave_running,
                                       skip_lock)) &&
@@ -461,10 +565,10 @@ int terminate_slave_threads(Master_info* mi,int thread_mask,bool skip_lock)
   if ((thread_mask & (SLAVE_SQL|SLAVE_FORCE_ALL)))
   {
     DBUG_PRINT("info",("Terminating SQL thread"));
-    mi->rli.abort_slave=1;
-    if ((error=terminate_slave_thread(mi->rli.sql_thd,sql_lock,
-                                      &mi->rli.stop_cond,
-                                      &mi->rli.slave_running,
+    mi->rli->abort_slave=1;
+    if ((error=terminate_slave_thread(mi->rli->info_thd,sql_lock,
+                                      &mi->rli->stop_cond,
+                                      &mi->rli->slave_running,
                                       skip_lock)) &&
         !force_all)
       DBUG_RETURN(error);
@@ -639,8 +743,7 @@ int start_slave_thread(pthread_handler h_func, pthread_mutex_t *start_lock,
 */
 
 int start_slave_threads(bool need_slave_mutex, bool wait_for_start,
-                        Master_info* mi, const char* master_info_fname,
-                        const char* slave_info_fname, int thread_mask)
+                        Master_info* mi, int thread_mask)
 {
   pthread_mutex_t *lock_io=0,*lock_sql=0,*lock_cond_io=0,*lock_cond_sql=0;
   pthread_cond_t* cond_io=0,*cond_sql=0;
@@ -650,14 +753,14 @@ int start_slave_threads(bool need_slave_mutex, bool wait_for_start,
   if (need_slave_mutex)
   {
     lock_io = &mi->run_lock;
-    lock_sql = &mi->rli.run_lock;
+    lock_sql = &mi->rli->run_lock;
   }
   if (wait_for_start)
   {
     cond_io = &mi->start_cond;
-    cond_sql = &mi->rli.start_cond;
+    cond_sql = &mi->rli->start_cond;
     lock_cond_io = &mi->run_lock;
-    lock_cond_sql = &mi->rli.run_lock;
+    lock_cond_sql = &mi->rli->run_lock;
   }
 
   if (thread_mask & SLAVE_IO)
@@ -669,7 +772,7 @@ int start_slave_threads(bool need_slave_mutex, bool wait_for_start,
   {
     error=start_slave_thread(handle_slave_sql,lock_sql,lock_cond_sql,
                              cond_sql,
-                             &mi->rli.slave_running, &mi->rli.slave_run_id,
+                             &mi->rli->slave_running, &mi->rli->slave_run_id,
                              mi);
     if (error)
       terminate_slave_threads(mi, thread_mask & SLAVE_IO, 0);
@@ -683,7 +786,8 @@ static int end_slave_on_walk(Master_info* mi, uchar* /*unused*/)
 {
   DBUG_ENTER("end_slave_on_walk");
 
-  end_master_info(mi);
+  end_info(mi);
+
   DBUG_RETURN(0);
 }
 #endif
@@ -716,7 +820,8 @@ void end_slave()
       once multi-master code is ready.
     */
     terminate_slave_threads(active_mi,SLAVE_FORCE_ALL);
-    end_master_info(active_mi);
+    end_info(active_mi);
+    delete active_mi->rli;
     delete active_mi;
     active_mi= 0;
   }
@@ -729,7 +834,7 @@ static bool io_slave_killed(THD* thd, Master_info* mi)
 {
   DBUG_ENTER("io_slave_killed");
 
-  DBUG_ASSERT(mi->io_thd == thd);
+  DBUG_ASSERT(mi->info_thd == thd);
   DBUG_ASSERT(mi->slave_running); // tracking buffer overrun
   DBUG_RETURN(mi->abort_slave || abort_loop || thd->killed);
 }
@@ -739,7 +844,7 @@ static bool sql_slave_killed(THD* thd, Relay_log_info* rli)
 {
   DBUG_ENTER("sql_slave_killed");
 
-  DBUG_ASSERT(rli->sql_thd == thd);
+  DBUG_ASSERT(rli->info_thd == thd);
   DBUG_ASSERT(rli->slave_running == 1);// tracking buffer overrun
   if (abort_loop || thd->killed || rli->abort_slave)
   {
@@ -885,7 +990,7 @@ int init_floatvar_from_file(float* var, IO_CACHE* f, float default_val)
 /**
    A master info read method
 
-   This function is called from @c init_master_info() along with
+   This function is called from @c init_info() along with
    init_{type}_from_file relatives to restore some of @c active_mi members.
    Particularly, this function is responsible for restoring
    IGNORE_SERVER_IDS list of servers whose events the slave is
@@ -1012,8 +1117,8 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
     Free old description_event_for_queue (that is needed if we are in
     a reconnection).
   */
-  delete mi->rli.relay_log.description_event_for_queue;
-  mi->rli.relay_log.description_event_for_queue= 0;
+  delete mi->rli->relay_log.description_event_for_queue;
+  mi->rli->relay_log.description_event_for_queue= 0;
 
   if (!my_isdigit(&my_charset_bin,*mysql->server_version))
   {
@@ -1038,11 +1143,11 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
       err_msg.append(err_buff);
       break;
     case '3':
-      mi->rli.relay_log.description_event_for_queue= new
+      mi->rli->relay_log.description_event_for_queue= new
         Format_description_log_event(1, mysql->server_version);
       break;
     case '4':
-      mi->rli.relay_log.description_event_for_queue= new
+      mi->rli->relay_log.description_event_for_queue= new
         Format_description_log_event(3, mysql->server_version);
       break;
     default:
@@ -1054,7 +1159,7 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
         (it has the format of the *slave*); it's only good to help know if the
         master is 3.23, 4.0, etc.
       */
-      mi->rli.relay_log.description_event_for_queue= new
+      mi->rli->relay_log.description_event_for_queue= new
         Format_description_log_event(4, mysql->server_version);
       break;
     }
@@ -1071,7 +1176,7 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
     goto err;
 
   /* as we are here, we tried to allocate the event */
-  if (!mi->rli.relay_log.description_event_for_queue)
+  if (!mi->rli->relay_log.description_event_for_queue)
   {
     errmsg= "default Format_description_log_event";
     err_code= ER_SLAVE_CREATE_EVENT_FAILURE;
@@ -1092,7 +1197,7 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
     mi->clock_diff_with_master=
       (long) (time((time_t*) 0) - strtoul(master_row[0], 0, 10));
   }
-  else if (!check_io_slave_killed(mi->io_thd, mi, NULL))
+  else if (!check_io_slave_killed(mi->info_thd, mi, NULL))
   {
     mi->clock_diff_with_master= 0; /* The "most sensible" value */
     sql_print_warning("\"SELECT UNIX_TIMESTAMP()\" failed on master, "
@@ -1119,7 +1224,7 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
   {
     if ((master_row= mysql_fetch_row(master_res)) &&
         (::server_id == (mi->master_id= strtoul(master_row[1], 0, 10))) &&
-        !mi->rli.replicate_same_server_id)
+        !mi->rli->replicate_same_server_id)
     {
       errmsg=
         "The slave I/O thread stops because master and slave have equal"
@@ -1233,7 +1338,7 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
     my_sprintf(query, (query, query_format, llbuf));
 
     if (mysql_real_query(mysql, query, strlen(query))
-        && !check_io_slave_killed(mi->io_thd, mi, NULL))
+        && !check_io_slave_killed(mi->info_thd, mi, NULL))
     {
       err_msg.append("The slave I/O thread stops because querying master with '");
       err_msg.append(query);
@@ -1268,7 +1373,7 @@ static bool wait_for_relay_log_space(Relay_log_info* rli)
   bool slave_killed=0;
   Master_info* mi = rli->mi;
   const char *save_proc_info;
-  THD* thd = mi->io_thd;
+  THD* thd = mi->info_thd;
   DBUG_ENTER("wait_for_relay_log_space");
 
   pthread_mutex_lock(&rli->log_space_lock);
@@ -1300,11 +1405,11 @@ Waiting for the slave SQL thread to free enough relay log space");
  */
 static void write_ignored_events_info_to_relay_log(THD *thd, Master_info *mi)
 {
-  Relay_log_info *rli= &mi->rli;
+  Relay_log_info *rli= mi->rli;
   pthread_mutex_t *log_lock= rli->relay_log.get_log_lock();
   DBUG_ENTER("write_ignored_events_info_to_relay_log");
 
-  DBUG_ASSERT(thd == mi->io_thd);
+  DBUG_ASSERT(thd == mi->info_thd);
   pthread_mutex_lock(log_lock);
   if (rli->ign_master_log_name_end[0])
   {
@@ -1325,7 +1430,7 @@ static void write_ignored_events_info_to_relay_log(THD *thd, Master_info *mi)
                    " to the relay log, SHOW SLAVE STATUS may be"
                    " inaccurate");
       rli->relay_log.harvest_bytes_written(&rli->log_space_total);
-      if (flush_master_info(mi, 1))
+      if (flush_master_info(mi))
         sql_print_error("Failed to flush master info file");
       delete ev;
     }
@@ -1376,7 +1481,7 @@ int register_slave_on_master(MYSQL* mysql, Master_info *mi,
     {
       *suppress_warnings= TRUE;                 // Suppress reconnect warning
     }
-    else if (!check_io_slave_killed(mi->io_thd, mi, NULL))
+    else if (!check_io_slave_killed(mi->info_thd, mi, NULL))
     {
       char buf[256];
       my_snprintf(buf, sizeof(buf), "%s (Errno: %d)", mysql_error(mysql), 
@@ -1485,31 +1590,32 @@ bool show_master_info(THD* thd, Master_info* mi)
 
     /*
       slave_running can be accessed without run_lock but not other
-      non-volotile members like mi->io_thd, which is guarded by the mutex.
+      non-volotile members like mi->info_thd, which is guarded by the mutex.
     */
     pthread_mutex_lock(&mi->run_lock);
-    protocol->store(mi->io_thd ? mi->io_thd->proc_info : "", &my_charset_bin);
+    protocol->store(mi->info_thd ? mi->info_thd->proc_info : "", &my_charset_bin);
     pthread_mutex_unlock(&mi->run_lock);
 
     pthread_mutex_lock(&mi->data_lock);
-    pthread_mutex_lock(&mi->rli.data_lock);
+    pthread_mutex_lock(&mi->rli->data_lock);
     pthread_mutex_lock(&mi->err_lock);
-    pthread_mutex_lock(&mi->rli.err_lock);
+    pthread_mutex_lock(&mi->rli->err_lock);
+
     protocol->store(mi->host, &my_charset_bin);
     protocol->store(mi->user, &my_charset_bin);
     protocol->store((uint32) mi->port);
     protocol->store((uint32) mi->connect_retry);
     protocol->store(mi->master_log_name, &my_charset_bin);
     protocol->store((ulonglong) mi->master_log_pos);
-    protocol->store(mi->rli.group_relay_log_name +
-                    dirname_length(mi->rli.group_relay_log_name),
+    protocol->store(mi->rli->group_relay_log_name +
+                    dirname_length(mi->rli->group_relay_log_name),
                     &my_charset_bin);
-    protocol->store((ulonglong) mi->rli.group_relay_log_pos);
-    protocol->store(mi->rli.group_master_log_name, &my_charset_bin);
+    protocol->store((ulonglong) mi->rli->group_relay_log_pos);
+    protocol->store(mi->rli->group_master_log_name, &my_charset_bin);
     protocol->store(mi->slave_running == MYSQL_SLAVE_RUN_CONNECT ?
                     "Yes" : (mi->slave_running == MYSQL_SLAVE_RUN_NOT_CONNECT ?
                              "Connecting" : "No"), &my_charset_bin);
-    protocol->store(mi->rli.slave_running ? "Yes":"No", &my_charset_bin);
+    protocol->store(mi->rli->slave_running ? "Yes":"No", &my_charset_bin);
     protocol->store(rpl_filter->get_do_db());
     protocol->store(rpl_filter->get_ignore_db());
 
@@ -1524,18 +1630,18 @@ bool show_master_info(THD* thd, Master_info* mi)
     rpl_filter->get_wild_ignore_table(&tmp);
     protocol->store(&tmp);
 
-    protocol->store(mi->rli.last_error().number);
-    protocol->store(mi->rli.last_error().message, &my_charset_bin);
-    protocol->store((uint32) mi->rli.slave_skip_counter);
-    protocol->store((ulonglong) mi->rli.group_master_log_pos);
-    protocol->store((ulonglong) mi->rli.log_space_total);
+    protocol->store(mi->rli->last_error().number);
+    protocol->store(mi->rli->last_error().message, &my_charset_bin);
+    protocol->store((uint32) mi->rli->slave_skip_counter);
+    protocol->store((ulonglong) mi->rli->group_master_log_pos);
+    protocol->store((ulonglong) mi->rli->log_space_total);
 
     protocol->store(
-      mi->rli.until_condition==Relay_log_info::UNTIL_NONE ? "None":
-        ( mi->rli.until_condition==Relay_log_info::UNTIL_MASTER_POS? "Master":
+      mi->rli->until_condition==Relay_log_info::UNTIL_NONE ? "None":
+        ( mi->rli->until_condition==Relay_log_info::UNTIL_MASTER_POS? "Master":
           "Relay"), &my_charset_bin);
-    protocol->store(mi->rli.until_log_name, &my_charset_bin);
-    protocol->store((ulonglong) mi->rli.until_log_pos);
+    protocol->store(mi->rli->until_log_name, &my_charset_bin);
+    protocol->store((ulonglong) mi->rli->until_log_pos);
 
 #ifdef HAVE_OPENSSL
     protocol->store(mi->ssl? "Yes":"No", &my_charset_bin);
@@ -1553,9 +1659,9 @@ bool show_master_info(THD* thd, Master_info* mi)
       connected, we can compute it otherwise show NULL (i.e. unknown).
     */
     if ((mi->slave_running == MYSQL_SLAVE_RUN_CONNECT) &&
-        mi->rli.slave_running)
+        mi->rli->slave_running)
     {
-      long time_diff= ((long)(time(0) - mi->rli.last_master_timestamp)
+      long time_diff= ((long)(time(0) - mi->rli->last_master_timestamp)
                        - mi->clock_diff_with_master);
       /*
         Apparently on some systems time_diff can be <0. Here are possible
@@ -1577,7 +1683,7 @@ bool show_master_info(THD* thd, Master_info* mi)
         last_master_timestamp == 0 (an "impossible" timestamp 1970) is a
         special marker to say "consider we have caught up".
       */
-      protocol->store((longlong)(mi->rli.last_master_timestamp ?
+      protocol->store((longlong)(mi->rli->last_master_timestamp ?
                                  max(0, time_diff) : 0));
     }
     else
@@ -1591,9 +1697,9 @@ bool show_master_info(THD* thd, Master_info* mi)
     // Last_IO_Error
     protocol->store(mi->last_error().message, &my_charset_bin);
     // Last_SQL_Errno
-    protocol->store(mi->rli.last_error().number);
+    protocol->store(mi->rli->last_error().number);
     // Last_SQL_Error
-    protocol->store(mi->rli.last_error().message, &my_charset_bin);
+    protocol->store(mi->rli->last_error().message, &my_charset_bin);
     // Replicate_Ignore_Server_Ids
     {
       char buff[FN_REFLEN];
@@ -1621,9 +1727,9 @@ bool show_master_info(THD* thd, Master_info* mi)
     // Master_Server_id
     protocol->store((uint32) mi->master_id);
 
-    pthread_mutex_unlock(&mi->rli.err_lock);
+    pthread_mutex_unlock(&mi->rli->err_lock);
     pthread_mutex_unlock(&mi->err_lock);
-    pthread_mutex_unlock(&mi->rli.data_lock);
+    pthread_mutex_unlock(&mi->rli->data_lock);
     pthread_mutex_unlock(&mi->data_lock);
 
     if (my_net_write(&thd->net, (uchar*) thd->packet.ptr(), packet->length()))
@@ -1832,7 +1938,7 @@ static ulong read_event(MYSQL* mysql, Master_info *mi, bool* suppress_warnings)
     We check if we were told to die, and if not, try reading again
   */
 #ifndef DBUG_OFF
-  if (disconnect_slave_event_count && !(mi->events_till_disconnect--))
+  if (disconnect_slave_event_count && !(mi->events_until_exit--))
     DBUG_RETURN(packet_error);
 #endif
 
@@ -2115,7 +2221,7 @@ int apply_event_and_update_pos(Log_event* ev, THD* thd, Relay_log_info* rli,
      tried slave_trans_retries times.  If the event has been retried
      fewer times, 0 is returned.
 
-   - init_master_info or init_relay_log_pos failed. (These are called
+   - init_info or init_relay_log_pos failed. (These are called
      if a failure occurs when applying the event.)
 
    - An error occurred when updating the binlog position.
@@ -2137,7 +2243,7 @@ static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
 
   Log_event * ev = next_event(rli);
 
-  DBUG_ASSERT(rli->sql_thd==thd);
+  DBUG_ASSERT(rli->info_thd==thd);
 
   if (sql_slave_killed(thd,rli))
   {
@@ -2203,16 +2309,20 @@ static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
 	  Note, if lock wait timeout (innodb_lock_wait_timeout exceeded)
 	  there is no rollback since 5.0.13 (ref: manual).
           We have to not only seek but also
-          a) init_master_info(), to seek back to hot relay log's start for later
+          a) init_info(), to seek back to hot relay log's start for later
           (for when we will come back to this hot log after re-processing the
           possibly existing old logs where BEGIN is: check_binlog_magic() will
           then need the cache to be at position 0 (see comments at beginning of
-          init_master_info()).
+          init_info()).
           b) init_relay_log_pos(), because the BEGIN may be an older relay log.
         */
         if (rli->trans_retries < slave_trans_retries)
         {
-          if (init_master_info(rli->mi, 0, 0, 0, SLAVE_SQL))
+          /*
+             We need to figure out if there is a test case that covers
+             this part. \Alfranio.
+          */
+          if (init_info(rli->mi, FALSE, SLAVE_SQL))
             sql_print_error("Failed to initialize the master info structure");
           else if (init_relay_log_pos(rli,
                                       rli->group_relay_log_name,
@@ -2365,7 +2475,7 @@ pthread_handler_t handle_slave_io(void *arg)
   THD *thd; // needs to be first for thread_stack
   MYSQL *mysql;
   Master_info *mi = (Master_info*)arg;
-  Relay_log_info *rli= &mi->rli;
+  Relay_log_info *rli= mi->rli;
   char llbuff[22];
   uint retry_count;
   bool suppress_warnings;
@@ -2385,12 +2495,12 @@ pthread_handler_t handle_slave_io(void *arg)
   mi->slave_run_id++;
 
 #ifndef DBUG_OFF
-  mi->events_till_disconnect = disconnect_slave_event_count;
+  mi->events_until_exit = disconnect_slave_event_count;
 #endif
 
   thd= new THD; // note that contructor of THD uses DBUG_ !
   THD_CHECK_SENTRY(thd);
-  mi->io_thd = thd;
+  mi->info_thd = thd;
 
   pthread_detach_this_thread();
   thd->thread_stack= (char*) &thd; // remember where our stack is
@@ -2458,7 +2568,7 @@ connected:
   if (get_master_version_and_clock(mysql, mi))
     goto err;
 
-  if (mi->rli.relay_log.description_event_for_queue->binlog_version > 1)
+  if (mi->rli->relay_log.description_event_for_queue->binlog_version > 1)
   {
     /*
       Register ourselves with the master.
@@ -2591,19 +2701,19 @@ Stopping slave I/O thread due to out-of-memory error from master");
                  (thd, mi, event_buf, event_len, synced)))
       goto err;
 
-    if (flush_master_info(mi, 1))
+    if (flush_master_info(mi))
     {
-      sql_print_error("Failed to flush master info file");
+      sql_print_error("Failed to flush master info");
       goto err;
     }
     /*
       See if the relay logs take too much space.
-      We don't lock mi->rli.log_space_lock here; this dirty read saves time
+      We don't lock mi->rli->log_space_lock here; this dirty read saves time
       and does not introduce any problem:
-      - if mi->rli.ignore_log_space_limit is 1 but becomes 0 just after (so
+      - if mi->rli->ignore_log_space_limit is 1 but becomes 0 just after (so
       the clean value is 0), then we are reading only one more event as we
       should, and we'll block only at the next event. No big deal.
-      - if mi->rli.ignore_log_space_limit is 0 but becomes 1 just after (so
+      - if mi->rli->ignore_log_space_limit is 0 but becomes 1 just after (so
       the clean value is 1), then we are going into wait_for_relay_log_space()
       for no reason, but this function will do a clean read, notice the clean
       value and exit immediately.
@@ -2661,8 +2771,8 @@ err:
   pthread_mutex_lock(&mi->run_lock);
 
   /* Forget the relay log's format */
-  delete mi->rli.relay_log.description_event_for_queue;
-  mi->rli.relay_log.description_event_for_queue= 0;
+  delete mi->rli->relay_log.description_event_for_queue;
+  mi->rli->relay_log.description_event_for_queue= 0;
   // TODO: make rpl_status part of Master_info
   change_rpl_status(RPL_ACTIVE_SLAVE,RPL_IDLE_SLAVE);
   DBUG_ASSERT(thd->net.buff != 0);
@@ -2674,7 +2784,7 @@ err:
   pthread_mutex_unlock(&LOCK_thread_count);
   mi->abort_slave= 0;
   mi->slave_running= 0;
-  mi->io_thd= 0;
+  mi->info_thd= 0;
   /*
     Note: the order of the two following calls (first broadcast, then unlock)
     is important. Otherwise a killer_thread can execute between the calls and
@@ -2701,7 +2811,7 @@ pthread_handler_t handle_slave_sql(void *arg)
   THD *thd;                     /* needs to be first for thread_stack */
   char llbuff[22],llbuff1[22];
 
-  Relay_log_info* rli = &((Master_info*)arg)->rli;
+  Relay_log_info* rli = ((Master_info*)arg)->rli;
   const char *errmsg;
 
   // needs to call my_thread_init(), otherwise we get a coredump in DBUG_ stuff
@@ -2713,12 +2823,12 @@ pthread_handler_t handle_slave_sql(void *arg)
   DBUG_ASSERT(!rli->slave_running);
   errmsg= 0;
 #ifndef DBUG_OFF
-  rli->events_till_abort = abort_slave_event_count;
+  rli->events_until_exit = abort_slave_event_count;
 #endif
 
   thd = new THD; // note that contructor of THD uses DBUG_ !
   thd->thread_stack = (char*)&thd; // remember where our stack is
-  rli->sql_thd= thd;
+  rli->info_thd= thd;
   
   /* Inform waiting threads that slave has started */
   rli->slave_run_id++;
@@ -2807,7 +2917,7 @@ pthread_handler_t handle_slave_sql(void *arg)
 #endif
   }
 #endif
-  DBUG_ASSERT(rli->sql_thd == thd);
+  DBUG_ASSERT(rli->info_thd == thd);
 
   DBUG_PRINT("master_info",("log_file_name: %s  position: %s",
                             rli->group_master_log_name,
@@ -2853,7 +2963,7 @@ Slave SQL thread aborted. Can't execute init_slave query");
   while (!sql_slave_killed(thd,rli))
   {
     thd_proc_info(thd, "Reading event from the relay log");
-    DBUG_ASSERT(rli->sql_thd == thd);
+    DBUG_ASSERT(rli->info_thd == thd);
     THD_CHECK_SENTRY(thd);
 
     sql_print_information("new_mode %u", thd->variables.new_mode);
@@ -2969,9 +3079,9 @@ the slave SQL thread with \"SLAVE START\". We stopped at log \
   thd->temporary_tables = 0; // remove tempation from destructor to close them
   DBUG_ASSERT(thd->net.buff != 0);
   net_end(&thd->net); // destructor will not free it, because we are weird
-  DBUG_ASSERT(rli->sql_thd == thd);
+  DBUG_ASSERT(rli->info_thd == thd);
   THD_CHECK_SENTRY(thd);
-  rli->sql_thd= 0;
+  rli->info_thd= 0;
   pthread_mutex_lock(&LOCK_thread_count);
   THD_CHECK_SENTRY(thd);
   delete thd;
@@ -2999,7 +3109,7 @@ static int process_io_create_file(Master_info* mi, Create_file_log_event* cev)
   int error = 1;
   ulong num_bytes;
   bool cev_not_written;
-  THD *thd = mi->io_thd;
+  THD *thd = mi->info_thd;
   NET *net = &mi->mysql->net;
   DBUG_ENTER("process_io_create_file");
 
@@ -3053,21 +3163,21 @@ static int process_io_create_file(Master_info* mi, Create_file_log_event* cev)
           break;
         Execute_load_log_event xev(thd,0,0);
         xev.log_pos = cev->log_pos;
-        if (unlikely(mi->rli.relay_log.append(&xev)))
+        if (unlikely(mi->rli->relay_log.append(&xev)))
         {
           mi->report(ERROR_LEVEL, ER_SLAVE_RELAY_LOG_WRITE_FAILURE,
                      ER(ER_SLAVE_RELAY_LOG_WRITE_FAILURE),
                      "error writing Exec_load event to relay log");
           goto err;
         }
-        mi->rli.relay_log.harvest_bytes_written(&mi->rli.log_space_total);
+        mi->rli->relay_log.harvest_bytes_written(&mi->rli->log_space_total);
         break;
       }
       if (unlikely(cev_not_written))
       {
         cev->block = net->read_pos;
         cev->block_len = num_bytes;
-        if (unlikely(mi->rli.relay_log.append(cev)))
+        if (unlikely(mi->rli->relay_log.append(cev)))
         {
           mi->report(ERROR_LEVEL, ER_SLAVE_RELAY_LOG_WRITE_FAILURE,
                      ER(ER_SLAVE_RELAY_LOG_WRITE_FAILURE),
@@ -3075,21 +3185,21 @@ static int process_io_create_file(Master_info* mi, Create_file_log_event* cev)
           goto err;
         }
         cev_not_written=0;
-        mi->rli.relay_log.harvest_bytes_written(&mi->rli.log_space_total);
+        mi->rli->relay_log.harvest_bytes_written(&mi->rli->log_space_total);
       }
       else
       {
         aev.block = net->read_pos;
         aev.block_len = num_bytes;
         aev.log_pos = cev->log_pos;
-        if (unlikely(mi->rli.relay_log.append(&aev)))
+        if (unlikely(mi->rli->relay_log.append(&aev)))
         {
           mi->report(ERROR_LEVEL, ER_SLAVE_RELAY_LOG_WRITE_FAILURE,
                      ER(ER_SLAVE_RELAY_LOG_WRITE_FAILURE),
                      "error writing Append_block event to relay log");
           goto err;
         }
-        mi->rli.relay_log.harvest_bytes_written(&mi->rli.log_space_total) ;
+        mi->rli->relay_log.harvest_bytes_written(&mi->rli->log_space_total) ;
       }
     }
   }
@@ -3140,7 +3250,7 @@ static int process_io_rotate(Master_info *mi, Rotate_log_event *rev)
     rotate event forever, so we need to not disconnect after one.
   */
   if (disconnect_slave_event_count)
-    mi->events_till_disconnect++;
+    mi->events_until_exit++;
 #endif
 
   /*
@@ -3150,11 +3260,11 @@ static int process_io_rotate(Master_info *mi, Rotate_log_event *rev)
     no need to reset description_event_for_queue now. And if it's nothing (same
     master version as before), no need (still using the slave's format).
   */
-  if (mi->rli.relay_log.description_event_for_queue->binlog_version >= 4)
+  if (mi->rli->relay_log.description_event_for_queue->binlog_version >= 4)
   {
-    delete mi->rli.relay_log.description_event_for_queue;
+    delete mi->rli->relay_log.description_event_for_queue;
     /* start from format 3 (MySQL 4.0) again */
-    mi->rli.relay_log.description_event_for_queue= new
+    mi->rli->relay_log.description_event_for_queue= new
       Format_description_log_event(3);
   }
   /*
@@ -3176,7 +3286,7 @@ static int queue_binlog_ver_1_event(Master_info *mi, const char *buf,
   ulong inc_pos;
   bool ignore_event= 0;
   char *tmp_buf = 0;
-  Relay_log_info *rli= &mi->rli;
+  Relay_log_info *rli= mi->rli;
   DBUG_ENTER("queue_binlog_ver_1_event");
 
   /*
@@ -3210,7 +3320,7 @@ static int queue_binlog_ver_1_event(Master_info *mi, const char *buf,
     connected to the master).
   */
   Log_event *ev = Log_event::read_log_event(buf,event_len, &errmsg,
-                                            mi->rli.relay_log.description_event_for_queue);
+                                            mi->rli->relay_log.description_event_for_queue);
   if (unlikely(!ev))
   {
     sql_print_error("Read invalid event from master: '%s',\
@@ -3293,12 +3403,12 @@ static int queue_binlog_ver_3_event(Master_info *mi, const char *buf,
   const char *errmsg = 0;
   ulong inc_pos;
   char *tmp_buf = 0;
-  Relay_log_info *rli= &mi->rli;
+  Relay_log_info *rli= mi->rli;
   DBUG_ENTER("queue_binlog_ver_3_event");
 
   /* read_log_event() will adjust log_pos to be end_log_pos */
   Log_event *ev = Log_event::read_log_event(buf,event_len, &errmsg,
-                                            mi->rli.relay_log.description_event_for_queue);
+                                            mi->rli->relay_log.description_event_for_queue);
   if (unlikely(!ev))
   {
     sql_print_error("Read invalid event from master: '%s',\
@@ -3356,7 +3466,7 @@ static int queue_old_event(Master_info *mi, const char *buf,
 {
   DBUG_ENTER("queue_old_event");
 
-  switch (mi->rli.relay_log.description_event_for_queue->binlog_version)
+  switch (mi->rli->relay_log.description_event_for_queue->binlog_version)
   {
   case 1:
       DBUG_RETURN(queue_binlog_ver_1_event(mi,buf,event_len));
@@ -3364,7 +3474,7 @@ static int queue_old_event(Master_info *mi, const char *buf,
       DBUG_RETURN(queue_binlog_ver_3_event(mi,buf,event_len));
   default: /* unsupported format; eg version 2 */
     DBUG_PRINT("info",("unsupported binlog format %d in queue_old_event()",
-                       mi->rli.relay_log.description_event_for_queue->binlog_version));
+                       mi->rli->relay_log.description_event_for_queue->binlog_version));
     DBUG_RETURN(1);
   }
 }
@@ -3384,14 +3494,14 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   int error= 0;
   String error_msg;
   ulong inc_pos;
-  Relay_log_info *rli= &mi->rli;
+  Relay_log_info *rli= mi->rli;
   pthread_mutex_t *log_lock= rli->relay_log.get_log_lock();
   ulong s_id;
   DBUG_ENTER("queue_event");
 
   LINT_INIT(inc_pos);
 
-  if (mi->rli.relay_log.description_event_for_queue->binlog_version<4 &&
+  if (mi->rli->relay_log.description_event_for_queue->binlog_version<4 &&
       buf[EVENT_TYPE_OFFSET] != FORMAT_DESCRIPTION_EVENT /* a way to escape */)
     DBUG_RETURN(queue_old_event(mi,buf,event_len));
 
@@ -3415,7 +3525,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
     goto err;
   case ROTATE_EVENT:
   {
-    Rotate_log_event rev(buf,event_len,mi->rli.relay_log.description_event_for_queue);
+    Rotate_log_event rev(buf,event_len,mi->rli->relay_log.description_event_for_queue);
     if (unlikely(process_io_rotate(mi,&rev)))
     {
       error= ER_SLAVE_RELAY_LOG_WRITE_FAILURE;
@@ -3443,13 +3553,13 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
     const char* errmsg;
     if (!(tmp= (Format_description_log_event*)
           Log_event::read_log_event(buf, event_len, &errmsg,
-                                    mi->rli.relay_log.description_event_for_queue)))
+                                    mi->rli->relay_log.description_event_for_queue)))
     {
       error= ER_SLAVE_RELAY_LOG_WRITE_FAILURE;
       goto err;
     }
-    delete mi->rli.relay_log.description_event_for_queue;
-    mi->rli.relay_log.description_event_for_queue= tmp;
+    delete mi->rli->relay_log.description_event_for_queue;
+    mi->rli->relay_log.description_event_for_queue= tmp;
     /*
        Though this does some conversion to the slave's format, this will
        preserve the master's binlog format version, and number of event types.
@@ -3460,7 +3570,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
     */
     inc_pos= uint4korr(buf+LOG_POS_OFFSET) ? event_len : 0;
     DBUG_PRINT("info",("binlog format is now %d",
-                       mi->rli.relay_log.description_event_for_queue->binlog_version));
+                       mi->rli->relay_log.description_event_for_queue->binlog_version));
 
   }
   break;
@@ -3471,7 +3581,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
       HB (heartbeat) cannot come before RL (Relay)
     */
     char  llbuf[22];
-    Heartbeat_log_event hb(buf, event_len, mi->rli.relay_log.description_event_for_queue);
+    Heartbeat_log_event hb(buf, event_len, mi->rli->relay_log.description_event_for_queue);
     if (!hb.is_valid())
     {
       error= ER_SLAVE_HEARTBEAT_FAILURE;
@@ -3534,7 +3644,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
 
   pthread_mutex_lock(log_lock);
   s_id= uint4korr(buf + SERVER_ID_OFFSET);
-  if ((s_id == ::server_id && !mi->rli.replicate_same_server_id) ||
+  if ((s_id == ::server_id && !mi->rli->replicate_same_server_id) ||
       /*
         the following conjunction deals with IGNORE_SERVER_IDS, if set
         If the master is on the ignore list, execution of
@@ -3565,7 +3675,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
       IGNORE_SERVER_IDS it increments mi->master_log_pos
       as well as rli->group_relay_log_pos.
     */
-    if (!(s_id == ::server_id && !mi->rli.replicate_same_server_id) ||
+    if (!(s_id == ::server_id && !mi->rli->replicate_same_server_id) ||
         buf[EVENT_TYPE_OFFSET] != FORMAT_DESCRIPTION_EVENT &&
         buf[EVENT_TYPE_OFFSET] != ROTATE_EVENT &&
         buf[EVENT_TYPE_OFFSET] != STOP_EVENT)
@@ -3610,36 +3720,6 @@ err:
 }
 
 
-void end_relay_log_info(Relay_log_info* rli)
-{
-  DBUG_ENTER("end_relay_log_info");
-
-  if (!rli->inited)
-    DBUG_VOID_RETURN;
-  if (rli->info_fd >= 0)
-  {
-    end_io_cache(&rli->info_file);
-    (void) my_close(rli->info_fd, MYF(MY_WME));
-    rli->info_fd = -1;
-  }
-  if (rli->cur_log_fd >= 0)
-  {
-    end_io_cache(&rli->cache_buf);
-    (void)my_close(rli->cur_log_fd, MYF(MY_WME));
-    rli->cur_log_fd = -1;
-  }
-  rli->inited = 0;
-  rli->relay_log.close(LOG_CLOSE_INDEX | LOG_CLOSE_STOP_EVENT);
-  rli->relay_log.harvest_bytes_written(&rli->log_space_total);
-  /*
-    Delete the slave's temporary tables from memory.
-    In the future there will be other actions than this, to ensure persistance
-    of slave's temp tables after shutdown.
-  */
-  rli->close_temporary_tables();
-  DBUG_VOID_RETURN;
-}
-
 /*
   Try to connect until successful or slave killed
 
@@ -3681,7 +3761,7 @@ static int connect_to_master(THD* thd, MYSQL* mysql, Master_info* mi,
   DBUG_ENTER("connect_to_master");
 
 #ifndef DBUG_OFF
-  mi->events_till_disconnect = disconnect_slave_event_count;
+  mi->events_until_exit = disconnect_slave_event_count;
 #endif
   ulong client_flag= CLIENT_REMEMBER_OPTIONS;
   if (opt_slave_compressed_protocol)
@@ -3845,72 +3925,6 @@ MYSQL *rpl_connect_master(MYSQL *mysql)
 }
 
 /*
-  Store the file and position where the execute-slave thread are in the
-  relay log.
-
-  SYNOPSIS
-    flush_relay_log_info()
-    rli                 Relay log information
-
-  NOTES
-    - As this is only called by the slave thread, we don't need to
-      have a lock on this.
-    - If there is an active transaction, then we don't update the position
-      in the relay log.  This is to ensure that we re-execute statements
-      if we die in the middle of an transaction that was rolled back.
-    - As a transaction never spans binary logs, we don't have to handle the
-      case where we do a relay-log-rotation in the middle of the transaction.
-      If this would not be the case, we would have to ensure that we
-      don't delete the relay log file where the transaction started when
-      we switch to a new relay log file.
-
-  TODO
-    - Change the log file information to a binary format to avoid calling
-      longlong2str.
-
-  RETURN VALUES
-    0   ok
-    1   write error
-*/
-
-bool flush_relay_log_info(Relay_log_info* rli)
-{
-  bool error=0;
-  DBUG_ENTER("flush_relay_log_info");
-
-  if (unlikely(rli->no_storage))
-    DBUG_RETURN(0);
-
-  IO_CACHE *file = &rli->info_file;
-  char buff[FN_REFLEN*2+22*2+4], *pos;
-
-  my_b_seek(file, 0L);
-  pos=strmov(buff, rli->group_relay_log_name);
-  *pos++='\n';
-  pos=longlong2str(rli->group_relay_log_pos, pos, 10);
-  *pos++='\n';
-  pos=strmov(pos, rli->group_master_log_name);
-  *pos++='\n';
-  pos=longlong2str(rli->group_master_log_pos, pos, 10);
-  *pos='\n';
-  if (my_b_write(file, (uchar*) buff, (size_t) (pos-buff)+1))
-    error=1;
-  if (flush_io_cache(file))
-    error=1;
-  if (sync_relayloginfo_period &&
-      !error &&
-      ++(rli->sync_counter) >= sync_relayloginfo_period)
-  {
-    if (my_sync(rli->info_fd, MYF(MY_WME)))
-      error=1;
-    rli->sync_counter= 0;
-  }
-  /* Flushing the relay log is done by the slave I/O thread */
-  DBUG_RETURN(error);
-}
-
-
-/*
   Called when we notice that the current "hot" log got rotated under our feet.
 */
 
@@ -3951,13 +3965,13 @@ static Log_event* next_event(Relay_log_info* rli)
   IO_CACHE* cur_log = rli->cur_log;
   pthread_mutex_t *log_lock = rli->relay_log.get_log_lock();
   const char* errmsg=0;
-  THD* thd = rli->sql_thd;
+  THD* thd = rli->info_thd;
   DBUG_ENTER("next_event");
 
   DBUG_ASSERT(thd != 0);
 
 #ifndef DBUG_OFF
-  if (abort_slave_event_count && !rli->events_till_abort--)
+  if (abort_slave_event_count && !rli->events_until_exit--)
     DBUG_RETURN(0);
 #endif
 
@@ -4037,7 +4051,7 @@ static Log_event* next_event(Relay_log_info* rli)
                                       rli->relay_log.description_event_for_exec)))
 
     {
-      DBUG_ASSERT(thd==rli->sql_thd);
+      DBUG_ASSERT(thd==rli->info_thd);
       /*
         read it while we have a lock, to avoid a mutex lock in
         inc_event_relay_log_pos()
@@ -4047,7 +4061,7 @@ static Log_event* next_event(Relay_log_info* rli)
         pthread_mutex_unlock(log_lock);
       DBUG_RETURN(ev);
     }
-    DBUG_ASSERT(thd==rli->sql_thd);
+    DBUG_ASSERT(thd==rli->info_thd);
     if (opt_reckless_slave)                     // For mysql-test
       cur_log->error = 0;
     if (cur_log->error < 0)
@@ -4154,7 +4168,7 @@ static Log_event* next_event(Relay_log_info* rli)
         pthread_mutex_unlock(&rli->log_space_lock);
         pthread_cond_broadcast(&rli->log_space_cond);
         // Note that wait_for_update_relay_log unlocks lock_log !
-        rli->relay_log.wait_for_update_relay_log(rli->sql_thd);
+        rli->relay_log.wait_for_update_relay_log(rli->info_thd);
         // re-acquire data lock since we released it earlier
         pthread_mutex_lock(&rli->data_lock);
         rli->last_master_timestamp= save_timestamp;
@@ -4209,7 +4223,7 @@ static Log_event* next_event(Relay_log_info* rli)
         rli->event_relay_log_pos = BIN_LOG_HEADER_SIZE;
         strmake(rli->event_relay_log_name,rli->linfo.log_file_name,
                 sizeof(rli->event_relay_log_name)-1);
-        flush_relay_log_info(rli);
+        rli->flush_info();
       }
 
       /*
@@ -4309,7 +4323,7 @@ err:
 void rotate_relay_log(Master_info* mi)
 {
   DBUG_ENTER("rotate_relay_log");
-  Relay_log_info* rli= &mi->rli;
+  Relay_log_info* rli= mi->rli;
 
   DBUG_EXECUTE_IF("crash_before_rotate_relaylog", DBUG_ABORT(););
 
@@ -4440,9 +4454,9 @@ bool rpl_master_has_bug(const Relay_log_info *rli, uint bug_id, bool report,
  */
 bool rpl_master_erroneous_autoinc(THD *thd)
 {
-  if (active_mi && active_mi->rli.sql_thd == thd)
+  if (active_mi && active_mi->rli->info_thd == thd)
   {
-    Relay_log_info *rli= &active_mi->rli;
+    Relay_log_info *rli= active_mi->rli;
     DBUG_EXECUTE_IF("simulate_bug33029", return TRUE;);
     return rpl_master_has_bug(rli, 33029, FALSE, NULL, NULL);
   }
