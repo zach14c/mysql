@@ -189,7 +189,7 @@ Value* Repository::defaultRepository(Field *field, Value *value, Value *alt)
 	return alt;
 }
 
-void Repository::storeBlob(BlobReference *blob, Transaction *transaction)
+void Repository::storeBlob(BlobReference *blob, TransactionState *transaction)
 {
 	Stream *stream = blob->getStream();
 

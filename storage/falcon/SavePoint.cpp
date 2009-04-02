@@ -68,6 +68,5 @@ void SavePoint::backlogRecord(RecordVersion* record)
 	if (!backloggedRecords)
 		backloggedRecords = new Bitmap;
 	
-	int32 backlogId = record->format->table->backlogRecord(record);
-	backloggedRecords->set(backlogId);
+	record->format->table->backlogRecord(record, backloggedRecords);
 }
