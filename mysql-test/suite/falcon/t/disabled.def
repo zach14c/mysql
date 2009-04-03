@@ -10,4 +10,3 @@
 #
 ##############################################################################
 
-falcon_bug_24024      : WL#4284: Can't drop table used by a pending transaction (there is metadata lock on the table).
