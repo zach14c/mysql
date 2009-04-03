@@ -140,6 +140,7 @@ public:
 	int			indexId;
 	int			indexVersion;
 	int			type;
+	int			maxKeyLength;
 	int			*partialLengths;
 	uint64		*recordsPerSegment;
 	bool		savePending;

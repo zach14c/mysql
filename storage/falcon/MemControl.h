@@ -29,8 +29,10 @@ public:
 	int		count;
 	uint64	maxMemory;
 	virtual bool poolExtensionCheck(uint size);
+	virtual uint64 getCurrentMemory(int poolMask = MemMgrAllPools);
 	void addPool(MemMgr* pool);
 	void setMaxSize(uint64 size);
+	void setMaxSize(int mgrId, uint64 size);
 };
 
 #endif
