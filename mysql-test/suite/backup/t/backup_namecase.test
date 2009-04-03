@@ -1,0 +1,140 @@
+#
+# Test to ensure that RESTORE works on a server with a case insensitive
+# file system when the BACKUP was made on a server with case sensitive
+# file system.
+# 
+# The tests in this file use error injection. A better way to test
+# this scenario is to backup a database with
+# database/table/view/procedure/etc names in upper or camel case on a
+# host with case sensitive file system (e.g., Linux), and then restore
+# on a host with case insensitive file system (e.g., Windows).
+# 
+# WL#4771 will add tests as described above. Once WL#4771 is pushed,
+# it should be considered whether or not this test file can be
+# removed.
+
+--source include/have_debug_sync.inc
+--source include/not_embedded.inc
+
+--echo
+--echo # Create database with tables and views
+--echo
+
+CREATE DATABASE changecase;
+
+CREATE TABLE changecase.t1 (i int);
+INSERT INTO changecase.t1 VALUES (1);
+
+CREATE TABLE changecase.t2 (text varchar(20));
+
+CREATE VIEW changecase.v1 AS SELECT * FROM changecase.t1;
+
+
+--echo
+--echo # Add trigger and procedure
+--echo
+
+DELIMITER ||;
+
+CREATE PROCEDURE changecase.trgmsg(a int)
+BEGIN
+    INSERT INTO changecase.t2(text) VALUES ('Db trigger fired!');
+END;
+||
+
+CREATE TRIGGER changecase.afterins AFTER INSERT ON changecase.t1 FOR EACH ROW 
+CALL trgmsg(1);
+||
+
+CREATE EVENT changecase.ev ON SCHEDULE EVERY 10 second DO 
+BEGIN
+  INSERT INTO changecase.t2(text) VALUES ('Db event fired!');
+END;
+||
+
+DELIMITER ;||
+
+--echo
+--echo # Add user with privileges
+--echo
+
+CREATE USER user_with_grants;
+
+--echo default: Grant user rights to run backup. Revoke SUPER from one user.
+GRANT SELECT ON changecase.t1 TO 'user_with_grants'@'%';
+GRANT SELECT ON changecase.v1 TO 'user_with_grants'@'%';
+GRANT UPDATE ON changecase.* TO 'user_with_grants'@'%';
+GRANT INSERT ON changecase.* TO 'user_with_grants'@'%';
+GRANT SUPER ON *.* TO 'user_with_grants'@'%';
+FLUSH PRIVILEGES;
+
+--echo
+--echo # Show procedure, trigger and event
+--echo
+
+--query_vertical SHOW CREATE PROCEDURE changecase.trgmsg;
+--echo
+--query_vertical SHOW TRIGGERS FROM changecase;
+--echo
+--replace_column 9 #
+--query_vertical SHOW EVENTS IN changecase;
+
+
+--echo
+--echo # BACKUP, drop database and user
+--echo
+
+--replace_column 1 #
+BACKUP DATABASE changecase TO 'uppercase.bup';
+
+DROP DATABASE changecase;
+REVOKE ALL ON *.* FROM 'user_with_grants'@'%';
+
+--echo
+--echo # RESTORE database
+--echo
+
+--echo # Activate debug hook that makes db names upper-case when checking if
+--echo # a grant statement operates on a db that is restored. Should fail
+SET SESSION DEBUG='+d,restore_catalog_uppercase_names_grant';
+--error ER_BACKUP_GRANT_WRONG_DB
+RESTORE FROM 'uppercase.bup';
+SET SESSION DEBUG='-d';
+
+DROP DATABASE changecase;
+
+--echo # Activate debug hook that makes all names upper-case. Should work.
+SET SESSION DEBUG='+d,restore_catalog_uppercase_names';
+--replace_column 1 #
+RESTORE FROM 'uppercase.bup';
+SET SESSION DEBUG='-d';
+
+--echo
+--echo # Check contents of restored database
+--echo
+
+--echo
+SHOW TABLES IN changecase;
+
+--echo
+SELECT * FROM changecase.t1;
+
+--echo
+--echo # Show procedure, trigger and event
+--echo
+
+--query_vertical SHOW CREATE PROCEDURE changecase.trgmsg;
+--echo
+--query_vertical SHOW TRIGGERS FROM changecase;
+--echo
+--replace_column 9 #
+--query_vertical SHOW EVENTS IN changecase;
+
+--echo
+SHOW GRANTS FOR 'user_with_grants'@'%';
+
+--echo
+--echo # Cleanup
+--echo
+DROP DATABASE changecase;
+DROP USER user_with_grants;

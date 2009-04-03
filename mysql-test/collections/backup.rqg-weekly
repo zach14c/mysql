@@ -1,0 +1,2 @@
+perl mysql-test-run.pl --timer --force --suite=backup_extra backup_consistency_falcon
+perl mysql-test-run.pl --timer --force --suite=backup_extra backup_consistency_innodb

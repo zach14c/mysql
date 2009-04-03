@@ -1753,6 +1753,9 @@ int bcat_add_item(st_bstream_image_header *catalogue,
 
   backup::String name_str(item->name.begin, item->name.end);
 
+  DBUG_EXECUTE_IF("restore_catalog_uppercase_names",
+                  my_caseup_str(system_charset_info, name_str.c_ptr());
+                  );
   DBUG_PRINT("restore",("Adding item %s of type %d (pos=%ld)",
                         item->name.begin,
                         item->type,
@@ -1769,6 +1772,9 @@ int bcat_add_item(st_bstream_image_header *catalogue,
 
   case BSTREAM_IT_DB:
   {
+
+    if (lower_case_table_names == 1)
+      my_casedn_str(system_charset_info, name_str.c_ptr());
     Image_info::Db *db= info->add_db(name_str, item->pos); // reports errors
 
     return db ? BSTREAM_OK : BSTREAM_ERROR;
@@ -1801,6 +1807,8 @@ int bcat_add_item(st_bstream_image_header *catalogue,
 
     DBUG_PRINT("restore",(" table's database is %s", db->name().ptr()));
 
+    if (lower_case_table_names == 1)
+      my_casedn_str(system_charset_info, name_str.c_ptr());
     Image_info::Table *tbl= info->add_table(*db, name_str, *snap, item->pos); 
                                                              // reports errors
     
@@ -2198,6 +2206,14 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     db_name.alloc(size);
     db_name.length(0);
     db_name.append(start, size);
+
+    if (lower_case_table_names == 1)
+      my_casedn_str(system_charset_info, db_name.c_ptr());
+
+    DBUG_EXECUTE_IF("restore_catalog_uppercase_names_grant",
+		    my_caseup_str(system_charset_info, db_name.c_ptr());
+		    );
+
     if (!info->has_db(db_name))
     {
       log.report_error(ER_BACKUP_GRANT_WRONG_DB, create_stmt);
