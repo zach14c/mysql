@@ -1111,7 +1111,7 @@ int SyncObject::getCollisionCount(void)
 void SyncObject::backoff(Thread* thread)
 {
 	//thread->sleep(1);
-	int a = 0;
+	volatile int a = 0;
 
 	for (int n = 0; n < thread->backoff; ++n)
 		++a;

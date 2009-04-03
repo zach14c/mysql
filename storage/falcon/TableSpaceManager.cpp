@@ -1,4 +1,4 @@
-/* Copyright (C) 2007 MySQL AB
+/* Copyright © 2007-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -538,7 +538,7 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 		infoTable->putString(2, tableSpaceFileType(resultSet->getString(1)));	// FILE_TYPE NOT NULL
 		infoTable->setNotNull(3);		// TABLESPACE_NAME
 		infoTable->putString(3, resultSet->getString(1));
-                infoTable->putString(4, "def");		// TABLE_CATALOG
+		infoTable->putString(4, "def");		// TABLE_CATALOG
 		infoTable->setNull(5);			// TABLE_SCHEMA
 		infoTable->setNull(6);			// TABLE_NAME
 		infoTable->setNull(7);			// LOGFILE_GROUP_NAME

@@ -1,0 +1,138 @@
+-- source include/have_maria.inc
+
+let $engine_type= Maria;
+let $default_engine=`select @@global.storage_engine`;
+eval set global storage_engine=$engine_type;
+eval set session storage_engine=$engine_type;
+
+# We start with tests for problems which were due to the Index Condition
+# Pushdown implementation.
+
+# BUG#42297 func_in.test failing with engine=maria
+create table t1 (a int);
+insert into t1 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9); 
+create table t2 (a int, filler char(200), key(a));
+
+insert into t2 select C.a*2,   'no'  from t1 A, t1 B, t1 C;
+insert into t2 select C.a*2+1, 'yes' from t1 C;
+--sorted_result
+select * from t2 where a NOT IN (0, 2,4,6,8,10,12,14,16,18);
+
+drop table t1,t2;
+
+# BUG#42298 "SELECT with join returns no rows"
+
+# Reduced testcase used to give 1030: Got error 176 from
+# storage engine
+CREATE TABLE t1 (a varchar(32), b char(3), UNIQUE KEY a (a,b), KEY b (b));
+INSERT INTO t1 (a, b) VALUES
+( 'ppfcz1', 'DE'), ( 'ppfcz1', 'FR');
+CREATE TABLE t2 (a varchar(32), b int(11), c float, d double, 
+  UNIQUE KEY a (a,b,c));
+INSERT INTO t2 (a, b, c, d) VALUES
+( 'ppfcz1', 14, 5, 48.5), ( 'ppfcz1', 14, 6, 52.5);
+--sorted_result
+SELECT t1.a,t2.a,t2.c,t2.d FROM t1, t2
+WHERE t2.b=14 AND t2.a=t1.a AND 5.1<t2.c AND t1.b='DE';
+drop table t1,t2;
+
+# BUG#43552 Maria returned wrong rows with range access on float
+
+CREATE TABLE t1(c1 FLOAT(10,5) UNSIGNED NOT NULL, c2 FLOAT(10,5) SIGNED NULL, c3 FLOAT, c4 INT, UNIQUE INDEX idx(c1,c2));
+INSERT INTO t1 VALUES('00100.05000','-00100.05000','00100.05000',1);
+INSERT INTO t1(c1) VALUES('12345.000009');
+INSERT INTO t1 VALUES('99999.99999','-99999.99999','99999.99999',3);
+DELETE FROM t1 WHERE c1='100000.00000' AND c2='-100000.00000';
+INSERT INTO t1 VALUES('100000.000002','-100000.000002','100000.000002',5);
+insert into t1 values ("0.0","0.0","0.0",7),("01.0","01.0","01.0",10);
+insert into t1 values ("-.1","-.1","-.1",13);
+insert into t1 values ("+111111111.11","+111111111.11","+111111111.11",19);
+--sorted_result
+SELECT * FROM t1;
+--sorted_result
+SELECT * FROM t1 WHERE c2 >= '-99999.99999' AND c2 < '0.0' AND c1 = '99999.99999' ORDER BY c1,c2;
+--sorted_result
+SELECT * FROM t1 WHERE c2 >= '-99999.99999' AND c2 < '0.0' AND c1 = '99999.99999' ORDER BY c1,c2 LIMIT 2;
+--sorted_result
+SELECT * FROM t1 WHERE c2 >= '-99999.99999' AND c2 < '0.0' AND c1 = '99999.99999' ORDER BY c1,c2 DESC;
+--sorted_result
+SELECT * FROM t1 WHERE c2 >= '-99999.99999' AND c2 < '0.0' AND c1 = '99999.99999' ORDER BY c1,c2 DESC LIMIT 2;
+DROP TABLE t1;
+
+# BUG#43623 Maria returns no rows with date index on range access >,
+# >=, BETWEEN
+
+CREATE TABLE t1(c1 DATE NOT NULL, c2 DATE NULL, c3 DATETIME, c4 TIMESTAMP, PRIMARY KEY(c1), UNIQUE INDEX(c2));
+CREATE TABLE t2(c1 DATE NOT NULL, c2 DATE NULL, c3 DATETIME, c4 TIMESTAMP, PRIMARY KEY(c1,c2));
+CREATE TABLE t3(c1 DATE NOT NULL, c2 DATE NULL, c3 DATETIME, c4 TIMESTAMP, UNIQUE INDEX idx(c1,c2));
+
+# As a string in either 'YYYY-MM-DD HH:MM:SS', 'YY-MM-DD HH:MM:SS', 'YYYY-MM-DD' or 'YY-MM-DD' format
+INSERT INTO t1 VALUES('98-12-31 11:30:45','98.12.31 11+30+45','98-12-31 11:30:45','98.12.31 11+30+45'),('98/12/30 11*30*45','98@12@30 11^30^45','98/12/30 11*30*45','98@12@30 11^30^45'),('98-12-29','98.12.29','98-12-29','98.12.29'),('98/12/28','98@12@28','98/12/28','98@12@28');
+INSERT INTO t2 VALUES('98-12-31 11:30:45','98.12.31 11+30+45','98-12-31 11:30:45','98.12.31 11+30+45'),('98/12/30 11*30*45','98@12@30 11^30^45','98/12/30 11*30*45','98@12@30 11^30^45'),('98-12-29','98.12.29','98-12-29','98.12.29'),('98/12/28','98@12@28','98/12/28','98@12@28');
+INSERT INTO t3 VALUES('98-12-31 11:30:45','98.12.31 11+30+45','98-12-31 11:30:45','98.12.31 11+30+45'),('98/12/30 11*30*45','98@12@30 11^30^45','98/12/30 11*30*45','98@12@30 11^30^45'),('98-12-29','98.12.29','98-12-29','98.12.29'),('98/12/28','98@12@28','98/12/28','98@12@28');
+
+# As a string with no delimiters in either 'YYYYMMDDHHMMSS', 'YYMMDDHHMMSS', 'YYYYMMDD' or 'YYMMDD'  format
+INSERT INTO t1 VALUES('20070523091528','070523091528','20070524091528','070524091528'),('20070525','070525','20070526','070526');
+INSERT INTO t2 VALUES('20070523091528','070523091528','20070524091528','070524091528'),('20070525','070525','20070526','070526');
+INSERT INTO t3 VALUES('20070523091528','070523091528','20070524091528','070524091528'),('20070525','070525','20070526','070526');
+
+# As a number in either YYYYMMDDHHMMSS, YYMMDDHHMMSS, YYYYMMDD or YYMMDD format
+INSERT INTO t1 VALUES(19830905132800,830905132800,19830906132800,830906132800),(19830907,830907,19830908,830908);
+INSERT INTO t2 VALUES(19830905132800,830905132800,19830906132800,830906132800),(19830907,830907,19830908,830908);
+INSERT INTO t3 VALUES(19830905132800,830905132800,19830906132800,830906132800),(19830907,830907,19830908,830908);
+
+# As the result of a function
+SET TIMESTAMP=1233216687; # 2009-01-29 13:41:27 
+INSERT INTO t1 VALUES(NOW(),CURRENT_DATE,NOW(),CURRENT_DATE);
+INSERT INTO t2 VALUES(NOW(),CURRENT_DATE,NOW(),CURRENT_DATE);
+INSERT INTO t3 VALUES(NOW(),CURRENT_DATE,NOW(),CURRENT_DATE);
+
+# Insert duplicates for parts of the clustered key/unique index
+INSERT INTO t2 VALUES('98-12-31 11:30:45','98@12@30 11^30^45','98-12-31 11:30:45','98.12.31 11+30+45'),('98-12-29','98@12@30 11^30^45','98/12/30 11*30*45','98@12@30 11^30^45');
+INSERT INTO t3 VALUES('98-12-31 11:30:45','98@12@30 11^30^45','98-12-31 11:30:45','98.12.31 11+30+45'),('98-12-29','98@12@30 11^30^45','98/12/30 11*30*45','98@12@30 11^30^45');
+ 
+# Insert permissible NULLs 
+INSERT INTO t1 VALUES('2008-01-01',NULL,'08-01-02','08/01/03'); 
+INSERT INTO t3 VALUES('2008-01-01',NULL,'08-01-02','08/01/03'); 
+
+# Insert duplicate NULLs to unique column
+INSERT INTO t1(c1,c2) VALUES('08/01/17',NULL);
+DELETE FROM t1 WHERE c1='08/01/17' AND c2 IS NULL;
+ 
+# Insert empty string '', would be converted to zero value of the appropriate type 
+INSERT INTO t1 VALUES('','','08-01-04','08/01/05') /* Inserts zero dates for '' strings */;
+
+# Insert invalid dates, would be converted to zero value of the appropriate type
+INSERT INTO t2 VALUES('2008-04-31','2008-04-31','08-01-06','08/01/07') /* Inserts zero dates for invalid dates */;
+INSERT INTO t3 VALUES('10:45:15','10:45:15','08-01-08','08/1/9') /* Inserts zero dates for invalid dates */;
+
+# Insert zero dates
+INSERT INTO t2 VALUES('0000-00-00','08-01-06','08-01-06','08/01/07');
+INSERT INTO t3 VALUES('08-01-06','00-00-00','08-01-08','08/1/9');
+
+--sorted_result
+SELECT * FROM t1;
+--sorted_result
+SELECT * FROM t2;
+--sorted_result
+SELECT * FROM t3;
+
+SELECT * FROM t1 WHERE c1 > '1998-12-31 11:30:45' ORDER BY c1;
+SELECT * FROM t1 WHERE c1 > '1998-12-31 11:30:45' ORDER BY c1 LIMIT 2;
+SELECT * FROM t1 WHERE c1 >= '1998-12-31 11:30:45' ORDER BY c1;
+SELECT * FROM t1 WHERE c1 >= '1998-12-31 11:30:45' ORDER BY c1 LIMIT 2;
+SELECT * FROM t1 WHERE c2 > '1998-12-30 11:30:45' ORDER BY c2;
+SELECT * FROM t1 WHERE c2 > '1998-12-30 11:30:45' ORDER BY c2 LIMIT 2;
+SELECT * FROM t1 WHERE c2 >= '1998-12-30 11:30:45' ORDER BY c2;
+SELECT * FROM t1 WHERE c2 >= '1998-12-30 11:30:45' ORDER BY c2 LIMIT 2;
+SELECT * FROM t2 WHERE c1 > '1998-12-29 00:00:00' ORDER BY c1,c2 LIMIT 2;
+SELECT * FROM t3 WHERE c1 > '1998-12-28 00:00:00' ORDER BY c1,c2 LIMIT 2;
+SELECT * FROM t3 WHERE c1 BETWEEN '1998-12-31 11:30:45' AND '2008-01-06 00:00:00' ORDER BY c1,c2;
+SELECT * FROM t3 WHERE c1 BETWEEN '1998-12-31 11:30:45' AND '2008-01-06 00:00:00' ORDER BY c1,c2 LIMIT 2;
+DROP TABLE t1,t2,t3;
+
+--disable_result_log
+--disable_query_log
+eval set global storage_engine=$default_engine;
+--enable_result_log
+--enable_query_log

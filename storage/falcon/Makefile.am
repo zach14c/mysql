@@ -43,6 +43,9 @@ falcon_headers= Agent.h Alias.h Application.h \
 		CompareAndSwapSparc.il \
 		CompiledStatement.h Configuration.h Connection.h Context.h \
 		Coterie.h CoterieRange.h \
+		CycleLock.h \
+		CycleManager.h \
+		ErrorInjector.h \
 		Database.h \
 		DatabaseBackup.h \
 		DatabaseClone.h \
@@ -204,6 +207,7 @@ falcon_headers= Agent.h Alias.h Application.h \
 		TimeStamp.h \
 		Transaction.h \
 		TransactionManager.h \
+		TransactionState.h \
 		Trigger.h \
 		TriggerRecord.h \
 		Types.h Unicode.h UnTable.h User.h UserRole.h \
@@ -225,6 +229,9 @@ falcon_sources= Agent.cpp Alias.cpp \
 		CollationManager.cpp \
 		CompiledStatement.cpp Configuration.cpp \
 		Connection.cpp Context.cpp Coterie.cpp \
+		CycleLock.cpp \
+		CycleManager.cpp \
+		ErrorInjector.cpp \
 		CoterieRange.cpp \
 		Database.cpp \
 		DatabaseBackup.cpp \
@@ -387,6 +394,7 @@ falcon_sources= Agent.cpp Alias.cpp \
 		TimeStamp.cpp \
 		Transaction.cpp \
 		TransactionManager.cpp \
+		TransactionState.cpp \
 		Trigger.cpp \
 		Unicode.cpp UnTable.cpp User.cpp \
 		UserRole.cpp Validation.cpp Value.cpp ValueEx.cpp Values.cpp \

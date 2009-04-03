@@ -98,6 +98,7 @@ class Database;
 class Validation;
 class SerialLog;
 class Transaction;
+class TransactionState;
 class IndexKey;
 class RecordVersion;
 class DeferredIndex;
@@ -159,7 +160,7 @@ public:
 
 	Section*	findSection (int32 sectionId);
 	void	logRecord (int32 sectionId, int32 recordId, Stream *stream, Transaction *transaction);
-	int32	insertStub (int32 sectionId, Transaction *transaction);
+	int32	insertStub (int32 sectionId, TransactionState *transaction);
 	int32	createSection(TransId transId);
 	Bdb*	handoffPage (Bdb *bdb, int32 pageNumber, PageType pageType, LockType lockType);
 	Bdb*	allocPage (PageType pageType, TransId transId);
@@ -177,13 +178,13 @@ public:
 	bool	indexInUse(int indexId);
 	void	analyzeSpace(int indentation, Stream* stream);
 	void	upgradeSequenceSection(void);
-	int32	insertStub(Section* section, Transaction* transaction);
-	void	updateRecord(Section* section, int32 recordId, Stream* stream, Transaction* transaction, bool earlyWrite);
+	int32	insertStub(Section* section, TransactionState* transaction);
+	void	updateRecord(Section* section, int32 recordId, Stream* stream, TransactionState* transaction, bool earlyWrite);
 	bool	fetchRecord(Section* section, int32 recordNumber, Stream* stream);
 	void	addShadow(DatabaseCopy* shadow);
 	void	skewHeader(Hdr* header);
 	void	printPage(Bdb* bdb);
-	void	updateBlob(Section *blobSection, int recordNumber, Stream* blob, Transaction* transaction);
+	void	updateBlob(Section *blobSection, int recordNumber, Stream* blob, TransactionState* transaction);
 	void	updateSerialLogBlockSize(void);
 	void	setCacheRecovering(bool state);
 	
