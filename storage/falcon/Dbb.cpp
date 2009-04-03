@@ -288,7 +288,7 @@ void Dbb::createSection(int32 sectionId, TransId transId)
 	Section::createSection(this, sectionId, transId);
 }
 
-int32 Dbb::insertStub(int32 sectionId, Transaction *transaction)
+int32 Dbb::insertStub(int32 sectionId, TransactionState *transaction)
 {
 	TransId transId = (transaction) ? transaction->transactionId : 0;
 	Section *section = findSection (sectionId);
@@ -297,7 +297,7 @@ int32 Dbb::insertStub(int32 sectionId, Transaction *transaction)
 }
 
 
-int32 Dbb::insertStub(Section* section, Transaction* transaction)
+int32 Dbb::insertStub(Section* section, TransactionState* transaction)
 {
 	TransId transId = (transaction) ? transaction->transactionId : 0;
 	
@@ -328,17 +328,17 @@ void Dbb::logRecord(int32 sectionId, int32 recordId, Stream *stream, Transaction
 		updateRecord(sectionId, recordId, stream, transaction->transactionId, false);
 }
 
-void Dbb::updateBlob(Section *blobSection, int recordNumber, Stream* stream, Transaction* transaction)
+void Dbb::updateBlob(Section *blobSection, int recordNumber, Stream* stream, TransactionState* transState)
 {
 	if (!serialLog->recovering && stream && stream->totalLength < (int) falcon_large_blob_threshold)
 		{
-		serialLog->logControl->smallBlob.append(this, blobSection->sectionId, transaction->transactionId, recordNumber, stream);
-		updateRecord(blobSection, recordNumber, stream, transaction, false);
+		serialLog->logControl->smallBlob.append(this, blobSection->sectionId, transState->transactionId, recordNumber, stream);
+		updateRecord(blobSection, recordNumber, stream, transState, false);
 		}
 	else
 		{
-		updateRecord(blobSection, recordNumber, stream, transaction, true);
-		transaction->pendingPageWrites = true;
+		updateRecord(blobSection, recordNumber, stream, transState, true);
+		transState->pendingPageWrites = true;
 		}
 }
 
@@ -351,7 +351,7 @@ void Dbb::updateRecord(int32 sectionId, int32 recordId, Stream *stream, TransId 
 		serialLog->setPhysicalBlock(transId);
 }
 
-void Dbb::updateRecord(Section* section, int32 recordId, Stream* stream, Transaction* transaction, bool earlyWrite)
+void Dbb::updateRecord(Section* section, int32 recordId, Stream* stream, TransactionState* transaction, bool earlyWrite)
 {
 	TransId transId = (transaction) ? transaction->transactionId : 0;
 	section->updateRecord (recordId, stream, transId, earlyWrite);
@@ -1091,8 +1091,8 @@ void Dbb::printPage(Bdb* bdb)
 			//IndexPage::printPage (bdb, false);
 			{
 			IndexPage *indexPage = (IndexPage*) page;
-			Log::debug ("Page %d is index page, parent %d, prior %d, next %d, lvl %d\n", 
-						 pageNumber, indexPage->parentPage, indexPage->priorPage, indexPage->nextPage, indexPage->level);
+			Log::debug ("Page %d is index page, next %d, lvl %d\n", 
+						 pageNumber, indexPage->nextPage, indexPage->level);
 			}
 			break;
 

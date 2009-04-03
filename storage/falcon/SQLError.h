@@ -53,7 +53,7 @@ public:
 	JString		objectName;
 
 private:
-	void error (const char *string);
+	void error (int sqlcode, const char *string);
     };
 
 #endif

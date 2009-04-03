@@ -281,11 +281,9 @@ void PageInventoryPage::validateInventory(Dbb *dbb, Validation *validation)
 								case PAGE_btree:
 									{
 									IndexPage *ipg = (IndexPage*) page;
-									validation->warning("orphan index page %d/%d, level %d, parent %d, prior %d, next %d", 
+									validation->warning("orphan index page %d/%d, level %d, next %d", 
 													pageNumber,  tableSpaceId,
 													ipg->level, 
-													ipg->parentPage, 
-													ipg->priorPage, 
 													ipg->nextPage);
 									}
 									break;

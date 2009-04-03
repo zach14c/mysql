@@ -61,11 +61,11 @@ COMMIT;
 --echo # Switch to connection conn2
 connection conn2;
 # If we set Falcon to
-#     falcon_consistent_read = off
+#     falcon_consistent_read = on
 #
 # we should get a
 #     Record has changed since last read in table 't1'
-# here. Please note that falcon_consistent_read = off
+# here. Please note that falcon_consistent_read = on
 # is the default setting.
 --error ER_CHECKREAD
 --reap
@@ -118,15 +118,15 @@ COMMIT;
 --echo # Switch to connection conn2
 connection conn2;
 # If we set Falcon to
-#     falcon_consistent_read = off
+#     falcon_consistent_read = on
 #
 # we should get a
 #     Record has changed since last read in table 't1'
-# here. Please note that falcon_consistent_read = off
+# here. Please note that falcon_consistent_read = on
 # is the default setting.
 --error ER_CHECKREAD
 --reap
-COMMIT;
+ROLLBACK;
 
 --echo # Switch to connection conn1
 connection conn1;
@@ -160,9 +160,9 @@ SELECT * FROM t1;
 --echo # Switch to connection conn2
 connection conn2;
 
-# The following query should hang because conn1 is locking the record
 UPDATE t2 SET a = 2 WHERE b = 0;
 SELECT * FROM t2;
+# The following query should hang because conn1 is locking the record
 --real_sleep 1
 --send UPDATE t1 SET x = 2 WHERE id = 0
 
@@ -175,15 +175,15 @@ COMMIT;
 --echo # Switch to connection conn2
 connection conn2;
 # If we set Falcon to
-#     falcon_consistent_read = off
+#     falcon_consistent_read = on
 #
 # we should get a
 #     Record has changed since last read in table 't1'
-# here. Please note that falcon_consistent_read = off
+# here. Please note that falcon_consistent_read = on
 # is the default setting.
 --error ER_CHECKREAD
 --reap
-COMMIT;
+ROLLBACK;
 
 --echo # Switch to connection conn1
 connection conn1;
@@ -194,6 +194,7 @@ COMMIT;
 # --- Check                                         --- #
 # ----------------------------------------------------- #
 SELECT count(*) FROM t1;
+SELECT count(*) FROM t2;
 
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #

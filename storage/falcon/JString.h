@@ -130,6 +130,7 @@ public:
 	void		append (const char*, int length);
 	void		setString (const char*);
 	void		setString (const char *source, int length);
+	void 		setStringStatic (const char *source);
 	void		Format (const char*, ...);
 	
 	inline const char	*getString()
@@ -155,6 +156,7 @@ protected:
 	void	release();
 
 	char	*string;
+	bool	isStaticString;
 };
 
 
