@@ -7175,6 +7175,7 @@ select_lock_type:
             lex->current_select->set_lock_for_tables(TL_WRITE);
             lex->current_select->lock_option= TL_WRITE;
             lex->safe_to_cache_query=0;
+            lex->protect_against_global_read_lock= TRUE;
           }
         | LOCK_SYM IN_SYM SHARE_SYM MODE_SYM
           {
@@ -12961,6 +12962,9 @@ table_lock:
           /* Compute the resulting lock method for all tables. */
           if (!$3.lock_transactional)
             Lex->lock_transactional= FALSE;
+          /* If table is to be write locked, protect from a impending GRL. */
+          if ($3.lock_type >= TL_WRITE_ALLOW_WRITE)
+            Lex->protect_against_global_read_lock= TRUE;
         }
         ;
 
