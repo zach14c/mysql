@@ -29,7 +29,6 @@
 #include "Section.h"
 #include "Hdr.h"
 #include "IndexRootPage.h"
-#include "Index2RootPage.h"
 #include "BDB.h"
 #include "DataPage.h"
 #include "DataOverflowPage.h"
@@ -82,7 +81,7 @@ Dbb::Dbb(Database *dbase) : sectionsMutex("Dbb::sectionMutex")
 	shadows = NULL;
 	highPage = 0;
 	//recovering = false;
-	defaultIndexVersion = INDEX_VERSION_1;
+	defaultIndexVersion = INDEX_CURRENT_VERSION;
 	tableSpaceSectionId = 0;
 	tableSpaceId = 0;
 	noLog = false;
@@ -406,23 +405,7 @@ int32 Dbb::findNextRecord(Section *section, int32 startingRecord, Stream *stream
 
 int32 Dbb::createIndex(TransId transId, int indexVersion)
 {
-	int indexId;
-	
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_0:
-			indexId = Index2RootPage::createIndex(this, transId);
-			break;
-		
-		case INDEX_VERSION_1:
-			indexId = IndexRootPage::createIndex(this, transId);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
-
-	return indexId;
+	return  IndexRootPage::createIndex(this, transId);
 }
 
 bool Dbb::addIndexEntry(int32 indexId, int indexVersion, IndexKey *key, int32 recordNumber, TransId transId)
@@ -431,22 +414,9 @@ bool Dbb::addIndexEntry(int32 indexId, int indexVersion, IndexKey *key, int32 re
 	if (recordNumber == STOP_RECORD)
 		++debug;
 #endif
-	bool result;
-	
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_0:
-			result = Index2RootPage::addIndexEntry (this, indexId, key, recordNumber, transId);
-			break;
-		
-		case INDEX_VERSION_1:
-			result = IndexRootPage::addIndexEntry (this, indexId, key, recordNumber, transId);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
-		
+
+	bool result = IndexRootPage::addIndexEntry (this, indexId, key, recordNumber, transId);
+
 #ifdef STOP_RECORD
 	if (recordNumber == STOP_RECORD)
 		--debug;
@@ -498,7 +468,7 @@ Cache* Dbb::open(const char * fileName, int64 cacheSize, TransId transId)
 		throw SQLError (VERSION_ERROR, "Falcon on disk structure version %d.%d is not supported by version %d.%d server",
 						header.odsVersion, header.odsMinorVersion, ODS_VERSION, ODS_MINOR_VERSION);
 
-	if (header.odsVersion == ODS_VERSION2 && header.odsMinorVersion == ODS_MINOR_VERSION2)
+	if (header.odsVersion == ODS_VERSION2 && header.odsMinorVersion < ODS_MINOR_VERSION3)
 		throw SQLError (VERSION_ERROR, "Falcon on disk structure version %d.%d is not supported by version %d.%d server",
 						header.odsVersion, header.odsMinorVersion, ODS_VERSION, ODS_MINOR_VERSION);
 
@@ -525,19 +495,7 @@ Cache* Dbb::open(const char * fileName, int64 cacheSize, TransId transId)
 	logLength = headerPage->logLength;
 	tableSpaceSectionId = headerPage->tableSpaceSectionId;
 	database->serialLogBlockSize = headerPage->serialLogBlockSize;
-	
-	if (headerPage->haveIndexVersionNumber)
-		defaultIndexVersion = headerPage->defaultIndexVersionNumber;
-	else if (headerPage->odsVersion == ODS_VERSION2 && header.odsMinorVersion == ODS_MINOR_VERSION0)
-		{
-		defaultIndexVersion = INDEX_VERSION_0;
-		
-		if (!headerPage->sequenceSectionFixed && sequenceSectionId)
-			{
-			upgradeSequenceSection();
-			headerPage->sequenceSectionFixed = true;
-			}
-		}
+	defaultIndexVersion = headerPage->defaultIndexVersionNumber = INDEX_CURRENT_VERSION;
 
 	char root[256];
 	int len = headerPage->getHeaderVariable(this, hdrLogPrefix, sizeof(root), root);
@@ -551,24 +509,25 @@ Cache* Dbb::open(const char * fileName, int64 cacheSize, TransId transId)
 	return cache;
 }
 
+
+void Dbb::setODSMinorVersion(int minor)
+{
+	odsMinorVersion = minor;
+	Bdb *bdb = fetchPage (HEADER_PAGE, PAGE_header, Exclusive);
+	BDB_HISTORY(bdb);
+	bdb->mark(NO_TRANSACTION);
+	Hdr *headerPage = (Hdr*) bdb->buffer;
+	headerPage->odsMinorVersion = minor;
+	bdb->release(REL_HISTORY);
+	flush();
+}
+
+
 void Dbb::deleteIndex(int32 indexId, int indexVersion, TransId transId)
 {
 	if (serialLog)
 		serialLog->logControl->deleteIndex.append(this, transId, indexId, indexVersion);
-	else
-		switch (indexVersion)
-			{
-			case INDEX_VERSION_0:
-				Index2RootPage::deleteIndex (this, indexId, transId);
-				break;
-			
-			case INDEX_VERSION_1:
-				IndexRootPage::deleteIndex (this, indexId, transId);
-				break;
-			
-			default:
-				ASSERT(false);
-			}
+	IndexRootPage::deleteIndex (this, indexId, transId);
 }
 
 void Dbb::setDebug()
@@ -695,22 +654,8 @@ void Dbb::validate(int optionMask)
 bool Dbb::deleteIndexEntry(int32 indexId, int indexVersion, IndexKey *key, int32 recordNumber, TransId transId)
 {
 	bool result;
-	
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_0:
-			result = Index2RootPage::deleteIndexEntry (this, indexId, key, recordNumber, transId);
-			break;
-		
-		case INDEX_VERSION_1:
-			result = IndexRootPage::deleteIndexEntry (this, indexId, key, recordNumber, transId);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
 
-
+	result = IndexRootPage::deleteIndexEntry (this, indexId, key, recordNumber, transId);
 	if (serialLog && !serialLog->recovering)
 		serialLog->logControl->indexDelete.append(this, indexId, indexVersion, key, recordNumber, transId);
 
@@ -1169,23 +1114,6 @@ void Dbb::reportStatistics()
 	priorFlushWrites = flushWrites;
 }
 
-void Dbb::enableSerialLog()
-{
-	Bdb *bdb = fetchPage(HEADER_PAGE, PAGE_header, Exclusive);
-	BDB_HISTORY(bdb);
-	bdb->mark(0);
-	Hdr *header = (Hdr*) bdb->buffer;
-	header->odsMinorVersion = ODS_MINOR_VERSION1;
-	
-	if (!header->haveIndexVersionNumber)
-		{
-		header->defaultIndexVersionNumber = INDEX_VERSION_0;
-		header->haveIndexVersionNumber = true;
-		}
-
-	bdb->release(REL_HISTORY);
-}
-
 void Dbb::dropDatabase()
 {
 	close();
@@ -1263,12 +1191,7 @@ void Dbb::analyseIndex(int32 indexId, int indexVersion, const char *indexName, i
 	IndexAnalysis indexAnalysis;
 	memset(&indexAnalysis, 0, sizeof(indexAnalysis));
 	
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_1:
-			IndexRootPage::analyzeIndex (this, indexId, &indexAnalysis);
-			break;
-		}
+	IndexRootPage::analyzeIndex (this, indexId, &indexAnalysis);
 	
 	stream->indent(indentation);
 	stream->format("Index %s (id %d, table space %d) %d levels\n", indexName, indexId, indexAnalysis.levels, tableSpaceId);

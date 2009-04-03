@@ -41,7 +41,6 @@
 #include "Bitmap.h"
 #include "Dbb.h"
 #include "IndexRootPage.h"
-#include "Index2RootPage.h"
 #include "PStatement.h"
 #include "RSet.h"
 #include "WalkIndex.h"
@@ -384,6 +383,10 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 	int n;
 	UCHAR *key = indexKey->key;
 
+	bool ODSVersion23OrOlder = 
+		(COMBINED_VERSION(database->dbb->odsVersion, database->dbb->odsMinorVersion) <=
+		COMBINED_VERSION(2,3));
+
 	for (n = 0; (n < count) && values[n]; ++n)
 		{
 		Field *field = fields[n];
@@ -415,7 +418,14 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 
 		if (n < numberFields - 1)
 			{
-			char padByte = PAD_BYTE(field);
+			char padByte;
+
+			if (ODSVersion23OrOlder)
+				//PAD_BYTE is incorrect in these versions
+				//(has type of the next field)
+				padByte = PAD_BYTE(fields[n+1]);
+			else
+				padByte = PAD_BYTE(field);
 
 			while (p % RUN != 0)
 				key[p++] = padByte;
@@ -501,20 +511,8 @@ Bitmap* Index::scanIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, T
 	if (rootPage == 0)
 		getRootPage();
 		
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_0:
-			Index2RootPage::scanIndex (dbb, indexId, rootPage, lowKey, highKey, searchFlags, NO_TRANSACTION, bitmap);
-			break;
-		
-		case INDEX_VERSION_1:
-			IndexRootPage::scanIndex (dbb, indexId, rootPage, lowKey, highKey, searchFlags, NO_TRANSACTION, bitmap);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
-	
+	IndexRootPage::scanIndex (dbb, indexId, rootPage, lowKey, highKey, searchFlags, NO_TRANSACTION, bitmap);
+
 	if (transaction)
 		transaction->scanIndexCount++;
 		
@@ -535,16 +533,8 @@ IndexWalker* Index::positionIndex(IndexKey* lowKey, IndexKey* highKey, int searc
 	
 	if (rootPage == 0)
 		getRootPage();
-		
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_1:
-			IndexRootPage::positionIndex(dbb, indexId, rootPage, walkIndex);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
+	
+	IndexRootPage::positionIndex(dbb, indexId, rootPage, walkIndex);
 		
 	if (transaction && deferredIndexes.first)
 		{
@@ -690,14 +680,7 @@ void Index::garbageCollect(Record * leaving, Record * staying, Transaction *tran
 				
 				if (!hit && !quiet)
 					{
-					/***
-					Log::log("Index deletion failed for record %d.%d of %s.%s.%s\n", 
-							 record->recordNumber, n, table->schemaName, table->name, (const char*) name);
-					***/
-					//int prevDebug = dbb->debug
-					//dbb->debug = DEBUG_PAGES | DEBUG_KEYS;
 					dbb->deleteIndexEntry(indexId, indexVersion, &key, record->recordNumber, TRANSACTION_ID(transaction));
-					//dbb->debug = prevDebug ;
 					}
 				}
 			}
@@ -784,14 +767,14 @@ void Index::rebuildIndex(Transaction *transaction)
 		damageCheck();
 
 	int oldId = indexId;
-	indexId = dbb->createIndex(TRANSACTION_ID(transaction), indexVersion);
+	indexId =dbb->createIndex(TRANSACTION_ID(transaction),INDEX_CURRENT_VERSION);
 
 	getRootPage();
 
 	PreparedStatement *statement = database->prepareStatement (
 		"update system.indexes set indexId=? where indexName=? and schema=? and tableName=?");
 	int n = 1;
-	statement->setInt (n++, INDEX_COMPOSITE (indexId, indexVersion));
+	statement->setInt (n++, INDEX_COMPOSITE (indexId, INDEX_CURRENT_VERSION));
 	statement->setString (n++, name);
 	statement->setString (n++, table->schemaName);
 	statement->setString (n++, table->name);

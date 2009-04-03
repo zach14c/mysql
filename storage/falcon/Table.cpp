@@ -2566,7 +2566,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 	Record *rec;
 	Record *oldRecord = record->getPriorVersion();
 	//Transaction *activeTransaction = NULL;
-	TransactionState *activeTransaction = NULL;
+	TransactionState *activeTransState = NULL;
 	State state = CommittedVisible;
 
 	if (oldRecord && recordNumber == oldRecord->recordNumber)
@@ -2614,8 +2614,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 					// No conflict with a visible deleted record.
 					rec->release(REC_HISTORY);
 					
-					if (activeTransaction)
-						activeTransaction->release();
+					if (activeTransState)
+						activeTransState->release();
 					
 					return false;	// Check next record number.
 
@@ -2631,8 +2631,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 					// Keep looking for a possible duplicate conflict,
 					// either visible, or pending at a savepoint.
 
-					activeTransaction = dup->getTransactionState();
-					activeTransaction->addRef();
+					activeTransState = dup->getTransactionState();
+					activeTransState->addRef();
 					
 					continue;
 
@@ -2667,24 +2667,23 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 					{
 					rec->release(REC_HISTORY);
 					
-					if (activeTransaction)
-						activeTransaction->release();
+					if (activeTransState)
+						activeTransState->release();
 					
 					return true;  // retry after a wait
 					}
 				}
 
-			else if (activeTransaction)
+			else if (activeTransState)
 				{
 				//syncPrior.unlock(); // release lock before wait
 				syncUnique->unlock(); // release lock before wait
 
-				state = transaction->getRelativeState(activeTransaction,
-						activeTransaction->transactionId, WAIT_IF_ACTIVE);
+				state = transaction->getRelativeState(activeTransState, WAIT_IF_ACTIVE);
 
 				if (state != Deadlock)
 					{
-					activeTransaction->release();
+					activeTransState->release();
 					rec->release(REC_HISTORY);
 
 					return true;  // retry after a wait
@@ -2695,8 +2694,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 			rec->release(REC_HISTORY);
 
-			if (activeTransaction)
-				activeTransaction->release();
+			if (activeTransState)
+				activeTransState->release();
 
 			const char *text = "duplicate values for key %s in table %s.%s";
 			int code = UNIQUE_DUPLICATE;
@@ -2724,12 +2723,12 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			// Only wait on this record if the duplicate is visible or pending
 			// at a savepoint.
 
-			if (!activeTransaction)
+			if (!activeTransState)
 				{
-				activeTransaction = dup->getTransactionState();
+				activeTransState = dup->getTransactionState();
 				
-				if (activeTransaction)
-					activeTransaction->addRef();
+				if (activeTransState)
+					activeTransState->addRef();
 				}
 
 			continue;  // check next record version
@@ -2742,8 +2741,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			{
 			rec->release(REC_HISTORY);
 			
-			if (activeTransaction)
-				activeTransaction->release();
+			if (activeTransState)
+				activeTransState->release();
 				
 			return false;	 // Check next record number.
 			}
@@ -2755,8 +2754,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			{
 			rec->release(REC_HISTORY);
 			
-			if (activeTransaction)
-				activeTransaction->release();
+			if (activeTransState)
+				activeTransState->release();
 				
 			return false;	// Check next record number
 			}
@@ -2765,8 +2764,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 	if (rec)
 		rec->release(REC_HISTORY);
 		
-	if (activeTransaction)
-		activeTransaction->release();
+	if (activeTransState)
+		activeTransState->release();
 
 	return false;	// Check next record number
 }
@@ -3376,11 +3375,12 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 					// an update conflict.  If not, wait on that trans and, if it is not
 					// committed, try again.
 
-					TransId transId = current->getTransactionId();
+					TransactionState *transState = current->getTransactionState();
+					transState->addRef();
 					current->release(REC_HISTORY);
 					syncTable.unlock();
 
-					if (transaction->waitForTransaction(transId))
+					if (transaction->waitForTransaction(transState))
 						{
 						current = fetch(record->recordNumber);
 						
@@ -3388,10 +3388,13 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 							current->release(REC_HISTORY);
 						else
 							{
-							transaction->blockedBy = transId;
+							transaction->blockedBy = transState->transactionId;
+							transState->release();
 							throw SQLError(UPDATE_CONFLICT, "update conflict in table %s.%s record %d", schemaName, name, record->recordNumber);
 							}
 						}
+
+					transState->release();
 					}
 				}
 			}
@@ -3770,6 +3773,8 @@ void Table::findSections(void)
 
 bool Table::validateUpdate(int32 recordNumber, TransId transactionId)
 {
+	CycleLock cycleLock(database);
+
 	if (deleting)
 		return false;
 
