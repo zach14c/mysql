@@ -32,6 +32,8 @@ ADD_DEFINITIONS(-DHAVE_YASSL)
 # Set debug options
 SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DFORCE_INIT_OF_VARS")
 
+ADD_DEFINITIONS(-DDBUG_OFF)
+
 # Do not use SAFEMALLOC for Windows builds, as Debug CRT has the same functionality
 # Neither SAFE_MUTEX works on Windows and it has been explicitely undefined in 
 # my_pthread.h

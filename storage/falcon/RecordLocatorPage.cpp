@@ -433,6 +433,7 @@ void RecordLocatorPage::deleteDataPages(Dbb* dbb, TransId transId)
 	for (int slot; (slot = nextSpaceSlot(-1)) >= 0;)
 		{
 		int pageNumber = elements[slot].page;
+		unlinkSpaceSlot(slot);
 		expungeDataPage(pageNumber);
 		Bdb *bdb = dbb->fetchPage(pageNumber, PAGE_data, Exclusive);
 		BDB_HISTORY(bdb);
