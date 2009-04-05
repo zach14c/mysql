@@ -6,12 +6,12 @@
 --source include/have_maria.inc
 
 let $MARIA_LOG=.;
-let $MYSQLD_DATADIR= `select @@datadir`;
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 
 --disable_warnings
 drop database if exists mysqltest;
 --error 0,1
-remove_file $MYSQLD_DATADIR/test.ba;
+remove_file $MYSQLD_BACKUPDIR/test.ba;
 --enable_warnings
 create database mysqltest;
 let $mms_tname=t;
@@ -44,7 +44,7 @@ check table t1 extended;
 flush table t1;
 
 # Check that table is auto-zerofilled, movable
---exec $MARIA_CHK -dv $MYSQLD_DATADIR/mysqltest/t1 >$MYSQLTEST_VARDIR/tmp/mariachk.txt
+--exec $MARIA_CHK -dv $MYSQLD_BACKUPDIR/mysqltest/t1 >$MYSQLTEST_VARDIR/tmp/mariachk.txt
 perl;
     use strict;
     use warnings;
@@ -62,7 +62,7 @@ check table t1 extended;
 flush table t1;
 
 # Check that table is not zerofilled, not movable
---exec $MARIA_CHK -dv $MYSQLD_DATADIR/mysqltest/t1 >$MYSQLTEST_VARDIR/tmp/mariachk.txt
+--exec $MARIA_CHK -dv $MYSQLD_BACKUPDIR/mysqltest/t1 >$MYSQLTEST_VARDIR/tmp/mariachk.txt
 perl;
     use strict;
     use warnings;
@@ -75,4 +75,4 @@ perl;
 EOF
 
 drop database mysqltest;
-remove_file $MYSQLD_DATADIR/test.ba;
+remove_file $MYSQLD_BACKUPDIR/test.ba;

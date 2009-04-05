@@ -628,6 +628,7 @@ static int _ma_put_key_in_record(register MARIA_HA *info, uint keynr,
   DBUG_RETURN(0);
 
 err:
+  DBUG_PRINT("info",("error"));
   DBUG_RETURN(1);				/* Crashed row */
 } /* _ma_put_key_in_record */
 

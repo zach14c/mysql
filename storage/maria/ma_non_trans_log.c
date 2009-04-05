@@ -248,9 +248,13 @@ void _maria_log_command(IO_CACHE *log, enum maria_log_commands command,
   File file= share->kfile.file;
   int old_errno=my_errno, headerlen;
   DBUG_ENTER("_maria_log_command");
-  DBUG_PRINT("enter", ("command: %u share->open_file_name.str '%s'",
-                       command, share->open_file_name.str));
+  DBUG_PRINT("enter", ("command: %u '%s' share->open_file_name.str '%s'"
+                       " buffert: '%.*s'  result: %d",
+                       command, ma_log_command_name[command],
+                       share->open_file_name.str,
+                       length, buffert, result));
   DBUG_ASSERT(command == MA_LOG_OPEN  || command == MA_LOG_CLOSE);
+  DBUG_ASSERT(!share->temporary);
 
   DBUG_ASSERT(((uint)result) <= UINT_MAX16);
   if (file >= UINT_MAX16 || length >= UINT_MAX16)
