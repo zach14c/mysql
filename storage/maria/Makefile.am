@@ -30,7 +30,7 @@ DEFS =                  @DEFS@
 SUBDIRS =		. unittest
 
 EXTRA_DIST =		ma_test_all.sh ma_test_all.res ma_test_big.sh \
-			ma_ft_stem.c CMakeLists.txt plug.in ma_test_recovery
+			CMakeLists.txt plug.in ma_test_recovery
 pkgdata_DATA =		ma_test_all ma_test_all.res ma_test_recovery
 pkglib_LIBRARIES =	libmaria.a
 bin_PROGRAMS =		maria_chk maria_pack maria_ftdump maria_read_log \
@@ -72,8 +72,8 @@ maria_dump_log_SOURCES= ma_loghandler.c unittest/ma_loghandler_examples.c
 maria_dump_log_CPPFLAGS= $(AM_CPPFLAGS) -DMARIA_DUMP_LOG
 noinst_PROGRAMS =	ma_test1 ma_test2 ma_test3 ma_rt_test ma_sp_test
 noinst_HEADERS =	maria_def.h ma_rt_index.h ma_rt_key.h ma_rt_mbr.h \
-			ma_sp_defs.h ma_fulltext.h ma_ftdefs.h ma_ft_test1.h \
-			ma_ft_eval.h trnman.h lockman.h tablockman.h \
+			ma_sp_defs.h ma_fulltext.h ma_ftdefs.h \
+			trnman.h lockman.h tablockman.h \
 			ma_control_file.h ha_maria.h ma_blockrec.h \
 			ma_loghandler.h ma_loghandler_lsn.h ma_pagecache.h \
 			ma_checkpoint.h ma_recovery.h ma_commit.h ma_state.h \
@@ -97,8 +97,6 @@ ma_test3_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
 			$(top_builddir)/mysys/libmysyslt.la \
 			$(top_builddir)/dbug/libdbuglt.la \
 			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
-#ma_ft_test1_DEPENDENCIES=	$(LIBRARIES)
-#ma_ft_eval_DEPENDENCIES=	$(LIBRARIES)
 maria_ftdump_DEPENDENCIES=	$(LIBRARIES)
 maria_ftdump_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \

@@ -55,7 +55,6 @@ const char *VER= "14.15";
 #define MAX_SERVER_ARGS               64
 
 void* sql_alloc(unsigned size);	     // Don't use mysqld alloc for these
-void sql_element_free(void *ptr);
 #include "sql_string.h"
 
 extern "C" {
@@ -4921,8 +4920,4 @@ void *sql_alloc(size_t Size)
   return my_malloc(Size,MYF(MY_WME));
 }
 
-void sql_element_free(void *ptr)
-{
-  my_free(ptr,MYF(0));
-}
 #endif /* EMBEDDED_LIBRARY */

@@ -110,7 +110,6 @@ void *sql_calloc(size_t);
 char *sql_strdup(const char *str);
 char *sql_strmake(const char *str, size_t len);
 void *sql_memdup(const void * ptr, size_t size);
-void sql_element_free(void *ptr);
 char *sql_strmake_with_convert(const char *str, size_t arg_length,
 			       CHARSET_INFO *from_cs,
 			       size_t max_res_length,
@@ -118,12 +117,10 @@ char *sql_strmake_with_convert(const char *str, size_t arg_length,
 uint kill_one_thread(THD *thd, ulong id, bool only_kill_query);
 void sql_kill(THD *thd, ulong id, bool only_kill_query);
 bool net_request_file(NET* net, const char* fname);
-char* query_table_status(THD *thd,const char *db,const char *table_name);
 
 #define x_free(A)	{ my_free((uchar*) (A),MYF(MY_WME | MY_FAE | MY_ALLOW_ZERO_PTR)); }
 #define safeFree(x)	{ if(x) { my_free((uchar*) x,MYF(0)); x = NULL; } }
 #define PREV_BITS(type,A)	((type) (((type) 1 << (A)) -1))
-#define all_bits_set(A,B) ((A) & (B) != (B))
 
 /*
   Generates a warning that a feature is deprecated. After a specified version
@@ -343,7 +340,6 @@ enum open_table_mode
 #ifndef MYSQLD_NET_RETRY_COUNT
 #define MYSQLD_NET_RETRY_COUNT  10	///< Abort read after this many int.
 #endif
-#define TEMP_POOL_SIZE          128
 
 #define QUERY_ALLOC_BLOCK_SIZE		8192
 #define QUERY_ALLOC_PREALLOC_SIZE   	8192
@@ -353,11 +349,8 @@ enum open_table_mode
 #define ACL_ALLOC_BLOCK_SIZE		1024
 #define UDF_ALLOC_BLOCK_SIZE		1024
 #define TABLE_ALLOC_BLOCK_SIZE		1024
-#define BDB_LOG_ALLOC_BLOCK_SIZE	1024
 #define WARN_ALLOC_BLOCK_SIZE		2048
 #define WARN_ALLOC_PREALLOC_SIZE	1024
-#define PROFILE_ALLOC_BLOCK_SIZE  2048
-#define PROFILE_ALLOC_PREALLOC_SIZE 1024
 
 /*
   The following parameters is to decide when to use an extra cache to
@@ -590,8 +583,6 @@ enum open_table_mode
 
 */
 
-#define RAID_BLOCK_SIZE 1024
-
 #define MY_CHARSET_BIN_MB_MAXLEN 1
 
 // uncachable cause
@@ -612,10 +603,6 @@ enum open_table_mode
 /* BINLOG_DUMP options */
 
 #define BINLOG_DUMP_NON_BLOCK   1
-
-/* sql_show.cc:show_log_files() */
-#define SHOW_LOG_STATUS_FREE "FREE"
-#define SHOW_LOG_STATUS_INUSE "IN USE"
 
 struct TABLE_LIST;
 class String;
@@ -2167,8 +2154,6 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
                               bool is_not_commit);
 void start_waiting_global_read_lock(THD *thd);
 bool make_global_read_lock_block_commit(THD *thd);
-bool set_protect_against_global_read_lock(void);
-void unset_protect_against_global_read_lock(void);
 void broadcast_refresh(void);
 int try_transactional_lock(THD *thd, TABLE_LIST *table_list);
 int check_transactional_lock(THD *thd, TABLE_LIST *table_list);

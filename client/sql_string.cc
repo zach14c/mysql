@@ -34,7 +34,6 @@
 */
 
 extern void sql_alloc(size_t size);
-extern void sql_element_free(void *ptr);
 
 #include "sql_string.h"
 
