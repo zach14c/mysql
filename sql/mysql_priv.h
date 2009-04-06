@@ -873,6 +873,7 @@ inline bool check_identifier_name(LEX_STRING *str)
 {
   return check_identifier_name(str, NAME_CHAR_LEN, 0, "");
 }
+CHARSET_INFO *merge_charset_and_collation(CHARSET_INFO *cs, CHARSET_INFO *cl);
 
 bool parse_sql(THD *thd,
                Parser_state *parser_state,
