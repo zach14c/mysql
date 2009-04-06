@@ -527,7 +527,8 @@ void Dbb::deleteIndex(int32 indexId, int indexVersion, TransId transId)
 {
 	if (serialLog)
 		serialLog->logControl->deleteIndex.append(this, transId, indexId, indexVersion);
-	IndexRootPage::deleteIndex (this, indexId, transId);
+	else
+		IndexRootPage::deleteIndex(this, indexId, transId);
 }
 
 void Dbb::setDebug()
