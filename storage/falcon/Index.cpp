@@ -19,6 +19,7 @@
 
 #include <memory.h>
 #include <stdio.h>
+#include <string.h>
 #include "Engine.h"
 #include "Index.h"
 #include "PreparedStatement.h"
