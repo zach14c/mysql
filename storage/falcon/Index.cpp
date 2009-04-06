@@ -296,7 +296,7 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey,
 
 	indexKey->keyLength = 0;
 
-	if (!value)
+	if (!value || (value->getType() == Null && indexVersion >= INDEX_VERSION_2))
 		return;
 
 	switch (field->type)
@@ -340,6 +340,7 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey,
 					indexKey->key[klen++] = 0x20;
 					}
 
+				indexKey->keyLength = (int) (q - key);
 				}
 			}
 			break;
@@ -356,6 +357,25 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey,
 		default:
 			indexKey->appendNumber(value->getDouble());
 		}
+
+	if (indexVersion < INDEX_VERSION_2)
+		return;
+
+	// Prepend 0x00 to empty keys, and keys starting with 0x00
+	// This is done to distinguish Null from empty keys, and to
+	// preserve the original sorting sequence
+	if (indexKey->keyLength == 0)
+		{
+		indexKey->key[0] = 0;
+		indexKey->keyLength++;
+		}
+	else if (indexKey->key[0] == 0)
+		{
+		size_t moveLen = MIN(indexKey->keyLength, MAX_PHYSICAL_KEY_LENGTH - 1);
+		memmove (indexKey->key + 1, indexKey->key, moveLen);
+		indexKey->key[0] = 0;
+		indexKey->keyLength = moveLen + 1;
+		}
 }
 
 void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
@@ -363,25 +383,79 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 	if (damaged)
 		damageCheck();
 
-// This causes a different keylength than other makeKey()s 
-// when the key is null.  This section is not needed.
-//	if (!count)
-//		{
-//		indexKey->keyLength = 0;
-//		
-//		return;
-//		}
+	if (indexVersion >= INDEX_VERSION_2)
+		makeMultiSegmentKey(count, values, indexKey, highKey);
+	else
+		makeMultiSegmentKeyV1(count,values, indexKey, highKey);
+}
+
+
+
+void Index::makeMultiSegmentKey(int count, Value **values, IndexKey *indexKey, bool highKey)
+{
+	uint p = 0;
+	int n;
+	UCHAR *key = indexKey->key;
 
 	if (numberFields == 1)
 		{
 		makeKey(fields[0], values[0], 0, indexKey, highKey);
-		
 		return;
 		}
 
+	for (n = 0; (n < count) && values[n]; ++n)
+		{
+		Field *field = fields[n];
+
+		IndexKey tempKey(this);
+		makeKey(field, values[n], n, &tempKey, false);
+		int length = tempKey.keyLength;
+		UCHAR *t = tempKey.key;
+
+		for (int i=0; i< length; i++)
+			{
+			UCHAR c = t[i];
+
+			// Convert 0 to 0x0100, 1 to 0x0101
+			// other bytes remain unchanged.
+
+			if (c <= 1)
+				{
+				key[p++] = 1;
+				checkIndexKeyOverflow(p);
+				}
+
+			key[p++] = c;
+			checkIndexKeyOverflow(p);
+			}
+
+		// Add field separator
+		key[p++] = 0;
+		checkIndexKeyOverflow(p);
+		}
+
+	// Remove trailing nulls
+	while (p > 0 && key[p-1] == 0)
+		p--;
+
+	checkIndexKeyOverflow(p, maxIndexKeyRunLength(maxKeyLength));
+
+	indexKey->keyLength = p;
+}
+
+
+
+void Index::makeMultiSegmentKeyV1(int count, Value **values, IndexKey *indexKey, bool highKey)
+{
 	uint p = 0;
 	int n;
 	UCHAR *key = indexKey->key;
+
+	if (numberFields == 1)
+		{
+		makeKey(fields[0], values[0], 0, indexKey, highKey );
+		return;
+		}
 
 	bool ODSVersion23OrOlder = 
 		(COMBINED_VERSION(database->dbb->odsVersion, database->dbb->odsMinorVersion) <=
@@ -405,9 +479,8 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 		if(n < numberFields - 1)
 			segmentLength = ROUNDUP(segmentLength , RUN);
 	
-		if (p + segmentLength > maxIndexKeyRunLength(maxKeyLength))
-			throw SQLError (INDEX_OVERFLOW, "maximum index key length exceeded");
-			
+		checkIndexKeyOverflow(p + segmentLength, maxIndexKeyRunLength(maxKeyLength));
+
 		for (int i = 0; i < length; ++i)
 			{
 			if (p % RUN == 0)
@@ -430,17 +503,6 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 			while (p % RUN != 0)
 				key[p++] = padByte;
 			}
-		}
-
-	if (n && n < numberFields)
-		{
-		// We're constructing partial search key, with only some
-		// first fields given. Append segment byte for the next
-		// segment. This will make key larger and will hopefully
-		// reduce the number of false positives in search (saves
-		// work in postprocessing).
-		if (p < (uint)maxKeyLength)
-			key[p++] = SEGMENT_BYTE(n, numberFields);
 		}
 
 	indexKey->keyLength = p;

@@ -158,6 +158,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	thread = Thread::getThread("Transaction::initialize");
 	transactionState->syncIsActive.lock(NULL, Exclusive);
 	transactionState->state = Active;
+	seenGopher=false;
 }
 
 Transaction::~Transaction()
@@ -285,7 +286,7 @@ void Transaction::commit()
 	// Set the commit transition id for this transaction
 
 	transactionState->commitId = INTERLOCKED_INCREMENT(transactionManager->transactionSequence);
-
+	ASSERT(writePending);
 	transactionManager->activeTransactions.remove(this);
 	transactionManager->committedTransactions.append(this);
 	transactionState->state = Committed;
@@ -1482,6 +1483,7 @@ void Transaction::fullyCommitted(void)
 		Log::debug("Transaction::fullyCommitted: Unusual use count=%d\n", useCount);
 
 	writeComplete();
+	seenGopher =true;
 	releaseCommittedTransaction();
 }
 

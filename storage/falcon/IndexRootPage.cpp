@@ -332,26 +332,21 @@ Bdb* IndexRootPage::findRoot(Dbb *dbb, int32 indexId, int32 rootPage, LockType l
 	if (rootPage)
 		return dbb->fetchPage(rootPage, PAGE_btree, lockType);
 		
-	if (indexId < 0)
-		return NULL;
+	ASSERT(indexId >= 0);
 
 	Bdb *bdb = Section::getSectionPage (dbb, INDEX_ROOT, indexId / dbb->pagesPerSection, Shared, transId);
 	BDB_HISTORY(bdb);
 
-	if (!bdb)
-		return NULL;
+	ASSERT (bdb);
 
 	SectionPage *sections = (SectionPage*) bdb->buffer;
 	int32 pageNumber = sections->pages [indexId % dbb->pagesPerSection];
 
-	if (pageNumber == 0)
-		{
-		bdb->release(REL_HISTORY);
-		return NULL;
-		}
+	ASSERT (pageNumber != 0);
 
 	bdb = dbb->handoffPage (bdb, pageNumber, PAGE_btree, lockType);
 	BDB_HISTORY(bdb);
+	ASSERT(bdb);
 	return bdb;
 }
 

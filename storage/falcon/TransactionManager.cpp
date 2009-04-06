@@ -189,7 +189,7 @@ void TransactionManager::waitForWriteComplete(Table* table)
 		for (Transaction *trans = committedTransactions.first; trans; 
 			 trans = trans->next)
 			{
-				if (trans->hasRecords(table)&& trans->writePending)
+				if (trans->hasRecords(table))
 				{
 				again = true;
 				break;

@@ -35,6 +35,7 @@
 #define ODS_MINOR_VERSION2	2		// Has SequencePages external to the section tree
 #define ODS_MINOR_VERSION3	3		// Switch to variable length record numbers in index
 #define ODS_MINOR_VERSION4	4		// Accidentially fixed multisegment keys wrt padding
+#define ODS_MINOR_VERSION5	5		// New multisegment index format
 #define ODS_MINOR_VERSION	ODS_MINOR_VERSION4
 
 #define COMBINED_VERSION(major,minor)	(major * 100 + minor)

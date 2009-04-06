@@ -140,6 +140,7 @@ public:
 	bool			systemTransaction;
 	bool			hasUpdates;
 	bool			writePending;
+	bool			seenGopher;
 	//bool			pendingPageWrites;
 	bool			hasLocks;
 	SyncObject		syncObject;
