@@ -495,7 +495,7 @@ Cache* Dbb::open(const char * fileName, int64 cacheSize, TransId transId)
 	logLength = headerPage->logLength;
 	tableSpaceSectionId = headerPage->tableSpaceSectionId;
 	database->serialLogBlockSize = headerPage->serialLogBlockSize;
-	defaultIndexVersion = headerPage->defaultIndexVersionNumber = INDEX_CURRENT_VERSION;
+	defaultIndexVersion = headerPage->defaultIndexVersionNumber;
 
 	char root[256];
 	int len = headerPage->getHeaderVariable(this, hdrLogPrefix, sizeof(root), root);
