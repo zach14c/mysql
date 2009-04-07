@@ -101,6 +101,7 @@ static  int getLinuxVersion();
 
 extern uint		falcon_direct_io;
 extern char		falcon_checksums;
+extern char		falcon_use_sectorcache;
 
 static const int TRACE_SYNC_START	= -1;
 static const int TRACE_SYNC_END		= -2;
@@ -362,8 +363,23 @@ void IO::writePages(int32 pageNumber, int length, const UCHAR* data, int type)
 
 	Page *page = (Page *)data;
 
-	for (int i = 0;i < length/pageSize; i++ ,page = (Page *)((UCHAR *)page + pageSize))
+	for (int i = 0;i < length/pageSize; i++)
 		{
+
+		page = (Page *)((UCHAR *)page + pageSize);
+
+		// Do basic page validation before writing to disk, so we don't write garbage.
+		// Note that with check is skipped for "sector cache"  because unallocated pages
+		// can be written.
+
+		if(!falcon_use_sectorcache && 
+			(page->pageNumber != pageNumber + i || page->pageType <= 0  || page->pageType >= PAGE_max))
+			{
+			FATAL("IO::writePages(): corrupted page %d (pageNumber = %d, pageType = %d)",
+			pageNumber + i, page->pageNumber, (int)page->pageType);
+			}
+
+
 		if (falcon_checksums)
 			page->checksum = computeChecksum(page, pageSize);
  		else
