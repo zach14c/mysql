@@ -363,11 +363,8 @@ void IO::writePages(int32 pageNumber, int length, const UCHAR* data, int type)
 
 	Page *page = (Page *)data;
 
-	for (int i = 0;i < length/pageSize; i++)
+	for (int i = 0;i < length/pageSize; i++,  page = (Page *)((UCHAR *)page + pageSize))
 		{
-
-		page = (Page *)((UCHAR *)page + pageSize);
-
 		// Do basic page validation before writing to disk, so we don't write garbage.
 		// Note that with check is skipped for "sector cache"  because unallocated pages
 		// can be written.
