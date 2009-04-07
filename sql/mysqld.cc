@@ -2990,7 +2990,7 @@ extern "C" void my_message_sql(uint error, const char *str, myf MyFlags);
 
 void my_message_sql(uint error, const char *str, myf MyFlags)
 {
-  THD *thd;
+  THD *thd= current_thd;
   DBUG_ENTER("my_message_sql");
   DBUG_PRINT("error", ("error: %u  message: '%s'", error, str));
 
@@ -3011,6 +3011,8 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
                 strncmp(str, "MARIA table", 11) == 0);
     error= ER_UNKNOWN_ERROR;
   }
+
+  mysql_audit_general(thd, MYSQL_AUDIT_GENERAL_ERROR, error, str);
 
   /*
     TODO: ME_JUST_INFO and ME_JUST_WARNING are back doors used in
@@ -3036,7 +3038,7 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
     DBUG_VOID_RETURN;
   }
 
-  if ((thd= current_thd))
+  if (thd)
   {
     if (MyFlags & ME_FATALERROR)
       thd->is_fatal_error= 1;
