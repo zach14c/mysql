@@ -243,36 +243,22 @@ bool RecordVersion::committedBefore(TransId transId)
 
 // This is called with an exclusive lock on the recordLeaf
 
-bool RecordVersion::retire(RecordScavenge *recordScavenge)
+void RecordVersion::retire(void)
 {
-	bool neededByAnyActiveTrans = true;
-	
-	if (transactionState->committedBefore(recordScavenge->oldestActiveTransaction))
-		neededByAnyActiveTrans = false;
+	SET_THIS_RECORD_ACTIVE(false);
+	RECORD_HISTORY(this);
 
-	if (   generation <= recordScavenge->scavengeGeneration
-		&& useCount == 1
-		&& !priorVersion
-		&& !neededByAnyActiveTrans)
-		{
-		recordScavenge->recordsRetired++;
-		recordScavenge->spaceRetired += getMemUsage();
-		SET_THIS_RECORD_ACTIVE(false);
+	if (state == recDeleted)
+		expungeRecord();  // Allow this record number to be reused
 
-		if (state == recDeleted)
-			expungeRecord();  // Allow this record number to be reused
+	release();
 
-		release();
-
-		return true;
-		}
-
-	return false;
 }
 
 // Scavenge record versions replaced within a savepoint.
+// this record is staying and any prior records at 
+// the same savepoint are leaving
 
-//void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestActiveSavePointId)
 void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldestActiveSavePointId)
 {
 	if (!priorVersion)
@@ -313,12 +299,10 @@ void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldest
 	Record *prior = priorVersion;
 	prior->addRef();
 
-	//syncPrior.unlock();
-	//syncPrior.lock(Exclusive);
+	// Set this record's priorVersion to point past the leaving record(s)
 
 	setPriorVersion(rec);
 	ptr->state = recEndChain;
-	//format->table->garbageCollect(prior, this, transaction, false);
 	format->table->garbageCollect(prior, this, targetTransaction, false);
 	prior->queueForDelete();
 }

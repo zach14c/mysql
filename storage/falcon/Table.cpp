@@ -338,7 +338,8 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		findSections();
 
 	RecordVersion *record = NULL;
-	bool inserted = false;
+	bool insertedIntoTree = false;
+	bool addedToTransaction = false;
 	int32 recordNumber = -1;
 
 	try
@@ -390,9 +391,17 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		checkNullable(record);  // Verify that record is valid
 
+		if (insertIntoTree(record, NULL, recordNumber))
+			insertedIntoTree = true;
+		else 
+			{
+			bool cannotInsertIntoTree_A = false;
+			ASSERT(cannotInsertIntoTree_A);
+			}
+
 		transaction->addRecord(record);
-		insertIntoTree(record, NULL, recordNumber);
-		inserted = true;
+		addedToTransaction = true;
+
 		insertIndexes(transaction, record);
 		updateInversion(record, transaction);
 		fireTriggers(transaction, PostInsert, NULL, record);
@@ -401,11 +410,15 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		}
 	catch (...)
 		{
-		if (inserted)
-			{
+		if (insertedIntoTree)
+			if (!insertIntoTree(NULL, record, recordNumber))
+				{
+				bool cannotBackoutInsertIntoTree_A = false;
+				ASSERT(cannotBackoutInsertIntoTree_A);
+				}
+
+		if (addedToTransaction)
 			transaction->removeRecord(record);
-			insertIntoTree(NULL, record, recordNumber);
-			}
 
 		if (recordNumber >= 0)
 			{
@@ -3065,7 +3078,8 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 {
 	database->preUpdate();
 	RecordVersion *record = NULL;
-	bool inserted = false;
+	bool insertedIntoTree = false;
+	bool addedToTransaction = false;
 	int32 recordNumber = -1;
 
 	if (!dataSection)
@@ -3090,21 +3104,32 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 
 		// Do the actual insert
 
+		if (insertIntoTree(record, NULL, recordNumber))
+			insertedIntoTree = true;
+		else
+			{
+			bool cannotInsertIntoTree_A = false;
+			ASSERT(cannotInsertIntoTree_A);
+			}
+
 		transaction->addRecord(record);
-		bool ret = insertIntoTree(record, NULL, recordNumber);
-		inserted = true;
+		addedToTransaction = true;
+
 		insertIndexes(transaction, record);
-		ASSERT(ret);
 		record->state = recData;
 		record->release(REC_HISTORY);
 		}
 	catch (...)
 		{
-		if (inserted)
-			{
+		if (insertedIntoTree)
+			if (!insertIntoTree(NULL, record, recordNumber))
+				{
+				bool cannotBackoutInsertIntoTree_B = false;
+				ASSERT(cannotBackoutInsertIntoTree_B);
+				}
+
+		if (addedToTransaction)
 			transaction->removeRecord(record);
-			insertIntoTree(NULL, record, recordNumber);
-			}
 
 		if (recordNumber >= 0)
 			{

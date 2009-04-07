@@ -44,7 +44,7 @@ public:
 	virtual void		setSuperceded (bool flag);
 	virtual Record*		getPriorVersion();
 	virtual Record*		getGCPriorVersion(void);
-	virtual bool		retire(RecordScavenge *recordScavenge);
+	virtual void		retire(void);
 	virtual void		scavengeSavepoint(Transaction* targetTransaction, int oldestActiveSavePoint);
 	virtual bool		isVersion();
 	virtual void		rollback(Transaction *transaction);
