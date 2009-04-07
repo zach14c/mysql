@@ -341,7 +341,7 @@ size_t my_win_read(File Filedes, uchar *Buffer, size_t Count)
   if(!ReadFile(hFile, Buffer, (DWORD)Count, &nBytesRead, NULL))
   {
     DWORD lastError= GetLastError();
-    if(lastError == ERROR_HANDLE_EOF)
+    if(lastError == ERROR_HANDLE_EOF || lastError == ERROR_BROKEN_PIPE)
       DBUG_RETURN(0); /*return 0 at EOF*/
     my_osmaperr(lastError);
     DBUG_RETURN(-1);
