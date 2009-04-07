@@ -1,0 +1,20 @@
+#
+# Create a database and some data.
+#
+DROP DATABASE IF EXISTS db1;
+CREATE DATABASE db1;
+CREATE TABLE db1.t1 (a char(10), b char(10));
+INSERT INTO db1.t1 VALUES ('N41','1300'),
+('N01','1453'), 
+('M00','1000'),
+('N41','1301'),
+('N41','1305');
+#
+# Attempt a backup to an image file named '*'.
+#
+BACKUP DATABASE * TO '*';
+Got one of the listed errors
+#
+# Cleanup
+#
+DROP DATABASE db1;

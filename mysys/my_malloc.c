@@ -31,8 +31,13 @@ void *my_malloc(size_t size, myf my_flags)
 
   if (!size)
     size=1;					/* Safety */
-  if ((point = (char*)malloc(size)) == NULL)
+
+  /* If compiled with DBUG, test for error injection. Described in my_sys.h. */
+  /* purecov: begin tested */
+  if (!(point= IF_DBUG(my_malloc_error_inject ? NULL :) (char*) malloc(size)))
   {
+    IF_DBUG(if (my_malloc_error_inject) errno= ENOMEM;
+            my_malloc_error_inject= 0);
     my_errno=errno;
     if (my_flags & MY_FAE)
       error_handler_hook=fatal_error_handler_hook;
@@ -45,6 +50,7 @@ void *my_malloc(size_t size, myf my_flags)
     bzero(point,size);
   DBUG_PRINT("exit",("ptr: %p", point));
   DBUG_RETURN((void*) point);
+  /* purecov: end */
 } /* my_malloc */
 
 

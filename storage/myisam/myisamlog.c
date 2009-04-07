@@ -59,8 +59,14 @@ int main(int argc, char **argv)
     mi_exl.table_selection_hook= matches_list_of_tables;
   }
 
-  /* Number of MyISAM files we can have open at one time */
-  mi_exl.max_files= (my_set_max_open_files(max(mi_exl.max_files,8))-6)/2;
+  /*
+    Despite its name, max_files is not the number of MyISAM files we can
+    have open at one time, but the number of MyISAM tables. Some
+    operating systems do not increase the limit above the input argument
+    of my_set_max_open_files(). So don't start too low.
+  */
+  mi_exl.max_files=
+    (my_set_max_open_files(max(mi_exl.max_files * 2, MY_NFILE)) - 6) / 2;
 
   /*
     Program must work in all conditions: support symbolic links.
@@ -75,6 +81,7 @@ int main(int argc, char **argv)
 	   (mi_exl.recover ? "recover" : "update"),mi_exl.log_filename);
 
   error= mi_examine_log(&mi_exl);
+  DBUG_PRINT("myisamlog", ("error from mi_examine_log: %d", error));
 
   if (mi_exl.update && ! error)
     puts("Tables updated successfully");
@@ -256,6 +263,17 @@ static void get_options(register int *argc, register char ***argv)
 #include <help_end.h>
 	break;
       default:
+        if (*pos == '-')
+        {
+          /* Long option */
+          if (!strncmp(pos + 1, "debug=", 6))
+          {
+            pos+= 7;
+            DBUG_PUSH(pos);
+            pos= " "; /* Skip rest of arg */
+            break;
+          }
+        }
 	printf("illegal option: \"-%c\"\n",*pos);
 	break;
       }
@@ -275,8 +293,8 @@ static void get_options(register int *argc, register char ***argv)
   }
   return;
  err:
-  (void) fprintf(stderr,"option \"%c\" used without or with wrong argument\n",
-	       option);
+  fflush(stdout);
+  fprintf(stderr,"option \"%c\" used without or with wrong argument\n", option);
   exit(1);
 }
 

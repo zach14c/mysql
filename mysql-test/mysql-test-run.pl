@@ -126,7 +126,9 @@ my $path_config_file;           # The generated config file, var/my.cnf
 # executables will be used by the test suite.
 our $opt_vs_config = $ENV{'MTR_VS_CONFIG'};
 
-my $DEFAULT_SUITES= "main,backup,binlog,federated,rpl,rpl_ndb,ndb,maria";
+# If you add a new suite, please check TEST_DIRS in Makefile.am.
+#
+my $DEFAULT_SUITES= "main,backup,backup_engines,backup_ptr,binlog,federated,rpl,rpl_ndb,ndb,maria";
 
 our $opt_usage;
 our $opt_list_options;
@@ -1904,6 +1906,7 @@ sub environment_setup {
   $ENV{'MYSQL_SLAP'}=               mysqlslap_arguments();
   $ENV{'MYSQL_IMPORT'}=             client_arguments("mysqlimport");
   $ENV{'MYSQL_SHOW'}=               client_arguments("mysqlshow");
+  $ENV{'MYSQL_BACKUP'}=             client_arguments("mysqlbackup");
   $ENV{'MYSQL_BINLOG'}=             mysqlbinlog_arguments();
   $ENV{'MYSQL'}=                    client_arguments("mysql");
   $ENV{'MYSQL_UPGRADE'}=            client_arguments("mysql_upgrade");
@@ -4828,13 +4831,9 @@ sub gdb_arguments {
   else
   {
     # write init file for mysqld
-    mtr_tofile($gdb_init_file,
-	       "set args $str\n" .
-	       "break mysql_parse\n" .
-	       "commands 1\n" .
-	       "disable 1\n" .
-	       "end\n" .
-	       "run");
+    mtr_tofile($gdb_init_file, <<EOGDB );
+set args $str
+EOGDB
   }
 
   if ( $opt_manual_gdb )

@@ -21,6 +21,7 @@
 #include "RecordVersion.h"
 #include "Log.h"
 #include "MemMgr.h"
+#include "MemControl.h"
 #include "Sync.h"
 #include "Transaction.h"
 #include "TransactionManager.h"
@@ -34,7 +35,7 @@ RecordScavenge::RecordScavenge(Database *db, uint64 generation, bool forceScaven
 	veryOldRecords = 0;
 	veryOldRecordSpace = 0;
 
-	startingActiveMemory = database->recordDataPool->activeMemory;
+	startingActiveMemory = database->recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 	prunedActiveMemory = 0;
 	retiredActiveMemory = 0;
 
@@ -87,7 +88,9 @@ bool RecordScavenge::canBeRetired(Record* record)
 		// currently not pointed to by a transaction.
 
 		RecordVersion * recVer = (RecordVersion *) record;
-		if (!recVer->transaction)
+		
+		//if (!recVer->transaction)
+		if (!recVer->transactionState->hasTransactionReference)
 			return true;
 		}
 
@@ -109,15 +112,15 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 	uint64 chainLength = 0;
 	Record *oldestVisibleRec = NULL;
 
-	Sync syncPrior(record->getSyncPrior(), "RecordScavenge::inventoryRecord");
-	syncPrior.lock(Shared);
+	//Sync syncPrior(record->getSyncPrior(), "RecordScavenge::inventoryRecord");
+	//syncPrior.lock(Shared);
 
 	for (Record *rec = record; rec; rec = rec->getPriorVersion())
 		{
 		if (++chainLength > maxChainLength)
 			maxChainLength = chainLength;
+			
 		int scavengeType = CANNOT_SCAVENGE;  // Initial value
-
 		++totalRecords;
 		int size = rec->getMemUsage();
 		totalRecordSpace += size;
@@ -172,17 +175,20 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 				else
 					{
 					// Do not prune records that have other pointers to them.
+					// These pointers may be temporary. By setting oldestVisibleRec 
+					// to NULL, the oldestVisibleRec will move further down the 
+					// chain this cycle.
 
 					if (recVer->useCount != 1)
-						oldestVisibleRec = rec;   // Rreset this pointer.
+						oldestVisibleRec = NULL;   // Reset this pointer.
 					else
 						scavengeType = CAN_BE_PRUNED;
 					}
 				}
 			else if (committedBeforeAnyActiveTrans)
 				{
-				ASSERT(rec->state != recLock);
-				oldestVisibleRec = rec;
+				if (rec->state != recLock)
+					oldestVisibleRec = rec;
 				}
 			}
 
@@ -236,7 +242,12 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 uint64 RecordScavenge::computeThreshold(uint64 spaceToRetire)
 {
 	uint64 totalSpace = veryOldRecordSpace;
-	scavengeGeneration = 0;
+	scavengeGeneration = baseGeneration;
+	
+	// Don't mess around if memory is critical
+	
+	if (database->lowMemory)
+		return scavengeGeneration;
 
 	// The baseGeneration is the currentGeneration when the scavenge started
 	// It is in ageGroups[0].  Next oldest in ageGroups[1], etc.
@@ -251,10 +262,7 @@ uint64 RecordScavenge::computeThreshold(uint64 spaceToRetire)
 			scavengeGeneration = baseGeneration - n;
 		}
 
-	// We still may want to scavenge even if the age group total is
-	// too small, so use the base generation as a starting point.
-	
-	return (scavengeGeneration ? scavengeGeneration : baseGeneration);
+	return scavengeGeneration;
 }
 
 void RecordScavenge::print(void)

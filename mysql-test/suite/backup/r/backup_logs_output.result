@@ -7,11 +7,11 @@ Display backup variable values from startup options file.
 SHOW VARIABLES LIKE 'backup_history%';
 Variable_name	Value
 backup_history_log	ON
-backup_history_log_file	MYSQLTEST_VARDIR/master-data/history.txt
+backup_history_log_file	MYSQLTEST_VARDIR/tmp/history.txt
 SHOW VARIABLES LIKE 'backup_progress%';
 Variable_name	Value
 backup_progress_log	ON
-backup_progress_log_file	MYSQLTEST_VARDIR/master-data/progress.txt
+backup_progress_log_file	MYSQLTEST_VARDIR/tmp/progress.txt
 SHOW VARIABLES LIKE 'log_backup_output';
 Variable_name	Value
 log_backup_output	TABLE

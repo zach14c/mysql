@@ -31,9 +31,9 @@ static uint testflag=0,recant=10000,reclength=37;
 static uint16 key1[1000];
 
 #ifdef DBUG_OFF
-#define hash_check(A) 0
+#define my_hash_check(A) 0
 #else
-my_bool hash_check(HASH *hash);
+my_bool my_hash_check(HASH *hash);
 #endif
 
 void free_record(void *record);
@@ -73,7 +73,7 @@ static int do_test()
   bzero((char*) key1,sizeof(key1[0])*1000);
 
   printf("- Creating hash\n");
-  if (hash_init(&hash, default_charset_info, recant/2, 0, 6, 0, free_record, 0))
+  if (my_hash_init(&hash, default_charset_info, recant/2, 0, 6, 0, free_record, 0))
     goto err;
   printf("- Writing records:\n");
 
@@ -91,7 +91,7 @@ static int do_test()
     key_check+=n1;
     write_count++;
   }
-  if (hash_check(&hash))
+  if (my_hash_check(&hash))
   {
     puts("Heap keys crashed");
     goto err;
@@ -103,7 +103,7 @@ static int do_test()
     if (j != 0)
     {
       sprintf(key,"%6d",j);
-      if (!(recpos=hash_search(&hash,key,0)))
+      if (!(recpos=my_hash_search(&hash,key,0)))
       {
 	printf("can't find key1: \"%s\"\n",key);
 	goto err;
@@ -111,20 +111,20 @@ static int do_test()
       key1[atoi(recpos)]--;
       key_check-=atoi(recpos);
       memcpy(oldrecord,recpos,reclength);
-      if (hash_delete(&hash,recpos))
+      if (my_hash_delete(&hash,recpos))
       {
 	printf("error: %d; can't delete record: \"%s\"\n", my_errno,oldrecord);
 	goto err;
       }
       delete++;
-      if (testflag == 2 && hash_check(&hash))
+      if (testflag == 2 && my_hash_check(&hash))
       {
 	puts("Heap keys crashed");
 	goto err;
       }
     }
   }
-  if (hash_check(&hash))
+  if (my_hash_check(&hash))
   {
     puts("Hash keys crashed");
     goto err;
@@ -138,7 +138,7 @@ static int do_test()
     if (j)
     {
       sprintf(key,"%6d",j);
-      if (!(recpos=hash_search(&hash,key,0)))
+      if (!(recpos=my_hash_search(&hash,key,0)))
       {
 	printf("can't find key1: \"%s\"\n",key);
 	goto err;
@@ -148,19 +148,19 @@ static int do_test()
       key1[n1]++;
       sprintf(recpos,"%6d:%4d:%8d:XXX: %4d      ",n1,n2,n3,update);
       update++;
-      if (hash_update(&hash,recpos,key,0))
+      if (my_hash_update(&hash,recpos,key,0))
       {
 	printf("can't update key1: \"%s\"\n",key);
 	goto err;
       }
-      if (testflag == 3 && hash_check(&hash))
+      if (testflag == 3 && my_hash_check(&hash))
       {
 	printf("Heap keys crashed for %d update\n",update);
 	goto err;
       }
     }
   }
-  if (hash_check(&hash))
+  if (my_hash_check(&hash))
   {
     puts("Heap keys crashed");
     goto err;
@@ -175,12 +175,12 @@ static int do_test()
     printf("- Testing identical read\n");
     sprintf(key,"%6d",j);
     pos=1;
-    if (!(recpos= hash_first(&hash, key, 0, &state)))
+    if (!(recpos= my_hash_first(&hash, key, 0, &state)))
     {
       printf("can't find key1: \"%s\"\n",key);
       goto err;
     }
-    while (hash_next(&hash, key, 0, &state) && pos < (ulong) (key1[j]+10))
+    while (my_hash_next(&hash, key, 0, &state) && pos < (ulong) (key1[j]+10))
       pos++;
     if (pos != (ulong) key1[j])
     {
@@ -189,12 +189,12 @@ static int do_test()
     }
   }
   printf("- Creating output heap-file 2\n");
-  if (hash_init(&hash2, default_charset_info, hash.records, 0, 0, hash2_key, free_record,0))
+  if (my_hash_init(&hash2, default_charset_info, hash.records, 0, 0, hash2_key, free_record,0))
     goto err;
 
   printf("- Copying and removing records\n");
   pos=0;
-  while ((recpos=hash_element(&hash,0)))
+  while ((recpos=my_hash_element(&hash,0)))
   {
     record=(uchar*) my_malloc(reclength,MYF(MY_FAE));
     memcpy(record,recpos,reclength);
@@ -206,14 +206,14 @@ static int do_test()
     }
     key_check-=atoi(record);
     write_count++;
-    if (hash_delete(&hash,recpos))
+    if (my_hash_delete(&hash,recpos))
     {
       printf("Got error when deleting record: %*s",reclength,recpos);
       goto err;
     }
     if (testflag==4)
     {
-      if (hash_check(&hash) || hash_check(&hash2))
+      if (my_hash_check(&hash) || my_hash_check(&hash2))
       {
 	puts("Hash keys crashed");
 	goto err;
@@ -221,7 +221,7 @@ static int do_test()
     }
     pos++;
   }
-  if (hash_check(&hash) || hash_check(&hash2))
+  if (my_hash_check(&hash) || my_hash_check(&hash2))
   {
     puts("Hash keys crashed");
     goto err;
@@ -234,7 +234,7 @@ static int do_test()
   printf("\nFollowing test have been made:\n");
   printf("Write records: %d\nUpdate records: %d\nDelete records: %d\n", write_count,
 	 update,delete);
-  hash_free(&hash); hash_free(&hash2);
+  my_hash_free(&hash); my_hash_free(&hash2);
   my_end(MY_GIVE_INFO);
   DBUG_RETURN(0);
 err:

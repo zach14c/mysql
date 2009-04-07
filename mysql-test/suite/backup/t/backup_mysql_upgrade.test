@@ -1,0 +1,24 @@
+#
+# Test upgrade of the backup logs.
+#
+
+--source include/not_embedded.inc
+--require r/have_mysql_upgrade.result
+
+--disable_query_log
+select LENGTH("$MYSQL_UPGRADE")>0 as have_mysql_upgrade;
+--enable_query_log
+
+--echo # Create the old mysql progress tables.
+CREATE TABLE mysql.online_backup (a int);
+CREATE TABLE mysql.online_backup_progress (a int);
+
+--echo # Check to see if old tables exist.
+SHOW TABLES FROM mysql LIKE 'online%';
+
+--echo # Run mysql_upgrade once
+--exec $MYSQL_UPGRADE --skip-verbose --force --user=root 2>&1
+
+--echo # Check to see if old tables exist.
+SHOW TABLES FROM mysql LIKE 'online%';
+

@@ -56,6 +56,7 @@ JString::JString ()
  **************************************/
 
 	string = NULL;
+	isStaticString = false;
 }
 
 JString::JString (const char *stuff)
@@ -72,6 +73,7 @@ JString::JString (const char *stuff)
  **************************************/
 
 	string = NULL;
+	isStaticString = false;
 	setString (stuff);
 }
 
@@ -90,6 +92,7 @@ JString::JString (const JString& source)
 
 	if ((string = source.string))
 		++((int*) string)[-1];
+	isStaticString = false;
 }
 
 JString::~JString ()
@@ -349,6 +352,13 @@ void JString::release ()
 	if (!string)
 		return;
 
+	if (isStaticString)
+		{
+		string = NULL;
+		isStaticString = false;
+		return;
+		}
+
 	string -= sizeof (int);
 
 	if (--((int*) string)[0] == 0)
@@ -469,6 +479,13 @@ void JString::setString(const char * source, int length)
 {
 	alloc (length);
 	memcpy (string, source, length);
+	isStaticString = false;
+}
+
+void JString::setStringStatic(const char* source)
+{
+	string = const_cast<char*>(source);
+	isStaticString = true;
 }
 
 int JString::findSubstring(const char * string, const char * sub)

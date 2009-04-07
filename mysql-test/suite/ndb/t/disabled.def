@@ -14,3 +14,5 @@ ndb_partition_error2	  : Bug#40989 msvensson 2007-06-27 HF is not sure if the te
 # the below testcase have been reworked to avoid the bug, test contains comment, keep bug open
 #ndb_binlog_ddl_multi     : BUG#18976 2006-04-10 kent    CRBR: multiple binlog, second binlog may miss schema log events
 ndb_cache_trans           : Bug#42565 ndb_cache_trans failure since SERVER_STATUS_IN_TRANS added to hash key
+ndb_alter_table_online    : WL#4284: Needs to be reworked, tries to alter table used by a pending transaction.
+ndb_alter_table3          : WL#4284: Needs to be reworked, tries to alter table used by a pending transaction.

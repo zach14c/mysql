@@ -133,7 +133,8 @@ void  bcat_db_iterator_free(struct st_bstream_image_header *catalogue,
   part of meta-data.
 
   @retval BSTREAM_OK    blob @c stmt contains the CREATE query
-  @retval BSTREAM_ERROR no CREATE statement for that item
+  @retval BSTREAM_EOS   no CREATE statement for that item
+  @retval BSTREAM_ERROR error when obtaining metadata for the item
 */
 int bcat_get_item_create_query(struct st_bstream_image_header *catalogue,
                                struct st_bstream_item_info *item,
@@ -146,8 +147,9 @@ int bcat_get_item_create_query(struct st_bstream_image_header *catalogue,
   meta-data. If function returns successfully, the bytes returned become
   part of meta-data.
 
-  @retval BSTREAM_OK    blob @c data contains the meta-data
-  @retval BSTREAM_ERROR no extra meta-data for that item
+  @retval BSTREAM_OK    blob @c data contains the metadata
+  @retval BSTREAM_EOS   no extra metadata for that item
+  @retval BSTREAM_ERROR error when obtaining metadata for the item
 */
 int bcat_get_item_create_data(struct st_bstream_image_header *catalogue,
                               struct st_bstream_item_info *item,
