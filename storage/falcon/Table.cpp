@@ -3605,8 +3605,6 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 					transaction->addRecord(lockRecord);
 					lockRecord->release(REC_HISTORY);
 
-					ASSERT(source->useCount >= 2);
-
 					return source;
 					}
 
