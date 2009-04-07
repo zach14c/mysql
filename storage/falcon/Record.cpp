@@ -497,23 +497,12 @@ bool Record::isVersion()
 	return false;
 }
 
-bool Record::retire(RecordScavenge *recordScavenge)
+void Record::retire(void)
 {
-	if (generation <= recordScavenge->scavengeGeneration)
-		{
-		recordScavenge->spaceRetired += getMemUsage();
-		++recordScavenge->recordsRetired;
-		SET_THIS_RECORD_ACTIVE(false);
-		RECORD_HISTORY(this);
+	SET_THIS_RECORD_ACTIVE(false);
+	RECORD_HISTORY(this);
 
-		release();
-		return true;
-		}
-
-	++recordScavenge->recordsRemaining;
-	recordScavenge->spaceRemaining += getMemUsage();
-
-	return false;
+	release();
 }
 
 void Record::scavenge(TransId targetTransactionId, int oldestActiveSavePointId)

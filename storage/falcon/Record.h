@@ -112,7 +112,7 @@ public:
 	virtual void		setSuperceded (bool flag);
 	virtual Record*		fetchVersion (Transaction * transaction);
 	virtual Record*		fetchVersionRecursive (Transaction *transaction);
-	virtual bool		retire(RecordScavenge *recordScavenge);
+	virtual void		retire(void);
 	virtual void		scavenge(TransId targetTransactionId, int oldestActiveSavePointId);
 	virtual bool		isVersion();
 	virtual bool		isSuperceded();
