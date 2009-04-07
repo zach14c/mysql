@@ -113,7 +113,7 @@ int maria_rkey(MARIA_HA *info, uchar *buf, int inx, const uchar *key_data,
         not satisfied with an out-of-range condition.
       */
       if ((*share->row_is_visible)(info) && 
-          (icp_res= ma_check_index_cond(info, inx, buf) != 0))
+          ((icp_res= ma_check_index_cond(info, inx, buf)) != 0))
         break;
 
       /* The key references a concurrently inserted record. */
@@ -158,7 +158,7 @@ int maria_rkey(MARIA_HA *info, uchar *buf, int inx, const uchar *key_data,
         }
 
       } while (!(*share->row_is_visible)(info) || 
-               (icp_res= ma_check_index_cond(info, inx, buf) == 0));
+               ((icp_res= ma_check_index_cond(info, inx, buf)) == 0));
     }
   }
   if (share->lock_key_trees)
@@ -166,6 +166,11 @@ int maria_rkey(MARIA_HA *info, uchar *buf, int inx, const uchar *key_data,
 
   if (info->cur_row.lastpos == HA_OFFSET_ERROR || (icp_res != 1))
   {
+    if (icp_res == 2)
+    {
+      info->cur_row.lastpos= HA_OFFSET_ERROR;
+      my_errno= HA_ERR_KEY_NOT_FOUND;
+    }
     fast_ma_writeinfo(info);
     goto err;
   }

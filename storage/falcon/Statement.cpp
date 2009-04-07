@@ -1309,8 +1309,11 @@ void Statement::upgradeTable(Syntax * syntax)
 	END_FOR;
 
 	if (!transaction)
+		{
 		transaction = database->getSystemTransaction();
-
+		transaction->addRef();
+		}
+		
 	FOR_OBJECTS (Index*, index, &newIndexes)
 		if (!database->formatting)
 			{

@@ -84,12 +84,12 @@ RepositoryVolume::~RepositoryVolume()
 	delete dbb;
 }
 
-void RepositoryVolume::storeBlob(BlobReference *blob, Transaction *transaction)
+void RepositoryVolume::storeBlob(BlobReference *blob, TransactionState *transaction)
 {
 	storeBlob (blob->blobId, blob->getStream(), transaction);
 }
 
-void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, Transaction *transaction)
+void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, TransactionState *transaction)
 {
 	Sync sync (&syncObject, "RepositoryVolume::storeBlob");
 	sync.lock (Shared);
@@ -106,15 +106,11 @@ void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, Transaction *tran
 
 	lastAccess = database->timestamp;
 	IndexKey indexKey;
-	//int keyLength = 
 	makeKey(blobId, &indexKey);
 	int recordNumber = getRecordNumber(&indexKey);
 
 	if (recordNumber == 0)
-		{
-		//throw SQLError (DELETED_BLOB, "blobId previously deleted from repository file \"%s\"\n", (const char*) fileName);
 		dbb->deleteIndexEntry (VOLUME_INDEX_ID, VOLUME_INDEX_VERSION, &indexKey, 0, transaction->transactionId);
-		}
 
 	if (recordNumber > 0)
 		{
@@ -128,7 +124,6 @@ void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, Transaction *tran
 		}
 
 	int recordId = dbb->insertStub (section, transaction);
-	//dbb->logRecord (VOLUME_SECTION_ID, recordId, stream, transaction);
 	dbb->updateRecord(section, recordId, stream, transaction, true);
 	dbb->addIndexEntry (VOLUME_INDEX_ID, VOLUME_INDEX_VERSION, &indexKey, recordId + 1, transaction->transactionId);
 }
@@ -564,7 +559,8 @@ void RepositoryVolume::synchronize(int64 id, Stream *stream, Transaction *transa
 	if (recordNumber < 0)
 		{
 		sync.unlock();
-		storeBlob (id, stream, transaction);
+		storeBlob (id, stream, transaction->transactionState);
+		
 		return;
 		}
 

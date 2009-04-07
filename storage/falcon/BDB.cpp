@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright © 2006-2008 MySQL AB, 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -183,8 +183,8 @@ void Bdb::addRef(LockType lType, int category, const char *file, int line)
 
 void Bdb::release(int category, const char *file, int line)
 {
-	release();
 	addHistory(category, file, line);
+	release();
 }
 
 void Bdb::incrementUseCount(int category, const char *file, int line)
@@ -196,8 +196,8 @@ void Bdb::incrementUseCount(int category, const char *file, int line)
 void Bdb::decrementUseCount(int category, const char *file, int line)
 {
 	ASSERT (useCount > 0);
-	INTERLOCKED_DECREMENT (useCount);
 	addHistory(category, file, line);
+	INTERLOCKED_DECREMENT (useCount);
 }
 
 void Bdb::initHistory()

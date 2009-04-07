@@ -10,6 +10,5 @@
 #
 ##############################################################################
 
-falcon_unicode-big    : Bug#43182 2009-02-25 hakank Disabled until licensing details of UnicodeData.txt are cleared
 falcon_bug_22972      : WL#4284: Can't drop table used by a pending transaction (there is metadata lock on the table).
 falcon_bug_24024      : WL#4284: Can't drop table used by a pending transaction (there is metadata lock on the table).

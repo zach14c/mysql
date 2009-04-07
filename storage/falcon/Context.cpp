@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright © 2006-2008 MySQL AB, 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@
 #include "View.h"
 #include "SQLError.h"
 #include "Connection.h"
+#include "CycleLock.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -100,38 +101,41 @@ bool Context::fetchNext(Statement * statement)
 	if (eof)
 		throw SQLEXCEPTION (RUNTIME_ERROR, "record stream is not open");
 
+	CycleLock cycleLock(table->database);
+	
 	for (;;)
 		{
 		if (record)
 			close();
-			
+
 		Record *candidate = table->fetchNext(recordNumber);
-		
+		RECORD_HISTORY(candidate);
+
 		if (!candidate)
 			{
 			eof = true;
 			
 			return false;
 			}
-			
+
 		++statement->stats.exhaustiveFetches;
 		recordNumber = candidate->recordNumber + 1;
 		record = candidate->fetchVersion (statement->transaction);
-		
+
 		if (record)
 			{
 			checkRecordLimits (statement);
 			
 			if (record != candidate)
 				{
-				record->addRef();
-				candidate->release();
+				record->addRef(REC_HISTORY);
+				candidate->release(REC_HISTORY);
 				}
 
 			return true;
 			}
 			
-		candidate->release();
+		candidate->release(REC_HISTORY);
 		}
 }
 
@@ -152,6 +156,8 @@ bool Context::fetchIndexed(Statement * statement)
 	if (!bitmap)
 		return false;
 
+	CycleLock cycleLock(table->database);
+
 	for (;;)
 		{
 		if (record)
@@ -167,6 +173,7 @@ bool Context::fetchIndexed(Statement * statement)
 			
 		++statement->stats.indexHits;
 		Record *candidate = table->fetch(recordNumber);
+		RECORD_HISTORY(candidate);
 		++recordNumber;
 		
 		if (candidate)
@@ -180,14 +187,14 @@ bool Context::fetchIndexed(Statement * statement)
 				
 				if (record != candidate)
 					{
-					record->addRef();
-					candidate->release();
+					record->addRef(REC_HISTORY);
+					candidate->release(REC_HISTORY);
 					}
 					
 				return true;
 				}
 				
-			candidate->release();
+			candidate->release(REC_HISTORY);
 			}
 		}
 }
@@ -231,7 +238,7 @@ void Context::setRecord(Record *rec)
 		close();
 
 	if ( (record = rec) )
-		record->addRef();
+		record->addRef(REC_HISTORY);
 }
 
 void Context::checkRecordLimits(Statement *statement)

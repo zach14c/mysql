@@ -22,6 +22,7 @@
 #include "Stream.h"
 #include "Table.h"
 #include "Value.h"
+#include "Transaction.h"
 
 static const UCHAR lengthShifts[] = { 0, 8, 16, 24, 32, 40, 48, 56 };
 
@@ -42,7 +43,7 @@ EncodedRecord::~EncodedRecord()
 
 void EncodedRecord::encodeAsciiBlob(Value *value)
 {
-	int32 val = table->getBlobId (value, 0, false, transaction);
+	int32 val = table->getBlobId (value, 0, false, transaction->transactionState);
 	EncodedDataStream::encodeAsciiBlob(val);
 
 	/***
@@ -56,8 +57,8 @@ void EncodedRecord::encodeAsciiBlob(Value *value)
 
 void EncodedRecord::encodeBinaryBlob(Value *value)
 {
-	int32 val = table->getBlobId (value, 0, false, transaction);
-		EncodedDataStream::encodeBinaryBlob(val);
+	int32 val = table->getBlobId (value, 0, false, transaction->transactionState);
+	EncodedDataStream::encodeBinaryBlob(val);
 
 	/***
 	int count = BYTE_COUNT(val);

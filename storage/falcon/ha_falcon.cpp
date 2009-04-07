@@ -1,4 +1,4 @@
-/* Copyright (C) 2006, 2007 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@
 #include "Format.h"
 #include "Error.h"
 #include "Log.h"
+#include "ErrorInjector.h"
 
 #ifdef _WIN32
 #define I64FORMAT			"%I64d"
@@ -96,6 +97,7 @@ ulonglong	falcon_page_cache_size;
 char*		falcon_serial_log_dir;
 char*		falcon_checkpoint_schedule;
 char*		falcon_scavenge_schedule;
+char*		falcon_error_inject;
 FILE		*falcon_log_file;
 
 // Determine the largest memory address, assume 64-bits max
@@ -195,6 +197,9 @@ int StorageInterface::falcon_init(void *p)
 {
 	DBUG_ENTER("falcon_init");
 	falcon_hton = (handlerton *)p;
+	
+	ERROR_INJECTOR_PARSE(falcon_error_inject);
+	
 	my_bool error = false;
 
 	if (!checkExceptionSupport()) 
@@ -283,6 +288,8 @@ int StorageInterface::falcon_deinit(void *p)
 {
 	if(storageHandler)
 		{
+		storageHandler->deleteNfsLogger(StorageInterface::mysqlLogger, NULL);
+		storageHandler->deleteNfsLogger(StorageInterface::logger, NULL);
 		storageHandler->shutdownHandler();
 		freeFalconStorageHandler();
 		}
@@ -1024,17 +1031,20 @@ THR_LOCK_DATA **StorageInterface::store_lock(THD *thd, THR_LOCK_DATA **to,
 			lock_type = TL_WRITE_ALLOW_WRITE;
 
 		/*
-                  In queries of type INSERT INTO t1 SELECT ... FROM t2 ...
-                  MySQL would use the lock TL_READ_NO_INSERT on t2 to prevent
-                  concurrent inserts into this table. Since Falcon can handle
-                  concurrent changes using own mechanisms and this type of
-                  lock conflicts with TL_WRITE_ALLOW_WRITE we convert it to
-                  a normal read lock to allow concurrent changes.
+		In queries of type INSERT INTO t1 SELECT ... FROM t2 ...
+		MySQL would use the lock TL_READ_NO_INSERT on t2 to prevent
+		concurrent inserts into this table. Since Falcon can handle
+		concurrent changes using its own mechanisms and this type of
+		lock conflicts with TL_WRITE_ALLOW_WRITE we convert it to
+		a normal read lock to allow concurrent changes.
 		*/
 
-		if (lock_type == TL_READ_NO_INSERT &&
-                    !(thd_in_lock_tables(thd) && sql_command == SQLCOM_LOCK_TABLES))
-                       lock_type = TL_READ;
+		if (   lock_type == TL_READ_NO_INSERT
+		    && !(thd_in_lock_tables(thd)
+		    && sql_command == SQLCOM_LOCK_TABLES))
+			{
+			lock_type = TL_READ;
+			}
 
 		lockData.type = lock_type;
 		}
@@ -2993,12 +3003,33 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 				case MYSQL_TYPE_SHORT:
 				case MYSQL_TYPE_INT24:
 				case MYSQL_TYPE_LONG:
-				case MYSQL_TYPE_LONGLONG:
 				case MYSQL_TYPE_DECIMAL:
 				case MYSQL_TYPE_ENUM:
 				case MYSQL_TYPE_SET:
 				case MYSQL_TYPE_BIT:
 					dataStream->encodeInt64(field->val_int());
+					break;
+
+				case MYSQL_TYPE_LONGLONG:
+					{
+					int64 temp = field->val_int();
+
+					// If the field is unsigned and the MSB is set, 
+					// encode it as a BigInt to support unsigned values 
+					// with the MSB set in the index
+
+					if (((Field_num*)field)->unsigned_flag && (temp & LL(0x8000000000000000)))
+						{
+						BigInt bigInt;
+						bigInt.set((uint64)temp);
+						dataStream->encodeBigInt(&bigInt);
+						}
+					else
+						{
+						dataStream->encodeInt64(temp);
+						}
+
+					}
 					break;
 
 				case MYSQL_TYPE_YEAR:
@@ -3199,13 +3230,33 @@ void StorageInterface::decodeRecord(uchar *buf)
 				case MYSQL_TYPE_SHORT:
 				case MYSQL_TYPE_INT24:
 				case MYSQL_TYPE_LONG:
-				case MYSQL_TYPE_LONGLONG:
 				case MYSQL_TYPE_DECIMAL:
 				case MYSQL_TYPE_ENUM:
 				case MYSQL_TYPE_SET:
 				case MYSQL_TYPE_BIT:
 					field->store(dataStream->getInt64(),
 								((Field_num*)field)->unsigned_flag);
+					break;
+
+				case MYSQL_TYPE_LONGLONG:
+					{
+					// If the type is edsTypeBigInt, the value is
+					// unsigned and has the MSB set. This case has 
+					// been handled specially in encodeRecord() to 
+					// support unsigned values with the MSB set in
+					// the index
+
+					if (dataStream->type == edsTypeBigInt)
+						{
+						int64 value = dataStream->bigInt.getInt();
+						field->store(value, ((Field_num*)field)->unsigned_flag);
+						}
+					else
+						{
+						field->store(dataStream->getInt64(),
+									 ((Field_num*)field)->unsigned_flag);
+						}
+					}
 					break;
 
 				case MYSQL_TYPE_YEAR:
@@ -3837,6 +3888,11 @@ static void updateRecordChillThreshold(MYSQL_THD thd,
 		storageHandler->setRecordChillThreshold(falcon_record_chill_threshold);
 }
 
+static void updateErrorInject(MYSQL_THD thd, struct st_mysql_sys_var *var,
+	void *var_ptr, const void *save)
+{
+	ERROR_INJECTOR_PARSE(*(const char**)save);
+}
 void StorageInterface::updateRecordMemoryMax(MYSQL_THD thd, struct st_mysql_sys_var* variable, void* var_ptr, const void* save)
 {
 	falcon_record_memory_max = *(ulonglong*) save;
@@ -3928,6 +3984,11 @@ static MYSQL_SYSVAR_STR(checkpoint_schedule, falcon_checkpoint_schedule,
   "Falcon checkpoint schedule.",
   NULL, NULL, "7 * * * * *");
 
+static MYSQL_SYSVAR_STR(error_inject, falcon_error_inject,
+  PLUGIN_VAR_MEMALLOC,
+  "Used for testing purposes (error injection)",
+  NULL, &updateErrorInject, "");
+
 static MYSQL_SYSVAR_STR(scavenge_schedule, falcon_scavenge_schedule,
   PLUGIN_VAR_RQCMDARG| PLUGIN_VAR_READONLY | PLUGIN_VAR_MEMALLOC,
   "Falcon record scavenge schedule.",
@@ -4004,6 +4065,7 @@ static struct st_mysql_sys_var* falconVariables[]= {
 	MYSQL_SYSVAR(page_cache_size),
 	MYSQL_SYSVAR(consistent_read),
 	MYSQL_SYSVAR(serial_log_file_size),
+	MYSQL_SYSVAR(error_inject),
 	NULL
 };
 
