@@ -9,6 +9,7 @@
 --source include/have_innodb.inc
 --source include/not_windows.inc
 --source suite/backup/include/backup_ext.inc
+--source suite/backup/include/have_dbi.inc
 
 let $MYSQLD_BACKUPDIR = `select @@backupdir`;
 let $MYSQLD_DATADIR= `select @@datadir`;
