@@ -8381,7 +8381,10 @@ Rows_log_event::write_row(const Relay_log_info *const rli,
      values should be checked. Maybe these two flags can be combined.
   */
   if ((error= prepare_record(table, &m_cols, m_width,
-                             table->file->ht->db_type != DB_TYPE_NDBCLUSTER)))
+                             table->file->ht->db_type != DB_TYPE_NDBCLUSTER,
+                             (rli->sql_thd->variables.sql_mode &
+                              (MODE_STRICT_TRANS_TABLES |
+                               MODE_STRICT_ALL_TABLES)))))
     DBUG_RETURN(error);
   
   /* unpack row into table->record[0] */
