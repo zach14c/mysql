@@ -160,18 +160,6 @@ Record* RecordVersion::releaseNonRecursive()
 
 Record* RecordVersion::fetchVersion(Transaction * trans)
 {
-	/***
-	Sync syncPrior(format->table->getSyncPrior(this), "RecordVersion::fetchVersion");
-	
-	if (priorVersion)
-		syncPrior.lock(Shared);
-	***/
-	
-	return fetchVersionRecursive(trans);
-}
-
-Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
-{
 	// Unless the record is at least as old as the transaction, it's not for us
 
 	TransactionState* recTransState = transactionState;
@@ -195,7 +183,7 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 	if (!priorVersion)
 		return NULL;
 		
-	return priorVersion->fetchVersionRecursive(trans);
+	return priorVersion->fetchVersion(trans);
 }
 
 void RecordVersion::rollback(Transaction *transaction)
@@ -264,9 +252,6 @@ void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldest
 	if (!priorVersion)
 		return;
 
-	//Sync syncPrior(getSyncPrior(), "RecordVersion::scavengeSavepoint");
-	//syncPrior.lock(Shared);
-	
 	Record *rec = priorVersion;
 	Record *ptr = NULL;
 
@@ -344,8 +329,6 @@ bool RecordVersion::isSuperceded()
 
 Record* RecordVersion::clearPriorVersion(void)
 {
-	//Sync syncPrior(getSyncPrior(), "RecordVersion::clearPriorVersion");
-	//syncPrior.lock(Exclusive);
 	Record * prior = priorVersion;
 	
 	if (prior && prior->useCount == 1)

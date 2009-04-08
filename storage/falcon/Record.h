@@ -111,7 +111,6 @@ public:
 	virtual int			getSavePointId();
 	virtual void		setSuperceded (bool flag);
 	virtual Record*		fetchVersion (Transaction * transaction);
-	virtual Record*		fetchVersionRecursive (Transaction *transaction);
 	virtual void		retire(void);
 	virtual void		scavenge(TransId targetTransactionId, int oldestActiveSavePointId);
 	virtual bool		isVersion();
@@ -130,8 +129,6 @@ public:
 	virtual int			getSize(void);
 	virtual SyncObject* getSyncThaw(void);
 	virtual void		queueForDelete(void);
-
-	//virtual SyncObject* getSyncPrior(void);
 
 	const UCHAR*		getEncoding (int index);
 	int					setEncodedRecord(Stream *stream, bool interlocked);

@@ -923,11 +923,6 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	syncTriggers.setName("Table::syncTriggers");
 	syncAlter.setName("Table::syncAlter");
 	
-	/***
-	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
-		syncPriorVersions[n].setName("Table::syncPriorVersions");
-	***/
-	
 	for (int n = 0; n < SYNC_THAW_SIZE; n++)
 		syncThaw[n].setName("Table::syncThaw");
 }
@@ -1035,32 +1030,32 @@ Record* Table::treeFetch(int32 recordNumber)
 
 Record* Table::backlogFetch(int32 recordNumber)
 {
-    if (backloggedRecords)
-        {
-        int32 backlogId = backloggedRecords->get(recordNumber);
-        int attempts = 5;
+	if (backloggedRecords)
+		{
+		int32 backlogId = backloggedRecords->get(recordNumber);
+		int attempts = 5;
 
-        while (backlogId && attempts--)
-            {
-            Record *record = database->backLog->fetch(backlogId);
+		while (backlogId && attempts--)
+			{
+			Record *record = database->backLog->fetch(backlogId);
 
-            if (record)
-            	{
-            	if (insertIntoTree(record, NULL, recordNumber))
-            		{
-            		RECORD_HISTORY(record);
-            		return record;
-            		}
-            	record->release();
-            	}
+			if (record)
+				{
+				if (insertIntoTree(record, NULL, recordNumber))
+					{
+					RECORD_HISTORY(record);
+					return record;
+					}
+				record->release();
+				}
 
-            if ((record = fetch(recordNumber)))
-                return record;
-            }
-        }
-    
-    return NULL;   
-} 
+			if ((record = fetch(recordNumber)))
+				return record;
+			}
+		}
+
+	return NULL;
+}
 
 void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transaction)
 {
@@ -1070,9 +1065,6 @@ void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transa
 	recordToRollback->state = recRollback;
 
 	// Find the record that will become the current version.
-	// syncPrior is not needed here. No other thread can change this
-	// priorVersion now. Changing the base record is protected by
-	// RecordLeaf::syncObject
 
 	Record *priorRecord = recordToRollback->getPriorVersion();
 
@@ -1090,10 +1082,11 @@ void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transa
 			return;
 
 		// The store of this record into the record leaf failed. No way to recover.
+		// While the base record is uncommitted, only that trensaction can change it.
 
 		recordToRollback->printRecord("Table::rollbackRecord failed");
-		//insert(priorRecord, recordToRollback, recordToRollback->recordNumber);
-		ASSERT(false);
+		bool rollbackRecord_DamagedRecordTree = false;
+		ASSERT(rollbackRecord_DamagedRecordTree);
 		}
 
 	if (!priorRecord && recordToRollback->recordNumber >= 0)
@@ -1463,9 +1456,6 @@ void Table::reIndexInversion(Transaction *transaction)
 		next = record->recordNumber + 1;
 		
 		{
-			//Sync syncPrior(getSyncPrior(record->recordNumber), "Table::reIndexInversion");
-			//syncPrior.lock(Shared);
-	
 			for (Record *version = record; version; version = version->getPriorVersion())
 				if (version->hasRecord())
 					FOR_FIELDS(field, this)
@@ -1566,7 +1556,6 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 	database->preUpdate();
 	CycleLock cycleLock(database);
 
-	// syncPrior is not needed here.  It is handled in fetchVersion()
 	Record *candidate = fetch(orgRecord->recordNumber);
 	
 	if (!candidate)
@@ -1913,14 +1902,9 @@ void Table::populateIndex(Index * index, Transaction *transaction)
 		{
 		next = record->recordNumber + 1;
 
-		{
-			//Sync syncPrior(getSyncPrior(record->recordNumber), "Table::populateIndex");
-			//syncPrior.lock(Shared);
-		
-			for (Record *version = record; version; version = version->getPriorVersion())
-				if (version->hasRecord())
-					index->insert(version, transaction);
-		}
+		for (Record *version = record; version; version = version->getPriorVersion())
+			if (version->hasRecord())
+				index->insert(version, transaction);
 
 		record->release(REC_HISTORY);
 
@@ -2094,9 +2078,6 @@ bool Table::duplicateBlob(Value * blob, int fieldId, Record * recordChain)
 			return isDuplicate;
 		}
 
-	//Sync syncPrior(getSyncPrior(recordChain), "Table::duplicateBlob");
-	//syncPrior.lock(Shared);
-	
 	for (Record *record = recordChain; record; record = record->getPriorVersion())
 		if (record->hasRecord())
 			{
@@ -2182,9 +2163,6 @@ void Table::garbageCollect(Record *leaving, Record *staying, Transaction *transa
 	Sync sync (&syncObject, "Table::garbageCollect(Obj)");
 	sync.lock(Shared);
 	CycleLock cycleLock(database);
-	
-	//Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(prior)");
-	//syncPrior.lock(Shared);
 	
 	// Clean up field indexes
 
@@ -2593,9 +2571,6 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 	if ( !(rec = fetch(recordNumber)) )
 		return false;	 // Check next record number.
 
-	//Sync syncPrior(getSyncPrior(recordNumber), "Table::checkUniqueRecordVersion");
-	//syncPrior.lock(Shared);
-	
 	for (Record *dup = rec; dup; dup = dup->getPriorVersion())
 		{
 		if (dup == record)
@@ -2668,7 +2643,6 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			if (state == Active)
 				{
 				dup->addRef(REC_HISTORY);
-				//syncPrior.unlock(); // release lock before wait
 				syncUnique->unlock(); // release lock before wait
 
 				// Wait for that transaction, then restart checkUniqueIndexes()
@@ -2689,7 +2663,6 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 			else if (activeTransState)
 				{
-				//syncPrior.unlock(); // release lock before wait
 				syncUnique->unlock(); // release lock before wait
 
 				state = transaction->getRelativeState(activeTransState, WAIT_IF_ACTIVE);
@@ -2880,9 +2853,6 @@ void Table::validateBlobs(int optionMask)
 		next = record->recordNumber + 1;
 		
 		{
-			//Sync syncPrior(getSyncPrior(record->recordNumber), "Table::validateBlobs");
-			//syncPrior.lock(Shared);
-		
 			for (Record *version = record; version; version = version->getPriorVersion())
 				if (version->hasRecord())
 					for (field = fields; field; field = field->next)
@@ -3378,9 +3348,6 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 {
 	Sync syncTable(&syncObject, "Table::validateAndInsert");
 
-	// Do not need syncPrior here since this is a new record.
-	// No other thread can see this record's priorVersion pointer.
-
 	Record *prior = record->getPriorVersion();
 
 	for (int n = 0; n < 10; ++n)
@@ -3491,9 +3458,6 @@ void Table::unlockRecord(RecordVersion* record, int verbMark)
 
 void Table::checkAncestor(Record* current, Record* oldRecord)
 {
-	//Sync syncPrior(getSyncPrior(current), "Table::checkAncestor");
-	//syncPrior.lock(Shared);
-	
 	for (Record *record = current; record; record = record->getPriorVersion())
 		if (record == oldRecord)
 			return;
@@ -3537,9 +3501,6 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 		// There is only one lock record.  It is at the savepoint 
 		// where it was locked. The prior record is the real record.
 
-		//Sync syncPrior(getSyncPrior(source), "Table::fetchForUpdate");
-		//syncPrior.lock(Shared);
-	
 		Record *prior = source->getPriorVersion();
 		prior->addRef(REC_HISTORY);
 		source->release(REC_HISTORY);
@@ -3804,9 +3765,6 @@ bool Table::validateUpdate(int32 recordNumber, TransId transactionId)
 	Record *record = treeFetch(recordNumber);
 	Record *initial = record;
 	
-	//Sync syncPrior(getSyncPrior(recordNumber), "Table::validateUpdate");
-	//syncPrior.lock(Shared);
-	
 	while (record)
 		{
 		if (record->getTransactionId() == transactionId)
@@ -3916,21 +3874,6 @@ void Table::deleteRecordBacklog(int32 recordNumber)
 		database->backLog->deleteRecord(backlogId);
 		}
 }
-
-/***
-SyncObject* Table::getSyncPrior(Record* record)
-{
-	int recNumber = (record->recordNumber == -1) ? 0 : record->recordNumber;
-	int lockNumber = recNumber % SYNC_VERSIONS_SIZE;
-	return syncPriorVersions + lockNumber;
-}
-
-SyncObject* Table::getSyncPrior(int recordNumber)
-{
-	int lockNumber = recordNumber % SYNC_VERSIONS_SIZE;
-	return syncPriorVersions + lockNumber;
-}
-***/
 
 SyncObject* Table::getSyncThaw(Record* record)
 {

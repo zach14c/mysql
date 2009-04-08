@@ -323,11 +323,6 @@ Record* Record::fetchVersion(Transaction * transaction)
 	return this;
 }
 
-Record* Record::fetchVersionRecursive(Transaction * transaction)
-{
-	return this;
-}
-
 void Record::getValue(int fieldId, Value * value)
 {
 	getRawValue(fieldId, value);
@@ -1011,13 +1006,6 @@ int Record::getMemUsage(void)
 	int objectSize = MemMgr::blockSize(this);
 	return objectSize + getDataMemUsage();
 }
-
-/***
-SyncObject* Record::getSyncPrior(void)
-{
-	return format->table->getSyncPrior(this);
-}
-***/
 
 SyncObject* Record::getSyncThaw(void)
 {
