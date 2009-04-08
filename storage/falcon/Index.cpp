@@ -466,7 +466,6 @@ void Index::makeMultiSegmentKeyV1(int count, Value **values, IndexKey *indexKey,
 		{
 		Field *field = fields[n];
 
-		
 		IndexKey tempKey(this);
 		makeKey(field, values[n], n, &tempKey, false);
 		int length = tempKey.keyLength;
@@ -675,9 +674,6 @@ void Index::update(Record * oldRecord, Record * record, Transaction *transaction
 	makeKey(record, &key);
 
 	// If there is a duplicate in the old version chain, don't bother with another
-
-	//Sync syncPrior(record->format->table->getSyncPrior(record), "Index::update");
-	//syncPrior.lock(Shared);
 
 	if (duplicateKey (&key, oldRecord))
 		return;

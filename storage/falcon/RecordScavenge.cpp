@@ -115,9 +115,6 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 	uint64 chainLength = 0;
 	Record *oldestVisibleRec = NULL;
 
-	//Sync syncPrior(record->getSyncPrior(), "RecordScavenge::inventoryRecord");
-	//syncPrior.lock(Shared);
-
 	for (Record *rec = record; rec; rec = rec->getPriorVersion())
 		{
 		if (++chainLength > maxChainLength)

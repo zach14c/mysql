@@ -631,23 +631,27 @@ void Transaction::addRecord(RecordVersion * record)
 			record->state = saveState;
 		}
 
+	if (database->lowMemory && !systemTransaction
+		&& deletedRecords > MAX_LOW_MEMORY_RECORDS)
+		backlogRecords();
+
+	// Now that Chilling and Backlogging is done for this transaction, 
+	// it is safe to add the current record
+
 	record->addRef(REC_HISTORY);
-	
+
 	Sync syncRec(&syncRecords,"Transaction::addRecord");
 	syncRec.lock(Exclusive);
-	
+
 	if ( (record->prevInTrans = lastRecord) )
 		lastRecord->nextInTrans = record;
 	else
 		firstRecord = record;
-		
+
 	record->nextInTrans = NULL;
 	lastRecord = record;
 	syncRec.unlock();
 	
-	if (database->lowMemory && !systemTransaction
-		&& deletedRecords > MAX_LOW_MEMORY_RECORDS)
-		backlogRecords();
 }
 
 void Transaction::removeRecord(RecordVersion *record)
@@ -782,9 +786,6 @@ bool Transaction::needToLock(Record* record)
 {
 	// Find the first visible record version
 
-	//Sync syncPrior(record->getSyncPrior(), "Transaction::needToLock");
-	//syncPrior.lock(Shared);
-
 	for (Record* candidate = record;  candidate != NULL; candidate = candidate->getPriorVersion())
 		{
 		TransactionState* transState = candidate->getTransactionState();
@@ -855,15 +856,15 @@ void Transaction::commitRecords()
 
 State Transaction::getRelativeState(Record* record, uint32 flags)
 {
-	// If this is a Record object it has no assosiated transaction
+	// If this is a Record object it has no associated transaction
 	// and is always visible.
 	
 	if (!record->isVersion())
 		return CommittedVisible;
 
 	// This RecordVersion MUST have a TransState with a reference count.
-	// The caller has a reference count on record, but we will add 
-	// another useCount to the transState just to be careful.
+	// The caller has a reference count on record, and the record has a
+	// useCount on transState.
 
 	blockingRecord = record;
 	TransactionState * transactionState = record->getTransactionState();

@@ -97,6 +97,7 @@ void SRLIndexPage::pass2()
 {
 	if (log->tracePage == pageNumber)
 			print();
+
 	if (log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse))
 		{
 		if (control->isPostFlush())
