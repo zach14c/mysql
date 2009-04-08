@@ -1602,14 +1602,40 @@ sub client_debug_arg($$) {
 }
 
 
-sub client_arguments ($) {
+sub mysql_fix_arguments () {
+
+  return "" if ( IS_WINDOWS );
+
+  my $exe=
+    mtr_script_exists("$basedir/scripts/mysql_fix_privilege_tables",
+		      "$path_client_bindir/mysql_fix_privilege_tables");
+  my $args;
+  mtr_init_args(\$args);
+  mtr_add_arg($args, "--defaults-file=%s", $path_config_file);
+
+  mtr_add_arg($args, "--basedir=%s", $basedir);
+  mtr_add_arg($args, "--bindir=%s", $path_client_bindir);
+  mtr_add_arg($args, "--verbose");
+  return mtr_args2str($exe, @$args);
+}
+
+
+sub client_arguments ($;$) {
   my $client_name= shift;
+  my $group_suffix= shift;
   my $client_exe= mtr_exe_exists("$path_client_bindir/$client_name");
 
   my $args;
   mtr_init_args(\$args);
   mtr_add_arg($args, "--defaults-file=%s", $path_config_file);
-  client_debug_arg($args, $client_name);
+  if (defined($group_suffix)) {
+    mtr_add_arg($args, "--defaults-group-suffix=%s", $group_suffix);
+    client_debug_arg($args, "$client_name-$group_suffix");
+  }
+  else
+  {
+    client_debug_arg($args, $client_name);
+  }
   return mtr_args2str($client_exe, @$args);
 }
 
@@ -1891,6 +1917,7 @@ sub environment_setup {
   $ENV{'MYSQL_BACKUP'}=             client_arguments("mysqlbackup");
   $ENV{'MYSQL_BINLOG'}=             mysqlbinlog_arguments();
   $ENV{'MYSQL'}=                    client_arguments("mysql");
+  $ENV{'MYSQL_SLAVE'}=              client_arguments("mysql", ".2");
   $ENV{'MYSQL_UPGRADE'}=            client_arguments("mysql_upgrade");
   $ENV{'MYSQLADMIN'}=               native_path($exe_mysqladmin);
   $ENV{'MYSQL_CLIENT_TEST'}=        mysql_client_test_arguments();
