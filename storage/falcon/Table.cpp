@@ -1945,6 +1945,7 @@ void Table::pruneRecords(RecordScavenge *recordScavenge)
 
 	Sync syncObj(&syncObject, "Table::pruneRecords");
 	syncObj.lock(Shared);
+	CycleLock cyleLock(database);
 
 	if (records)
 		records->pruneRecords(this, 0, recordScavenge);
@@ -1957,6 +1958,7 @@ void Table::retireRecords(RecordScavenge *recordScavenge)
 
 	Sync syncObj(&syncObject, "Table::retireRecords");
 	syncObj.lock(Shared);
+	CycleLock cyleLock(database);
 
 	if (!records)
 		return;

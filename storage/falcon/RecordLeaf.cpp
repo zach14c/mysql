@@ -203,9 +203,9 @@ void RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordSc
 			if (   (recordScavenge->canBeRetired(record))
 				&& (COMPARE_EXCHANGE_POINTER(ptr, record, NULL)))
 				{
-				record->retire();
 				++recordScavenge->recordsRetired;
 				recordScavenge->spaceRetired += record->getMemUsage();
+				record->retire();
 				}
 			else
 				{
