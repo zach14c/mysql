@@ -283,9 +283,11 @@ Bdb* IndexRootPage::findInsertionLeaf(Dbb *dbb, int32 indexId, IndexKey *indexKe
 		page = (IndexPage*) bdb->buffer;
 		
 		if (page->level == 0)
+			{
 			if (isRoot)
 				*isRoot = true;
 			return bdb;
+			}
 		}
 		
 	while (page->level > 0)
