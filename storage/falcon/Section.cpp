@@ -842,6 +842,13 @@ int32 Section::findNextRecord(int32 pageNumber, int32 startingRecord, Stream *st
 	BDB_HISTORY(bdb);
 	RecordLocatorPage *locatorPage = (RecordLocatorPage*) bdb->buffer;
 
+	if (locatorPage->pageType != PAGE_record_locator && locatorPage->pageType != PAGE_sections)
+		{
+		FATAL("page %d tablespace %d, wrong page type %d, expected %d or %d", 
+			pageNumber, dbb->tableSpaceId, locatorPage->pageType, 
+			PAGE_record_locator, PAGE_sections);
+		}
+
 	/* If this is a section index page, just look for a line in use */
 
 	if (locatorPage->pageType == PAGE_record_locator)
@@ -898,9 +905,7 @@ int32 Section::findNextRecord(int32 pageNumber, int32 startingRecord, Stream *st
 		return -1;
 		}
 
-	/* This is an intermediate page.  Find child page to recurse. */
-
-	ASSERT (locatorPage->pageType == PAGE_sections);
+	/* This is an intermediate sections page.  Find child page to recurse. */
 	SectionPage *sectionPage = (SectionPage*) locatorPage;
 	int factor = dbb->linesPerPage;
 
