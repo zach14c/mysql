@@ -3900,3 +3900,13 @@ void Table::queueForDelete(Record* record)
 {
 	database->cycleManager->queueForDelete(record);
 }
+
+void Table::queueForDelete(Value** zombie)
+{
+	database->cycleManager->queueForDelete(zombie);
+}
+
+void Table::queueForDelete(char * zombie)
+{
+	database->cycleManager->queueForDelete(zombie);
+}

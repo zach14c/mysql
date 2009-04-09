@@ -145,6 +145,7 @@ public:
 	bool				getRecord (Stream *stream);
 	int					getEncodedSize();
 	void				deleteData(void);
+	void				deleteData(bool now);
 	void				printRecord(const char* header);
 	void				validateData(void);
 	char*				allocRecordData(int length);
