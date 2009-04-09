@@ -18,6 +18,7 @@ call mtr.add_suppression("Restore:");
 --echo # Setup
 --echo #
 let $bdir=`SELECT @@backupdir`;
+let $debug= `SELECT @@debug`;
 
 --disable_warnings
 DROP DATABASE IF EXISTS bup_intr;
@@ -44,6 +45,8 @@ INSERT INTO t2 VALUES (1);
 
 # connection required by backup_restore_interrupt.inc
 --connect (killer,localhost,root,,)
+# The "connect" command implicitly switches to the new session. Switch back.
+--connection default
 
 #
 # Loop over rows in t1 which indicate what storage engine should be used.
@@ -79,7 +82,12 @@ while (`SELECT count(*) > 0 FROM bup_intr.t1`)
   #
   let $sync_point=before_backup_data_lock;
   --source suite/backup_engines/include/backup_restore_interrupt.inc
-  SET SESSION DEBUG="-d";
+  # Note that backup_restore_interrupt.inc ends in connection default
+  #--connection default
+  --echo # Reset debug variable to its original value.
+  --disable_query_log
+  eval SET SESSION DEBUG= '$debug';
+  --enable_query_log
 
   --echo #
   --echo # Prepare bup_intr.bkp for RESTORE testing. Note that above BACKUP
@@ -102,7 +110,12 @@ while (`SELECT count(*) > 0 FROM bup_intr.t1`)
   #
   let $sync_point=restore_before_sending_data;
   --source suite/backup_engines/include/backup_restore_interrupt.inc
-  SET SESSION DEBUG="-d";
+  # Note that backup_restore_interrupt.inc ends in connection default
+  #--connection default
+  --echo # Reset debug variable to its original value.
+  --disable_query_log
+  eval SET SESSION DEBUG= '$debug';
+  --enable_query_log
 
   --echo #
   --echo # Restore original database - the interrupted RESTORE statement could

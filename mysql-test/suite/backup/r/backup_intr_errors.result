@@ -68,7 +68,7 @@ backup kernel	0	starting
 backup kernel	0	running
 backup kernel	0	validity point
 SELECT * FROM mysql.backup_history;
-SET SESSION DEBUG="-d";
+# Reset debug variable to its original value.
 #
 # Prepare bup_intr.bkp for RESTORE testing. Note that above BACKUP
 # command should not create the file because it was interrupted.
@@ -125,7 +125,7 @@ object	error_num	notes
 backup kernel	0	starting
 backup kernel	0	running
 SELECT * FROM mysql.backup_history;
-SET SESSION DEBUG="-d";
+# Reset debug variable to its original value.
 #
 # Restore original database - the interrupted RESTORE statement could
 # corrupt it.
@@ -191,7 +191,7 @@ backup kernel	0	starting
 backup kernel	0	running
 backup kernel	0	validity point
 SELECT * FROM mysql.backup_history;
-SET SESSION DEBUG="-d";
+# Reset debug variable to its original value.
 #
 # Prepare bup_intr.bkp for RESTORE testing. Note that above BACKUP
 # command should not create the file because it was interrupted.
@@ -248,7 +248,7 @@ object	error_num	notes
 backup kernel	0	starting
 backup kernel	0	running
 SELECT * FROM mysql.backup_history;
-SET SESSION DEBUG="-d";
+# Reset debug variable to its original value.
 #
 # Restore original database - the interrupted RESTORE statement could
 # corrupt it.

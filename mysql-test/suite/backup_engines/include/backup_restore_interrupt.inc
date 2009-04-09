@@ -79,6 +79,8 @@ eval $command;
 #  eval SELECT state FROM INFORMATION_SCHEMA.PROCESSLIST WHERE id=$id;
   --replace_regex /QUERY [0-9]+/QUERY <query id>/
   eval KILL QUERY $id;
+  # The signal is not strongly needed as the sync point terminates from KILL.
+  # But KILL is not always reliable. To be safe, signal anyway.
   SET DEBUG_SYNC='now SIGNAL go';
 
 --connection default
