@@ -9,7 +9,7 @@ flush table t1;
 * copied t1 for comparison
 insert into t1 values ("bbbbbbb");
 delete from t1 limit 1;
-set session debug="+d,info,enter,exit,maria_over_alloc_bitmap";
+set session debug="+d,maria_over_alloc_bitmap";
 insert into t1 values ("aaaaaaaaa");
 set global maria_checkpoint_interval=1;
 SET SESSION debug="+d,maria_crash";

@@ -377,20 +377,20 @@ struct st_debug_sync_globals
 static st_debug_sync_globals debug_sync_global; /* All globals in one object */
 
 /**
-  Callback pointer from thr_lock.c
+  Callback pointer for C files.
 */
-extern "C" void (*debug_sync_wait_for_lock_callback_ptr)(void);
+extern "C" void (*debug_sync_C_callback_ptr)(const char *, size_t);
 
 
 /**
-  Callback from wait_for_lock() for debug sync. See thr_lock.c.
+  Callback for debug sync, to be used by C files. See thr_lock.c for example.
 
   @description
-    One can use this to signal when a thread is going to wait for a lock.
 
-    We cannot place a sync point directly in thr_lock.c. It is C code
-    and does not include mysql_priv.h. So it does not know the macro
-    DEBUG_SYNC(thd, sync_point_name). The macro needs a 'thd' argument.
+    We cannot place a sync point directly in C files (like those in mysys or
+    certain storage engines written mostly in C like MyISAM or Maria). Because
+    they are C code and do not include mysql_priv.h. So they do not know the
+    macro DEBUG_SYNC(thd, sync_point_name). The macro needs a 'thd' argument.
     Hence it cannot be used in files outside of the sql/ directory.
 
     The workaround is to call back simple functions like this one from
@@ -409,30 +409,15 @@ extern "C" void (*debug_sync_wait_for_lock_callback_ptr)(void);
     of the MySQL server anyway.
 
   @note
-    Beware of waiting for a signal here. The lock has aquired its mutex.
-    While waiting on a signal here, the locking thread could not aquire
-    the mutex to release the lock. One could lock up the table
-    completely.
-
-    In detail it works so: When thr_lock() tries to acquire a table
-    lock, it locks the lock->mutex, checks if it can have the lock, and
-    if not, it calls wait_for_lock(). Here it unlocks the table lock
-    while waiting on a condition. The sync point is located before this
-    wait for condition. If we have a waiting action here, we hold the
-    the table locks mutex all the time. Any attempt to look at the table
-    lock by another thread blocks it immediately on lock->mutex. This
-    can easily become an unexpected and unobvious blockage. So be
-    warned: Do not request a WAIT_FOR action for the 'wait_for_lock'
-    sync point unless you really know what you do.
-
-  @note
-    The callback pointer in thr_lock.c is set only if debug sync is
+    The callback pointer in C files is set only if debug sync is
     initialized. And this is done only if opt_debug_sync_timeout is set.
 */
 
-static void debug_sync_wait_for_lock_callback(void)
+static void debug_sync_C_callback(const char *sync_point_name,
+                                  size_t name_len)
 {
-  DEBUG_SYNC(current_thd, "wait_for_lock");
+  if (unlikely(opt_debug_sync_timeout))                            
+    debug_sync(current_thd, sync_point_name, name_len);   
 }
 
 
@@ -459,9 +444,8 @@ int debug_sync_init(void)
                                 MY_MUTEX_INIT_FAST)))
       DBUG_RETURN(rc);
 
-    /* Set the call back pointer in thr_lock.c. */
-    debug_sync_wait_for_lock_callback_ptr=
-      debug_sync_wait_for_lock_callback;
+    /* Set the call back pointer in C files. */
+    debug_sync_C_callback_ptr= debug_sync_C_callback;
   }
 
   DBUG_RETURN(0);
@@ -480,10 +464,10 @@ void debug_sync_end(void)
   DBUG_ENTER("debug_sync_end");
 
   /* End the facility only if it had been initialized. */
-  if (debug_sync_wait_for_lock_callback_ptr)
+  if (debug_sync_C_callback_ptr)
   {
-    /* Clear the call back pointer in thr_lock.c. */
-    debug_sync_wait_for_lock_callback_ptr= NULL;
+    /* Clear the call back pointer in C files. */
+    debug_sync_C_callback_ptr= NULL;
 
     /* Destroy the global variables. */
     debug_sync_global.ds_signal.free();
