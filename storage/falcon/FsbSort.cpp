@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -134,7 +134,7 @@ Row* FsbSort::fetch(Statement * statement)
 						Record *record = statement->getContext(contextIds [n])->record;
 						
 						if (record)
-							record->addRef();
+							record->addRef(REC_HISTORY);
 							
 						records [n] = record;
 						}

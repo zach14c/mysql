@@ -210,7 +210,7 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
      */
     if( info->owned_by_merge && (info->s)->kfile.file < 0 )
     {
-      error = HA_ERR_NO_SUCH_TABLE;
+      my_errno= error= HA_ERR_NO_SUCH_TABLE;
     }
   }
 #endif

@@ -1410,7 +1410,7 @@ static void fix_max_binlog_size(THD *thd, enum_var_type type)
   mysql_bin_log.set_max_size(max_binlog_size);
 #ifdef HAVE_REPLICATION
   if (!max_relay_log_size)
-    active_mi->rli.relay_log.set_max_size(max_binlog_size);
+    active_mi->rli->relay_log.set_max_size(max_binlog_size);
 #endif
   DBUG_VOID_RETURN;
 }
@@ -1421,7 +1421,7 @@ static void fix_max_relay_log_size(THD *thd, enum_var_type type)
   DBUG_PRINT("info",("max_binlog_size=%lu max_relay_log_size=%lu",
                      max_binlog_size, max_relay_log_size));
 #ifdef HAVE_REPLICATION
-  active_mi->rli.relay_log.set_max_size(max_relay_log_size ?
+  active_mi->rli->relay_log.set_max_size(max_relay_log_size ?
                                         max_relay_log_size: max_binlog_size);
 #endif
   DBUG_VOID_RETURN;
@@ -3601,9 +3601,15 @@ static bool set_option_autocommit(THD *thd, set_var *var)
     need to commit any outstanding transactions.
    */
   if (var->save_result.ulong_value != 0 &&
-      (thd->options & OPTION_NOT_AUTOCOMMIT) &&
-      trans_commit(thd))
-    return 1;
+      (thd->options & OPTION_NOT_AUTOCOMMIT))
+  {
+    if (trans_commit(thd))
+      return TRUE;
+
+    close_thread_tables(thd);
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
+  }
 
   if (var->save_result.ulong_value != 0)
     thd->options&= ~((sys_var_thd_bit*) var->var)->bit_flag;

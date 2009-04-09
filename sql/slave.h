@@ -145,14 +145,16 @@ extern ulonglong relay_log_space_limit;
 
 int init_slave();
 int init_recovery(Master_info* mi, const char** errmsg);
+int init_info(Master_info* mi, bool abort_if_no_info, int thread_mask);
+void end_info(Master_info* mi);
+int reset_info(Master_info* mi);
+int flush_master_info(Master_info* mi);
 void init_slave_skip_errors(const char* arg);
-bool flush_relay_log_info(Relay_log_info* rli);
 int register_slave_on_master(MYSQL* mysql);
 int terminate_slave_threads(Master_info* mi, int thread_mask,
 			     bool skip_lock = 0);
 int start_slave_threads(bool need_slave_mutex, bool wait_for_start,
-			Master_info* mi, const char* master_info_fname,
-			const char* slave_info_fname, int thread_mask);
+			Master_info* mi, int thread_mask);
 /*
   cond_lock is usually same as start_lock. It is needed for the case when
   start_lock is 0 which happens if start_slave_thread() is called already
@@ -187,7 +189,6 @@ void skip_load_data_infile(NET* net);
 void end_slave(); /* clean up */
 void clear_until_condition(Relay_log_info* rli);
 void clear_slave_error(Relay_log_info* rli);
-void end_relay_log_info(Relay_log_info* rli);
 void lock_slave_threads(Master_info* mi);
 void unlock_slave_threads(Master_info* mi);
 void init_thread_mask(int* mask,Master_info* mi,bool inverse);
@@ -206,7 +207,7 @@ int apply_event_and_update_pos(Log_event* ev, THD* thd, Relay_log_info* rli,
 pthread_handler_t handle_slave_io(void *arg);
 pthread_handler_t handle_slave_sql(void *arg);
 extern bool volatile abort_loop;
-extern Master_info main_mi, *active_mi; /* active_mi for multi-master */
+extern Master_info *active_mi;      /* active_mi  for multi-master */
 extern LIST master_list;
 extern my_bool replicate_same_server_id;
 

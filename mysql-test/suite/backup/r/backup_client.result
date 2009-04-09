@@ -607,7 +607,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
 '
 
     Event 'mysqltest1'.'e2' statement: '16 USE `mysqltest1`
@@ -616,7 +616,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
 '
 
     Privilege 'mysqltest1'.'<empty>' statement: '15 'bup_user1'@'%'
@@ -821,7 +821,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
 '
 
     Event 'mysqltest2'.'e2' statement: '16 USE `mysqltest2`
@@ -830,7 +830,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
 '
 
     Trigger 'mysqltest2'.'r1' statement: '16 USE `mysqltest2`
@@ -1311,7 +1311,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
 '
 
   Event 'mysqltest1'.'e2' statement: '16 USE `mysqltest1`
@@ -1320,7 +1320,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
 '
 
   Event 'mysqltest2'.'e1' statement: '16 USE `mysqltest2`
@@ -1329,7 +1329,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
 '
 
   Event 'mysqltest2'.'e2' statement: '16 USE `mysqltest2`
@@ -1338,7 +1338,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
 '
 
   Privilege 'mysqltest1'.'<empty>' statement: '15 'bup_user1'@'%'
@@ -2225,7 +2225,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
 '
 
     Event 'mysqltest1'.'e2' statement: '16 USE `mysqltest1`
@@ -2234,7 +2234,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
 '
 
     Privilege 'mysqltest1'.'<empty>' statement: '15 'bup_user1'@'%'
@@ -2439,7 +2439,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
 '
 
     Event 'mysqltest2'.'e2' statement: '16 USE `mysqltest2`
@@ -2448,7 +2448,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
 '
 
     Trigger 'mysqltest2'.'r1' statement: '16 USE `mysqltest2`
@@ -2888,7 +2888,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
 '
     Event 'mysqltest1'.'e1' extra data length: 0
 
@@ -2898,7 +2898,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
 '
     Event 'mysqltest1'.'e2' extra data length: 0
 
@@ -3135,7 +3135,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
 '
     Event 'mysqltest2'.'e1' extra data length: 0
 
@@ -3145,7 +3145,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
 '
     Event 'mysqltest2'.'e2' extra data length: 0
 
@@ -4551,7 +4551,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t1 WHERE c1 > 100
 '
     Event 'mysqltest1'.'e1' extra data length: 0
 
@@ -4561,7 +4561,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest1.t2 WHERE c1 > 100
 '
     Event 'mysqltest1'.'e2' extra data length: 0
 
@@ -4798,7 +4798,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e1` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t1 WHERE c1 > 100
 '
     Event 'mysqltest2'.'e1' extra data length: 0
 
@@ -4808,7 +4808,7 @@ END
 42 SET collation_database = latin1_swedish_ci
 17 SET sql_mode = ''
 24 SET time_zone = 'SYSTEM'
-149 CREATE EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
+176 CREATE DEFINER=`root`@`localhost` EVENT `e2` ON SCHEDULE EVERY 1 YEAR STARTS 'yyyy-mm-dd HH:MM:SS' ON COMPLETION NOT PRESERVE ENABLE DO DELETE FROM mysqltest2.t2 WHERE c1 > 100
 '
     Event 'mysqltest2'.'e2' extra data length: 0
 

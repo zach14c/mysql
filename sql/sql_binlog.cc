@@ -14,7 +14,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
 
 #include "mysql_priv.h"
-#include "rpl_rli.h"
+#include "rpl_rli_file.h"
 #include "base64.h"
 
 /**
@@ -58,7 +58,7 @@ void mysql_client_binlog_statement(THD* thd)
   my_bool have_fd_event= TRUE;
   if (!thd->rli_fake)
   {
-    thd->rli_fake= new Relay_log_info(FALSE);
+    thd->rli_fake= new Relay_log_info_file(FALSE, "fake");
 #ifdef HAVE_purify
     thd->rli_fake->is_fake= TRUE;
 #endif
@@ -86,7 +86,7 @@ void mysql_client_binlog_statement(THD* thd)
     goto end;
   }
 
-  thd->rli_fake->sql_thd= thd;
+  thd->rli_fake->info_thd= thd;
   thd->rli_fake->no_storage= TRUE;
 
   for (char const *strptr= thd->lex->comment.str ;

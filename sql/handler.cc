@@ -5483,7 +5483,7 @@ int handler::ha_reset()
   DBUG_ASSERT((uchar*) table->def_read_set.bitmap +
               table->s->column_bitmap_size ==
               (uchar*) table->def_write_set.bitmap);
-  DBUG_ASSERT(bitmap_is_set_all(&table->s->all_set));
+  //DBUG_ASSERT(bitmap_is_set_all(&table->s->all_set));
   DBUG_ASSERT(table->key_read == 0);
   /* ensure that ha_index_end / ha_rnd_end has been called */
   DBUG_ASSERT(inited == NONE);
