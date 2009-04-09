@@ -184,9 +184,7 @@ public:
 	void	deleteSection(int32 sectionId, TransId transId);
 	void	analyzeSection(int sectionId, const char *sectionName, int indentation, Stream *stream);
 	void	analyzeSpace(int indentation, Stream* stream);
-	void	upgradeSequenceSection(void);
 	void	updateTableSpaceSection(int id);
-	void	skewHeader(Hdr* header);
 
 	// Serial Log oriented functions
 	void	logRecord(int32 sectionId, int32 recordId, Stream *stream, Transaction *transaction);

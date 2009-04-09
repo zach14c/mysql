@@ -444,21 +444,11 @@ Cache* Dbb::open(const char * fileName, int64 cacheSize, TransId transId)
 	Hdr	header;
 	openFile(fileName, false);
 	readHeader(&header);
-	bool headerSkew = false;
+
 	int n = header.pageSize;
 	
 	while (n && !(n & 1))
 		n >>= 1;
-		
-	if (n != 1 || header.pageSize < 1024)
-		{
-		skewHeader(&header);
-		headerSkew = true;
-		n = header.pageSize;
-		
-		while (n && !(n & 1))
-			n >>= 1;
-		}
 		
 	if (header.fileType != HdrDatabaseFile)
 		throw SQLError (VERSION_ERROR, "\"%s\" is not a Falcon database file\n", fileName);
@@ -481,9 +471,6 @@ Cache* Dbb::open(const char * fileName, int64 cacheSize, TransId transId)
 	bdb->mark(transId);
 	Hdr *headerPage = (Hdr*) bdb->buffer;
 	
-	if (headerSkew)
-		skewHeader(headerPage);
-
 	sequence = headerPage->sequence++;
 	sequenceSectionId = headerPage->sequenceSectionId;
 	odsVersion = headerPage->odsVersion;
@@ -1224,54 +1211,12 @@ void Dbb::analyzeSpace(int indentation, Stream* stream)
 	stream->format ("Max allocated page:      %d\n", pagesAnalysis.maxPage);
 }
 
-void Dbb::upgradeSequenceSection(void)
-{
-	getSequenceSection(NO_TRANSACTION);
-	Bdb *bdb = fetchPage(sequenceSection->root, PAGE_any, Exclusive);
-	BDB_HISTORY(bdb);
-	SectionPage *sectionPage = (SectionPage*) bdb->buffer;
-	bdb->mark(NO_TRANSACTION);
-	
-	if (sectionPage->level == 0)
-		{
-		Bdb *sequenceBdb = allocPage(PAGE_sequences, NO_TRANSACTION);
-		BDB_HISTORY(sequenceBdb);
-		memcpy(sequenceBdb->buffer, bdb->buffer, pageSize);
-		memset(sectionPage, 0, pageSize);
-		//sectionPage->pageType = PAGE_sections;
-		sequenceBdb->setPageHeader(PAGE_sections);
-		sectionPage->section = sequenceSectionId;
-		sectionPage->pages[0] = sequenceBdb->pageNumber;
-		sequenceBdb->release(REL_HISTORY);
-		}
-	else
-		--sectionPage->level;
-	
-	bdb->release(REL_HISTORY);
-}
-
 void Dbb::addShadow(DatabaseCopy* shadow)
 {
 	Sync sync (&syncClone, "Dbb::addShadow");
 	sync.lock (Exclusive);
 	shadow->next = shadows;
 	shadows = shadow;
-}
-
-void Dbb::skewHeader(Hdr* header)
-{
-#define COPY(fld)	header->fld = oldHeader->fld
-
-	HdrV2 *oldHeader = (HdrV2*) header;
-	COPY(creationTime);
-	COPY(volumeNumber);
-	COPY(odsMinorVersion);
-	COPY(fileType);
-	COPY(sequenceSectionId);
-	COPY(state);
-	COPY(sequence);
-	COPY(inversion);
-	COPY(pageSize);
 }
 
 void Dbb::updateTableSpaceSection(int id)

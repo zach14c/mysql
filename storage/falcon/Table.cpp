@@ -391,13 +391,12 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		checkNullable(record);  // Verify that record is valid
 
-		if (insertIntoTree(record, NULL, recordNumber))
-			insertedIntoTree = true;
-		else 
-			{
-			bool cannotInsertIntoTree_A = false;
-			ASSERT(cannotInsertIntoTree_A);
-			}
+		// If insertStub says it is free, then there should never be 
+		// anything in the record tree for this record number.
+
+		if (!insertIntoTree(record, NULL, recordNumber))
+			FATAL("Table::insert(Field, Value) cannot insertIntoTree");
+		insertedIntoTree = true;
 
 		transaction->addRecord(record);
 		addedToTransaction = true;
@@ -412,10 +411,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		{
 		if (insertedIntoTree)
 			if (!insertIntoTree(NULL, record, recordNumber))
-				{
-				bool cannotBackoutInsertIntoTree_A = false;
-				ASSERT(cannotBackoutInsertIntoTree_A);
-				}
+				FATAL("Table::insert(Field, Value) cannot backout insertIntoTree");
 
 		if (addedToTransaction)
 			transaction->removeRecord(record);
@@ -1082,11 +1078,10 @@ void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transa
 			return;
 
 		// The store of this record into the record leaf failed. No way to recover.
-		// While the base record is uncommitted, only that trensaction can change it.
+		// While the base record is uncommitted, only that transaction can change it.
 
 		recordToRollback->printRecord("Table::rollbackRecord failed");
-		bool rollbackRecord_DamagedRecordTree = false;
-		ASSERT(rollbackRecord_DamagedRecordTree);
+		FATAL("Table::rollbackRecord-insertIntoTree failed, priorState =", priorState );
 		}
 
 	if (!priorRecord && recordToRollback->recordNumber >= 0)
@@ -3072,17 +3067,12 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction->transactionState);
 		
 		// Make insert/update atomic, then check for unique index duplicats
+		// If insertStub says it is free, then there should never be 
+		// anything in the record tree for this record number.
 
-
-		// Do the actual insert
-
-		if (insertIntoTree(record, NULL, recordNumber))
-			insertedIntoTree = true;
-		else
-			{
-			bool cannotInsertIntoTree_A = false;
-			ASSERT(cannotInsertIntoTree_A);
-			}
+		if (!insertIntoTree(record, NULL, recordNumber))
+			FATAL("Table::insert(Stream) cannot InsertIntoTree");
+		insertedIntoTree = true;
 
 		transaction->addRecord(record);
 		addedToTransaction = true;
@@ -3095,10 +3085,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		{
 		if (insertedIntoTree)
 			if (!insertIntoTree(NULL, record, recordNumber))
-				{
-				bool cannotBackoutInsertIntoTree_B = false;
-				ASSERT(cannotBackoutInsertIntoTree_B);
-				}
+				FATAL("Table::insert(Stream) cannot backout insertIntoTree");
 
 		if (addedToTransaction)
 			transaction->removeRecord(record);

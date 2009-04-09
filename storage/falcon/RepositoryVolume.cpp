@@ -159,9 +159,6 @@ void RepositoryVolume::open()
 	try
 		{
 		dbb->readHeader(&header);
-		
-		if (header.pageSize < 1024)
-			dbb->skewHeader(&header);
 
 		if (header.fileType != HdrRepositoryFile)
 			throw SQLError(RUNTIME_ERROR, "repository file \"%s\" has wrong page type (expeced %d, got %d)\n", 
