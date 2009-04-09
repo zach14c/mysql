@@ -215,6 +215,8 @@ public:
 	void			unlockRecord(int recordNumber, int verbMark);
 	void			unlockRecord(RecordVersion* record, int verbMark);
 	void			queueForDelete(Record* record);
+	void			queueForDelete(Value** record);
+	void			queueForDelete(char* record);
 
 	void			insert (Transaction *transaction, int count, Field **fields, Value **values);
 	uint			insert (Transaction *transaction, Stream *stream);

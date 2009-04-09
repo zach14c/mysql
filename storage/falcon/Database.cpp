@@ -1926,7 +1926,6 @@ void Database::pruneRecords(RecordScavenge *recordScavenge)
 
 	Sync syncTbl(&syncTables, "Database::pruneRecords(tables)");
 	syncTbl.lock(Shared);
-	CycleLock cyleLock(this);
 	
 	for (Table *table = tableList; table; table = table->next)
 		{

@@ -263,12 +263,7 @@ void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldest
 		{
 		ptr = rec;
 		SET_RECORD_ACTIVE(rec, false);
-		/***
-		Transaction *trans = rec->getTransaction();
 
-		if (trans)
-			trans->removeRecord((RecordVersion*) rec);
-		***/
 		targetTransaction->removeRecord((RecordVersion*) rec);
 		}
 

@@ -734,6 +734,7 @@ void Section::storeRecord(RecordLocatorPage *recordLocatorPage, int32 indexPageN
 		//large blob page.  It's allocation should not be recorded in
 		//the serial log because it will be written directly to disk
 		//on commit without going through the serial log.
+
 		if (earlyWrite)
 			{
 			dbb->serialLog->logControl->largeBlob.append(dbb, transId, indexPageNumber, indexSlot, temp.page, temp.line);
