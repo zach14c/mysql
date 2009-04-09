@@ -574,6 +574,7 @@ commit;
 select straight_join * from t1,t2 force index (primary) where t1.a=t2.a;
 a	a	b
 1	1	1
+2	2	1
 unlock tables;
 drop table t1,t2;
 set autocommit=1;
