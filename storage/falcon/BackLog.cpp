@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 MySQL AB
+/* Copyright (C) 2008 MySQL AB, 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -59,6 +59,9 @@ BackLog::~BackLog(void)
 
 int32 BackLog::save(RecordVersion* record)
 {
+	// Write the record and entire prior version chain
+	// into a single backlog record
+
 	Serialize stream;
 	record->serialize(&stream);
 	int32 backlogId = section->insertStub(NO_TRANSACTION);
@@ -96,9 +99,9 @@ void BackLog::rollbackRecords(Bitmap* records, Transaction *transaction)
 		{
 		RecordVersion *record = fetch(backlogId);
 		
-		if (record->transactionId != transaction->transactionId)
+		if (record->getTransactionId() != transaction->transactionId)
 			{
-			record->release();
+			record->release(REC_HISTORY);
 			
 			continue;
 			}
@@ -107,7 +110,7 @@ void BackLog::rollbackRecords(Bitmap* records, Transaction *transaction)
 		
 		if (!table->insertIntoTree(record, NULL, record->recordNumber))
 			{
-			record->release();
+			record->release(REC_HISTORY);
 			int32 recordNumber = record->recordNumber;
 			Record *rec = table->fetch(recordNumber);
 			
@@ -116,17 +119,15 @@ void BackLog::rollbackRecords(Bitmap* records, Transaction *transaction)
 				if (rec->getTransactionId() == transaction->transactionId)
 					record->rollback(transaction);
 				else
-					record->release();
+					record->release(REC_HISTORY);
 				}
 				
 			continue;
 			}
 			
 		record->rollback(transaction);
-#ifdef CHECK_RECORD_ACTIVITY
-		record->active = false;
-#endif
-		record->release();
+		SET_RECORD_ACTIVE(record, false);
+		record->release(REC_HISTORY);
 		}
 }
 

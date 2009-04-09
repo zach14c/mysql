@@ -59,11 +59,18 @@ SQLError::SQLError (SqlCode code, const char *txt, ...)
 	if (vsnprintf (temp, sizeof (temp) - 1, txt, args) < 0)
 		temp [sizeof (temp) - 1] = 0;
 
-	text = temp;
-	error (temp);
+	// Special handle how we deal with the error string for out-of-memory
+	// errors by using a static JString method to avoid memory allocations
+
+	if (code != OUT_OF_MEMORY_ERROR)
+		text = temp;
+	else
+		text.setStringStatic(txt);
+
+	error (code, temp);
 	sqlcode = (int) code;
 }
-
+
 SQLError::SQLError(const char *trace, int traceLength, SqlCode code, const char * txt, ...)
 {
 /**************************************
@@ -76,6 +83,8 @@ SQLError::SQLError(const char *trace, int traceLength, SqlCode code, const char 
  *		SQL exception -- quite generic.
  *
  **************************************/
+	ASSERT(code != OUT_OF_MEMORY_ERROR);
+
 	va_list		args;
 	va_start	(args, txt);
 	char		temp [1024];
@@ -88,10 +97,10 @@ SQLError::SQLError(const char *trace, int traceLength, SqlCode code, const char 
 		temp [sizeof (temp) - 1] = 0;
 
 	text = temp;
-	error (temp);
+	error (code, temp);
 	sqlcode = (int) code;
 }
-
+
 SQLError::~SQLError ()
 {
 /**************************************
@@ -105,7 +114,7 @@ SQLError::~SQLError ()
  *
  **************************************/
 }
-
+
 int SQLError::getSqlcode ()
 {
 /**************************************
@@ -121,7 +130,7 @@ int SQLError::getSqlcode ()
 
 return sqlcode;
 }
-
+
 const char *SQLError::getText ()
 {
 /**************************************
@@ -137,7 +146,7 @@ const char *SQLError::getText ()
 
 return text;
 }
-
+
 SQLError::operator const char* ()
 {
 /**************************************
@@ -166,7 +175,7 @@ SQLError::SQLError(int code, const char * txt, ...)
 		temp [sizeof (temp) - 1] = 0;
 
 	text = temp;
-	error (temp);
+	error (code, temp);
 	sqlcode = (int) code;
 }
 
@@ -175,11 +184,25 @@ const char* SQLError::getTrace()
 	return stackTrace;
 }
 
-void SQLError::error(const char *string)
+void SQLError::error(int code, const char *string)
 {
 #ifdef FALCONDB
-	LogLock logLock;
-	Log::log(LogException, "Exception: %s\n", string);
+	if (Log::isActive(LogException))
+		{
+		// We special handle out-of-memory-errors in order to reduce the
+		// likelyhood that a call to the Log will generate a new call
+		// back to the memory manager
+
+		if (code != OUT_OF_MEMORY_ERROR)
+			{
+			LogLock logLock;
+			Log::log(LogException, "Exception: %s\n", string);
+			}
+		else
+			{
+			Log::log(LogException, "Exception: OUT OF MEMORY ERROR");
+			}
+		}
 #endif
 }
 

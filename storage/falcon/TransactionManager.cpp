@@ -19,6 +19,7 @@
 #include "Engine.h"
 #include "TransactionManager.h"
 #include "Transaction.h"
+#include "TransactionState.h"
 #include "Sync.h"
 #include "Interlock.h"
 #include "SQLError.h"
@@ -37,8 +38,6 @@ static const int EXTRA_TRANSACTIONS = 10;
 static const char THIS_FILE[]=__FILE__;
 #endif
 
-volatile int Talloc = 0;  // Temp. will be removed. Used for tracing
-volatile int Tdelete = 0; // new and delete of trans objects.
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -54,7 +53,7 @@ TransactionManager::TransactionManager(Database *db)
 	priorCommitted = 0;
 	priorRolledBack = 0;
 	rolledBackTransaction = new Transaction(database->systemConnection, 0);
-	rolledBackTransaction->state = RolledBack;
+	rolledBackTransaction->transactionState->state = RolledBack;
 	rolledBackTransaction->inList = false;
 	syncObject.setName("TransactionManager::syncObject");
 	activeTransactions.syncObject.setName("TransactionManager::activeTransactions");
@@ -68,7 +67,7 @@ TransactionManager::~TransactionManager(void)
 	for (Transaction *transaction; (transaction = activeTransactions.first);)
 		{
 		transaction->inList = false;
-		transaction->state = Committed;
+		transaction->transactionState->state = Committed;
 		activeTransactions.first = transaction->next;
 		transaction->release();
 		}
@@ -113,8 +112,8 @@ Transaction* TransactionManager::startTransaction(Connection* connection)
 	Transaction *transaction;
 
 	for(transaction = activeTransactions.first; transaction; transaction = transaction->next)
-		if (transaction->state == Available)
-			if (COMPARE_EXCHANGE(&transaction->state, Available, Initializing))
+		if (transaction->transactionState->state == Available)
+			if (COMPARE_EXCHANGE(&transaction->transactionState->state, Available, Initializing))
 				{
 				transaction->initialize(connection, INTERLOCKED_INCREMENT(transactionSequence));
 				return transaction;
@@ -214,7 +213,7 @@ void TransactionManager::commitByXid(int xidLength, const UCHAR* xid)
 		again = false;
 		
 		for (Transaction *transaction = activeTransactions.first; transaction; transaction = transaction->next)
-			if (transaction->state == Limbo && transaction->isXidEqual(xidLength, xid))
+			if (transaction->getState() == Limbo && transaction->isXidEqual(xidLength, xid))
 				{
 				sync.unlock();
 				transaction->commit();
@@ -235,7 +234,7 @@ void TransactionManager::rollbackByXid(int xidLength, const UCHAR* xid)
 		again = false;
 		
 		for (Transaction *transaction = activeTransactions.first; transaction; transaction = transaction->next)
-			if (transaction->state == Limbo && transaction->isXidEqual(xidLength, xid))
+			if (transaction->getState() == Limbo && transaction->isXidEqual(xidLength, xid))
 				{
 				sync.unlock();
 				transaction->rollback();
@@ -324,8 +323,8 @@ void TransactionManager::purgeTransactionsWithLocks()
 	Transaction* transaction = committedTransactions.first;
 
 	while ((transaction != NULL) &&
-		   (transaction->state == Committed) &&
-		   (transaction->commitId < oldestActive) &&
+		   (transaction->getState() == Committed) &&
+		   (transaction->transactionState->commitId <= oldestActive) &&
 		   !transaction->writePending)
 		{
 		transaction->commitRecords();
@@ -365,10 +364,10 @@ void TransactionManager::getSummaryInfo(InfoTable* infoTable)
 	
 	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
 		{
-		if (transaction->state == Active)
+		if (transaction->getState() == Active)
 			++numberActive;
 			
-		if (transaction->state == Committed)
+		if (transaction->getState() == Committed)
 			++numberPendingCommit;
 		}
 	syncActive.unlock();
@@ -398,13 +397,13 @@ void TransactionManager::reportStatistics(void)
 	time_t maxTime = 0;
 	
 	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
-		if (transaction->state == Active)
+		if (transaction->getState() == Active)
 			{
 			++active;
 			time_t ageTime = database->deltaTime - transaction->startTime;
 			maxTime = MAX(ageTime, maxTime);
 			}
-		else if (transaction->state == Available)
+		else if (transaction->getState() == Available)
 			{
 			++available;
 			}
@@ -438,7 +437,11 @@ Transaction* TransactionManager::findTransaction(TransId transactionId)
 
 	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
 		if (transaction->transactionId == transactionId)
+			{
+			transaction->addRef();
+			
 			return transaction;
+			}
 	
 	syncActive.unlock();
 
@@ -447,7 +450,11 @@ Transaction* TransactionManager::findTransaction(TransId transactionId)
 
 	for (transaction = committedTransactions.first; transaction; transaction = transaction->next)
 		if (transaction->transactionId == transactionId)
+			{
+			transaction->addRef();
+			
 			return transaction;
+			}
 	
 	return NULL;
 }
@@ -455,7 +462,7 @@ Transaction* TransactionManager::findTransaction(TransId transactionId)
 
 void TransactionManager::removeTransaction(Transaction* transaction)
 {
-	if (transaction->state == Committed)
+	if (transaction->getState() == Committed)
 		{
 		Sync sync(&committedTransactions.syncObject, "TransactionManager::removeTransaction(1)");
 		sync.lock(Exclusive);
@@ -488,7 +495,7 @@ void TransactionManager::printBlockage(void)
 	sync.lock (Shared);
 
 	for (Transaction *trans = activeTransactions.first; trans; trans = trans->next)
-		if (trans->state == Active && !trans->waitingFor)
+		if (trans->getState() == Active && !trans->transactionState->waitingFor)
 			trans->printBlocking(0);
 
 	Synchronize::freezeSystem();
@@ -497,6 +504,6 @@ void TransactionManager::printBlockage(void)
 void TransactionManager::printBlocking(Transaction* transaction, int level)
 {
 	for (Transaction *trans = activeTransactions.first; trans; trans = trans->next)
-		if (trans->state == Active && trans->waitingFor == transaction)
+		if (trans->getState() == Active && trans->transactionState->waitingFor == transaction->transactionState)
 			trans->printBlocking(level);
 }
