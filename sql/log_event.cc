@@ -8389,7 +8389,7 @@ Rows_log_event::write_row(const Relay_log_info *const rli,
   */
   if ((error= prepare_record(table, &m_cols, m_width,
                              table->file->ht->db_type != DB_TYPE_NDBCLUSTER,
-                             (rli->sql_thd->variables.sql_mode &
+                             (rli->info_thd->variables.sql_mode &
                               (MODE_STRICT_TRANS_TABLES |
                                MODE_STRICT_ALL_TABLES)))))
     DBUG_RETURN(error);
