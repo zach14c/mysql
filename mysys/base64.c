@@ -26,7 +26,7 @@ static char base64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 int
-base64_needed_encoded_length(int length_of_data)
+my_base64_needed_encoded_length(int length_of_data)
 {
   int nb_base64_chars;
   nb_base64_chars= (length_of_data + 2) / 3 * 4;
@@ -39,7 +39,7 @@ base64_needed_encoded_length(int length_of_data)
 
 
 int
-base64_needed_decoded_length(int length_of_encoded_data)
+my_base64_needed_decoded_length(int length_of_encoded_data)
 {
   return (int) ceil(length_of_encoded_data * 3 / 4);
 }
@@ -49,11 +49,11 @@ base64_needed_decoded_length(int length_of_encoded_data)
   Encode a data as base64.
 
   Note: We require that dst is pre-allocated to correct size.
-        See base64_needed_encoded_length().
+        See my_base64_needed_encoded_length().
 */
 
 int
-base64_encode(const void *src, size_t src_len, char *dst)
+my_base64_encode(const void *src, size_t src_len, char *dst)
 {
   const unsigned char *s= (const unsigned char*)src;
   size_t i= 0;
@@ -146,14 +146,14 @@ pos(unsigned char c)
     We require that 'dst' is pre-allocated to correct size.
 
   SEE ALSO
-    base64_needed_decoded_length().
+    my_base64_needed_decoded_length().
 
   RETURN VALUE
     Number of bytes written at 'dst' or -1 in case of failure
 */
 int
-base64_decode(const char *src_base, size_t len,
-              void *dst, const char **end_ptr)
+my_base64_decode(const char *src_base, size_t len,
+                 void *dst, const char **end_ptr)
 {
   char b[3];
   size_t i= 0;
@@ -264,18 +264,18 @@ main(void)
     }
 
     /* Encode */
-    needed_length= base64_needed_encoded_length(src_len);
+    needed_length= my_base64_needed_encoded_length(src_len);
     str= (char *) malloc(needed_length);
     require(str);
     for (k= 0; k < needed_length; k++)
       str[k]= 0xff; /* Fill memory to check correct NUL termination */
-    require(base64_encode(src, src_len, str) == 0);
+    require(my_base64_encode(src, src_len, str) == 0);
     require(needed_length == strlen(str) + 1);
 
     /* Decode */
-    dst= (char *) malloc(base64_needed_decoded_length(strlen(str)));
+    dst= (char *) malloc(my_base64_needed_decoded_length(strlen(str)));
     require(dst);
-    dst_len= base64_decode(str, strlen(str), dst, NULL);
+    dst_len= my_base64_decode(str, strlen(str), dst, NULL);
     require(dst_len == src_len);
 
     if (memcmp(src, dst, src_len) != 0)
