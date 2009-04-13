@@ -3354,9 +3354,12 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 					{
 					// The current record is not our prior. If it is committed, we have
 					// an update conflict.  If not, wait on that trans and, if it is not
-					// committed, try again.
+					// committed, try again.  (transState == NULL) means committed.
 
 					TransactionState *transState = current->getTransactionState();
+					if (!transState)
+						throw SQLError(UPDATE_CONFLICT, "update conflict in table %s.%s record %d", schemaName, name, record->recordNumber);
+
 					transState->addRef();
 					current->release(REC_HISTORY);
 					syncTable.unlock();
