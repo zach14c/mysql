@@ -600,7 +600,7 @@ Record* Table::fetchNext(int32 start)
 			// is not in the tree.
 			
 			sync.lock(Exclusive);
-			if ((record = records->fetch(bitNumber)))
+			if (records && (record = records->fetch(bitNumber)))
 				{
 				record->poke();		// Whoops, there it is!
 				return record;
