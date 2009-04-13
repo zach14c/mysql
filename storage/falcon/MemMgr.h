@@ -35,6 +35,10 @@ static const int defaultCutoff = 4096;
 static const int defaultAllocation = 65536;
 static const int defaultSignature = 12345678;
 
+// Limit of the total memory for the pools within a MemControl group
+
+static const uint64 MaxTotalMemory = 0xffffffffffffffffLL;
+
 class MemMgr;
 class Stream;
 class InfoTable;
@@ -107,11 +111,17 @@ public:
 class MemMgr
 {
 public:
-	MemMgr(int rounding=defaultRounding, int cutoff=defaultCutoff, 
-		int minAllocation=defaultAllocation, bool *alive = NULL);
+	MemMgr(	int mgrId = MemMgrDefault,
+			int rounding = defaultRounding,
+			int cutoff = defaultCutoff, 
+			int minAllocation = defaultAllocation,
+			bool *alive = NULL,
+			MemControl *memCtrl = NULL);
+	
 	MemMgr(void* arg1, void* arg2);
 	virtual ~MemMgr(void);
 
+	int				id;
 	int				signature;	
 	int				roundingSize;
 	int				threshold;
@@ -129,6 +139,7 @@ public:
 	Mutex			mutex;		// Win32 critical regions are faster than SyncObject
 	int64			currentMemory;
 	uint64			activeMemory;
+	uint64			maxMemory;
 	int				blocksAllocated;
 	int				blocksActive;
 	bool			*isAlive;

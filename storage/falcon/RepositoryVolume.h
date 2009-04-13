@@ -30,6 +30,7 @@ class Repository;
 class Dbb;
 class Database;
 class Transaction;
+class TransactionState;
 class BlobReference;
 class IndexKey;
 class Section;
@@ -38,34 +39,34 @@ class TableSpace;
 class RepositoryVolume  
 {
 public:
-	void setName (const char *name);
-	JString getName();
-	void deleteBlob (int64 blobId, Transaction *transaction);
-	void getBlob (BlobReference *reference);
-	void create();
-	int64 getRepositorySize();
-	void storeBlob (BlobReference *blob, Transaction *transaction);
 	RepositoryVolume(Repository *repo, int volume, JString file);
 	virtual ~RepositoryVolume();
-	void close();
+
+	void		setName (const char *name);
+	JString		getName();
+	void		deleteBlob (int64 blobId, Transaction *transaction);
+	void		getBlob (BlobReference *reference);
+	void		create();
+	int64		getRepositorySize();
+	void		storeBlob (BlobReference *blob, TransactionState *transaction);
+	void		close();
+	void		reportStatistics();
+	void		storeBlob (int64 blobId, Stream *stream, TransactionState *transaction);
+	void		synchronize (int64 id, Stream *stream, Transaction *transaction);
+	int64		reverseKey (UCHAR *key);
+	void		synchronize(Transaction *transaction);
+	void		scavenge();
 
 protected:
-	int compare (Stream *stream1, Stream *stream2);
-	void fetchRecord (int recordNumber, Stream *stream);
-	int getRecordNumber (IndexKey *indexKey);
-	int getRecordNumber (int64 blobId);
-	void makeWritable();
-	void open();
-	int makeKey (int64 value, IndexKey *indexKey);
+	int			compare (Stream *stream1, Stream *stream2);
+	void		fetchRecord (int recordNumber, Stream *stream);
+	int			getRecordNumber (IndexKey *indexKey);
+	int			getRecordNumber (int64 blobId);
+	void		makeWritable();
+	void		open();
+	int			makeKey (int64 value, IndexKey *indexKey);
 
 public:
-	void reportStatistics();
-	void storeBlob (int64 blobId, Stream *stream, Transaction *transaction);
-	void synchronize (int64 id, Stream *stream, Transaction *transaction);
-	int64 reverseKey (UCHAR *key);
-	void synchronize(Transaction *transaction);
-	void scavenge();
-	
 	int					volumeNumber;
 	int32				rootPage;
 	Repository			*repository;

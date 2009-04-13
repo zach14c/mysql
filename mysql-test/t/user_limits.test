@@ -5,23 +5,7 @@
 # Requires privileges to be enabled
 --source include/not_embedded.inc
 
-# <-- Start the cut here
-# As long as
-# Bug#42384 thread_handling = pool-of-threads, wrong handling of max_questions
-#           user limit
-# is not fixed this test will fail when the server was started with
-# "pool-of-threads".
-# Please set $fixed_bug_42384 to 1 when checking if the fix for Bug#42384 works.
-# If everything is fine, please remove the lines between the markers.
-let $fixed_bug_42384 = 0;
-let $my_val= query_get_value(show variables like 'thread_handling', Value, 1);
-if (`SELECT $fixed_bug_42384 = 0 AND '$my_val' = 'pool-of-threads'`)
-{
-   --skip Bug#42384 thread_handling = pool-of-threads, wrong handling of max_questions user limit
-   exit;
-}
-# <-- End the cut here
-
+# Prepare play-ground 
 # Save the initial number of concurrent sessions
 --source include/count_sessions.inc
 

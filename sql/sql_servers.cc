@@ -39,6 +39,7 @@
 #include <stdarg.h>
 #include "sp_head.h"
 #include "sp.h"
+#include "transaction.h"
 
 /*
   We only use 1 mutex to guard the data structures - THR_LOCK_servers.
@@ -60,7 +61,7 @@ prepare_server_struct_for_insert(LEX_SERVER_OPTIONS *server_options);
 /* drop functions */ 
 static int delete_server_record(TABLE *table,
                                 char *server_name,
-                                int server_name_length);
+                                size_t server_name_length);
 static int delete_server_record_in_cache(LEX_SERVER_OPTIONS *server_options);
 
 /* update functions */
@@ -223,9 +224,6 @@ bool servers_reload(THD *thd)
   bool return_val= TRUE;
   DBUG_ENTER("servers_reload");
 
-  /* Can't have locked tables here */
-  thd->locked_tables_list.unlock_locked_tables(thd);
-
   DBUG_PRINT("info", ("locking servers_cache"));
   rw_wrlock(&THR_LOCK_servers);
 
@@ -251,7 +249,10 @@ bool servers_reload(THD *thd)
   }
 
 end:
+  trans_commit_implicit(thd);
   close_thread_tables(thd);
+  if (!thd->locked_tables_mode)
+    thd->mdl_context.release_all_locks();
   DBUG_PRINT("info", ("unlocking servers_cache"));
   rw_unlock(&THR_LOCK_servers);
   DBUG_RETURN(return_val);
@@ -297,7 +298,7 @@ get_server_from_table_to_cache(TABLE *table)
 
   /* get each field into the server struct ptr */
   server->server_name= get_field(&mem, table->field[0]);
-  server->server_name_length= strlen(server->server_name);
+  server->server_name_length= (uint) strlen(server->server_name);
   ptr= get_field(&mem, table->field[1]);
   server->host= ptr ? ptr : blank;
   ptr= get_field(&mem, table->field[2]);
@@ -911,7 +912,7 @@ end:
 
 static int 
 delete_server_record(TABLE *table,
-                     char *server_name, int server_name_length)
+                     char *server_name, size_t server_name_length)
 {
   int error;
   DBUG_ENTER("delete_server_record");
@@ -1271,7 +1272,7 @@ static FOREIGN_SERVER *clone_server(MEM_ROOT *mem, const FOREIGN_SERVER *server,
 FOREIGN_SERVER *get_server_by_name(MEM_ROOT *mem, const char *server_name,
                                    FOREIGN_SERVER *buff)
 {
-  uint server_name_length;
+  size_t server_name_length;
   FOREIGN_SERVER *server;
   DBUG_ENTER("get_server_by_name");
   DBUG_PRINT("info", ("server_name %s", server_name));
@@ -1290,8 +1291,8 @@ FOREIGN_SERVER *get_server_by_name(MEM_ROOT *mem, const char *server_name,
                                                   (uchar*) server_name,
                                                   server_name_length)))
   {
-    DBUG_PRINT("info", ("server_name %s length %d not found!",
-                        server_name, server_name_length));
+    DBUG_PRINT("info", ("server_name %s length %u not found!",
+                        server_name, (unsigned) server_name_length));
     server= (FOREIGN_SERVER *) NULL;
   }
   /* otherwise, make copy of server */

@@ -949,7 +949,17 @@ void THD::cleanup(void)
     trans_rollback(this);
     xid_cache_delete(&transaction.xid_state);
   }
+
   locked_tables_list.unlock_locked_tables(this);
+
+  /*
+    If the thread was in the middle of an ongoing transaction (rolled
+    back a few lines above) or under LOCK TABLES (unlocked the tables
+    and left the mode a few lines above), there will be outstanding
+    metadata locks. Release them.
+  */
+  DBUG_ASSERT(open_tables == NULL);
+  mdl_context.release_all_locks();
 
 #if defined(ENABLED_DEBUG_SYNC)
   /* End the Debug Sync Facility. See debug_sync.cc. */
@@ -2488,7 +2498,7 @@ void Query_arena::set_query_arena(Query_arena *set)
 
 void Query_arena::cleanup_stmt()
 {
-  DBUG_ASSERT("Query_arena::cleanup_stmt()" == "not implemented");
+  DBUG_ASSERT(! "Query_arena::cleanup_stmt() not implemented");
 }
 
 /*
@@ -2990,6 +3000,14 @@ Security_context::restore_security_context(THD *thd,
     thd->security_ctx= backup;
 }
 #endif
+
+
+bool Security_context::user_matches(Security_context *them)
+{
+  return ((user != NULL) && (them->user != NULL) &&
+          !strcmp(user, them->user));
+}
+
 
 /****************************************************************************
   Handling of open and locked tables states.

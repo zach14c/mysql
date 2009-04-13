@@ -83,6 +83,20 @@ struct st_access_param
 
 #define NO_FILEPOS HA_OFFSET_ERROR
 
+/*
+  Error injection. Built on DBUG.
+  This is similar to error injection in the server.
+  In case that one becomes globally available, we undefine it first.
+*/
+#ifdef ERROR_INJECT
+#undef ERROR_INJECT
+#endif
+#define ERROR_INJECT(_keyword_, _action_) \
+  DBUG_EXECUTE_IF((_keyword_), fflush(stdout); \
+                  fprintf(stderr, "ERROR_INJECT(\"%s\")\n", (_keyword_)); \
+                  fflush(stderr); DBUG_PRINT("maria_non_trans_log", \
+                  ("ERROR_INJECT(\"%s\")\n", (_keyword_))); _action_)
+
 void ma_examine_log_param_init(MA_EXAMINE_LOG_PARAM *param);
 int ma_examine_log(MA_EXAMINE_LOG_PARAM *param);
 static int read_string(IO_CACHE *file,uchar* *to,uint length);
@@ -93,7 +107,7 @@ static int test_when_accessed(struct file_info *key,element_count count,
 			      struct st_access_param *access_param);
 static void file_info_free(struct file_info *info);
 static int close_some_file(TREE *tree);
-static int reopen_closed_file(TREE *tree,struct file_info *file_info);
+static int reopen_closed_file(struct file_info *file_info);
 static int mi_close_care_state(MARIA_HA *info);
 static void printf_log(uint verbose, ulong isamlog_process,
                        my_off_t isamlog_filepos, const char *format,...);
@@ -136,7 +150,7 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
   my_off_t filepos;
   char isam_file_name[FN_REFLEN], llbuff[21];
   uchar head[20], *head_ptr;
-  uchar	*buff;
+  uchar	*buff= NULL;
   struct test_if_open_param open_param;
   IO_CACHE cache;
   File log_file;
@@ -147,6 +161,10 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
     { { 11, 14 }, { 11, 14 }, { 9, 16 }, { 9, 16 }, { 7, 12 }, { 7, 12 } };
   uint has_pid_and_result[]= {1, 1, 0, 0, 0, 0};
   DBUG_ENTER("ma_examine_log");
+  DBUG_PRINT("maria_non_trans_log", ("max_files: %u  update: %u",
+                           mi_exl->max_files, mi_exl->update));
+  ERROR_INJECT("ma_examine_log_files0", mi_exl->max_files= 0;);
+  ERROR_INJECT("ma_examine_log_files1", mi_exl->max_files= 1;);
 
   compile_time_assert((sizeof(ma_log_command_name) /
                        sizeof(ma_log_command_name[0]) ==
@@ -176,6 +194,14 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
   init_tree(&tree,0,0,sizeof(file_info),(qsort_cmp2) file_info_compare,1,
 	    (tree_element_free) file_info_free, NULL);
 
+  /*
+    Initialize members of file_info that are used for pointing to
+    allocated memory. At the error labels we want to be able to free it.
+  */
+  file_info.name= NULL;
+  file_info.show_name= NULL;
+  file_info.record= NULL;
+
   files_open=0; access_time=0;
   while (access_time++ != mi_exl->number_of_commands &&
 	 !my_b_read(&cache, head, 1))
@@ -184,6 +210,19 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
     head_ptr= head;
     command=(uint) head_ptr[0];
     command-= (big_numbers= (command & MA_LOG_BIG_NUMBERS));
+    /*
+      'command' is a number that is used to index arrays. Better check
+      it for range.
+    */
+    ERROR_INJECT("ma_examine_log_command", command= MA_LOG_END_SENTINEL;);
+    if (command >= MA_LOG_END_SENTINEL)
+    {
+      fflush(stdout);
+      fprintf(stderr,"Unknown command %u in logfile at position %s\n",
+              command, llstr(isamlog_filepos, llbuff));
+      fflush(stderr);
+      goto end;
+    }
     if (big_numbers != 0)
       big_numbers= 1;
     if (my_b_read(&cache, head, head_len[command][big_numbers] - 1))
@@ -209,24 +248,68 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
     }
     else
       isamlog_process= file_info.process= result= 0;
+
+    /*
+      Try to find the file with file_info.process and file_info.filenr
+      in the file tree. The search function, as registered with
+      init_tree() is file_info_compare(). If the file does not exist in
+      the tree, most commands will be ignored for this file.
+    */
     if ((curr_file_info=(struct file_info*) tree_search(&tree, &file_info,
 							tree.custom_arg)))
     {
       curr_file_info->accessed=access_time;
-      if (mi_exl->update && curr_file_info->used && curr_file_info->closed)
+      /*
+        If the file has been closed due to lack of file descriptors,
+        re-open it to execute the command.
+        No need to re-open for the MA_LOG_CLOSE command.
+      */
+      if (mi_exl->update && curr_file_info->used && curr_file_info->closed &&
+          (command != MA_LOG_CLOSE))
       {
-	if (reopen_closed_file(&tree,curr_file_info))
-	{
-	  command=sizeof(mi_exl->com_count)/sizeof(mi_exl->com_count[0][0])/3;
-	  result=0;
-	  goto com_err;
-	}
+        /*
+          We found a closed file. It can only be closed due to a lack
+          of file descriptors. When a file is explicitly closed, its
+          information is removed from the tree and freed.
+          But this does not mean that there are still open files in
+          the tree. All other files could have been explicitly closed
+          meanwhile. So close a file only if there is still a lack of
+          file descriptors.
+        */
+        if (files_open >= mi_exl->max_files)
+        {
+          ERROR_INJECT("ma_examine_log_close_extra",
+                       close_some_file(&tree); my_errno= -1;);
+          if (close_some_file(&tree))
+          {
+            DBUG_PRINT("maria_non_trans_log", ("failed to close some file"));
+            goto com_err; /* No file to close */
+          }
+          files_open--;
+        }
+        if (reopen_closed_file(curr_file_info))
+        {
+          DBUG_PRINT("maria_non_trans_log", ("failed to reopen closed file"));
+          command=sizeof(mi_exl->com_count)/sizeof(mi_exl->com_count[0][0])/3;
+          result=0;
+          goto com_err;
+        }
+        files_open++;
         mi_exl->re_open_count++;
       }
     }
-    DBUG_PRINT("info",("command: %u curr_file_info: 0x%lx used: %u",
-                       command, (ulong)curr_file_info,
-                       curr_file_info ? curr_file_info->used : 0));
+    if (!curr_file_info)
+      DBUG_PRINT("maria_non_trans_log",
+                 ("command: %u '%s'  info: 0x0",
+                  command, ma_log_command_name[command]));
+    else
+      DBUG_PRINT("maria_non_trans_log",
+                 ("command: %u '%s'  info: 0x%lx  proc: %ld  "
+                  "fno: %d  file: '%s'  used: %d  closed: %d",
+                  command, ma_log_command_name[command],
+                  (ulong) curr_file_info, curr_file_info->process,
+                  curr_file_info->filenr, curr_file_info->name,
+                  curr_file_info->used, curr_file_info->closed));
     /*
       We update our statistic (how many commands issued, per command type),
       if this is a valid command about a file we want to include.
@@ -249,9 +332,14 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
 	printf("\nWarning: %s is opened with same process and filenumber\n"
                "Maybe you should use the -P option ?\n",
 	       curr_file_info->show_name);
-      file_info.name=0;
-      file_info.show_name=0;
-      file_info.record=0;
+      /*
+        These file_info members should be non-null only during an open
+        operation. Initially and after open they should be nulled.
+        That way we can free them in case of a jump to an error label.
+      */
+      DBUG_ASSERT(!file_info.name);
+      DBUG_ASSERT(!file_info.show_name);
+      DBUG_ASSERT(!file_info.record);
       length= big_numbers ? mi_uint4korr(head_ptr) : mi_uint2korr(head_ptr);
       if (read_string(&cache, (uchar **)&file_info.name, length))
 	goto err;
@@ -263,6 +351,7 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
 	for (pos=file_info.name; (pos=strchr(pos,'\\')) ; pos++)
 	  *pos= '/';
 
+        DBUG_PRINT("maria_non_trans_log", ("prefix_remove: %u", mi_exl->prefix_remove));
 	pos=file_info.name;
 	for (i=0 ; i < mi_exl->prefix_remove ; i++)
 	{
@@ -271,10 +360,18 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
 	    break;
 	  pos=next+1;
 	}
+        DBUG_PRINT("maria_non_trans_log", ("pos: '%s'", pos));
+        DBUG_PRINT("maria_non_trans_log", ("filepath: '%s'", mi_exl->filepath));
 	to=isam_file_name;
-	if (mi_exl->filepath)
+        /* Include filepath if pos is not an absolute path. */
+	if (mi_exl->filepath &&
+#ifdef FN_DEVCHAR
+            !strrchr(pos, FN_DEVCHAR) &&
+#endif
+            (*pos != '/'))
 	  to=convert_dirname(isam_file_name,mi_exl->filepath,NullS);
 	strmov(to,pos);
+        DBUG_PRINT("maria_non_trans_log", ("isam_file_name: '%s'", isam_file_name));
 	fn_ext(isam_file_name)[0]=0;	/* Remove extension */
       }
       open_param.name=file_info.name;
@@ -321,7 +418,12 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
 	files_open++;
 	file_info.closed=0;
       }
-      (void) tree_insert(&tree, (uchar*) &file_info, 0, tree.custom_arg);
+      if (!tree_insert(&tree, (uchar*) &file_info, 0, tree.custom_arg))
+      {
+        /* tree_insert() (my_malloc()) should have written an error message. */
+        goto end; /* purecov: inspected */
+      }
+
       if (file_info.used)
       {
 	if (mi_exl->verbose && !mi_exl->record_pos_file)
@@ -332,6 +434,21 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
 	if (result)
 	  mi_exl->com_count[command][1]++;
       }
+
+      DBUG_PRINT("maria_non_trans_logop",
+                 ("open  proc: %ld  fno: %d  file: '%s'  used: %d  closed: %d",
+                  file_info.process, file_info.filenr, file_info.name,
+                  file_info.used, file_info.closed));
+      /*
+        tree_insert() copied file_info (copied pointers). If not
+        NULL-ed, they would not be freed while in use: the my_free() at
+        the end of the program would rather double-free them, because
+        file_info_free() (called via delete_tree()) would already have
+        freed them.
+      */
+      file_info.name= NULL;
+      file_info.show_name= NULL;
+      file_info.record= NULL;
       break;
     case MA_LOG_CLOSE:
       if (mi_exl->verbose && !mi_exl->record_pos_file &&
@@ -342,6 +459,12 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
                    ma_log_command_name[command],result);
       if (curr_file_info)
       {
+        DBUG_PRINT("maria_non_trans_logop",
+                   ("close proc: %ld  fno: %d  file: '%s'  "
+                    "used: %d  closed: %d",
+                    curr_file_info->process,
+                    curr_file_info->filenr, curr_file_info->name,
+                    curr_file_info->used, curr_file_info->closed));
 	if (!curr_file_info->closed)
 	  files_open--;
 	(void) tree_delete(&tree, (uchar*) curr_file_info, 0, tree.custom_arg);
@@ -361,7 +484,6 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
         head_ptr+= 4;
         length= mi_uint2korr(head_ptr);
       }
-      buff=0;
       if (read_string(&cache, &buff, length))
         goto err;
       if ((!mi_exl->record_pos_file ||
@@ -392,6 +514,7 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
           goto com_err;
       }
       my_free(buff,MYF(0));
+      buff= NULL;
       break;
     case MA_LOG_CHSIZE_MAD:
     case MA_LOG_CHSIZE_MAI:
@@ -432,6 +555,8 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
       goto end;
     }
   }
+  DBUG_PRINT("maria_non_trans_log", ("end loop access_time: %lu  cmd_cnt: %lu",
+                           access_time, mi_exl->number_of_commands));
   delete_tree(&tree);
   (void) end_io_cache(&cache);
   (void) my_close(log_file,MYF(0));
@@ -439,23 +564,32 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
     DBUG_RETURN(1);
   DBUG_RETURN(0);
 
+  /* purecov: begin inspected */
  err:
+  DBUG_PRINT("maria_non_trans_log", ("err label"));
   fflush(stdout);
   fprintf(stderr,"Got error %d when reading from logfile\n",my_errno);
   fflush(stderr);
   goto end;
+  /* purecov: end */
  com_err:
+  DBUG_PRINT("maria_non_trans_log", ("com_err label"));
   fflush(stdout);
   fprintf(stderr,"Got error %d, expected %d on command %s at %s\n",
           my_errno,result,ma_log_command_name[command],
           llstr(isamlog_filepos,llbuff));
   fflush(stderr);
  end:
+  DBUG_PRINT("maria_non_trans_log", ("end label"));
   delete_tree(&tree);
   (void) end_io_cache(&cache);
   (void) my_close(log_file,MYF(0));
   if (write_file)
     (void) my_fclose(write_file,MYF(MY_WME));
+  my_free(file_info.name, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(file_info.show_name, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(file_info.record, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(buff, MYF(MY_ALLOW_ZERO_PTR));
   DBUG_RETURN(1);
 }
 
@@ -476,6 +610,7 @@ static int read_string(IO_CACHE *file, register uchar* *to,
     DBUG_RETURN(1);
   }
   *((char*) *to+length)= '\0';
+  DBUG_PRINT("maria_non_trans_log", ("string: '%s'", *to));
   DBUG_RETURN (0);
 }				/* read_string */
 
@@ -522,6 +657,8 @@ static int test_when_accessed (struct file_info *key,
 static void file_info_free(struct file_info *fileinfo)
 {
   DBUG_ENTER("file_info_free");
+  DBUG_PRINT("maria_non_trans_log", ("freeing info: 0x%lx  file: '%s'",
+                           (long) fileinfo, fileinfo->name));
   /* The 2 conditions below can be true only if 'update' */
   if (!fileinfo->closed)
     (void) mi_close_care_state(fileinfo->isam);
@@ -543,8 +680,12 @@ static int close_some_file(TREE *tree)
 
   (void) tree_walk(tree,(tree_walk_action) test_when_accessed,
                    (void*) &access_param,left_root_right);
+  ERROR_INJECT("close_some_file_none", access_param.found= 0; my_errno= -1;);
   if (!access_param.found)
     return 1;			/* No open file that is possibly to close */
+  DBUG_PRINT("maria_non_trans_log", ("closing info: 0x%lx  file: '%s'",
+                           (long) access_param.found,
+                           access_param.found->name));
   if (mi_close_care_state(access_param.found->isam))
     return 1;
   access_param.found->closed=1;
@@ -552,20 +693,21 @@ static int close_some_file(TREE *tree)
 }
 
 
-static int reopen_closed_file(TREE *tree, struct file_info *fileinfo)
+static int reopen_closed_file(struct file_info *fileinfo)
 {
   char name[FN_REFLEN];
-  if (close_some_file(tree))
-    return 1;				/* No file to close */
+  DBUG_ENTER("reopen_closed_file");
+
   strmov(name,fileinfo->show_name);
   if (fileinfo->id > 1)
     *strrchr(name,'<')='\0';		/* Remove "<id>" */
 
+  ERROR_INJECT("reopen_closed_file_name", strcpy(name, "/non/existent/file"););
   if (!(fileinfo->isam= maria_open(name, O_RDWR,
                                 HA_OPEN_FOR_REPAIR | HA_OPEN_WAIT_IF_LOCKED)))
-    return 1;
+    DBUG_RETURN(1);
   fileinfo->closed=0;
-  return 0;
+  DBUG_RETURN(0);
 }
 
 

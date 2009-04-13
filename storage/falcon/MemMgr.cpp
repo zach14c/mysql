@@ -35,6 +35,7 @@
 #include "Stream.h"
 #include "InfoTable.h"
 #include "MemControl.h"
+#include "RecordVersion.h"
 
 #ifdef HAVE_purify
 #ifdef HAVE_CONFIG
@@ -79,10 +80,18 @@ const int validateMinutia	= 16;
 // Nominal memory limits at startup--final values set during initialization
 bool memoryManagerAlive;
 
-static MemMgr		memoryManager(defaultRounding, FREE_OBJECTS_SIZE, HEAP_SIZE,&memoryManagerAlive);
-static MemMgr		recordManager(defaultRounding, 2, HEAP_SIZE);
-//static MemMgr		recordObjectManager (defaultRounding, sizeof(RecordVersion) + 100, HEAP_SIZE);
-static MemControl	memControl;
+static MemControl memControlGeneral;
+static MemControl memControlRecord;
+
+// General purpose memory
+static MemMgr memoryManager(MemMgrGeneral, defaultRounding, FREE_OBJECTS_SIZE, HEAP_SIZE,&memoryManagerAlive, &memControlGeneral);
+
+// Record data
+static MemMgr recordDataManager(MemMgrRecordData, defaultRounding, 2, HEAP_SIZE, NULL, &memControlRecord);
+
+// Record metadata: Record object and RecordVersion object 
+static MemMgr recordManager(MemMgrRecord, defaultRounding, sizeof(RecordVersion) + 100, HEAP_SIZE, NULL, &memControlRecord);
+static MemMgr recordVersionManager(MemMgrRecordVersion, defaultRounding, sizeof(RecordVersion) + 100, HEAP_SIZE, NULL, &memControlRecord);
 
 #ifdef _DEBUG
 static void		*stopAddress;
@@ -161,12 +170,12 @@ struct Client {
 
 	void* MemMgrRecordAllocate (size_t size, const char *file, int line)
 	{
-		return recordManager.allocateDebug (size, file, line);
+		return recordDataManager.allocateDebug (size, file, line);
 	}
 
 	void MemMgrRecordDelete (char *record)
 	{
-		recordManager.releaseDebug (record);
+		recordDataManager.releaseDebug (record);
 	}
 #else
 	void* MemMgrPoolAllocate (MemMgr *pool, size_t s)
@@ -192,12 +201,12 @@ struct Client {
 
 	void* MemMgrRecordAllocate (size_t size, const char *file, int line)
 	{
-		return recordManager.allocate (size);
+		return recordDataManager.allocate (size);
 	}
 
 	void MemMgrRecordDelete (char *record)
 	{
-		recordManager.release (record);
+		recordDataManager.release (record);
 	}
 
 #endif
@@ -205,8 +214,9 @@ struct Client {
 void MemMgrValidate ()
 {
 	memoryManager.validate();
+	recordDataManager.validate();
 	recordManager.validate();
-	//recordObjectManager.validate();
+	recordVersionManager.validate();
 }
 
 void MemMgrValidate (void *object)
@@ -221,7 +231,7 @@ void MemMgrAnalyze(int mask, Stream *stream)
 	stream->putSegment ("Memory\n");
 	memoryManager.analyze (mask, stream, NULL, NULL);
 	stream->putSegment ("Records\n");
-	recordManager.analyze (mask, stream, NULL, NULL);
+	recordDataManager.analyze (mask, stream, NULL, NULL);
 	//LEAVE_CRITICAL_SECTION;
 }
 
@@ -238,47 +248,61 @@ void MemMgrAnalyze(MemMgrWhat what, InfoTable *infoTable)
 			break;
 
 		case MemMgrRecordSummary:
+			recordDataManager.analyze(0, NULL, infoTable, NULL);
 			recordManager.analyze(0, NULL, infoTable, NULL);
-			//recordObjectManager.analyze(0, NULL, infoTable, NULL);
+			recordVersionManager.analyze(0, NULL, infoTable, NULL);
 			break;
 
 		case MemMgrRecordDetail:
+			recordDataManager.analyze(0, NULL, NULL, infoTable);
 			recordManager.analyze(0, NULL, NULL, infoTable);
-			//recordObjectManager.analyze(0, NULL, NULL, infoTable);
+			recordVersionManager.analyze(0, NULL, NULL, infoTable);
 			break;
 		}
 }
 
+// Set memory limit for the record data pool
+
 void MemMgrSetMaxRecordMember (long long size)
 {
-	if (!recordManager.memControl)
-		{
-		memControl.addPool(&recordManager);
-		//memControl.addPool(&recordObjectManager);
-		}
-	memControl.setMaxSize(size);
+	memControlRecord.setMaxSize(MemMgrRecordData, size);
 }
 
 MemMgr*	MemMgrGetFixedPool (int id)
 {
 	switch (id)
 		{
-		case MemMgrPoolGeneral:
+		case MemMgrGeneral:
 			return &memoryManager;
 
-		case MemMgrPoolRecordData:
+		case MemMgrRecordData:
+			return &recordDataManager;
+
+		case MemMgrRecord:
 			return &recordManager;
 
-		/***
-		case MemMgrPoolRecordObject:
-			return &recordObjectManager;
-		***/
-
+		case MemMgrRecordVersion:
+			return &recordVersionManager;
+			
 		default:
 			return NULL;
 		}
 }
 
+MemControl*	MemMgrGetControl (int id)
+{
+	switch (id)
+		{
+		case MemMgrControlGeneral:
+			return &memControlGeneral;
+
+		case MemMgrControlRecord:
+			return &memControlRecord;
+
+		default:
+			return NULL;
+		}
+}
 
 void MemMgrLogDump()
 {
@@ -288,23 +312,24 @@ void MemMgrLogDump()
 #endif
 }
 
-
-MemMgr::MemMgr(int rounding, int cutoff, int minAlloc, bool *alive) : mutex("MemMgr::mutex")
+MemMgr::MemMgr(int mgrId, int rounding, int cutoff, int minAlloc, bool *alive, MemControl *memCtrl)
+				: id(mgrId), roundingSize(rounding), threshold(cutoff),  minAllocation(minAlloc), 
+				  memControl(memCtrl), mutex("MemMgr::mutex"), isAlive(alive)
 {
-	signature = defaultSignature;
-	roundingSize = rounding;
-	threshold = cutoff;
-	minAllocation = minAlloc;
-	currentMemory		= 0;
-	blocksAllocated		= 0;
-	blocksActive		= 0;
-	activeMemory		= 0;
-	numberBigHunks		= 0;
-	numberSmallHunks	= 0;
-	bigHunks			= NULL;
-	smallHunks			= NULL;
-	memControl			= NULL;
-
+	signature		 = defaultSignature;
+	activeMemory	 = 0;
+	currentMemory	 = 0;
+	maxMemory		 = 0;
+	blocksAllocated	 = 0;
+	blocksActive	 = 0;
+	numberBigHunks	 = 0;
+	numberSmallHunks = 0;
+	bigHunks		 = NULL;
+	smallHunks		 = NULL;
+	
+	if (memControl)
+		memControl->addPool(this);
+	
 	int vecSize = (cutoff + rounding) / rounding;
 	int l = vecSize * sizeof (void*);
 
@@ -313,13 +338,10 @@ MemMgr::MemMgr(int rounding, int cutoff, int minAlloc, bool *alive) : mutex("Mem
 	//freeBlocks.nextLarger = freeBlocks.priorSmaller = &freeBlocks;
 	//freeBlockTree = NULL;
 	junk.larger = junk.smaller = &junk;
-	isAlive = alive;
+	
 	if(alive)
-	{
 		*alive = true;
-	}
 }
-
 
 MemMgr::MemMgr(void* arg1, void* arg2) : mutex("MemMgr::mutex")
 {
@@ -575,7 +597,6 @@ void* MemMgr::allocateDebug(size_t size, const char* fileName, int line)
 
 	return &memory->body;
 }
-
 
 void MemMgr::release(void* object)
 {

@@ -117,6 +117,7 @@ void Thread::init(const char *desc)
 	lockGranted = false;
 	prior = NULL;
 	next = NULL;
+	cycleLock = NULL;
 	random = rand();
 }
 

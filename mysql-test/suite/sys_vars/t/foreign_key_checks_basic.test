@@ -94,12 +94,8 @@ SET @@session.foreign_key_checks = "Y";
 SET @@session.foreign_key_checks = TRÜE;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.foreign_key_checks = ÕN;
-
+--error ER_WRONG_VALUE_FOR_VAR
 SET @@session.foreign_key_checks = OF;
-SELECT @@session.foreign_key_checks;
-
---echo 'Bug# 34828: OF is taken as OFF and a value of 0 is set.'
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.foreign_key_checks = ÓFF;
 --Error ER_WRONG_VALUE_FOR_VAR

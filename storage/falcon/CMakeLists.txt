@@ -41,7 +41,8 @@ SET(FALCON_SOURCES
 		Bitmap.cpp 
 		BlobReference.cpp 
 		Btn.cpp 
-		Cache.cpp 
+		Cache.cpp
+		ErrorInjector.cpp
 		CmdGen.cpp
 		CollationCaseless.cpp 
 		CollationUnknown.cpp 
@@ -53,6 +54,8 @@ SET(FALCON_SOURCES
 		Context.cpp 
 		Coterie.cpp
 		CoterieRange.cpp 
+		CycleLock.cpp
+		CycleManager.cpp 
 		Database.cpp 
 		DatabaseBackup.cpp 
 		DatabaseClone.cpp 
@@ -288,6 +291,7 @@ SET(FALCON_SOURCES
 		TimeStamp.cpp 
 		Transaction.cpp
 		TransactionManager.cpp
+		TransactionState.cpp
 		Trigger.cpp
 		Unicode.cpp 
 		UnTable.cpp 
@@ -324,6 +328,9 @@ SET(FALCON_SOURCES
 		Context.h 
 		Coterie.h
 		CoterieRange.h 
+		CycleLock.h 
+		CycleManager.h
+		ErrorInjector.h
 		Database.h 
 		DatabaseBackup.h 
 		DatabaseClone.h 
@@ -575,6 +582,7 @@ SET(FALCON_SOURCES
 		TimeStamp.h 
 		Transaction.h
 		TransactionManager.h
+		TransactionState.h
 		Trigger.h
 		Types.h
 		Unicode.h 

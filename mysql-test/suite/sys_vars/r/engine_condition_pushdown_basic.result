@@ -67,10 +67,7 @@ ERROR 42000: Variable 'engine_condition_pushdown' can't be set to the value of '
 SET @@session.engine_condition_pushdown = ÕN;
 ERROR 42000: Variable 'engine_condition_pushdown' can't be set to the value of 'Ã•N'
 SET @@session.engine_condition_pushdown = OF;
-SELECT @@session.engine_condition_pushdown;
-@@session.engine_condition_pushdown
-0
-'Bug# 34828: OF is taken as OFF and a value of 0 is set.'
+ERROR 42000: Variable 'engine_condition_pushdown' can't be set to the value of 'OF'
 SET @@session.engine_condition_pushdown = ÓFF;
 ERROR 42000: Variable 'engine_condition_pushdown' can't be set to the value of 'Ã“FF'
 SET @@global.engine_condition_pushdown = -1;
@@ -86,10 +83,7 @@ ERROR 42000: Variable 'engine_condition_pushdown' can't be set to the value of '
 SET @@global.engine_condition_pushdown = ÕN;
 ERROR 42000: Variable 'engine_condition_pushdown' can't be set to the value of 'Ã•N'
 SET @@global.engine_condition_pushdown = OF;
-SELECT @@global.engine_condition_pushdown;
-@@global.engine_condition_pushdown
-0
-'Bug# 34828: OF is taken as OFF and a value of 0 is set.'
+ERROR 42000: Variable 'engine_condition_pushdown' can't be set to the value of 'OF'
 SET @@global.engine_condition_pushdown = ÓFF;
 ERROR 42000: Variable 'engine_condition_pushdown' can't be set to the value of 'Ã“FF'
 '#-------------------FN_DYNVARS_028_05----------------------------#'

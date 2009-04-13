@@ -1853,11 +1853,11 @@ void Value::getBigInt(BigInt *bigInt)
 			break;
 
 		case Short:
-			bigInt->set(data.smallInt, -scale);
+			bigInt->set((int64)data.smallInt, -scale);
 			break;
 
 		case Int32:
-			bigInt->set(data.integer, -scale);
+			bigInt->set((int64)data.integer, -scale);
 			break;
 
 		case Int64:
