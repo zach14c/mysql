@@ -55,7 +55,7 @@ ERROR 42000: Variable 'log_bin_trust_function_creators' can't be set to the valu
 SET @@global.log_bin_trust_function_creators = "OFFF";
 ERROR 42000: Variable 'log_bin_trust_function_creators' can't be set to the value of 'OFFF'
 SET @@global.log_bin_trust_function_creators = OF;
-'Bug# 34828: OF is also working as OFF and no error is coming';
+ERROR 42000: Variable 'log_bin_trust_function_creators' can't be set to the value of 'OF'
 SET @@global.log_bin_trust_function_creators = TTRUE;
 ERROR 42000: Variable 'log_bin_trust_function_creators' can't be set to the value of 'TTRUE'
 SET @@global.log_bin_trust_function_creators = FELSE;
