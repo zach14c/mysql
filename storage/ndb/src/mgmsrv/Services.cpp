@@ -614,8 +614,8 @@ MgmApiSession::getConfig(Parser_t::Context &,
   cfg->pack(src);
   NdbMutex_Unlock(m_mgmsrv.m_configMutex);
   
-  char *tmp_str = (char *) malloc(base64_needed_encoded_length(src.length()));
-  (void) base64_encode(src.get_data(), src.length(), tmp_str);
+  char *tmp_str = (char *) malloc(my_base64_needed_encoded_length(src.length()));
+  (void) my_base64_encode(src.get_data(), src.length(), tmp_str);
 
   SLEEP_ERROR_INSERTED(1);
 
