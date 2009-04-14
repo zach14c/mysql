@@ -1374,6 +1374,7 @@ static void plugin_load(MEM_ROOT *tmp_root, int *argc, char **argv)
                     "run mysql_upgrade to create it.");
     goto end;
   }
+  new_thd->mdl_context.remove_all_requests();
   table= tables.table;
   init_read_record(&read_record_info, new_thd, table, NULL, 1, 0, FALSE);
   table->use_all_columns();

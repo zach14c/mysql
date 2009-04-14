@@ -73,4 +73,11 @@ set session sql_mode=@old_sql_mode;
 --error ER_INCORRECT_GLOBAL_LOCAL_VAR
 set session old=bla;
 
+#
+# try to restart the server - plugin should be loaded after restart
+#
+--source include/restart_mysqld.inc
+SELECT @@global.example_enum_var = 'e2';
+
 UNINSTALL PLUGIN example;
+
