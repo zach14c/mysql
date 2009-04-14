@@ -430,6 +430,7 @@ void init_slave_skip_errors(const char* arg)
   if (!my_strnncoll(system_charset_info,(uchar*)arg,4,(const uchar*)"all",4))
   {
     bitmap_set_all(&slave_error_mask);
+    print_slave_skip_errors();
     DBUG_VOID_RETURN;
   }
   for (p= arg ; *p; )
@@ -2774,7 +2775,8 @@ pthread_handler_t handle_slave_sql(void *arg)
     */
     pthread_cond_broadcast(&rli->start_cond);
     pthread_mutex_unlock(&rli->run_lock);
-    sql_print_error("Failed during slave thread initialization");
+    rli->report(ERROR_LEVEL, ER_SLAVE_FATAL_ERROR, 
+                "Failed during slave thread initialization");
     goto err;
   }
   thd->init_for_queries();
@@ -2818,9 +2820,9 @@ pthread_handler_t handle_slave_sql(void *arg)
                          rli->group_relay_log_pos,
                          1 /*need data lock*/, &errmsg,
                          1 /*look for a description_event*/))
-  {
-    sql_print_error("Error initializing relay log position: %s",
-                    errmsg);
+  { 
+    rli->report(ERROR_LEVEL, ER_SLAVE_FATAL_ERROR, 
+                "Error initializing relay log position: %s", errmsg);
     goto err;
   }
   THD_CHECK_SENTRY(thd);
@@ -2874,8 +2876,8 @@ log '%s' at position %s, relay log '%s' position: %s", RPL_LOG_NAME,
     execute_init_command(thd, &sys_init_slave, &LOCK_sys_init_slave);
     if (thd->is_slave_error)
     {
-      sql_print_error("\
-Slave SQL thread aborted. Can't execute init_slave query");
+      rli->report(ERROR_LEVEL, thd->stmt_da->sql_errno(), 
+                  "Slave SQL thread aborted. Can't execute init_slave query");
       goto err;
     }
   }
@@ -2929,10 +2931,20 @@ Slave SQL thread aborted. Can't execute init_slave query");
                       thd->stmt_da->sql_errno(), last_errno));
           if (last_errno == 0)
           {
+            /*
+ 	      This function is reporting an error which was not reported
+ 	      while executing exec_relay_log_event().
+ 	    */ 
             rli->report(ERROR_LEVEL, thd->stmt_da->sql_errno(), errmsg);
           }
           else if (last_errno != thd->stmt_da->sql_errno())
           {
+            /*
+             * An error was reported while executing exec_relay_log_event()
+             * however the error code differs from what is in the thread.
+             * This function prints out more information to help finding
+             * what caused the problem.
+             */  
             sql_print_error("Slave (additional info): %s Error_code: %d",
                             errmsg, thd->stmt_da->sql_errno());
           }

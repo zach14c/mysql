@@ -43,7 +43,7 @@ void mysql_client_binlog_statement(THD* thd)
     DBUG_VOID_RETURN;
 
   size_t coded_len= thd->lex->comment.length + 1;
-  size_t decoded_len= base64_needed_decoded_length(coded_len);
+  size_t decoded_len= my_base64_needed_decoded_length(coded_len);
   DBUG_ASSERT(coded_len > 0);
 
   /*
@@ -93,7 +93,7 @@ void mysql_client_binlog_statement(THD* thd)
        strptr < thd->lex->comment.str + thd->lex->comment.length ; )
   {
     char const *endptr= 0;
-    int bytes_decoded= base64_decode(strptr, coded_len, buf, &endptr);
+    int bytes_decoded= my_base64_decode(strptr, coded_len, buf, &endptr);
 
 #ifndef HAVE_purify
       /*

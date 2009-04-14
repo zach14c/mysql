@@ -47,6 +47,7 @@ class SyncObject;
 class SyncWait;
 class LinkedList;
 class JavaThread;
+class CycleLock;
 
 struct TimeZone;
 
@@ -111,6 +112,7 @@ public:
 	const char		*where;
 	const TimeZone	*defaultTimeZone;
 	JavaThread		*javaThread;
+	CycleLock		*cycleLock;
 	uint64			commitBlockNumber;
 
 protected:

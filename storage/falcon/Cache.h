@@ -75,6 +75,10 @@ public:
 	Cache(Database *db, int pageSize, int hashSize, int numberBuffers);
 	virtual ~Cache();
 
+private:
+	void	startThreads();
+
+public:
 	SyncObject	syncObject;
 	PageWriter	*pageWriter;
 	Database	*database;
@@ -113,6 +117,10 @@ protected:
 	int			numberDirtyPages;
 	int			numberIoThreads;
 	volatile int bufferAge;
+
+private:
+	int			numberIoThreadsStarted;
+
 public:
 	void flushWait(void);
 };

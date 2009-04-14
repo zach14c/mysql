@@ -44,6 +44,7 @@
 #include "TableSpaceManager.h"
 #include "TableSpace.h"
 #include "Gopher.h"
+#include "ErrorInjector.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -366,8 +367,8 @@ void SerialLog::recover()
 		{
 		if (++recordCount % RECORD_MAX == 0)
 			Log::log("Processed: %8ld\n", recordCount);
-			
 		record->pass1();
+		ERROR_INJECTOR_EVENT(InjectorRecoveryPhase1,record->type);
 		}
 
 	Log::log("Processed: %8ld\n", recordCount);
@@ -395,6 +396,7 @@ void SerialLog::recover()
 			
 		if (!isTableSpaceDropped(record->tableSpaceId) || record->type == srlDropTableSpace)
 			record->pass2();
+		ERROR_INJECTOR_EVENT(InjectorRecoveryPhase2,record->type);
 		}
 
 	Log::log("Processed: %8ld\n", recordCount);
@@ -424,6 +426,7 @@ void SerialLog::recover()
 			
 		if (!isTableSpaceDropped(record->tableSpaceId))
 			record->redo();
+		ERROR_INJECTOR_EVENT(InjectorRecoveryPhase3,record->type);
 		}
 		
 	Log::log("Processed: %8ld\n", recordCount);

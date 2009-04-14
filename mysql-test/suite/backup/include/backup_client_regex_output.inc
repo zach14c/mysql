@@ -25,9 +25,8 @@
 #        Replace everything behind "Server byte order: " until newline,
 #        but excluding newline by "#".
 #
-#      /Image options: [^[.newline.]]*/Image options: #/
-#        Replace everything behind "Image options: " until newline,
-#        but excluding newline by "#". Due to endian differences.
+#      /Image options: .*//
+#        Remove "Image options: " line. Due to endian differences.
 #
 #      /'([[:alpha:]]:)?[\/\\][^']*'/#/
 #        Replace everything between single quotes, that starts with
@@ -69,4 +68,4 @@
 # Note: --replace_regex does neither allow continuation lines,
 #                       nor variable substitution (e.g. replace_regex $EXPR).
 #
---replace_regex /Image path: [^[.newline.]]*/Image path: #/ /Image size: [^[.newline.]]*/Image size: #/ / time: [^[.newline.]]*/ time: #/ /Server version: [^[.newline.]]*/Server version: #/ /Server byte order: [^[.newline.]]*/Server byte order: #/ /Image options: [^[.newline.]]*/Image options: #/ /'([[:alpha:]]:)?[\/\\][^']*'/#/ /.*mysqlbackup(\.exe)?: Out of memory [^[.newline.]]*/mysqlbackup: Out of memory/ /.*mysqlbackup(\.exe)?: needed .*// /STARTS '....-..-.. ..:..:..'/STARTS 'yyyy-mm-dd HH:MM:SS'/ /non-existent (.*) position: [0-9]*/non-existent \1 position: #/ /Binlog (coordinates|group coords): [^[.newline.]]*/Binlog \1: #/ /image #: I[^[.newline.]]*/image #: Input output error/ /image #: Bad file[^[.newline.]]*/image #: Bad file descriptor or number/
+--replace_regex /Image path: [^[.newline.]]*/Image path: #/ /Image size: [^[.newline.]]*/Image size: #/ / time: [^[.newline.]]*/ time: #/ /Server version: [^[.newline.]]*/Server version: #/ /Server byte order: [^[.newline.]]*/Server byte order: #/ /Image options: .*// /'([[:alpha:]]:)?[\/\\][^']*'/#/ /.*mysqlbackup(\.exe)?: Out of memory [^[.newline.]]*/mysqlbackup: Out of memory/ /.*mysqlbackup(\.exe)?: needed .*// /STARTS '....-..-.. ..:..:..'/STARTS 'yyyy-mm-dd HH:MM:SS'/ /non-existent (.*) position: [0-9]*/non-existent \1 position: #/ /Binlog (coordinates|group coords): [^[.newline.]]*/Binlog \1: #/ /image #: I[^[.newline.]]*/image #: Input output error/ /image #: Bad file[^[.newline.]]*/image #: Bad file descriptor or number/

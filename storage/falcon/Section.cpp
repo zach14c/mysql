@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1094,7 +1094,7 @@ void Section::validate(Dbb *dbb, Validation *validation, int sectionId, int page
 						BDB_HISTORY(bdb2);
 						validation->isPageType(bdb2, PAGE_sections, "Sequence Page, relative page %d", n);
 						validation->inUse(bdb2, "Sequences Page");
-						bdb2->release();
+						bdb2->release(REL_HISTORY);
 						}
 					}
 			}
