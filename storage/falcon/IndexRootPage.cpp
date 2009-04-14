@@ -119,8 +119,9 @@ bool IndexRootPage::addIndexEntry(Dbb * dbb, int32 indexId, IndexKey *key, int32
 		}
 		
 	// Multiple threads may attempt to update the same index. If necessary, make several attempts.
-	
-	for (int n = 0; n < 10; ++n)
+	// The loop number 1000 is klugde to silence the Bug#37056, until a proper solution is 
+	// implemented . that does  not involve loops at all
+	for (int n = 0; n < 1000; ++n)
 		{
 		/* Find insert page and position on page */
 

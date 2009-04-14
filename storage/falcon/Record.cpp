@@ -903,8 +903,6 @@ void Record::deleteData(bool now)
 {
 	if (data.record)
 		{
-		data.record = NULL;
-
 		switch (encoding)
 			{
 			case valueVector:
@@ -922,6 +920,8 @@ void Record::deleteData(bool now)
 				else
 					format->table->queueForDelete((char *) data.record);
 			}
+
+		data.record = NULL;
 		}
 }
 

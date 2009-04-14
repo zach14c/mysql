@@ -1,23 +1,26 @@
-SET STORAGE_ENGINE='Falcon';
 *** Bug #28042 ***
+SET @@storage_engine = 'Falcon';
 DROP PROCEDURE IF EXISTS falcon4.pf3;
 DROP DATABASE IF EXISTS falcon4;
-CREATE DATABASE falcon4//
-USE falcon4//
+CREATE DATABASE falcon4;
+USE falcon4;
 CREATE TABLE tf3 (
-s1 int, 
+s1 int,
 s2 varchar(200)
-)//
-CREATE PROCEDURE pf3 () 
-BEGIN 
-declare v int default 0; 
-while v < 2 
-do 
+);
+CREATE PROCEDURE pf3 ()
+BEGIN
+declare v int default 0;
+while v < 23
+do
 alter table tf3 partition by range (s1) (partition p4 values less than maxvalue);
 alter table tf3 remove partitioning;
-set v = v + 1; 
-end while; 
+set v = v + 1;
+end while;
 END//
 CALL falcon4.pf3()//
+SELECT count(*) FROM tf3//
+count(*)
+0
 DROP PROCEDURE falcon4.pf3;
 DROP DATABASE falcon4;

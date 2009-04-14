@@ -1,3 +1,12 @@
+--source include/have_falcon.inc
+--source include/have_ucs2.inc
+--source include/have_utf8.inc
+
+#
+# This is a collection of test cases for Falcon related fixed bugs.
+# There is no particular order other than roughly by date of the fix.
+#
+
 #
 # As we are setting different variables in different tests we
 # initialize the variables in use to their default values.
@@ -7,10 +16,6 @@
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
-
---source include/have_falcon.inc
---source include/have_partition.inc
---source include/have_ucs2.inc
 
 SET @@storage_engine = Falcon;
 
@@ -22,11 +27,6 @@ SHOW CREATE TABLE t1;
 DROP TABLE t1;
 
 #
-# This is a collection of test cases for Falcon related fixed bugs.
-# There is no particular order other than roughly by date of the fix.
-#
-
-#
 # Mantis bug #96:
 #    CREATE TABLE + ALTER TABLE + close connection = crash in JStar
 #
@@ -36,6 +36,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 connect (con1,localhost,root,,);
 SET @@storage_engine = Falcon;
 CREATE TABLE t1 (a int);
@@ -55,6 +56,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 CREATE TABLE t1 SELECT 'foo' FROM DUAL UNION SELECT 'bar' FROM DUAL;
 SELECT * FROM t1;
 
@@ -271,6 +273,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 CREATE TABLE t1 (a varchar(8)) DEFAULT CHARSET ucs2;
 INSERT INTO t1 VALUES ();
 SELECT * FROM t1;
@@ -291,6 +294,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 CREATE TABLE t1 (a int not null primary key, b varchar(20));
 INSERT INTO t1 (a,b) VALUES (1,'foo') ON DUPLICATE KEY UPDATE a=3;
 INSERT INTO t1 (a,b) VALUES (1,'foo') ON DUPLICATE KEY UPDATE a=3;
@@ -308,6 +312,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS T002_1;
 --enable_warnings
+
 CREATE TABLE T002_1 (
         C001 INT NOT NULL,
         C002 VARBINARY(1800),
@@ -353,6 +358,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t2;
 --enable_warnings
+
 CREATE TABLE t2 (s1 int, index (s1));
 INSERT INTO t2 VALUES (1),(null),(2),(2);
 SELECT * FROM t2 WHERE s1 IS NULL OR s1 = 2;
@@ -394,6 +400,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 CREATE TABLE t1 (s1 text);
 INSERT INTO t1 VALUES (repeat('a',16384));
 ALTER TABLE t1 MODIFY COLUMN s1 varchar(30000);
@@ -411,6 +418,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 create table t1 (s1 int, s3 varchar(1000), unique (s1,s3));
 start transaction;
 insert into t1 values (1,repeat('b',1000));
@@ -435,6 +443,7 @@ SET @@storage_engine = Falcon;
 DROP TABLE IF EXISTS tia;
 DROP TABLE IF EXISTS tib;
 --enable_warnings
+
 set @@autocommit = 0;
 create table tia (s2 char(1), unique(s2));
 insert into tia values ('a');
@@ -459,6 +468,7 @@ SET @@storage_engine = Falcon;
 DROP TABLE IF EXISTS t4;
 DROP TABLE IF EXISTS t4a;
 --enable_warnings
+
 create table t4 (s1 varbinary(3) primary key);
 insert into t4 values (0x41),(0x4100),(0x410000);
 rename table t4 to t4a;
@@ -478,6 +488,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 CREATE TABLE t1 (NUMKEY DECIMAL(3) NOT NULL UNIQUE, COL2 CHAR(2));
 INSERT INTO t1 VALUES(1,'A');
 INSERT INTO t1 VALUES(2,'B');
@@ -494,6 +505,7 @@ DROP TABLE t1;
 SET @@storage_engine = Falcon;
 DROP TABLE IF EXISTS t;
 --enable_warnings
+
 create table t (s1 int);
 create trigger t_bi before insert on t for each row set @a=5;
 insert into t values (0);
@@ -540,6 +552,7 @@ SET @@sql_mode = 'ANSI_QUOTES';
 --disable_warnings
 DROP TABLE IF EXISTS "aa";
 --enable_warnings
+
 CREATE TABLE "aa" (
 "ba" varchar(8) collate latin1_bin NOT NULL default ' ',
 "bb" varchar(40) collate latin1_bin NOT NULL default ' ',
@@ -581,6 +594,7 @@ SET @@sql_mode = 'ANSI_QUOTES';
 --disable_warnings
 DROP TABLE IF EXISTS "aa";
 --enable_warnings
+
 CREATE TABLE "aa" (
 "gt" varchar(3) collate latin1_bin NOT NULL default '000',
 "fm" varchar(12) collate latin1_bin NOT NULL default ' ',
@@ -744,6 +758,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS tg;
 --enable_warnings
+
 create table tg (s1 int);
 create unique index tgi2 on tg (s1);
 insert into tg values (1);
@@ -766,6 +781,7 @@ SET @@storage_engine = Falcon;
 DROP TABLE IF EXISTS t1;
 DROP TABLE IF EXISTS t2;
 --enable_warnings
+
 create table t1 (id int);
 create table t2 (id int not null primary key, val int);
 insert into t1 values (1);
@@ -784,6 +800,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 create table t1 (a int not null auto_increment primary key, val int);
 insert into t1 (val) values (1);
 update t1 set a=2 where a=1;
@@ -802,6 +819,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1,t3;
 --enable_warnings
+
 create table t1 (libname varchar(21) not null, city text, primary key (libname));
 create table t3 (libname varchar(21) not null, city text, primary key (libname));
 insert into t1 values ('New York Public Libra','1');
@@ -824,6 +842,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 CREATE TABLE t1 (id bigint auto_increment primary key, a int)
 auto_increment=9999999999;
 INSERT INTO t1 VALUES (null,1);
@@ -841,6 +860,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 CREATE TABLE t1 (s1 int);
 CREATE UNIQUE INDEX tgi2 ON t1 (s1);
 INSERT INTO t1 VALUES (null),(null);
@@ -858,6 +878,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 DELIMITER //;
 SET @@autocommit = 0//
 create table t1 (s1 int)//
@@ -890,6 +911,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS `cq`;
 --enable_warnings
+
 CREATE TABLE `cq` (
 `cj` varchar(3) collate latin1_bin NOT NULL default '000',
 `ck` varchar(50) collate latin1_bin NOT NULL default ' ',
@@ -975,6 +997,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
+
 CREATE TABLE t1 (c1 char(50));
 ALTER TABLE t1 ADD INDEX(c1(5));
 INSERT INTO t1 VALUES ('abcdefg'),('abcdefg'),('abcdefg');
@@ -1059,6 +1082,7 @@ SET @@storage_engine = Falcon;
 --disable_warnings
 DROP TABLE IF EXISTS t14_1;
 --enable_warnings
+
 CREATE TABLE t14_1 (f1 NUMERIC (64));
 INSERT INTO t14_1 SET f1 = 1;
 # Auxiliary command, which should only show that the server is alive
@@ -1161,7 +1185,7 @@ SET @@storage_engine = Falcon;
 DROP VIEW IF EXISTS v5y;
 --enable_warnings
 
---error 1166
+--error ER_WRONG_COLUMN_NAME
 CREATE VIEW v5y AS SELECT 1 AS ` `;
 
 #
@@ -1416,44 +1440,6 @@ SELECT * FROM t1 WHERE GRADE= 151;
 DROP TABLE t1;
 
 #
-# Mantis bug #192: Partitions: crash after a few alters
-#
---echo *** Bug #192 ***
---source include/initialize_falcon.inc
-SET @@storage_engine = Falcon;
---disable_warnings
-DROP PROCEDURE IF EXISTS falcon4.pf3;
-DROP DATABASE IF EXISTS falcon4;
---enable_warnings
-
-DELIMITER //;
-CREATE DATABASE falcon4//
-USE falcon4//
-CREATE TABLE tf3 (
-  s1 int, 
-  s2 varchar(200)
-)//
-
-CREATE PROCEDURE pf3 () 
-BEGIN 
-  declare v int default 0; 
-  while v < 2 
-    do 
-    alter table tf3 partition by range (s1) (partition p4 values less than maxvalue);
-    alter table tf3 remove partitioning;
-    set v = v + 1; 
-  end while; 
-END//
-
-CALL falcon4.pf3()//
-
-# Final cleanup.
-DELIMITER ;//
-DROP PROCEDURE falcon4.pf3;
-DROP DATABASE falcon4;
-USE test;
-
-#
 # Mantis bug #234: Binary use fails if index exists
 #
 --echo *** Bug #234 ***
@@ -1544,7 +1530,6 @@ select count(*) from t1 where name = 'Sinisa';
 
 drop table t1;
 
-
 # Slightly simplified original testcase
 create table t1 (id int unsigned not null auto_increment,
                  code tinyint unsigned not null, name char(20) not null,
@@ -1592,13 +1577,11 @@ DROP TABLE testSavepoints;
 --source include/initialize_falcon.inc
 SET @@storage_engine = Falcon;
 
---enable_abort_on_error
-
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
 
-# Second test of falconx derived from innodb.test
+# Second test of falcon derived from innodb.test
 # Heavy simplified variant
 --echo # If I remove the auto_increment, the crash on the update disappers
 CREATE TABLE t1 (
@@ -1636,7 +1619,7 @@ update t1 set parent_id=parent_id+100;
 --error ER_DUP_ENTRY, ER_DUP_KEY
 update t1 set id=24 where id=9; 
 
-# Is the server alive ?
+# Is the server alive?
 SELECT * FROM t1;
 
 # Final cleanup.
