@@ -52,10 +52,11 @@ static int stopSection = 40;
 
 static const int MAX_LEVELS			= 4;
 
-//#define VALIDATE_SPACE_SLOTS(page)		page->validateSpaceSlots();
+
+//#define VALIDATE_SPACE_SLOTS(page,maxLine)		page->validateSpaceSlots(maxLine);
 
 #ifndef VALIDATE_SPACE_SLOTS
-#define VALIDATE_SPACE_SLOTS(page)
+#define VALIDATE_SPACE_SLOTS(page,maxLine)
 #endif
 
 #ifdef _DEBUG
@@ -392,7 +393,7 @@ int32 Section::insertStub(TransId transId)
 			}
 
 		page = (RecordLocatorPage*) bdb->buffer;
-		VALIDATE_SPACE_SLOTS(page);
+		VALIDATE_SPACE_SLOTS(page, dbb->linesPerPage);
 		int slot = line % linesPerPage;
 		RecordIndex *index = page->elements + slot;
 
@@ -408,7 +409,7 @@ int32 Section::insertStub(TransId transId)
 
 			page->maxLine = MAX(page->maxLine, slot + 1);
 			ASSERT(page->maxLine <= dbb->pagesPerSection);
-			VALIDATE_SPACE_SLOTS(page);
+			VALIDATE_SPACE_SLOTS(page, dbb->linesPerPage);
 			bdb->release(REL_HISTORY);
 
 			// We have our line.  Find the next potential line, and if it isn't in this
@@ -529,7 +530,7 @@ void Section::updateRecord(int32 recordNumber, Stream *stream, TransId transId, 
 	bdb->mark(transId);
 	RecordLocatorPage *locatorPage = (RecordLocatorPage*) bdb->buffer;
 	ASSERT(locatorPage->section == sectionId || locatorPage->section == 0);
-	VALIDATE_SPACE_SLOTS(locatorPage);
+	VALIDATE_SPACE_SLOTS(locatorPage, dbb->linesPerPage);
 	int line = recordNumber % dbb->linesPerPage;
 	RecordIndex *index = locatorPage->elements + line;
 
@@ -553,7 +554,7 @@ void Section::updateRecord(int32 recordNumber, Stream *stream, TransId transId, 
 				int spaceAvailable = deleteLine(dataBdb, index->line, bdb->pageNumber, transId, locatorPage, line);
 				locatorPage->deleteLine(line, spaceAvailable);
 				ASSERT(index->page == 0 && index->line == 0);
-				VALIDATE_SPACE_SLOTS(locatorPage);
+				VALIDATE_SPACE_SLOTS(locatorPage, dbb->linesPerPage);
 				}
 			else
 				dataBdb->release(REL_HISTORY);
@@ -571,7 +572,7 @@ void Section::updateRecord(int32 recordNumber, Stream *stream, TransId transId, 
 		if (spaceAvailable)
 			{
 			locatorPage->setIndexSlot(line, index->page, index->line, spaceAvailable);
-			VALIDATE_SPACE_SLOTS(locatorPage);
+			VALIDATE_SPACE_SLOTS(locatorPage, dbb->linesPerPage);
 			dataBdb->release(REL_HISTORY);
 			bdb->release(REL_HISTORY);
 
@@ -583,7 +584,7 @@ void Section::updateRecord(int32 recordNumber, Stream *stream, TransId transId, 
 	else if (!stream)
 		{
 		locatorPage->deleteLine(line, false);		// deleting unfulfilled stub
-		VALIDATE_SPACE_SLOTS(locatorPage);
+		VALIDATE_SPACE_SLOTS(locatorPage, dbb->linesPerPage);
 		}
 
 	if (stream)
@@ -662,7 +663,7 @@ void Section::storeRecord(RecordLocatorPage *recordLocatorPage, int32 indexPageN
 	int effectiveLength = length;
 	int maxRecord = OVERFLOW_RECORD_SIZE;
 	int32 overflowPageNumber = 0;
-	VALIDATE_SPACE_SLOTS(recordLocatorPage);
+	VALIDATE_SPACE_SLOTS(recordLocatorPage, dbb->linesPerPage);
 
 	if (length > maxRecord)
 		{
@@ -682,12 +683,12 @@ void Section::storeRecord(RecordLocatorPage *recordLocatorPage, int32 indexPageN
 
 			RecordIndex temp;
 			int spaceAvailable = page->storeRecord(dbb, bdb, &temp, length, stream, overflowPageNumber, transId, earlyWrite);
-			VALIDATE_SPACE_SLOTS(recordLocatorPage);
+			VALIDATE_SPACE_SLOTS(recordLocatorPage, dbb->linesPerPage);
 			
 			if (spaceAvailable > 0)
 				{
 				recordLocatorPage->setIndexSlot(indexSlot, temp.page, temp.line, spaceAvailable);
-				VALIDATE_SPACE_SLOTS(recordLocatorPage);
+				VALIDATE_SPACE_SLOTS(recordLocatorPage, dbb->linesPerPage);
 
 				if (!dbb->serialLog->recovering && !dbb->noLog)
 					{
@@ -706,7 +707,7 @@ void Section::storeRecord(RecordLocatorPage *recordLocatorPage, int32 indexPageN
 				}
 
 			bdb->release(REL_HISTORY);
-			VALIDATE_SPACE_SLOTS(recordLocatorPage);
+			VALIDATE_SPACE_SLOTS(recordLocatorPage, dbb->linesPerPage);
 			}
 		}
 		
@@ -716,7 +717,7 @@ void Section::storeRecord(RecordLocatorPage *recordLocatorPage, int32 indexPageN
 	BDB_HISTORY(bdb);
 	DataPage *page = (DataPage*) bdb->buffer;
 	page->maxLine = 0;
-	VALIDATE_SPACE_SLOTS(recordLocatorPage);
+	VALIDATE_SPACE_SLOTS(recordLocatorPage, dbb->linesPerPage);
 	RecordIndex temp;
 	int spaceAvailable = page->storeRecord(dbb, bdb, &temp, length, stream, overflowPageNumber, transId, earlyWrite);
 	
@@ -1353,7 +1354,7 @@ void Section::redoDataPage(int32 pageNumber, int32 locatorPageNumber)
 	Bdb *locatorBdb = dbb->fetchPage(locatorPageNumber, PAGE_record_locator, Shared);
 	BDB_HISTORY(locatorBdb);
 	RecordLocatorPage *locatorPage = (RecordLocatorPage*) locatorBdb->buffer;
-	VALIDATE_SPACE_SLOTS(locatorPage);
+	VALIDATE_SPACE_SLOTS(locatorPage, dbb->linesPerPage);
 	
 	for (int n = 0; n < locatorPage->maxLine; ++n)
 		if (locatorPage->elements[n].page == pageNumber)
@@ -1367,7 +1368,7 @@ void Section::redoDataPage(int32 pageNumber, int32 locatorPageNumber)
 			dataPage->lineIndex[line].length = 0;
 			}
 	
-	VALIDATE_SPACE_SLOTS(locatorPage);
+	VALIDATE_SPACE_SLOTS(locatorPage, dbb->linesPerPage);
 	locatorBdb->release(REL_HISTORY);
 	bdb->release(REL_HISTORY);
 }
@@ -1407,7 +1408,7 @@ void Section::redoSectionLine(Dbb* dbb, int32 pageNumber, int32 dataPageNumber)
 	BDB_HISTORY(bdb);
 	bdb->mark(NO_TRANSACTION);
 	RecordLocatorPage *page = (RecordLocatorPage*) bdb->buffer;
-	VALIDATE_SPACE_SLOTS(page);
+	VALIDATE_SPACE_SLOTS(page, dbb->linesPerPage);
 	page->expungeDataPage(dataPageNumber);
 	bdb->release(REL_HISTORY);
 }
