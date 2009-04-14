@@ -40,36 +40,39 @@ class Sequence;
 class Value;
 CLASS(Field);
 class Transaction;
+class TransactionState;
 class BlobReference;
 class RepositoryVolume;
 
 class Repository  
 {
 public:
-	void close();
-	void reportStatistics();
-	void synchronize (const char *fileName, Transaction *transaction);
-	void scavenge();
-	void deleteBlob (int volumeNumber, int64 blobId, Transaction *transaction);
-	void drop();
-	void setRollover (const char *string);
-	static RolloverPeriod getRolloverPeriod (const char *token);
-	static int64 getFileSize (const char *token);
-	static bool getToken (const char **ptr, int sizeToken, char *token);
-	static void validateRollovers (const char *string);
-	void setVolume (int volume);
-	void getBlob (BlobReference *reference);
-	void setFilePattern (const char *pattern);
-	void setSequence (Sequence *seq);
-	JString genFileName (int volume);
-	RepositoryVolume* findVolume (int volumeNumber);
-	RepositoryVolume* getVolume (int volumeNumber);
-	void storeBlob (BlobReference *blob, Transaction *transaction);
-	Value* defaultRepository (Field *field, Value *value, Value *alt);
-	void save();
 	Repository(const char *repositoryName, const char *repositorySchema, Database *db, Sequence *seq, const char *fileName, const char *rollovers, int volume);
 	virtual ~Repository();
 
+	void		close();
+	void		reportStatistics();
+	void		synchronize (const char *fileName, Transaction *transaction);
+	void		scavenge();
+	void		deleteBlob (int volumeNumber, int64 blobId, Transaction *transaction);
+	void		drop();
+	void		setRollover (const char *string);
+	void		setVolume (int volume);
+	void		getBlob (BlobReference *reference);
+	void		setFilePattern (const char *pattern);
+	void		setSequence (Sequence *seq);
+	JString		genFileName (int volume);
+	void		storeBlob (BlobReference *blob, TransactionState *transaction);
+	Value*		defaultRepository (Field *field, Value *value, Value *alt);
+	void		save();
+	RepositoryVolume* findVolume (int volumeNumber);
+	RepositoryVolume* getVolume (int volumeNumber);
+	
+	static RolloverPeriod	getRolloverPeriod (const char *token);
+	static int64			getFileSize (const char *token);
+	static bool				getToken (const char **ptr, int sizeToken, char *token);
+	static void				validateRollovers (const char *string);
+	
 	const char		*name;
 	const char		*schema;
 	JString			filePattern;

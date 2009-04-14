@@ -1072,6 +1072,19 @@ COMMIT;
 DROP TRIGGER t1_ai;
 }
 
+--echo #
+--echo # WL#4284: Transactional DDL locking
+--echo #
+
+SET AUTOCOMMIT= 0;
+LOCK TABLES t1 WRITE, t2 WRITE;
+SAVEPOINT sp1;
+INSERT INTO t1 VALUES (1);
+SAVEPOINT sp2;
+INSERT INTO t2 VALUES (2);
+ROLLBACK TO SAVEPOINT sp1;
+UNLOCK TABLES;
+
 #
 --echo ## Cleanup.
 connection default;

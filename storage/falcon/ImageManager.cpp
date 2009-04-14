@@ -141,7 +141,7 @@ void ImageManager::assignAlias(Table *table, RecordVersion * record)
 				  type.getString ());
 	Value value;
 	value.setString (alias, false);
-	record->setValue (record->transaction, aliasId, &value, false, true);
+	record->setValue(record->transactionState, aliasId, &value, false, true);
 }
 
 void ImageManager::insertCommit(Table * table, RecordVersion * record)
@@ -236,15 +236,22 @@ void ImageManager::checkAccess(Table *table, RecordVersion *recordVersion)
 	Record *record = (recordVersion->hasRecord()) ? recordVersion : recordVersion->getPriorVersion();
 	ValueEx application (record, applicationId);
 	Table *images = database->findTable (application.getString(), "IMAGES");
-	Transaction *transaction = recordVersion->transaction;
 
-	if (images && transaction)
+	if (images)
 		{
-		Connection *connection = transaction->connection;
-		if (connection)
+		Transaction *transaction = recordVersion->findTransaction();
+		
+		if (transaction)
 			{
-			connection->checkAccess (PrivInsert | PrivUpdate, images);
-			return;
+			Connection *connection = transaction->connection;
+			transaction->release();
+			
+			if (connection)
+				{
+				connection->checkAccess(PrivInsert | PrivUpdate, images);
+				
+				return;
+				}
 			}
 		}
 }

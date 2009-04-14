@@ -1568,8 +1568,8 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
   DEBUG_SYNC(thd, "restore_in_progress");
   {
     Buffer  buf;
-    uint    snap_num=0;
-    uint    repeats=0, errors= 0;
+    uint    snap_num= 0;
+    uint    repeats= 0;
     int     ret;
 
     static const uint MAX_REPEATS= 7;

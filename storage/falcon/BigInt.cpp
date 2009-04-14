@@ -112,6 +112,22 @@ void BigInt::set(int64 value, int valueScale)
 		}
 }
 
+void BigInt::set(uint64 value, int valueScale)
+{
+	scale = valueScale;
+	neg = false;
+	length = 0;
+
+	if (value)
+		{
+		words[length++] = LOW_WORD(value);
+		BigWord highWord = HIGH_WORD(value);
+
+		if (highWord)
+			words[length++] = highWord;
+		}
+}
+
 void BigInt::subtract(int index, BigWord value)
 {
 	while (value)
@@ -728,7 +744,7 @@ int BigInt::divide(const BigInt* dividend, const BigInt* divisor, BigInt* quotie
 void BigInt::buildPowerTable()
 	{
 	BigInt* bigInt = ::new BigInt;
-	bigInt->set(powersOfTen[9], 0);
+	bigInt->set((int64)powersOfTen[9], 0);
 	powerTable[9] = bigInt;
 
 	for (int i = 10; i < maxPowerOfTen; i++)

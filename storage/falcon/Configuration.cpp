@@ -108,7 +108,7 @@ Configuration::Configuration(const char *configFile)
 	checkpointSchedule = "7,37 * * * * *";
 	scavengeSchedule = "15,45 * * * * *";
 	serialLogBlockSize			= falcon_serial_log_block_size;
-	maxTransactionBacklog		        = MAX_TRANSACTION_BACKLOG;
+	maxTransactionBacklog		= MAX_TRANSACTION_BACKLOG;
 
 #ifdef STORAGE_ENGINE
 	recordMemoryMax				= falcon_record_memory_max;
