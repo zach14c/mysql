@@ -229,6 +229,7 @@ public:
 	int32				wantToSerializeGophers;
 	int32				serializeGophers;
 	uint64				startRecordVirtualOffset;
+	int					logRotations;
 
 	TableSpaceInfo		*tableSpaces[SLT_HASH_SIZE];
 	TableSpaceInfo		*tableSpaceInfo;
