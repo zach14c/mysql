@@ -49,10 +49,7 @@ ERROR 42000: Variable 'sql_quote_show_create' can't be set to the value of 'TRÃœ
 SET @@session.sql_quote_show_create = ÕN;
 ERROR 42000: Variable 'sql_quote_show_create' can't be set to the value of 'Ã•N'
 SET @@session.sql_quote_show_create = OF;
-SELECT @@session.sql_quote_show_create;
-@@session.sql_quote_show_create
-0
-'Bug# 34828: OF is taken as OFF and a value of 0 is set.'
+ERROR 42000: Variable 'sql_quote_show_create' can't be set to the value of 'OF'
 SET @@session.sql_quote_show_create = ÓFF;
 ERROR 42000: Variable 'sql_quote_show_create' can't be set to the value of 'Ã“FF'
 SET @@session.sql_quote_show_create = '¹';
@@ -78,12 +75,12 @@ IF(@@session.sql_quote_show_create, "ON", "OFF") = VARIABLE_VALUE
 1
 SELECT @@session.sql_quote_show_create;
 @@session.sql_quote_show_create
-0
+1
 SELECT VARIABLE_VALUE 
 FROM INFORMATION_SCHEMA.SESSION_VARIABLES 
 WHERE VARIABLE_NAME='sql_quote_show_create';
 VARIABLE_VALUE
-OFF
+ON
 '#---------------------FN_DYNVARS_162_08-------------------------#'
 SET @@session.sql_quote_show_create = OFF;
 SELECT @@session.sql_quote_show_create;
