@@ -48,18 +48,18 @@ main(void)
     }
 
     /* Encode */
-    needed_length= base64_needed_encoded_length(src_len);
+    needed_length= my_base64_needed_encoded_length(src_len);
     str= (char *) malloc(needed_length);
     for (k= 0; k < needed_length; k++)
       str[k]= 0xff; /* Fill memory to check correct NUL termination */
-    ok(base64_encode(src, src_len, str) == 0,
-       "base64_encode: size %d", i);
+    ok(my_base64_encode(src, src_len, str) == 0,
+       "my_base64_encode: size %d", i);
     ok(needed_length == strlen(str) + 1,
-       "base64_needed_encoded_length: size %d", i);
+       "my_base64_needed_encoded_length: size %d", i);
 
     /* Decode */
-    dst= (char *) malloc(base64_needed_decoded_length(strlen(str)));
-    dst_len= base64_decode(str, strlen(str), dst, NULL);
+    dst= (char *) malloc(my_base64_needed_decoded_length(strlen(str)));
+    dst_len= my_base64_decode(str, strlen(str), dst, NULL);
     ok(dst_len == src_len, "Comparing lengths");
 
     cmp= memcmp(src, dst, src_len);

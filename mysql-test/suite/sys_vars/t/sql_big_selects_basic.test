@@ -93,12 +93,8 @@ SET @@session.sql_big_selects = "Y";
 SET @@session.sql_big_selects = TRÜE;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.sql_big_selects = ÕN;
-
+--Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.sql_big_selects = OF;
-SELECT @@session.sql_big_selects;
-
---echo 'Bug # 34828: OF is taken as OFF and a value of 0 is set.'
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.sql_big_selects = ÓFF;
 --Error ER_WRONG_VALUE_FOR_VAR

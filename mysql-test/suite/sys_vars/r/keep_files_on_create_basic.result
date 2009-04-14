@@ -102,10 +102,7 @@ ERROR 42000: Variable 'keep_files_on_create' can't be set to the value of 'ONN'
 SET @@session.keep_files_on_create = ONF;
 ERROR 42000: Variable 'keep_files_on_create' can't be set to the value of 'ONF'
 SET @@session.keep_files_on_create = OF;
-SELECT @@session.keep_files_on_create;
-@@session.keep_files_on_create
-0
-'Bug# 34828: FN_DYNVARS_054_05 - OF is also working as OFF and no error is coming';
+ERROR 42000: Variable 'keep_files_on_create' can't be set to the value of 'OF'
 SET @@session.keep_files_on_create = 'OFN';
 ERROR 42000: Variable 'keep_files_on_create' can't be set to the value of 'OFN'
 SET @@session.keep_files_on_create = -2;
