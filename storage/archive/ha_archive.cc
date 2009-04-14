@@ -1066,7 +1066,7 @@ int ha_archive::unpack_row(azio_stream *file_to_read, uchar *record)
 
   if (error || read == 0)
   {
-    DBUG_RETURN(-1);
+    DBUG_RETURN(HA_ERR_CRASHED_ON_USAGE);
   }
 
   /* Copy null bits */
@@ -1163,7 +1163,7 @@ int ha_archive::repair(THD* thd, HA_CHECK_OPT* check_opt)
   int rc= optimize(thd, check_opt);
 
   if (rc)
-    DBUG_RETURN(HA_ERR_CRASHED_ON_REPAIR);
+    DBUG_RETURN(HA_ADMIN_CORRUPT);
 
   share->crashed= FALSE;
   DBUG_RETURN(0);

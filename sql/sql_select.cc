@@ -266,10 +266,6 @@ bool subquery_types_allow_materialization(THD *thd,
 int do_sj_reset(SJ_TMP_TABLE *sj_tbl);
 TABLE *create_duplicate_weedout_tmp_table(THD *thd, uint uniq_tuple_length_arg,
                                           SJ_TMP_TABLE *sjtbl);
-inline bool optimizer_flag(THD *thd, uint flag)
-{ 
-  return (thd->variables.optimizer_switch & flag);
-}
 
 Item_equal *find_item_equal(COND_EQUAL *cond_equal, Field *field,
                             bool *inherited_fl);
@@ -607,7 +603,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         9. Parent select is not a confluent table-less select
         10. Neither parent nor child select have STRAIGHT_JOIN option.
     */
-    if (!optimizer_flag(thd, OPTIMIZER_SWITCH_NO_SEMIJOIN) &&
+    if (optimizer_flag(thd, OPTIMIZER_SWITCH_SEMIJOIN) &&
         in_subs &&                                                    // 1
         !select_lex->is_part_of_union() &&                            // 2
         !select_lex->group_list.elements && !order &&                 // 3
@@ -696,7 +692,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         perform the whole transformation or only that part of it which wraps
         Item_in_subselect in an Item_in_optimizer.
       */
-      if (!optimizer_flag(thd, OPTIMIZER_SWITCH_NO_MATERIALIZATION)  && 
+      if (optimizer_flag(thd, OPTIMIZER_SWITCH_MATERIALIZATION)  && 
           in_subs  &&                                                   // 1
           !select_lex->is_part_of_union() &&                            // 2
           select_lex->master_unit()->first_select()->leaf_tables &&     // 3
@@ -4487,7 +4483,7 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
   DBUG_ENTER("optimize_semijoin_nests");
   List_iterator<TABLE_LIST> sj_list_it(join->select_lex->sj_nests);
   TABLE_LIST *sj_nest;
-  if (!optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_MATERIALIZATION))
+  if (optimizer_flag(join->thd, OPTIMIZER_SWITCH_MATERIALIZATION))
   {
     while ((sj_nest= sj_list_it++))
     {
@@ -5868,7 +5864,7 @@ public:
         !(remaining_tables & 
           s->emb_sj_nest->nested_join->sj_corr_tables) &&               // (4)
         remaining_tables & s->emb_sj_nest->nested_join->sj_depends_on &&// (5)
-        !optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_LOOSE_SCAN))
+        optimizer_flag(join->thd, OPTIMIZER_SWITCH_LOOSE_SCAN))
     {
       /* This table is an LooseScan scan candidate */
       bound_sj_equalities= get_bound_sj_equalities(s->emb_sj_nest, 
@@ -12865,7 +12861,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
         !(remaining_tables &                             // (3)
           (s->emb_sj_nest->nested_join->sj_corr_tables | // (3)
            s->emb_sj_nest->nested_join->sj_depends_on)) && // (3)
-        !optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_FIRSTMATCH))
+        optimizer_flag(join->thd, OPTIMIZER_SWITCH_FIRSTMATCH))
     {
       /* Start tracking potential FirstMatch range */
       pos->first_firstmatch_table= idx;
@@ -14172,6 +14168,7 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   table->in_use= thd;
   table->quick_keys.init();
   table->covering_keys.init();
+  table->merge_keys.init();
   table->keys_in_use_for_query.init();
 
   table->s= share;

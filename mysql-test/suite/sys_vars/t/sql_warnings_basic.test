@@ -99,12 +99,8 @@ SET @@session.sql_warnings = "Y";
 SET @@session.sql_warnings = TRÜE;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.sql_warnings = ÕN;
-
+--Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.sql_warnings = OF;
-SELECT @@session.sql_warnings;
-
---echo 'Bug# 34828: OF is taken as OFF and a value of 0 is set.'
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.sql_warnings = ÓFF;
 --Error ER_WRONG_VALUE_FOR_VAR
