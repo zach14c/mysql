@@ -5,10 +5,10 @@
 # RESTORE operation.
 #
 # Author: Rafal Somla
-
+let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --disable_warnings
 --error 0,1
-remove_file $MYSQL_TEST_DIR/var/master-data/db.bak;
+remove_file $MYSQLD_BACKUPDIR/db.bak;
 --enable_warnings
 
 SET GLOBAL event_scheduler=off;
@@ -208,9 +208,10 @@ AND msg LIKE '%event fired%'
 AND timediff(ts,@start) < 2;
 
 --echo Cleaning up.
+SET DEBUG_SYNC = 'RESET';
 DROP EVENT test.ev;
 DROP TRIGGER test.trg;
 DROP TABLE test.logt;
 DROP TABLE test.t1;
 DROP DATABASE db;
-remove_file $MYSQL_TEST_DIR/var/master-data/db.bak;
+remove_file $MYSQLD_BACKUPDIR/db.bak;

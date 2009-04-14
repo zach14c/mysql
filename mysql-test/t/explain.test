@@ -123,17 +123,24 @@ execute s1;
 
 DROP TABLE t1,t2;
 
+#
+# Bug #43354: Use key hint can crash server in explain extended query
+#
+
+CREATE TABLE t1 (a INT PRIMARY KEY);
+
+--error ER_KEY_DOES_NOT_EXITS
+EXPLAIN EXTENDED SELECT COUNT(a) FROM t1 USE KEY(a);
+
+DROP TABLE t1;
+
+
 --echo End of 5.0 tests.
 
---enable_metadata
-explain select 1;
---disable_metadata
-
---echo End of 5.2 tests.
 --echo #
 --echo # Bug#37870: Usage of uninitialized value caused failed assertion.
 --echo #
-set optimizer_switch='no_semijoin';
+set optimizer_switch='semijoin=off';
 create table t1 (dt datetime not null, t time not null);
 create table t2 (dt datetime not null);
 insert into t1 values ('2001-01-01 1:1:1', '1:1:1'),
@@ -148,5 +155,12 @@ EXPLAIN SELECT OUTR.dt FROM t1 AS OUTR WHERE OUTR.dt IN ( SELECT INNR.dt FROM t2
 flush tables;
 SELECT OUTR.dt FROM t1 AS OUTR WHERE OUTR.dt IN ( SELECT INNR.dt FROM t2 AS INNR WHERE OUTR.t < '2005-11-13 7:41:31' );
 drop tables t1, t2;
-set optimizer_switch='';
+set optimizer_switch=default;
 
+--echo End of 5.1 tests.
+
+--enable_metadata
+explain select 1;
+--disable_metadata
+
+--echo End of 5.2 tests.

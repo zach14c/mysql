@@ -2229,8 +2229,8 @@ ndb_mgm_get_configuration(NdbMgmHandle handle, unsigned int version) {
     if(buf64 == 0)
       break;
 
-    void *tmp_data = malloc(base64_needed_decoded_length((size_t) (len - 1)));
-    const int res = base64_decode(buf64, len-1, tmp_data, NULL);
+    void *tmp_data = malloc(my_base64_needed_decoded_length((size_t)(len - 1)));
+    const int res = my_base64_decode(buf64, len-1, tmp_data, NULL);
     delete[] buf64;
     UtilBuffer tmp;
     tmp.append((void *) tmp_data, res);

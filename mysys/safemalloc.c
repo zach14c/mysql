@@ -129,8 +129,18 @@ void *_mymalloc(size_t size, const char *filename, uint lineno, myf MyFlags)
   if (!sf_malloc_quick)
     (void) _sanity (filename, lineno);
 
-  if (size + sf_malloc_cur_memory > sf_malloc_mem_limit)
+  /*
+    Test for memory limit overrun.
+    If compiled with DBUG, test for error injection. Described in my_sys.h.
+  */
+  if ((size + sf_malloc_cur_memory > sf_malloc_mem_limit)
+      IF_DBUG(|| my_malloc_error_inject))
+  {
+    IF_DBUG(if (my_malloc_error_inject)
+              errno= ENOMEM;
+            my_malloc_error_inject= 0);
     irem= 0;
+  }
   else
   {
     /* Allocate the physical memory */

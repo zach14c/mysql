@@ -19,7 +19,7 @@
 #include "sql_prepare.h"
 
 #include "si_objects.h"
-#include "ddl_blocker.h"
+#include "bml.h"
 #include "sql_show.h"
 #include "sql_trigger.h"
 #include "sp.h"
@@ -32,7 +32,7 @@
 #include "event_db_repository.h"
 #endif
 
-DDL_blocker_class *DDL_blocker= NULL;
+BML_class *BML_instance= NULL;
 
 extern my_bool disable_slaves;
 
@@ -122,7 +122,7 @@ void Si_session_context::reset_si_ctx(THD *thd)
 {
   DBUG_ENTER("Si_session_context::reset_si_ctx");
 
-  thd->variables.sql_mode= 0;
+  thd->variables.sql_mode= MODE_NO_AUTO_CREATE_USER;
 
   thd->variables.character_set_client= system_charset_info;
   thd->variables.character_set_results= &my_charset_bin;
@@ -719,7 +719,7 @@ bool Abstract_obj::create(THD *thd)
   session_context.reset_si_ctx(thd);
 
   /* Allow to execute DDL operations. */
-  ::obs::ddl_blocker_exception_on(thd);
+  ::obs::bml_exception_on(thd);
 
   /* Run queries from the serialization image. */
   while ((sql_text= it++))
@@ -736,7 +736,7 @@ bool Abstract_obj::create(THD *thd)
   }
 
   /* Disable further DDL execution. */
-  ::obs::ddl_blocker_exception_off(thd);
+  ::obs::bml_exception_off(thd);
 
   session_context.restore_si_ctx(thd);
 
@@ -776,13 +776,13 @@ bool Abstract_obj::drop(THD *thd)
   session_context.reset_si_ctx(thd);
 
   /* Allow to execute DDL operations. */
-  ::obs::ddl_blocker_exception_on(thd);
+  ::obs::bml_exception_on(thd);
 
   /* Execute DDL operation. */
   rc= ed_connection.execute_direct(*sql_text);
 
   /* Disable further DDL execution. */
-  ::obs::ddl_blocker_exception_off(thd);
+  ::obs::bml_exception_off(thd);
 
   session_context.restore_si_ctx(thd);
 
@@ -2133,7 +2133,7 @@ const String *Tablespace_obj::get_description()
 
   /* Either description or id and data file name must be not empty. */
   DBUG_ASSERT(m_description.length() ||
-              m_id.length() && m_data_file_name.length());
+              (m_id.length() && m_data_file_name.length()));
 
   if (m_description.length())
     DBUG_RETURN(&m_description);
@@ -2204,6 +2204,7 @@ Grant_obj::Grant_obj(const Ed_row &row)
   const LEX_STRING *db_name= row.get_column(2);
   const LEX_STRING *tbl_name= row.get_column(3);
   const LEX_STRING *col_name= row.get_column(4);
+  const LEX_STRING *routine_type= row.get_column(5);
 
   LEX_STRING table_name= { C_STRING_WITH_LEN("") };
   LEX_STRING column_name= { C_STRING_WITH_LEN("") };
@@ -2221,10 +2222,21 @@ Grant_obj::Grant_obj(const Ed_row &row)
   String_stream s_stream(&m_grant_info);
   s_stream << privilege_type;
 
+  /*
+    Either column_name or routine_type or both are NULL.
+    They are never both non-NULL.
+  */
+  DBUG_ASSERT(!column_name.length || !routine_type->length);
+
   if (column_name.length)
     s_stream << "(" << &column_name << ")";
 
-  s_stream << " ON " << db_name << ".";
+  s_stream << " ON ";
+
+  if (routine_type->length)
+    s_stream << routine_type << " ";
+
+  s_stream << db_name << ".";
 
   if (table_name.length)
     s_stream << &table_name;
@@ -2306,9 +2318,65 @@ bool Grant_obj::do_init_from_image(In_stream *is)
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
-Obj *get_database_stub(const String *db_name)
+Obj *get_database_stub(THD *thd, const String *db_name)
 {
-  return new Database_obj(db_name->lex_string());
+
+  DBUG_EXECUTE_IF("siobj_get_db_stub",  return NULL; );
+  /*
+    The specified db name may have characters in a wrong case. Get the
+    normalized name by reading it from INFORMATION_SCHEMA. Note: if
+    lower_case_table_names=0, the db name must not be converted.
+   */
+
+  if (!lower_case_table_names)
+    return new Database_obj(db_name->lex_string()); 
+
+
+  Ed_connection ed_connection(thd);
+  String_stream s_stream;
+  Ed_result_set *ed_result_set;
+
+  // Prepare SELECT statement.
+
+  s_stream << "SELECT schema_name "
+              "FROM INFORMATION_SCHEMA.SCHEMATA WHERE "
+              "LCASE(schema_name) = LCASE('" << db_name << "')";
+
+  // Execute SELECT.
+
+  if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+      ed_connection.get_warn_count())
+    return NULL;
+
+  // Fetch result.
+
+  ed_result_set= ed_connection.use_result_set();
+
+  // The database did not find the database. Return a Database_obj
+  // with correct name anyway as per method specification
+  if (ed_result_set->size() != 1)
+  {
+    // Need to convert the name to lower case when lctn=1
+    if (lower_case_table_names == 1)
+    {
+      String lcasename;
+      lcasename.copy(db_name->ptr(), db_name->length(), system_charset_info);
+      my_casedn_str(lcasename.charset(), lcasename.c_ptr());
+      return new Database_obj(lcasename.lex_string()); 
+    }
+    else 
+      return new Database_obj(db_name->lex_string()); 
+  }
+
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
+  Ed_row *row= row_it++;
+
+  DBUG_ASSERT(row->size() == 1);
+    
+
+  // Create object using normalized name.
+
+  return new Database_obj(*row); 
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2421,7 +2489,8 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "privilege_type AS c2, "
     "table_schema AS c3, "
     "NULL AS c4, "
-    "NULL AS c5 "
+    "NULL AS c5, "
+    "NULL AS c6 "
     "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES "
     "WHERE table_schema = '" << db_name << "') "
     "UNION "
@@ -2429,6 +2498,7 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "privilege_type, "
     "table_schema, "
     "table_name, "
+    "NULL, "
     "NULL "
     "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES "
     "WHERE table_schema = '" << db_name << "') "
@@ -2437,10 +2507,20 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "privilege_type, "
     "table_schema, "
     "table_name, "
-    "column_name "
+    "column_name, "
+    "NULL "
     "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES "
     "WHERE table_schema = '" << db_name << "') "
-    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
+    "UNION "
+    "(SELECT CONCAT('''', User, '''@''', Host, ''''), "
+    "Proc_priv, "
+    "Db, "
+    "Routine_name, "
+    "NULL, "
+    "Routine_type "
+    "FROM mysql.procs_priv "
+    "WHERE Db = '" << db_name << "') "
+    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC, c6 ASC";
 
   return create_row_set_iterator<Grant_iterator>(thd, s_stream.lex_string());
 }
@@ -2677,6 +2757,11 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
 
   ed_result_set= ed_connection.use_result_set();
 
+  // Return NULL if the tablespace does not exist
+  if (ed_result_set->size() == 0)
+    return NULL;
+
+  // There can only be one tablespace with this name
   DBUG_ASSERT(ed_result_set->size() == 1);
 
   List_iterator_fast<Ed_row> row_it(*ed_result_set);
@@ -2775,76 +2860,75 @@ bool compare_tablespace_attributes(Obj *ts1, Obj *ts2)
 ///////////////////////////////////////////////////////////////////////////
 
 //
-// Implementation: DDL Blocker.
+// Implementation: Backup Metadata Lock.
 //
 
 ///////////////////////////////////////////////////////////////////////////
 
 /*
-  DDL Blocker methods
+  BML methods
 */
 
 /**
-  Turn on the ddl blocker
+   Get the backup metadata lock.
 
-  This method is used to start the ddl blocker blocking DDL commands.
+   After successful acquiring of the lock, all statements marked as 
+   CF_BLOCKED_BY_BML will be blocked (see @c sql_command_flags[] in 
+   sql_parse.cc).
 
-  @param[in] thd  current thread
+   @param[in] thd  current thread
 
   @return Error status.
     @retval FALSE on success.
     @retval TRUE on error.
 */
-bool ddl_blocker_enable(THD *thd)
+bool bml_get(THD *thd)
 {
-  DBUG_ENTER("obs::ddl_blocker_enable");
-  if (!DDL_blocker->block_DDL(thd))
+  DBUG_ENTER("obs::bml_get");
+  if (!BML_instance->bml_get(thd))
     DBUG_RETURN(TRUE);
   DBUG_RETURN(FALSE);
 }
 
 
 /**
-  Turn off the ddl blocker
-
-  This method is used to stop the ddl blocker from blocking DDL commands.
+  Release the backup metadata lock if acquired earlier.
 */
-void ddl_blocker_disable()
+void bml_release()
 {
-  DBUG_ENTER("obs::ddl_blocker_disable");
-  DDL_blocker->unblock_DDL();
+  DBUG_ENTER("obs::bml_release");
+  BML_instance->bml_release();
   DBUG_VOID_RETURN;
 }
 
 
 /**
-  Turn on the ddl blocker exception
+   Turn on the backup metadata lock exception
 
-  This method is used to allow the exception allowing a restore operation to
-  perform DDL operations while the ddl blocker blocking DDL commands.
+   The thread for which this method is called is allowed to execute statements 
+   which normally are blocked by BML.
 
-  @param[in] thd  current thread
+   @param[in] thd  current thread
 */
-void ddl_blocker_exception_on(THD *thd)
+void bml_exception_on(THD *thd)
 {
-  DBUG_ENTER("obs::ddl_blocker_exception_on");
-  thd->DDL_exception= TRUE;
+  DBUG_ENTER("obs::bml_exception_on");
+  thd->BML_exception= TRUE;
   DBUG_VOID_RETURN;
 }
 
 
 /**
-  Turn off the ddl blocker exception
+   Turn off the backup metadata lock exception
 
-  This method is used to suspend the exception allowing a restore operation to
-  perform DDL operations while the ddl blocker blocking DDL commands.
+   This method cancels the exception activated with @c bml_exception_on().
 
-  @param[in] thd  current thread
-*/
-void ddl_blocker_exception_off(THD *thd)
+   @param[in] thd  current thread
+  */
+void bml_exception_off(THD *thd)
 {
-  DBUG_ENTER("obs::ddl_blocker_exception_off");
-  thd->DDL_exception= FALSE;
+  DBUG_ENTER("obs::bml_exception_off");
+  thd->BML_exception= FALSE;
   DBUG_VOID_RETURN;
 }
 

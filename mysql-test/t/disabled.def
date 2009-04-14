@@ -9,11 +9,12 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-ctype_create         : Bug#32965 main.ctype_create fails
-csv_alter_table      : Bug#42831 main.csv_alter_table is disabled 
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
-events_bugs          : Bug#37774 Bug#39569 Bug#39863 Bug#39848 2008-10-08 alik
+events_bugs          : Bug#37774 2008-10-08 alik
 innodb               : Bug#41299 2008-12-08 alik
-user_limits          : Bug#42384 thread_handling = pool-of-threads, wrong handling of max_questions user limit
-query_cache_28249    : Bug#41098 Query Cache returns wrong result with concurrent insert
 innodb_bug39438      : BUG#42383 2009-01-28 lsoares "This fails in embedded and on windows.  Note that this test is not run on windows and on embedded in PB for main trees currently"
+kill                     : Bug#37780 2008-12-03 HHunger need some changes to be robust enough for pushbuild.
+#concurrent_innodb_safelog: disabled for embedded server due to bug#43733 Select on processlist let the embedded server crash (concurrent_innodb_safelog).
+#concurrent_innodb_unsafelog: disabled for embedded server due to bug#43733.
+query_cache_28249    : Bug#43861 2009-03-25 main.query_cache_28249 fails sporadically
+information_schema   : Bug#42893 2009-03-26 alik main.information_schema times out sporadically

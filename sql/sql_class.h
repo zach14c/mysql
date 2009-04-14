@@ -867,6 +867,7 @@ public:
   void
   restore_security_context(THD *thd, Security_context *backup);
 #endif
+  bool user_matches(Security_context *);
 };
 
 
@@ -1378,6 +1379,8 @@ public:
 
   /* <> 0 if we are inside of trigger or stored function. */
   uint in_sub_stmt;
+  /* TRUE when the current top has SQL_LOG_BIN ON */
+  bool sql_log_bin_toplevel;
 
   /* container for handler's private per-connection data */
   Ha_data ha_data[MAX_HA];
@@ -1836,13 +1839,19 @@ public:
   Parser_state *m_parser_state;
 
   /*
-    @todo The following is a work around for online backup and the DDL blocker.
-          It should be removed when the generalized solution is in place.
-          This is needed to ensure the restore (which uses DDL) is not blocked
-          when the DDL blocker is engaged.
+    @todo The following is a work around for MySQL backup and the Backup 
+    Metadata Lock (BML). It should be removed when the generalized solution 
+    is in place. This is needed to ensure the restore thread (which uses BML) 
+    is not blocked by the lock.
   */
-  my_bool DDL_exception; // Allow some DDL if there is an exception
+  my_bool BML_exception; // Allow some DDL if there is an exception
   ulong backup_wait_timeout;
+  /*
+    If online backup/restore in progress, set to SQLCOM_BACKUP or
+    SQLCOM_RESTORE, otherwise 0. This modifies the behavior of some
+    statements, e.g. GRANT.
+  */
+  int backup_in_progress;
 
   Locked_tables_list locked_tables_list;
 
@@ -3178,6 +3187,12 @@ public:
   do not modify the diagnostics area during execution.
 */
 #define CF_DIAGNOSTIC_STMT        (1U << 8)
+
+/**
+  Mark statements which shuld be blocked when the Backup Metadata Lock is
+  active. See bml.cc.
+*/ 
+#define CF_BLOCKED_BY_BML       (1U << 9)
 
 /* Bits in server_command_flags */
 

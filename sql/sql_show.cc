@@ -288,7 +288,7 @@ static struct show_privileges_st sys_privileges[]=
   {"Alter", "Tables",  "To alter the table"},
   {"Alter routine", "Functions,Procedures",  "To alter or drop stored functions/procedures"},
   {"Create", "Databases,Tables,Indexes",  "To create new databases and tables"},
-  {"Create routine","Functions,Procedures","To use CREATE FUNCTION/PROCEDURE"},
+  {"Create routine","Databases","To use CREATE FUNCTION/PROCEDURE"},
   {"Create temporary tables","Databases","To use CREATE TEMPORARY TABLE"},
   {"Create view", "Tables",  "To create new views"},
   {"Create user", "Server Admin",  "To create new users"},
@@ -1623,21 +1623,25 @@ void append_definer(THD *thd, String *buffer, const LEX_STRING *definer_user,
 int
 view_store_create_info(THD *thd, TABLE_LIST *table, String *buff)
 {
+  my_bool compact_view_name= TRUE;
   my_bool foreign_db_mode= (thd->variables.sql_mode & (MODE_POSTGRESQL |
                                                        MODE_ORACLE |
                                                        MODE_MSSQL |
                                                        MODE_DB2 |
                                                        MODE_MAXDB |
                                                        MODE_ANSI)) != 0;
-  /*
-     Compact output format for view can be used
-     - if user has db of this view as current db
-     - if this view only references table inside it's own db
-  */
+
   if (!thd->db || strcmp(thd->db, table->view_db.str))
-    table->compact_view_format= FALSE;
+    /*
+      print compact view name if the view belongs to the current database
+    */
+    compact_view_name= table->compact_view_format= FALSE;
   else
   {
+    /*
+      Compact output format for view body can be used
+      if this view only references table inside it's own db
+    */
     TABLE_LIST *tbl;
     table->compact_view_format= TRUE;
     for (tbl= thd->lex->query_tables;
@@ -1658,7 +1662,7 @@ view_store_create_info(THD *thd, TABLE_LIST *table, String *buff)
     view_store_options(thd, table, buff);
   }
   buff->append(STRING_WITH_LEN("VIEW "));
-  if (!table->compact_view_format)
+  if (!compact_view_name)
   {
     append_identifier(thd, buff, table->view_db.str, table->view_db.length);
     buff->append('.');
@@ -1725,7 +1729,8 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
   field_list.push_back(field=new Item_empty_string("db",NAME_CHAR_LEN));
   field->maybe_null=1;
   field_list.push_back(new Item_empty_string("Command",16));
-  field_list.push_back(new Item_return_int("Time",7, MYSQL_TYPE_LONG));
+  field_list.push_back(field= new Item_return_int("Time",7, MYSQL_TYPE_LONG));
+  field->unsigned_flag= 0;
   field_list.push_back(field=new Item_empty_string("State",30));
   field->maybe_null=1;
   field_list.push_back(field=new Item_empty_string("Info",max_query_length));
@@ -1818,7 +1823,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
     else
       protocol->store(command_name[thd_info->command].str, system_charset_info);
     if (thd_info->start_time)
-      protocol->store((uint32) (now - thd_info->start_time));
+      protocol->store_long ((longlong) (now - thd_info->start_time));
     else
       protocol->store_null();
     protocol->store(thd_info->state_info, system_charset_info);
@@ -1894,8 +1899,8 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
         table->field[4]->store(command_name[tmp->command].str,
                                command_name[tmp->command].length, cs);
       /* MYSQL_TIME */
-      table->field[5]->store((uint32)(tmp->start_time ?
-                                      now - tmp->start_time : 0), TRUE);
+      table->field[5]->store((longlong)(tmp->start_time ?
+                                      now - tmp->start_time : 0), FALSE);
       /* STATE */
 #ifndef EMBEDDED_LIBRARY
       val= (char*) (tmp->net.reading_or_writing ?
@@ -3858,11 +3863,23 @@ void store_column_type(TABLE *table, Field *field, CHARSET_INFO *cs,
   /* DTD_IDENTIFIER column */
   table->field[offset + 7]->store(column_type.ptr(), column_type.length(), cs);
   table->field[offset + 7]->set_notnull();
+  /*
+    DATA_TYPE column:
+    MySQL column type has the following format:
+    base_type [(dimension)] [unsigned] [zerofill].
+    For DATA_TYPE column we extract only base type.
+  */
   tmp_buff= strchr(column_type.ptr(), '(');
-  /* DATA_TYPE column */
+  if (!tmp_buff)
+    /*
+      if there is no dimention part then check the presence of
+      [unsigned] [zerofill] attributes and cut them of if exist.
+    */
+    tmp_buff= strchr(column_type.ptr(), ' ');
   table->field[offset]->store(column_type.ptr(),
-                         (tmp_buff ? tmp_buff - column_type.ptr() :
-                          column_type.length()), cs);
+                              (tmp_buff ? tmp_buff - column_type.ptr() :
+                               column_type.length()), cs);
+
   is_blob= (field->type() == MYSQL_TYPE_BLOB);
   if (field->has_charset() || is_blob ||
       field->real_type() == MYSQL_TYPE_VARCHAR ||  // For varbinary type
@@ -4053,6 +4070,8 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     table->field[3]->store(field->field_name, strlen(field->field_name),
                            cs);
     table->field[4]->store((longlong) count, TRUE);
+    field->sql_type(type);
+    table->field[14]->store(type.ptr(), type.length(), cs);
 
     if (get_field_default_value(thd, timestamp_field, field, &type, 0))
     {
@@ -6993,7 +7012,7 @@ ST_FIELD_INFO processlist_fields_info[]=
    SKIP_OPEN_TABLE},
   {"DB", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, "Db", SKIP_OPEN_TABLE},
   {"COMMAND", 16, MYSQL_TYPE_STRING, 0, 0, "Command", SKIP_OPEN_TABLE},
-  {"TIME", 7, MYSQL_TYPE_LONGLONG, 0, 0, "Time", SKIP_OPEN_TABLE},
+  {"TIME", 7, MYSQL_TYPE_LONG, 0, 0, "Time", SKIP_OPEN_TABLE},
   {"STATE", 64, MYSQL_TYPE_STRING, 0, 1, "State", SKIP_OPEN_TABLE},
   {"INFO", PROCESS_LIST_INFO_WIDTH, MYSQL_TYPE_STRING, 0, 1, "Info",
    SKIP_OPEN_TABLE},

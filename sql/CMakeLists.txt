@@ -43,7 +43,7 @@ ADD_DEFINITIONS(-DMYSQL_SERVER -D_CONSOLE -DHAVE_DLOPEN -DHAVE_EVENT_SCHEDULER)
 
 ADD_SUBDIRECTORY(backup)
 
-SET (MYSQLD_SOURCE
+SET (SQL_SOURCE
                ../sql-common/client.c derror.cc des_key_file.cc
                discover.cc ../libmysql/errmsg.c field.cc field_conv.cc
                filesort.cc gstream.cc sha2.cc ha_partition.cc
@@ -67,7 +67,7 @@ SET (MYSQLD_SOURCE
                sql_join_cache.cc sql_lex.cc sql_list.cc sql_load.cc sql_manager.cc
                sql_map.cc sql_parse.cc  sql_partition.cc sql_plugin.cc
                sql_prepare.cc sql_rename.cc 
-               debug_sync.cc
+               debug_sync.cc debug_sync.h
                sql_repl.cc sql_select.cc sql_show.cc sql_state.c sql_string.cc 
                sql_table.cc sql_test.cc sql_trigger.cc sql_udf.cc sql_union.cc
                sql_update.cc sql_view.cc strfunc.cc table.cc thr_malloc.cc 
@@ -78,7 +78,7 @@ SET (MYSQLD_SOURCE
                partition_info.cc rpl_utility.cc rpl_injector.cc sql_locale.cc
                rpl_rli.cc rpl_mi.cc sql_servers.cc sql_audit.cc
                sql_connect.cc scheduler.cc transaction.cc
-               ddl_blocker.cc si_objects.cc si_logs.cc
+               bml.cc si_objects.cc si_logs.cc
                sql_profile.cc event_parse_data.cc mdl.cc rpl_handler.cc
                sql_signal.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
@@ -89,26 +89,23 @@ SET (MYSQLD_SOURCE
                ${PROJECT_SOURCE_DIR}/include/mysql_version.h 
                ${PROJECT_SOURCE_DIR}/sql/sql_builtin.cc
                ${PROJECT_SOURCE_DIR}/sql/lex_hash.h)
+ADD_LIBRARY(sql ${SQL_SOURCE})
 
-ADD_EXECUTABLE(mysqld ${MYSQLD_SOURCE})
+IF (NOT EXISTS cmake_dummy.cc)
+  FILE (WRITE cmake_dummy.cc "")
+ENDIF (NOT EXISTS cmake_dummy.cc)
+ADD_EXECUTABLE(mysqld cmake_dummy.cc)
+
 SET_TARGET_PROPERTIES(mysqld PROPERTIES OUTPUT_NAME mysqld${MYSQLD_EXE_SUFFIX})
 SET_TARGET_PROPERTIES(mysqld PROPERTIES ENABLE_EXPORTS TRUE)
 
-SET (MYSQLD_CORE_LIBS mysys zlib dbug strings yassl taocrypt libevent vio regex backup backupstream)
+SET (MYSQLD_CORE_LIBS mysys zlib dbug strings yassl taocrypt libevent vio regex backup backupstream sql)
 TARGET_LINK_LIBRARIES(mysqld ${MYSQLD_CORE_LIBS} ${MYSQLD_STATIC_ENGINE_LIBS})
 
 IF(MSVC)
   # Set module definition file. Also use non-incremental linker, 
   # incremental appears to crash from time to time,if used with /DEF option
   SET_TARGET_PROPERTIES(mysqld PROPERTIES LINK_FLAGS "/DEF:mysqld.def /INCREMENTAL:NO")
-  
-  #command to process obj and lib files into a def file
-  IF(CMAKE_GENERATOR MATCHES "Visual Studio")
-    SET (MYSQLD_OBJDIR $(IntDir))
-  ELSE(CMAKE_GENERATOR MATCHES "Visual Studio")
-    SET (MYSQLD_OBJDIR CMakeFiles/mysqld.dir)
-  ENDIF(CMAKE_GENERATOR MATCHES "Visual Studio")
-  FILE(TO_NATIVE_PATH ${MYSQLD_OBJDIR} MYSQLD_OBJDIR)
 
   FOREACH (CORELIB ${MYSQLD_CORE_LIBS})
     GET_TARGET_PROPERTY(LOC ${CORELIB} LOCATION)
@@ -118,11 +115,11 @@ IF(MSVC)
  
   ADD_CUSTOM_COMMAND(TARGET mysqld PRE_LINK
     COMMAND cscript ARGS //nologo ${PROJECT_SOURCE_DIR}/win/create_def_file.js
-                  ${PLATFORM}  ${LIB_LOCATIONS}  ${MYSQLD_OBJDIR} > mysqld.def 
+                  ${PLATFORM}  ${LIB_LOCATIONS} > mysqld.def 
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/sql)
 ENDIF(MSVC)
 
-ADD_DEPENDENCIES(mysqld GenError)
+ADD_DEPENDENCIES(sql GenError)
 
 # Sql Parser custom command
 ADD_CUSTOM_COMMAND(
@@ -150,7 +147,7 @@ ADD_CUSTOM_TARGET(
                 ${PROJECT_SOURCE_DIR}/sql/message.rc
                 ${PROJECT_SOURCE_DIR}/sql/lex_hash.h)
 
-ADD_DEPENDENCIES(mysqld GenServerSource)
+ADD_DEPENDENCIES(sql GenServerSource)
 
 # Remove the auto-generated files as part of 'Clean Solution'
 SET_DIRECTORY_PROPERTIES(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES 
@@ -159,4 +156,3 @@ SET_DIRECTORY_PROPERTIES(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES
 ADD_LIBRARY(udf_example MODULE udf_example.c udf_example.def)
 ADD_DEPENDENCIES(udf_example strings GenError)
 TARGET_LINK_LIBRARIES(udf_example strings)
-

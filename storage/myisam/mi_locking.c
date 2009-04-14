@@ -238,7 +238,7 @@ int mi_lock_database(MI_INFO *info, int lock_type)
      */
     if( info->owned_by_merge && (info->s)->kfile < 0 )
     {
-      error = HA_ERR_NO_SUCH_TABLE;
+      my_errno= error= HA_ERR_NO_SUCH_TABLE;
     }
   }
 #endif
@@ -287,6 +287,8 @@ void mi_get_status(void* param, my_bool concurrent_insert)
   info->save_state=info->s->state.state;
   info->state= &info->save_state;
   info->append_insert_at_end= concurrent_insert;
+  if (concurrent_insert)
+    info->s->state.state.uncacheable= TRUE;
   DBUG_VOID_RETURN;
 }
 

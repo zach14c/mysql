@@ -2689,19 +2689,19 @@ truncate t4;
 truncate t1;
 truncate t3;
 drop table t4,t3,t2,t1;
-create table t1 (a varchar(255) character set utf8,
-b varchar(255) character set utf8,
-c varchar(255) character set utf8,
-d varchar(255) character set utf8,
+create table t1 (a varchar(255) character set utf8mb3,
+b varchar(255) character set utf8mb3,
+c varchar(255) character set utf8mb3,
+d varchar(255) character set utf8mb3,
 key (a,b,c,d)) engine=innodb;
 drop table t1;
-create table t1 (a varchar(255) character set utf8,
-b varchar(255) character set utf8,
-c varchar(255) character set utf8,
-d varchar(255) character set utf8,
-e varchar(255) character set utf8,
+create table t1 (a varchar(255) character set utf8mb3,
+b varchar(255) character set utf8mb3,
+c varchar(255) character set utf8mb3,
+d varchar(255) character set utf8mb3,
+e varchar(255) character set utf8mb3,
 key (a,b,c,d,e)) engine=innodb;
-ERROR 42000: Specified key was too long; max key length is 3072 bytes
+ERROR 42000: Specified key was too long; max key length is 3500 bytes
 create table t1 (s1 varbinary(2),primary key (s1)) engine=innodb;
 create table t2 (s1 binary(2),primary key (s1)) engine=innodb;
 create table t3 (s1 varchar(2) binary,primary key (s1)) engine=innodb;
@@ -2819,10 +2819,10 @@ t2	CREATE TABLE `t2` (
 DROP TABLE t2,t1;
 create table t1(a int not null, b int, c int, d int, primary key(a)) engine=innodb;
 insert into t1(a) values (1),(2),(3);
+create trigger t1t before insert on t1 for each row begin set NEW.b = NEW.a * 10 + 5, NEW.c = NEW.a / 10; end |
 commit;
 set autocommit = 0;
 update t1 set b = 5 where a = 2;
-create trigger t1t before insert on t1 for each row begin set NEW.b = NEW.a * 10 + 5, NEW.c = NEW.a / 10; end |
 set autocommit = 0;
 insert into t1(a) values (10),(20),(30),(40),(50),(60),(70),(80),(90),(100),
 (11),(21),(31),(41),(51),(61),(71),(81),(91),(101),
@@ -2869,6 +2869,7 @@ insert into t1(a) values(7);
 insert into t2(a) values(8);
 delete from t2 where a = 3;
 update t4 set b = b + 1 where a = 3;
+commit;
 commit;
 drop trigger t1t;
 drop trigger t2t;
@@ -3086,7 +3087,7 @@ PRIMARY KEY  (a,b),
 KEY idx_t2_b_c (b,c(200)),
 CONSTRAINT t_fk FOREIGN KEY (a) REFERENCES t1 (a) 
 ON DELETE CASCADE
-) ENGINE=INNODB DEFAULT CHARSET=UTF8;
+) ENGINE=INNODB DEFAULT CHARSET=UTF8MB3;
 INSERT INTO t1 VALUES (1);
 INSERT INTO t2 VALUES (1, 'bar', 'vbar');
 INSERT INTO t2 VALUES (1, 'BAR2', 'VBAR');

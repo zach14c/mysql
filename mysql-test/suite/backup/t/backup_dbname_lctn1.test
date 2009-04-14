@@ -1,0 +1,204 @@
+#
+# Test BACKUP/RESTORE on case-insensitive servers. In this
+# environment, databases 'X' and 'x' are the same database. The
+# database name case used in the BACKUP command should not make a
+# difference. For this test, lower_case_table_names=1.
+#
+
+--source include/not_embedded.inc
+
+--echo #
+--echo # Create two database:
+--echo #  * 1 with lower-case name "lower"
+--echo #  * 1 with upper-case name "UPPER"
+--echo #
+--echo # (Not supposed to be same name)
+
+--disable_warnings
+DROP DATABASE IF EXISTS lower;
+DROP DATABASE IF EXISTS UPPER;
+--enable_warnings
+
+--echo # Creating database with lower-case name
+CREATE DATABASE lower;
+CREATE TABLE lower.lcase (a char(10), b char(10)) ENGINE=MEMORY;
+INSERT INTO lower.lcase VALUES ('L41','1300'),
+                                        ('L01','1453'), 
+                                        ('L00','1000'),
+                                        ('L41','1301'),
+                                        ('L41','1305');
+
+--echo # Creating database with upper-case name
+CREATE DATABASE UPPER;
+CREATE TABLE UPPER.ucase (a char(10), b char(10)) ENGINE=MEMORY;
+INSERT INTO UPPER.ucase VALUES ('U41','1300'),
+                                        ('U01','1453'), 
+                                        ('U00','1000'),
+                                        ('U41','1301'),
+                                        ('U41','1305');
+
+--echo
+--echo # BACKUP lower-case database
+--replace_column 1 #
+BACKUP DATABASE lower to 'lowlow.bup';
+
+--echo
+--echo # BACKUP lower-case database using upper-case name
+--replace_column 1 #
+BACKUP DATABASE LOWER to 'lowup.bup';
+
+--echo
+--echo # BACKUP upper-case database
+--replace_column 1 #
+BACKUP DATABASE UPPER to 'upup.bup';
+
+--echo
+--echo # BACKUP upper-case database using lower-case name
+--replace_column 1 #
+BACKUP DATABASE upper to 'uplow.bup';
+
+--echo
+--echo # BACKUP both databases using only lower-case names
+--replace_column 1 #
+BACKUP DATABASE upper, lower to 'bothcases.bup';
+
+--echo #
+--echo # Print contents of the databases
+--echo #
+--echo #    Lower case database:
+--echo #
+
+SHOW DATABASES WHERE `Database` LIKE 'lower';
+SHOW TABLES IN lower;
+SELECT * FROM lower.lcase;
+
+--echo #
+--echo #    Upper case database:
+--echo #
+
+SHOW DATABASES WHERE `Database` LIKE 'UPPER';
+SHOW TABLES IN UPPER;
+SELECT * FROM UPPER.ucase;
+
+--echo #
+--echo # Drop the databases
+--echo #
+DROP TABLE lower.lcase;
+DROP TABLE UPPER.ucase;
+DROP DATABASE lower;
+DROP DATABASE UPPER;
+
+--echo #
+--echo # RESTORE databases with correct case
+--echo #
+--echo # RESTORE lower case database and verify content
+--echo #
+--replace_column 1 #
+RESTORE FROM 'lowlow.bup';
+
+--echo
+SHOW DATABASES WHERE `Database` LIKE 'lower';
+SHOW TABLES IN lower;
+SELECT * FROM lower.lcase;
+
+--echo #
+--echo # RESTORE upper case database and verify content
+--echo #
+--replace_column 1 #
+RESTORE FROM 'upup.bup';
+
+--echo
+SHOW DATABASES WHERE `Database` LIKE 'UPPER';
+SHOW TABLES IN UPPER;
+SELECT * FROM UPPER.ucase;
+
+--echo #
+--echo # Drop the databases
+--echo #
+DROP TABLE lower.lcase;
+DROP TABLE UPPER.ucase;
+DROP DATABASE lower;
+DROP DATABASE UPPER;
+
+--echo #
+--echo # RESTORE databases with inverted case
+--echo #
+--echo # RESTORE lower case database and verify content
+--echo #
+--replace_column 1 #
+RESTORE FROM 'lowup.bup';
+
+--echo
+SHOW DATABASES WHERE `Database` LIKE 'lower';
+SHOW TABLES IN lower;
+SELECT * FROM lower.lcase;
+
+--echo #
+--echo # RESTORE upper case database and verify content
+--echo #
+--replace_column 1 #
+RESTORE FROM 'uplow.bup';
+
+--echo
+SHOW DATABASES WHERE `Database` LIKE 'UPPER';
+SHOW TABLES IN UPPER;
+SELECT * FROM UPPER.ucase;
+
+--echo #
+--echo # Drop the databases
+--echo #
+DROP TABLE lower.lcase;
+DROP TABLE UPPER.ucase;
+DROP DATABASE lower;
+DROP DATABASE UPPER;
+
+--echo #
+--echo # RESTORE backup image with both databases and verify content
+--echo #
+--replace_column 1 #
+RESTORE FROM 'bothcases.bup';
+
+--echo
+SHOW DATABASES WHERE `Database` LIKE 'lower';
+SHOW TABLES IN lower;
+SELECT * FROM lower.lcase;
+
+--echo
+SHOW DATABASES WHERE `Database` LIKE 'UPPER';
+SHOW TABLES IN UPPER;
+SELECT * FROM UPPER.ucase;
+
+--echo #
+--echo # Verify that BACKUP errors if the same database is written twice, 
+--echo # but with different case
+--echo #
+
+--error ER_NONUNIQ_DB
+BACKUP DATABASE upper, UPPER to 'notunique.bup';
+--replace_regex /[0000-9999]+/####/
+SHOW WARNINGS;
+
+--echo #
+--echo # Verify that BACKUP error message has lower case dbname when not found
+--echo #
+
+--error ER_BAD_DB_ERROR
+BACKUP DATABASE NoTThErE to 'notthere.bup';
+--replace_regex /[0000-9999]+/####/
+SHOW WARNINGS;
+
+--echo #
+--echo # CLEANUP
+--echo #
+DROP TABLE lower.lcase;
+DROP TABLE UPPER.ucase;
+DROP DATABASE lower;
+DROP DATABASE UPPER;
+
+let $MYSQLD_DATADIR = `select @@datadir`;
+--remove_file $MYSQLD_DATADIR/lowlow.bup
+--remove_file $MYSQLD_DATADIR/upup.bup
+--remove_file $MYSQLD_DATADIR/lowup.bup
+--remove_file $MYSQLD_DATADIR/uplow.bup
+--remove_file $MYSQLD_DATADIR/bothcases.bup
+

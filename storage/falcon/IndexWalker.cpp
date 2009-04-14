@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 MySQL AB
+/* Copyright © 2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -24,7 +24,11 @@
 		parent->lower = newChild;	 \
 	else							\
 		parent->higher = newChild;
-		
+
+// Using a negative record number, that is not
+// END_BUCKET (-1) or END_LEVEL (-2) which are defined
+// in Page.h
+static const int32 INITIAL_LAST_RECORD_NUMBER = -3;		
 
 IndexWalker::IndexWalker(Index *idx, Transaction *trans, int flags)
 {
@@ -39,7 +43,7 @@ IndexWalker::IndexWalker(Index *idx, Transaction *trans, int flags)
 	balance = 0;
 	higher = NULL;
 	lower = NULL;
-	lastRecordNumber = 0;
+	lastRecordNumber = INITIAL_LAST_RECORD_NUMBER;
 	firstRecord = true;
 }
 
@@ -138,31 +142,51 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 
 	// Fetch record.  If it doesn't exist, that's ok.
 
-	Record *candidate = table->fetch(recordId);
+	Record *candidate = NULL;
+	Record *record = NULL;
 
-	if (!candidate)
-		return NULL;
-
-	// Get the correct version.  If this is select for update, get a lock record
-
-	Record *record = (lockForUpdate) 
-				    ? table->fetchForUpdate(transaction, candidate, true)
-				    : candidate->fetchVersion(transaction);
-	
-	if (!record)
+	try
 		{
-		if (!lockForUpdate)
-			candidate->release();
+		candidate = table->fetch(recordId);
+
+		if (!candidate)
+			return NULL;
+
+		RECORD_HISTORY(candidate);
+
+		// Get the correct version.  If this is select for update, get a lock record
+		record = (lockForUpdate) 
+			? table->fetchForUpdate(transaction, candidate, true)
+			: candidate->fetchVersion(transaction);
+	
+		if (!record)
+			{
+			if (!lockForUpdate)
+				candidate->release(REC_HISTORY);
 		
-		return NULL;
+			return NULL;
+			}
+	
+		// If we have a different record version, release the original
+	
+		if (!lockForUpdate && candidate != record)
+			{
+			record->addRef(REC_HISTORY);
+			candidate->release(REC_HISTORY);
+			}
 		}
-	
-	// If we have a different record version, release the original
-	
-	if (!lockForUpdate && candidate != record)
+	catch (SQLException &)
 		{
-		record->addRef();
-		candidate->release();
+
+		// 'record' must be NULL if an exception has been thrown.
+		// fetchForUpdate releases the 'candidate' on error
+
+		if (candidate && !lockForUpdate)
+			candidate->release(REC_HISTORY);
+
+		// Re-throw the exception, catch it further up to return the correct
+		// error
+		throw;
 		}
 	
 	// Compute record key and compare against index key.  If there' different, punt
@@ -173,7 +197,7 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 	if (recordKey.keyLength != keyLength ||
 		memcmp(recordKey.key, key, keyLength) != 0)
 		{
-		record->release();
+		record->release(REC_HISTORY);
 		
 		return NULL;
 		}

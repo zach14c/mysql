@@ -132,7 +132,7 @@ SET(LIBMYSQLD_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ../sql/time.cc ../sql/tztime.cc ../sql/uniques.cc ../sql/unireg.cc
            ../sql/partition_info.cc ../sql/sql_connect.cc 
            ../sql/scheduler.cc ../sql/sql_audit.cc
-           ../sql/ddl_blocker.cc ../sql/si_objects.cc
+           ../sql/bml.cc ../sql/si_objects.cc
            ../sql/event_parse_data.cc ../sql/mdl.cc
            ../sql/sql_signal.cc
            ../sql/transaction.cc
@@ -152,6 +152,6 @@ ADD_LIBRARY(mysqlserver STATIC ${LIBMYSQLD_SOURCES})
 ADD_DEPENDENCIES(mysqlserver GenServerSource GenError)
 TARGET_LINK_LIBRARIES(mysqlserver)
 
-ADD_LIBRARY(libmysqld MODULE cmake_dummy.c libmysqld.def)
+ADD_LIBRARY(libmysqld SHARED cmake_dummy.c libmysqld.def)
 ADD_DEPENDENCIES(libmysqld mysqlserver)
 TARGET_LINK_LIBRARIES(libmysqld mysqlserver)

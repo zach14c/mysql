@@ -23,23 +23,24 @@ extern "C" {
 /*
   Calculate how much memory needed for dst of base64_encode()
 */
-int base64_needed_encoded_length(int length_of_data);
+int my_base64_needed_encoded_length(int length_of_data);
 
 /*
   Calculate how much memory needed for dst of base64_decode()
 */
-int base64_needed_decoded_length(int length_of_encoded_data);
+int my_base64_needed_decoded_length(int length_of_encoded_data);
+
 
 /*
   Encode data as a base64 string
 */
-int base64_encode(const void *src, size_t src_len, char *dst);
+int my_base64_encode(const void *src, size_t src_len, char *dst);
 
 /*
   Decode a base64 string into data
 */
-int base64_decode(const char *src, size_t src_len,
-                  void *dst, const char **end_ptr);
+int my_base64_decode(const char *src, size_t src_len,
+                     void *dst, const char **end_ptr);
 
 
 #ifdef __cplusplus

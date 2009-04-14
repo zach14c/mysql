@@ -1542,6 +1542,9 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
         bzero(&chunk_info, sizeof(chunk_info));
         ret= bstream_rd_data_chunk(&s, &chunk_info);
 
+        /* Mimic error in bstream_rd_data_chunk */
+        DBUG_EXECUTE_IF("restore_tbl_data_read", ret= BSTREAM_ERROR;);
+
         switch (ret) {
 
         case BSTREAM_EOS:
@@ -1595,6 +1598,10 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
          */
         DBUG_ASSERT(snap && drvr);
 
+        /* 
+           Note: For testing, error can be injected in default driver
+           send_data by using dbug hook 'backup_default_send_data'
+        */
         ret= drvr->send_data(buf);
         switch (ret) {
 

@@ -266,10 +266,6 @@ bool subquery_types_allow_materialization(THD *thd,
 int do_sj_reset(SJ_TMP_TABLE *sj_tbl);
 TABLE *create_duplicate_weedout_tmp_table(THD *thd, uint uniq_tuple_length_arg,
                                           SJ_TMP_TABLE *sjtbl);
-inline bool optimizer_flag(THD *thd, uint flag)
-{ 
-  return (thd->variables.optimizer_switch & flag);
-}
 
 Item_equal *find_item_equal(COND_EQUAL *cond_equal, Field *field,
                             bool *inherited_fl);
@@ -607,7 +603,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         9. Parent select is not a confluent table-less select
         10. Neither parent nor child select have STRAIGHT_JOIN option.
     */
-    if (!optimizer_flag(thd, OPTIMIZER_SWITCH_NO_SEMIJOIN) &&
+    if (optimizer_flag(thd, OPTIMIZER_SWITCH_SEMIJOIN) &&
         in_subs &&                                                    // 1
         !select_lex->is_part_of_union() &&                            // 2
         !select_lex->group_list.elements && !order &&                 // 3
@@ -696,7 +692,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         perform the whole transformation or only that part of it which wraps
         Item_in_subselect in an Item_in_optimizer.
       */
-      if (!optimizer_flag(thd, OPTIMIZER_SWITCH_NO_MATERIALIZATION)  && 
+      if (optimizer_flag(thd, OPTIMIZER_SWITCH_MATERIALIZATION)  && 
           in_subs  &&                                                   // 1
           !select_lex->is_part_of_union() &&                            // 2
           select_lex->master_unit()->first_select()->leaf_tables &&     // 3
@@ -3995,11 +3991,12 @@ static uint get_tmp_table_rec_length(List<Item> &items)
 */
 
 static bool
-make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
+make_join_statistics(JOIN *join, TABLE_LIST *tables_arg, COND *conds,
 		     DYNAMIC_ARRAY *keyuse_array)
 {
   int error;
   TABLE *table;
+  TABLE_LIST *tables= tables_arg;
   uint i,table_count,const_count,key;
   table_map found_const_table_map, all_table_map, found_ref, refs;
   key_map const_ref, eq_part;
@@ -4039,7 +4036,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
     if ((error= table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK)))
     {
       table->file->print_error(error, MYF(0));
-      DBUG_RETURN(1);
+      goto error;
     }
     table->quick_keys.clear_all();
     table->reginfo.join_tab=s;
@@ -4135,7 +4132,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
       {
         join->tables=0;			// Don't use join->table
         my_message(ER_WRONG_OUTER_JOIN, ER(ER_WRONG_OUTER_JOIN), MYF(0));
-        DBUG_RETURN(1);
+        goto error;
       }
       s->key_dependent= s->dependent;
     }
@@ -4145,7 +4142,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
     if (update_ref_and_keys(join->thd, keyuse_array, stat, join->tables,
                             conds, join->cond_equal,
                             ~outer_join, join->select_lex, &sargables))
-      DBUG_RETURN(1);
+      goto error;
 
   /* Read tables with 0 or 1 rows (system tables) */
   join->const_table_map= 0;
@@ -4161,7 +4158,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
     if ((tmp=join_read_const_table(s, p_pos)))
     {
       if (tmp > 0)
-	DBUG_RETURN(1);			// Fatal error
+	goto error;		// Fatal error
     }
     else
       found_const_table_map|= s->table->map;
@@ -4233,7 +4230,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
 	  if ((tmp= join_read_const_table(s, join->positions+const_count-1)))
 	  {
 	    if (tmp > 0)
-	      DBUG_RETURN(1);			// Fatal error
+	      goto error;			// Fatal error
 	  }
 	  else
 	    found_const_table_map|= table->map;
@@ -4289,12 +4286,12 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
 	        set_position(join,const_count++,s,start_keyuse);
 	        if (create_ref_for_key(join, s, start_keyuse,
 				       found_const_table_map))
-		  DBUG_RETURN(1);
+                  goto error;
 	        if ((tmp=join_read_const_table(s,
                                                join->positions+const_count-1)))
 	        {
 		  if (tmp > 0)
-		    DBUG_RETURN(1);			// Fatal error
+		    goto error;			// Fatal error
 	        }
 	        else
 		  found_const_table_map|= table->map;
@@ -4381,7 +4378,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
 			  *s->on_expr_ref ? *s->on_expr_ref : conds,
 			  1, &error);
       if (!select)
-        DBUG_RETURN(1);
+        goto error;
       records= get_quick_record_count(join->thd, select, s->table,
 				      &s->const_keys, join->row_limit);
       s->quick=select->quick;
@@ -4432,7 +4429,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
   if (join->const_tables != join->tables)
   {
     if (choose_plan(join, all_table_map & ~join->const_table_map))
-      DBUG_RETURN(TRUE);
+      goto error;
   }
   else
   {
@@ -4442,6 +4439,17 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
   }
   /* Generate an execution plan from the found optimal join order. */
   DBUG_RETURN(join->thd->killed || get_best_combination(join));
+
+error:
+  /*
+    Need to clean up join_tab from TABLEs in case of error.
+    They won't get cleaned up by JOIN::cleanup() because JOIN::join_tab
+    may not be assigned yet by this function (which is building join_tab).
+    Dangling TABLE::reginfo.join_tab may cause part_of_refkey to choke. 
+  */
+  for (tables= tables_arg; tables; tables= tables->next_leaf)
+    tables->table->reginfo.join_tab= NULL;
+  DBUG_RETURN (1);
 }
 
 
@@ -4475,7 +4483,7 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
   DBUG_ENTER("optimize_semijoin_nests");
   List_iterator<TABLE_LIST> sj_list_it(join->select_lex->sj_nests);
   TABLE_LIST *sj_nest;
-  if (!optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_MATERIALIZATION))
+  if (optimizer_flag(join->thd, OPTIMIZER_SWITCH_MATERIALIZATION))
   {
     while ((sj_nest= sj_list_it++))
     {
@@ -5856,7 +5864,7 @@ public:
         !(remaining_tables & 
           s->emb_sj_nest->nested_join->sj_corr_tables) &&               // (4)
         remaining_tables & s->emb_sj_nest->nested_join->sj_depends_on &&// (5)
-        !optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_LOOSE_SCAN))
+        optimizer_flag(join->thd, OPTIMIZER_SWITCH_LOOSE_SCAN))
     {
       /* This table is an LooseScan scan candidate */
       bound_sj_equalities= get_bound_sj_equalities(s->emb_sj_nest, 
@@ -11303,7 +11311,7 @@ static COND *build_equal_items_for_cond(THD *thd, COND *cond,
     if (and_level)
     {
       /*
-         Retrieve all conjucts of this level detecting the equality
+         Retrieve all conjuncts of this level detecting the equality
          that are subject to substitution by multiple equality items and
          removing each such predicate from the conjunction after having 
          found/created a multiple equality whose inference the predicate is.
@@ -11318,6 +11326,15 @@ static COND *build_equal_items_for_cond(THD *thd, COND *cond,
         if (check_equality(thd, item, &cond_equal, &eq_list))
           li.remove();
       }
+
+      /*
+        Check if we eliminated all the predicates of the level, e.g.
+        (a=a AND b=b AND a=a).
+      */
+      if (!args->elements && 
+          !cond_equal.current_level.elements && 
+          !eq_list.elements)
+        return new Item_int((longlong) 1, 1);
 
       List_iterator_fast<Item_equal> it(cond_equal.current_level);
       while ((item_equal= it++))
@@ -12844,7 +12861,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
         !(remaining_tables &                             // (3)
           (s->emb_sj_nest->nested_join->sj_corr_tables | // (3)
            s->emb_sj_nest->nested_join->sj_depends_on)) && // (3)
-        !optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_FIRSTMATCH))
+        optimizer_flag(join->thd, OPTIMIZER_SWITCH_FIRSTMATCH))
     {
       /* Start tracking potential FirstMatch range */
       pos->first_firstmatch_table= idx;
@@ -14151,6 +14168,7 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   table->in_use= thd;
   table->quick_keys.init();
   table->covering_keys.init();
+  table->merge_keys.init();
   table->keys_in_use_for_query.init();
 
   table->s= share;

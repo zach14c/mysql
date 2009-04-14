@@ -126,7 +126,9 @@ my $path_config_file;           # The generated config file, var/my.cnf
 # executables will be used by the test suite.
 our $opt_vs_config = $ENV{'MTR_VS_CONFIG'};
 
-my $DEFAULT_SUITES= "main,backup,binlog,federated,rpl,rpl_ndb,ndb,maria";
+# If you add a new suite, please check TEST_DIRS in Makefile.am.
+#
+my $DEFAULT_SUITES= "main,backup,backup_engines,backup_ptr,binlog,federated,rpl,rpl_ndb,ndb,maria";
 
 our $opt_usage;
 our $opt_list_options;
@@ -167,8 +169,9 @@ our $opt_force;
 our $opt_mem= $ENV{'MTR_MEM'};
 
 our $opt_gcov;
-our $opt_gcov_err;
-our $opt_gcov_msg;
+our $opt_gcov_exe= "gcov";
+our $opt_gcov_err= "mysql-test-gcov.msg";
+our $opt_gcov_msg= "mysql-test-gcov.err";
 
 our $glob_debugger= 0;
 our $opt_gdb;
@@ -412,7 +415,7 @@ sub main {
   mtr_print_line();
 
   if ( $opt_gcov ) {
-    gcov_collect($basedir, $opt_gcov,
+    gcov_collect($basedir, $opt_gcov_exe,
 		 $opt_gcov_msg, $opt_gcov_err);
   }
 
@@ -1599,24 +1602,6 @@ sub client_debug_arg($$) {
 }
 
 
-sub mysql_fix_arguments () {
-
-  return "" if ( IS_WINDOWS );
-
-  my $exe=
-    mtr_script_exists("$basedir/scripts/mysql_fix_privilege_tables",
-		      "$path_client_bindir/mysql_fix_privilege_tables");
-  my $args;
-  mtr_init_args(\$args);
-  mtr_add_arg($args, "--defaults-file=%s", $path_config_file);
-
-  mtr_add_arg($args, "--basedir=%s", $basedir);
-  mtr_add_arg($args, "--bindir=%s", $path_client_bindir);
-  mtr_add_arg($args, "--verbose");
-  return mtr_args2str($exe, @$args);
-}
-
-
 sub client_arguments ($) {
   my $client_name= shift;
   my $client_exe= mtr_exe_exists("$path_client_bindir/$client_name");
@@ -1914,12 +1899,12 @@ sub environment_setup {
   $ENV{'MYSQL_SLAP'}=               mysqlslap_arguments();
   $ENV{'MYSQL_IMPORT'}=             client_arguments("mysqlimport");
   $ENV{'MYSQL_SHOW'}=               client_arguments("mysqlshow");
+  $ENV{'MYSQL_BACKUP'}=             client_arguments("mysqlbackup");
   $ENV{'MYSQL_BINLOG'}=             mysqlbinlog_arguments();
   $ENV{'MYSQL'}=                    client_arguments("mysql");
   $ENV{'MYSQL_UPGRADE'}=            client_arguments("mysql_upgrade");
   $ENV{'MYSQLADMIN'}=               native_path($exe_mysqladmin);
   $ENV{'MYSQL_CLIENT_TEST'}=        mysql_client_test_arguments();
-  $ENV{'MYSQL_FIX_SYSTEM_TABLES'}=  mysql_fix_arguments();
   $ENV{'EXE_MYSQL'}=                $exe_mysql;
 
   # ----------------------------------------------------
@@ -2485,14 +2470,6 @@ sub create_config_file_for_extern {
 # binlog reads from [client] and [mysqlbinlog]
 [mysqlbinlog]
 character-sets-dir= $path_charsetsdir
-
-# mysql_fix_privilege_tables.sh don't read from [client]
-[mysql_fix_privilege_tables]
-socket            = $opts{'socket'}
-port              = $opts{'port'}
-user              = $opts{'user'}
-password          = $opts{'password'}
-
 
 EOF
 ;
@@ -4838,13 +4815,9 @@ sub gdb_arguments {
   else
   {
     # write init file for mysqld
-    mtr_tofile($gdb_init_file,
-	       "set args $str\n" .
-	       "break mysql_parse\n" .
-	       "commands 1\n" .
-	       "disable 1\n" .
-	       "end\n" .
-	       "run");
+    mtr_tofile($gdb_init_file, <<EOGDB );
+set args $str
+EOGDB
   }
 
   if ( $opt_manual_gdb )
@@ -5199,6 +5172,8 @@ Misc options
   sleep=SECONDS         Passed to mysqltest, will be used as fixed sleep time
   debug-sync-timeout=NUM Set default timeout for WAIT_FOR debug sync
                         actions. Disable facility with NUM=0.
+  gcov                  Collect coverage information after the test.
+                        The result is a gcov file per source and header file.
 
 HERE
   exit(1);

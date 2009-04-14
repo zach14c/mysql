@@ -92,11 +92,9 @@ SET @@global.delay_key_write = ERROR;
 SET @@global.delay_key_write = FALSE0;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@global.delay_key_write = ONN;
-
+--error ER_WRONG_VALUE_FOR_VAR
 SET @@global.delay_key_write = OF;
 SELECT @@global.delay_key_write;
---echo 'Bug# 34828: Variable is incorrectly accepting OF as a value'
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@global.delay_key_write = ' ';
 --Error ER_WRONG_VALUE_FOR_VAR

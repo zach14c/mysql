@@ -1916,6 +1916,7 @@ bool LOGGER::slow_log_print(THD *thd, const char *query, uint query_length,
   uint user_host_len= 0;
   ulonglong query_utime, lock_utime;
 
+  DBUG_ASSERT(thd->enable_slow_log);
   /*
     Print the message to the buffer if we have slow log enabled
   */
@@ -4802,7 +4803,7 @@ int MYSQL_BIN_LOG::purge_first_log(Relay_log_info* rli, bool included)
   /* Store where we are in the new file for the execution thread */
   flush_relay_log_info(rli);
 
-  DBUG_EXECUTE_IF("crash_before_purge_logs", abort(););
+  DBUG_EXECUTE_IF("crash_before_purge_logs", DBUG_ABORT(););
 
   pthread_mutex_lock(&rli->log_space_lock);
   rli->relay_log.purge_logs(to_purge_if_included, included,
@@ -4956,7 +4957,7 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
     goto err;
   }
 
-  DBUG_EXECUTE_IF("crash_after_update_index", abort(););
+  DBUG_EXECUTE_IF("crash_after_update_index", DBUG_ABORT(););
 
   /* Switch purge_temp for read. */
   if ((error=reinit_io_cache(&purge_temp, READ_CACHE, 0, 0, 0)))
@@ -6543,10 +6544,14 @@ bool flush_error_log()
       uchar buf[IO_SIZE];
 
       freopen(err_temp,"a+",stderr);
+      setbuf(stderr, NULL);
       (void) my_delete(err_renamed, MYF(0));
       my_rename(log_error_file,err_renamed,MYF(0));
       if (freopen(log_error_file,"a+",stdout))
+      {
         freopen(log_error_file,"a+",stderr);
+        setbuf(stderr, NULL);
+      }
 
       if ((fd = my_open(err_temp, O_RDONLY, MYF(0))) >= 0)
       {
@@ -6562,7 +6567,10 @@ bool flush_error_log()
 #else
    my_rename(log_error_file,err_renamed,MYF(0));
    if (freopen(log_error_file,"a+",stdout))
+   {
      freopen(log_error_file,"a+",stderr);
+     setbuf(stderr, NULL);
+   }
    else
      result= 1;
 #endif

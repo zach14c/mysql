@@ -6,6 +6,8 @@
 drop table if exists t1,t2,t3,t4,t5,t6;
 --enable_warnings
 
+let $MYSQLD_DATADIR = `select @@datadir`;
+
 CREATE TABLE t1 (a int not null, b char (10) not null);
 insert into t1 values(1,'a'),(2,'b'),(3,'c'),(3,'c');
 CREATE TABLE t2 (a int not null, b char (10) not null);
@@ -1036,3 +1038,10 @@ SELECT ( SELECT a UNION SELECT a ) INTO OUTFILE  'union.out.file3' FROM t1;
 SELECT ( SELECT a UNION SELECT a ) INTO DUMPFILE 'union.out.file4' FROM t1;
 
 DROP TABLE t1;
+
+--remove_file $MYSQLD_DATADIR/test/union.out.file
+--remove_file $MYSQLD_DATADIR/test/union.out.file2
+--remove_file $MYSQLD_DATADIR/test/union.out.file3
+--remove_file $MYSQLD_DATADIR/test/union.out.file4
+--remove_file $MYSQLD_DATADIR/test/union.out.file5
+--remove_file $MYSQLD_DATADIR/test/union.out.file6

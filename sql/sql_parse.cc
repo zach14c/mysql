@@ -28,7 +28,7 @@
 #include "sp_cache.h"
 #include "events.h"
 #include "sql_trigger.h"
-#include <ddl_blocker.h>
+#include "bml.h"
 #include "sql_audit.h"
 #include "transaction.h"
 #include "sql_prepare.h"
@@ -45,7 +45,7 @@
   @defgroup Runtime_Environment Runtime Environment
   @{
 */
-int execute_backup_command(THD*, LEX*, String*, bool);
+int execute_backup_command(THD*, LEX*, String*, bool, bool);
 
 /* Used in error handling only */
 #define SP_TYPE_STRING(LP) \
@@ -99,7 +99,7 @@ const char *xa_state_names[]={
   "NON-EXISTING", "ACTIVE", "IDLE", "PREPARED", "ROLLBACK ONLY"
 };
 
-extern DDL_blocker_class *DDL_blocker;
+extern BML_class *BML_instance;
 
 #ifdef HAVE_REPLICATION
 /**
@@ -133,11 +133,11 @@ static bool some_non_temp_table_to_be_updated(THD *thd, TABLE_LIST *tables)
   @param mask   Bitmask used for the SQL command match.
 
 */
-static bool opt_implicit_commit(THD *thd, uint mask)
+static bool stmt_causes_implicit_commit(THD *thd, uint mask)
 {
   LEX *lex= thd->lex;
-  bool res= FALSE, skip= FALSE;
-  DBUG_ENTER("opt_implicit_commit");
+  bool skip= FALSE;
+  DBUG_ENTER("stmt_causes_implicit_commit");
 
   if (!(sql_command_flags[lex->sql_command] & mask))
     DBUG_RETURN(FALSE);
@@ -158,15 +158,7 @@ static bool opt_implicit_commit(THD *thd, uint mask)
     break;
   }
 
-  if (!skip)
-  {
-    /* Commit or rollback the statement transaction. */
-    thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
-    /* Commit the normal transaction if one is active. */
-    res= trans_commit_implicit(thd);
-  }
-
-  DBUG_RETURN(res);
+  DBUG_RETURN(!skip);
 }
 
 
@@ -332,6 +324,47 @@ void init_update_queries(void)
 
   sql_command_flags[SQLCOM_BACKUP]=             CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_RESTORE]=            CF_AUTO_COMMIT_TRANS;
+
+  /*
+    Mark commands to be blocked by Backup Metadata Lock. See bml.cc.
+  */ 
+  sql_command_flags[SQLCOM_DROP_USER]|=         CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_DROP_DB]|=           CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_DROP_TABLE]|=        CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_DROP_VIEW]|=         CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_DROP_FUNCTION]|=     CF_BLOCKED_BY_BML;  
+  sql_command_flags[SQLCOM_DROP_PROCEDURE]|=    CF_BLOCKED_BY_BML;  
+  sql_command_flags[SQLCOM_DROP_EVENT]|=        CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_DROP_TRIGGER]|=      CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_DROP_INDEX]|=        CF_BLOCKED_BY_BML;
+
+  sql_command_flags[SQLCOM_CREATE_DB]|=         CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_CREATE_TABLE]|=      CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_CREATE_VIEW]|=       CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_CREATE_SPFUNCTION]|= CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_CREATE_PROCEDURE]|=  CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_CREATE_EVENT]|=      CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_CREATE_TRIGGER]|=    CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_CREATE_INDEX]|=      CF_BLOCKED_BY_BML;
+
+  sql_command_flags[SQLCOM_ALTER_TABLESPACE]|=  CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_ALTER_DB]|=          CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_ALTER_DB_UPGRADE]|=  CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_ALTER_TABLE]|=       CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_ALTER_FUNCTION]|=    CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_ALTER_PROCEDURE]|=   CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_ALTER_EVENT]|=       CF_BLOCKED_BY_BML;
+
+  sql_command_flags[SQLCOM_RENAME_USER]|=       CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_RENAME_TABLE]|=      CF_BLOCKED_BY_BML;
+
+  sql_command_flags[SQLCOM_GRANT]|=             CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_REVOKE]|=            CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_REVOKE_ALL]|=        CF_BLOCKED_BY_BML;
+
+  sql_command_flags[SQLCOM_REPAIR]|=            CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_OPTIMIZE]|=          CF_BLOCKED_BY_BML;
+  sql_command_flags[SQLCOM_TRUNCATE]|=          CF_BLOCKED_BY_BML;
 }
 
 
@@ -350,6 +383,13 @@ bool is_log_table_write_query(enum enum_sql_command command)
 {
   DBUG_ASSERT(command <= SQLCOM_END);
   return (sql_command_flags[command] & CF_WRITE_LOGS_COMMAND) != 0;
+}
+
+static
+bool is_bml_blocked(const enum enum_sql_command command)
+{
+  DBUG_ASSERT(command <= SQLCOM_END);
+  return (sql_command_flags[command] & CF_BLOCKED_BY_BML) != 0;
 }
 
 void execute_init_command(THD *thd, sys_var_str *init_command_var,
@@ -1225,6 +1265,9 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     ulong options= (ulong) (uchar) packet[0];
     if (trans_commit_implicit(thd))
       break;
+    close_thread_tables(thd);
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
     if (check_global_access(thd,RELOAD_ACL))
       break;
     general_log_print(thd, command, NullS);
@@ -1232,6 +1275,9 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       break;
     if (trans_commit_implicit(thd))
       break;
+    close_thread_tables(thd);
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
     my_ok(thd);
     break;
   }
@@ -1463,9 +1509,9 @@ void log_slow_statement(THD *thd)
 
   /*
     Do not log administrative statements unless the appropriate option is
-    set; do not log into slow log if reading from backup.
+    set.
   */
-  if (thd->enable_slow_log && !thd->user_time)
+  if (thd->enable_slow_log)
   {
     thd_proc_info(thd, "logging slow query");
     ulonglong end_utime_of_query= thd->current_utime();
@@ -1822,6 +1868,14 @@ mysql_execute_command(THD *thd)
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   thd->work_part_info= 0;
 #endif
+  /*
+   Some DDL statements need to observe the Backup Metadata Lock (BML). Such 
+   statements are registered with the BML system before they are executed. 
+   This flag determines if the current statement was successfuly registered 
+   with bml_enter() in which case a matching call to bml_leave() must be made
+   after it has been executed.
+  */ 
+  bool bml_registered= FALSE;
 
   /*
     In many cases first table of main SELECT_LEX have special meaning =>
@@ -1997,8 +2051,41 @@ mysql_execute_command(THD *thd)
     not run in it's own transaction it may simply never appear on
     the slave in case the outside transaction rolls back.
   */
-  if (opt_implicit_commit(thd, CF_IMPLICT_COMMIT_BEGIN))
+  if (stmt_causes_implicit_commit(thd, CF_IMPLICT_COMMIT_BEGIN))
+  {
+    /* Commit or rollback the statement transaction. */
+    thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
+    /* Commit the normal transaction if one is active. */
+    if (trans_commit_implicit(thd))
+      goto error;
+    /* Close tables and release metadata locks. */
+    close_thread_tables(thd);
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
+  }
+
+  /*
+    If the SQL command to be executed should be blocked by BML, call 
+    bml_enter() to regiser it. The call will block if the lock is taken 
+    currently and will wait for its release (possibly timing-out).
+    
+    If registering is successful, either because the lock was not taken, or it
+    was removed before the timeout, then bml_enter() returns TRUE and 
+    bml_registered flag becomes TRUE. This flag is later used to de-register
+    the command using bml_leave().
+    
+    In case of timeout, when the registration has failed, bml_enter() will
+    return false, bml_registered will be FALSE and bml_leave() will not be 
+    called. 
+  */ 
+  if (is_bml_blocked(lex->sql_command) && 
+      !(bml_registered= BML_instance->bml_enter(thd)))
     goto error;
+  
+#ifndef DBUG_OFF
+  if (lex->sql_command != SQLCOM_SET_OPTION)
+    DEBUG_SYNC(thd,"before_execute_sql_command");
+#endif
 
   switch (lex->sql_command) {
 
@@ -2309,7 +2396,15 @@ mysql_execute_command(THD *thd)
     goto error;
 #else
   {
-    /* 
+    /*
+      Stack the 'backup_in_progress' variable. If this is run inside
+      backup/restore, it will probably fail. But then we need to
+      return to the former value.
+    */
+    int saved_backup_in_progress= thd->backup_in_progress;
+    thd->backup_in_progress= lex->sql_command;
+
+    /*
        Reset warnings for BACKUP and RESTORE commands. Note: this will
        cause problems if BACKUP/RESTORE is allowed inside stored
        routines and events. In that case, warnings should not be
@@ -2331,26 +2426,45 @@ mysql_execute_command(THD *thd)
     /* Used to specify if RESTORE should overwrite existing db with same name */
     bool overwrite_restore= false;
 
-    Item *it= (Item *)lex->value_list.head();
+    /* Used to specify if RESTORE should skup writing the gap event. */
+    bool skip_gap_event= false;
 
-    // Item only set for RESTORE in sql_yacc.yy, no error checking of
-    // item necessary
-    if (it)
+    List<Item> lit= lex->value_list;
+    Item *it= 0;
+
+    // value list only set for RESTORE in sql_yacc.yy, no error checking of
+    // item necessary for backup
+    while (lit.elements)
     {
+      it= lit.pop();
       /*
         it is OK to only emulate fix_fields, because we need only
         value of constant
       */
       it->quick_fix_field();
-
-      if ((int8)it->val_int() == 1)
-        overwrite_restore= true;
+      int val= (int)it->val_int();
+      /*
+        Check options.
+      */
+      switch (val) {
+        /* OVERWRITE option */
+        case 1:
+          overwrite_restore= true;
+          break;
+        /* SKIP GAP EVENT option */
+        case 2:
+          skip_gap_event= true;
+          break;
+      }
     }
     /*
       Note: execute_backup_command() sends a correct response to the client
       (either ok, result set or error message).
-     */ 
-    if (execute_backup_command(thd, lex, &backupdir, overwrite_restore))
+    */
+    res= execute_backup_command(thd, lex, &backupdir, overwrite_restore,
+                                skip_gap_event);
+    thd->backup_in_progress= saved_backup_in_progress;
+    if (res)
       goto error;
     break;
   }
@@ -2498,11 +2612,6 @@ mysql_execute_command(THD *thd)
       TABLE in the same way. That way we avoid that a new table is
       created during a gobal read lock.
     */
-    if (!DDL_blocker->check_DDL_blocker(thd))
-    {
-      res= 1;
-      goto ddl_blocker_err;
-    }
     if (!thd->locked_tables_mode &&
         !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
     {
@@ -2544,7 +2653,9 @@ mysql_execute_command(THD *thd)
       if (!(create_info.options & HA_LEX_CREATE_TMP_TABLE))
       {
         lex->link_first_table_back(create_table, link_to_local);
-        create_table->open_type= TABLE_LIST::OPEN_OR_CREATE;
+        /* Set strategies: reset default or 'prepared' values. */
+        create_table->open_strategy= TABLE_LIST::OPEN_IF_EXISTS;
+        create_table->lock_strategy= TABLE_LIST::EXCLUSIVE_DOWNGRADABLE_MDL;
         if (!thd->locked_tables_mode)
           global_schema_lock_guard.lock();
       }
@@ -2603,7 +2714,6 @@ mysql_execute_command(THD *thd)
           res= handle_select(thd, lex, result, 0);
           delete result;
         }
-        DDL_blocker->end_DDL();
       }
       else if (!(create_info.options & HA_LEX_CREATE_TMP_TABLE))
         create_table= lex->unlink_first_table(&link_to_local);
@@ -2630,8 +2740,6 @@ mysql_execute_command(THD *thd)
 
     /* put tables back for PS rexecuting */
 end_with_restore_list:
-    DDL_blocker->end_DDL();
-ddl_blocker_err:
     lex->link_first_table_back(create_table, link_to_local);
     break;
   }
@@ -2647,8 +2755,6 @@ ddl_blocker_err:
     table without having to do a full rebuild.
   */
   {
-    if (!DDL_blocker->check_DDL_blocker(thd))
-      goto error;
     /* Prepare stack copies to be re-execution safe */
     HA_CREATE_INFO create_info;
     Alter_info alter_info(lex->alter_info, thd->mem_root);
@@ -2674,7 +2780,6 @@ ddl_blocker_err:
     res= mysql_alter_table(thd, first_table->db, first_table->table_name,
                            &create_info, first_table, &alter_info,
                            0, (ORDER*) 0, 0);
-    DDL_blocker->end_DDL();
     break;
   }
 #ifdef HAVE_REPLICATION
@@ -2716,8 +2821,6 @@ ddl_blocker_err:
 
   case SQLCOM_ALTER_TABLE:
     {
-      if (!DDL_blocker->check_DDL_blocker(thd))
-        goto error;
       ulong priv=0;
       ulong priv_needed= ALTER_ACL;
 
@@ -2733,10 +2836,7 @@ ddl_blocker_err:
       Alter_info alter_info(lex->alter_info, thd->mem_root);
 
       if (thd->is_fatal_error) /* OOM creating a copy of alter_info */
-      {
-        DDL_blocker->end_DDL();
         goto error;
-      }
       /*
         We also require DROP priv for ALTER TABLE ... DROP PARTITION, as well
         as for RENAME TO, as being done by SQLCOM_RENAME_TABLE
@@ -2754,10 +2854,8 @@ ddl_blocker_err:
 	  check_merge_table_access(thd, first_table->db,
 				   (TABLE_LIST *)
 				   create_info.merge_list.first))
-      {
-        DDL_blocker->end_DDL();
 	goto error;				/* purecov: inspected */
-      }
+
       if (check_grant(thd, priv_needed, all_tables, 0, UINT_MAX, 0))
         goto error;
       if (lex->name.str && !test_all_bits(priv,INSERT_ACL | CREATE_ACL))
@@ -2769,10 +2867,7 @@ ddl_blocker_err:
           tmp_table.grant.privilege=priv;
           if (check_grant(thd, INSERT_ACL | CREATE_ACL, &tmp_table, 0,
               UINT_MAX, 0))
-          {
-            DDL_blocker->end_DDL();
             goto error;
-          }
       }
 
       /* Don't yet allow changing of symlinks with ALTER TABLE */
@@ -2790,7 +2885,6 @@ ddl_blocker_err:
           !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
       {
         res= 1;
-        DDL_blocker->end_DDL();
         break;
       }
 
@@ -2802,7 +2896,6 @@ ddl_blocker_err:
                              select_lex->order_list.elements,
                              (ORDER *) select_lex->order_list.first,
                              lex->ignore);
-      DDL_blocker->end_DDL();
       break;
     }
   case SQLCOM_RENAME_TABLE:
@@ -2831,14 +2924,8 @@ ddl_blocker_err:
         goto error;
     }
 
-    if (!DDL_blocker->check_DDL_blocker(thd))
-      goto error;
     if (mysql_rename_tables(thd, first_table, 0))
-    {
-      DDL_blocker->end_DDL();
       goto error;
-    }
-    DDL_blocker->end_DDL();
     break;
   }
 #ifndef EMBEDDED_LIBRARY
@@ -2890,18 +2977,41 @@ ddl_blocker_err:
       else
       {
         ulong save_priv;
-        if (check_access(thd, SELECT_ACL, first_table->db,
+
+        /*
+          If it is an INFORMATION_SCHEMA table, SELECT_ACL privilege is the
+          only privilege allowed. For any other privilege check_access()
+          reports an error. That's how internal implementation protects
+          INFORMATION_SCHEMA from updates.
+
+          For ordinary tables any privilege from the SHOW_CREATE_TABLE_ACLS
+          set is sufficient.
+        */
+
+        ulong check_privs= test(first_table->schema_table) ?
+                           SELECT_ACL : SHOW_CREATE_TABLE_ACLS;
+
+        if (check_access(thd, check_privs, first_table->db,
                          &save_priv, FALSE, FALSE,
                          test(first_table->schema_table)))
           goto error;
+
         /*
-          save_priv contains any privileges actually granted by check_access.
-          If there are no global privileges (save_priv == 0) and no table level
-          privileges, access is denied.
+          save_priv contains any privileges actually granted by check_access
+          (i.e. save_priv contains global (user- and database-level)
+          privileges).
+
+          The fact that check_access() returned FALSE does not mean that
+          access is granted. We need to check if save_priv contains any
+          table-specific privilege. If not, we need to check table-level
+          privileges.
+
+          If there are no global privileges and no table-level privileges,
+          access is denied.
         */
-        if (!save_priv &&
-            !has_any_table_level_privileges(thd, TABLE_ACLS,
-                                            first_table))
+
+        if (!(save_priv & (SHOW_CREATE_TABLE_ACLS)) &&
+            !has_any_table_level_privileges(thd, SHOW_CREATE_TABLE_ACLS, first_table))
         {
           my_error(ER_TABLEACCESS_DENIED_ERROR, MYF(0),
                   "SHOW", thd->security_ctx->priv_user,
@@ -2910,9 +3020,8 @@ ddl_blocker_err:
         }
       }
 #endif /* NO_EMBDEDDED_ACCESS_CHECKS */
-      /*
-        Access is granted. Execute command.
-      */
+
+      /* Access is granted. Execute the command.  */
       res= mysqld_show_create(thd, first_table);
       break;
     }
@@ -2932,10 +3041,7 @@ ddl_blocker_err:
     if (check_table_access(thd, SELECT_ACL | INSERT_ACL, all_tables, FALSE, FALSE, UINT_MAX))
       goto error; /* purecov: inspected */
     thd->enable_slow_log= opt_log_slow_admin_statements;
-    if (!DDL_blocker->check_DDL_blocker(thd))
-      goto error;
     res= mysql_repair_table(thd, first_table, &lex->check_opt);
-    DDL_blocker->end_DDL();
     /* ! we write after unlocking the table */
     if (!res && !lex->no_write_to_binlog)
     {
@@ -2985,12 +3091,9 @@ ddl_blocker_err:
     if (check_table_access(thd, SELECT_ACL | INSERT_ACL, all_tables, FALSE, FALSE, UINT_MAX))
       goto error; /* purecov: inspected */
     thd->enable_slow_log= opt_log_slow_admin_statements;
-    if (!DDL_blocker->check_DDL_blocker(thd))
-      goto error;
     res= (specialflag & (SPECIAL_SAFE_MODE | SPECIAL_NO_NEW_FUNC)) ?
       mysql_recreate_table(thd, first_table) :
       mysql_optimize_table(thd, first_table, &lex->check_opt);
-    DDL_blocker->end_DDL();
     /* ! we write after unlocking the table */
     if (!res && !lex->no_write_to_binlog)
     {
@@ -3231,10 +3334,7 @@ ddl_blocker_err:
       goto error;
     }
 
-    if (!DDL_blocker->check_DDL_blocker(thd))
-      goto error;
     res= mysql_truncate(thd, first_table, 0);
-    DDL_blocker->end_DDL();
 
     break;
   case SQLCOM_DELETE:
@@ -3337,12 +3437,9 @@ ddl_blocker_err:
       /* So that DROP TEMPORARY TABLE gets to binlog at commit/rollback */
       thd->options|= OPTION_KEEP_LOG;
     }
-      if (!DDL_blocker->check_DDL_blocker(thd))
-        goto error;
     /* DDL and binlog write order protected by LOCK_open */
     res= mysql_rm_table(thd, first_table, lex->drop_if_exists,
 			lex->drop_temporary);
-      DDL_blocker->end_DDL();
   }
   break;
   case SQLCOM_SHOW_PROCESSLIST:
@@ -3460,6 +3557,7 @@ ddl_blocker_err:
     if (thd->options & OPTION_TABLE_LOCK)
     {
       trans_commit_implicit(thd);
+      thd->mdl_context.release_all_locks();
       thd->options&= ~(OPTION_TABLE_LOCK);
     }
     if (thd->global_read_lock)
@@ -3515,6 +3613,8 @@ ddl_blocker_err:
     /* we must end the trasaction first, regardless of anything */
     if (trans_commit_implicit(thd))
       goto error;
+    /* release transactional metadata locks. */
+    thd->mdl_context.release_all_locks();
 
     alloc_mdl_requests(all_tables, thd->locked_tables_list.locked_tables_root());
 
@@ -3538,6 +3638,13 @@ ddl_blocker_err:
       */
       trans_rollback_stmt(thd);
       trans_commit_implicit(thd);
+      /*
+        Close tables and release metadata locks otherwise a later call to
+        close_thread_tables might not release the locks if autocommit is off.
+      */
+      close_thread_tables(thd);
+      DBUG_ASSERT(!thd->locked_tables_mode);
+      thd->mdl_context.release_all_locks();
       thd->options&= ~(OPTION_TABLE_LOCK);
     }
     else
@@ -3584,11 +3691,8 @@ ddl_blocker_err:
     if (check_access(thd,CREATE_ACL,lex->name.str, 0, 1, 0,
                      is_schema_db(lex->name.str)))
       break;
-    if (!DDL_blocker->check_DDL_blocker(thd))
-      goto error;
     res= mysql_create_db(thd,(lower_case_table_names == 2 ? alias :
                               lex->name.str), &create_info, 0);
-    DDL_blocker->end_DDL();
     break;
   }
   case SQLCOM_DROP_DB:
@@ -3623,10 +3727,7 @@ ddl_blocker_err:
                  ER(ER_LOCK_OR_ACTIVE_TRANSACTION), MYF(0));
       goto error;
     }
-    if (!DDL_blocker->check_DDL_blocker(thd))
-      goto error;
     res= mysql_rm_db(thd, lex->name.str, lex->drop_if_exists, 0);
-    DDL_blocker->end_DDL();
     break;
   }
   case SQLCOM_ALTER_DB_UPGRADE:
@@ -3662,10 +3763,7 @@ ddl_blocker_err:
       goto error;
     }
 
-    if (!DDL_blocker->check_DDL_blocker(thd))
-      goto error;
     res= mysql_upgrade_db(thd, db);
-    DDL_blocker->end_DDL();
     if (!res)
       my_ok(thd);
     break;
@@ -3703,10 +3801,7 @@ ddl_blocker_err:
                  ER(ER_LOCK_OR_ACTIVE_TRANSACTION), MYF(0));
       goto error;
     }
-    if (!DDL_blocker->check_DDL_blocker(thd))
-      goto error;
     res= mysql_alter_db(thd, db->str, &create_info);
-    DDL_blocker->end_DDL();
     break;
   }
   case SQLCOM_SHOW_CREATE_DB:
@@ -3723,7 +3818,7 @@ ddl_blocker_err:
   }
   case SQLCOM_CREATE_EVENT:
   case SQLCOM_ALTER_EVENT:
-  #ifdef HAVE_EVENT_SCHEDULER
+#ifdef HAVE_EVENT_SCHEDULER
   do
   {
     DBUG_ASSERT(lex->event_parse_data);
@@ -4040,6 +4135,8 @@ ddl_blocker_err:
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
     if (trans_commit(thd))
       goto error;
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
     /* Begin transaction with the same isolation level. */
     if (lex->tx_chain && trans_begin(thd))
       goto error;
@@ -4054,6 +4151,8 @@ ddl_blocker_err:
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
     if (trans_rollback(thd))
       goto error;
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
     /* Begin transaction with the same isolation level. */
     if (lex->tx_chain && trans_begin(thd))
       goto error;
@@ -4130,9 +4229,32 @@ ddl_blocker_err:
 
     res= (sp_result= lex->sphead->create(thd));
     switch (sp_result) {
-    case SP_OK:
+    case SP_OK: {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
       /* only add privileges if really neccessary */
+
+      Security_context security_context;
+      bool restore_backup_context= false;
+      Security_context *backup= NULL;
+      LEX_USER *definer= thd->lex->definer;
+      /*
+        Check if the definer exists on slave, 
+        then use definer privilege to insert routine privileges to mysql.procs_priv.
+
+        For current user of SQL thread has GLOBAL_ACL privilege, 
+        which doesn't any check routine privileges, 
+        so no routine privilege record  will insert into mysql.procs_priv.
+      */
+      if (thd->slave_thread && is_acl_user(definer->host.str, definer->user.str))
+      {
+        security_context.change_security_context(thd, 
+                                                 &thd->lex->definer->user,
+                                                 &thd->lex->definer->host,
+                                                 &thd->lex->sphead->m_db,
+                                                 &backup);
+        restore_backup_context= true;
+      }
+
       if (sp_automatic_privileges && !opt_noacl &&
           check_routine_access(thd, DEFAULT_CREATE_PROC_ACLS,
                                lex->sphead->m_db.str, name,
@@ -4144,8 +4266,19 @@ ddl_blocker_err:
                        ER_PROC_AUTO_GRANT_FAIL,
                        ER(ER_PROC_AUTO_GRANT_FAIL));
       }
+
+      /*
+        Restore current user with GLOBAL_ACL privilege of SQL thread
+      */ 
+      if (restore_backup_context)
+      {
+        DBUG_ASSERT(thd->slave_thread == 1);
+        thd->security_ctx->restore_security_context(thd, backup);
+      }
+
 #endif
     break;
+    }
     case SP_WRITE_ROW_FAILED:
       my_error(ER_SP_ALREADY_EXISTS, MYF(0), SP_TYPE_STRING(lex), name);
     break;
@@ -4413,6 +4546,12 @@ create_sp_error:
 
         if (trans_commit_implicit(thd))
           goto error;
+
+        close_thread_tables(thd);
+
+        if (!thd->locked_tables_mode)
+          thd->mdl_context.release_all_locks();
+
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
 	if (sp_automatic_privileges && !opt_noacl &&
 	    sp_revoke_privileges(thd, db, name, 
@@ -4559,11 +4698,15 @@ create_sp_error:
   case SQLCOM_XA_COMMIT:
     if (trans_xa_commit(thd))
       goto error;
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
     my_ok(thd);
     break;
   case SQLCOM_XA_ROLLBACK:
     if (trans_xa_rollback(thd))
       goto error;
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
     my_ok(thd);
     break;
   case SQLCOM_XA_RECOVER:
@@ -4694,6 +4837,13 @@ create_sp_error:
     thd->row_count_func= -1;
 
 finish:
+
+  /*
+    De-register command from the BML system, if it was registered.
+  */
+  if (bml_registered)
+    BML_instance->bml_leave();
+
   if (need_start_waiting)
   {
     /*
@@ -4703,10 +4853,20 @@ finish:
     start_waiting_global_read_lock(thd);
   }
 
-  /* If commit fails, we should be able to reset the OK status. */
-  thd->stmt_da->can_overwrite_status= TRUE;
-  opt_implicit_commit(thd, CF_IMPLICIT_COMMIT_END);
-  thd->stmt_da->can_overwrite_status= FALSE;
+  if (stmt_causes_implicit_commit(thd, CF_IMPLICIT_COMMIT_END))
+  {
+    /* If commit fails, we should be able to reset the OK status. */
+    thd->stmt_da->can_overwrite_status= TRUE;
+    /* Commit or rollback the statement transaction. */
+    thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
+    /* Commit the normal transaction if one is active. */
+    trans_commit_implicit(thd);
+    /* Close tables and release metadata locks. */
+    close_thread_tables(thd);
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
+    thd->stmt_da->can_overwrite_status= FALSE;
+  }
 
   DBUG_RETURN(res || thd->is_error());
 
@@ -5524,6 +5684,14 @@ void mysql_reset_thd_for_next_command(THD *thd)
 }
 
 
+/**
+  Resets the lex->current_select object.
+  @note It is assumed that lex->current_select != NULL
+
+  This function is a wrapper around select_lex->init_select() with an added
+  check for the special situation when using INTO OUTFILE and LOAD DATA.
+*/
+
 void
 mysql_init_select(LEX *lex)
 {
@@ -5537,6 +5705,18 @@ mysql_init_select(LEX *lex)
   }
 }
 
+
+/**
+  Used to allocate a new SELECT_LEX object on the current thd mem_root and
+  link it into the relevant lists.
+
+  This function is always followed by mysql_init_select.
+
+  @see mysql_init_select
+
+  @retval TRUE An error occurred
+  @retval FALSE The new SELECT_LEX was successfully allocated.
+*/
 
 bool
 mysql_new_select(LEX *lex, bool move_down)
@@ -6374,7 +6554,6 @@ void st_select_lex::set_lock_for_tables(thr_lock_type lock_type)
   DBUG_ENTER("set_lock_for_tables");
   DBUG_PRINT("enter", ("lock_type: %d  for_update: %d", lock_type,
 		       for_update));
-
   for (TABLE_LIST *tables= (TABLE_LIST*) table_list.first;
        tables;
        tables= tables->next_local)
@@ -6680,6 +6859,9 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
     query_cache.flush();			// RESET QUERY CACHE
   }
 #endif /*HAVE_QUERY_CACHE*/
+
+  DBUG_ASSERT(thd->locked_tables_mode || !thd->mdl_context.has_locks());
+
   /*
     Note that if REFRESH_READ_LOCK bit is set then REFRESH_TABLES is set too
     (see sql_yacc.yy)
@@ -6825,8 +7007,26 @@ uint kill_one_thread(THD *thd, ulong id, bool only_kill_query)
   pthread_mutex_unlock(&LOCK_thread_count);
   if (tmp)
   {
+
+    /*
+      If we're SUPER, we can KILL anything, including system-threads.
+      No further checks.
+
+      KILLer: thd->security_ctx->user could in theory be NULL while
+      we're still in "unauthenticated" state. This is a theoretical
+      case (the code suggests this could happen, so we play it safe).
+
+      KILLee: tmp->security_ctx->user will be NULL for system threads.
+      We need to check so Jane Random User doesn't crash the server
+      when trying to kill a) system threads or b) unauthenticated users'
+      threads (Bug#43748).
+
+      If user of both killer and killee are non-NULL, proceed with
+      slayage if both are string-equal.
+    */
+
     if ((thd->security_ctx->master_access & SUPER_ACL) ||
-	!strcmp(thd->security_ctx->user, tmp->security_ctx->user))
+        thd->security_ctx->user_matches(tmp->security_ctx))
     {
       tmp->awake(only_kill_query ? THD::KILL_QUERY : THD::KILL_CONNECTION);
       error=0;

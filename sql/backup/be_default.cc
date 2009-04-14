@@ -20,7 +20,7 @@
    @brief Contains the default backup algorithm driver.
  
    This file contains the default backup algorithm (also called a "driver"
-   in the online backup terminology. The default backup algorithm may be
+   in the MySQL backup terminology. The default backup algorithm may be
    used in place of an engine-specific driver if one does not exist or if
    chosen by the user.
  
@@ -699,6 +699,8 @@ result_t Restore::send_data(Buffer &buf)
   DBUG_PRINT("default_restore",("Got packet with %lu bytes from stream %u",
                                 (unsigned long)buf.size, buf.table_num));
   
+  DBUG_EXECUTE_IF("restore_default_send_data", DBUG_RETURN(ERROR););
+
   /* 
     get_data() should not be called after cancel has been called.
   */

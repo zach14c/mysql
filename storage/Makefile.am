@@ -20,3 +20,4 @@ AUTOMAKE_OPTIONS =	foreign
 # These are built from source in the Docs directory
 EXTRA_DIST = mysql_storage_engine.cmake	
 SUBDIRS = @mysql_se_dirs@
+DIST_SUBDIRS = @mysql_se_distdirs@

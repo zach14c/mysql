@@ -59,10 +59,7 @@ ERROR 42000: Variable 'query_cache_type' can't be set to the value of 'ONDEMAND'
 SET @@global.query_cache_type = 'ON,OFF';
 ERROR 42000: Variable 'query_cache_type' can't be set to the value of 'ON,OFF'
 SET @@global.query_cache_type = 'OF';
-SELECT @@global.query_cache_type;
-@@global.query_cache_type
-OFF
-'Bug# 34828: OF is taken as OFF.'
+ERROR 42000: Variable 'query_cache_type' can't be set to the value of 'OF'
 SET @@global.query_cache_type = YES;
 ERROR 42000: Variable 'query_cache_type' can't be set to the value of 'YES'
 SET @@global.query_cache_type = ' ';

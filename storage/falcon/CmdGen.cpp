@@ -108,7 +108,7 @@ const char* CmdGen::getString(void)
 		return buffer;
 		}
 	
-	delete temp;
+	delete [] temp;
 	temp = new char[totalLength + 1];
 	memcpy(temp, buffer, sizeof(buffer));
 	char *p = temp + sizeof(buffer);
@@ -139,6 +139,6 @@ void CmdGen::reset(void)
 		delete hunk;
 		}
 
-	delete temp;
+	delete [] temp;
 	init();
 }
