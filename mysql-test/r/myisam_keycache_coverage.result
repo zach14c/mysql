@@ -11,7 +11,7 @@ INSERT INTO t1 SELECT * FROM t1;
 #
 # Positive tests.
 #
-SELECT COUNT(*) FROM t1 WHERE c2 < 5;
+SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
 COUNT(*)
 8
 LOAD INDEX INTO CACHE t1;
@@ -25,33 +25,30 @@ FLUSH TABLE t1;
 #
 # Inject error key_cache_read_block_error
 #
-EXPLAIN SELECT COUNT(*) FROM t1 WHERE c2 < 5;
-id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	index	NULL	i1	13	NULL	8	Using where; Using index
 SET debug='+d,key_cache_read_block_error';
-FLUSH TABLES;
-SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
 SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
 ERROR HY000: Incorrect key file for table 't1.MYI'; try to repair it
+# Reset debug variable to its original value.
 FLUSH TABLE t1;
 #
 # Inject error key_cache_insert_block_error
 #
-SET debug='d,key_cache_insert_block_error';
+SET debug='+d,key_cache_insert_block_error';
 LOAD INDEX INTO CACHE t1;
 Table	Op	Msg_type	Msg_text
 test.t1	preload_keys	error	Failed to read from index file (errno: 5)
 test.t1	preload_keys	status	Operation failed
+# Reset debug variable to its original value.
 FLUSH TABLE t1;
 #
 # Inject error key_cache_write_block_error
 #
-SET debug='d,key_cache_write_block_error';
+SET debug='+d,key_cache_write_block_error';
 UPDATE t1 SET c2=1;
 ERROR HY000: Incorrect key file for table 't1.MYI'; try to repair it
+# Reset debug variable to its original value.
 FLUSH TABLE t1;
 #
 # Cleanup
 #
-SET debug='';
 DROP TABLE t1;

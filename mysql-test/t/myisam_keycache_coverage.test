@@ -3,6 +3,7 @@
 --echo #
 
 --source include/have_debug.inc
+let $debug= `SELECT @@debug`;
 
 --disable_warnings
 DROP TABLE IF EXISTS t1;
@@ -18,7 +19,7 @@ INSERT INTO t1 SELECT * FROM t1;
 --echo #
 --echo # Positive tests.
 --echo #
-SELECT COUNT(*) FROM t1 WHERE c2 < 5;
+SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
 LOAD INDEX INTO CACHE t1;
 UPDATE t1 SET c2=2;
 
@@ -30,66 +31,42 @@ FLUSH TABLE t1;
 --echo #
 --echo # Inject error key_cache_read_block_error
 --echo #
-#
-# I have seen the below SELECT to succeed from time to time,
-# though it shall fail due to the injected error. As far as I undestand,
-# the only way for this to happen is that SELECT does not use the index.
-# Since the problem is random, I add an EXPLAIN here, to see if this
-# does indeed happen. If it shows a result difference from time to time,
-# then perhaps FLUSH TABLE t1 does not always work reliably.
-# In addition to the EXPLAIN, which is here to prove the assumption,
-# I add FORCE INDEX to keep the SELECT failing, which is the whole
-# purpose of this test.
-#
-EXPLAIN SELECT COUNT(*) FROM t1 WHERE c2 < 5;
-#
-# The EXPLAIN shows that the index is used. It fails sporadically anyway.
-# It fails frequently on my machine, but curiously on the first attempt.
-# Both retries were always successful. Running the test stand alone or
-# in a small group does never fail. So I wonder if the setting of the
-# 'debug' server variable might fail. I had "SET debug='d,..." here.
-# Perhaps this is vulnerable to some preset of the variable.
-# So I set it with "+d" as we do at many other places.
-#
 SET debug='+d,key_cache_read_block_error';
-#
-# Changing to "+d" did not help. Trying a full flush of all tables.
-# This shouldn't make a difference, but...
-# Flushing shouldn't play a role since the error injection happens
-# after the copy from cache block to MyISAM buffer.
-#
-FLUSH TABLES;
-#
-# As expected FLUSH TABLES didn't help either.
-# Now duplicating the offending SELECT, ignoring success on the first attempt.
-#
---replace_regex /'.*[\/\\]/'/
---error 0,126
-SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
 --replace_regex /'.*[\/\\]/'/
 --error 126
 SELECT COUNT(*) FROM t1 FORCE INDEX(i1) WHERE c2 < 5;
+--echo # Reset debug variable to its original value.
+--disable_query_log
+eval SET debug= '$debug';
+--enable_query_log
 FLUSH TABLE t1;
 
 --echo #
 --echo # Inject error key_cache_insert_block_error
 --echo #
-SET debug='d,key_cache_insert_block_error';
+SET debug='+d,key_cache_insert_block_error';
 LOAD INDEX INTO CACHE t1;
+--echo # Reset debug variable to its original value.
+--disable_query_log
+eval SET debug= '$debug';
+--enable_query_log
 FLUSH TABLE t1;
 
 --echo #
 --echo # Inject error key_cache_write_block_error
 --echo #
-SET debug='d,key_cache_write_block_error';
+SET debug='+d,key_cache_write_block_error';
 --replace_regex /'.*[\/\\]/'/
 --error 126
 UPDATE t1 SET c2=1;
+--echo # Reset debug variable to its original value.
+--disable_query_log
+eval SET debug= '$debug';
+--enable_query_log
 FLUSH TABLE t1;
 
 --echo #
 --echo # Cleanup
 --echo #
-SET debug='';
 DROP TABLE t1;
 
