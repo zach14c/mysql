@@ -132,6 +132,7 @@ static bool wait_for_relay_log_space(Relay_log_info* rli);
 static inline bool io_slave_killed(THD* thd,Master_info* mi);
 static inline bool sql_slave_killed(THD* thd,Relay_log_info* rli);
 static int init_slave_thread(THD* thd, SLAVE_THD_TYPE thd_type);
+static void print_slave_skip_errors(void);
 static int safe_connect(THD* thd, MYSQL* mysql, Master_info* mi);
 static int safe_reconnect(THD* thd, MYSQL* mysql, Master_info* mi,
                           bool suppress_warnings);
@@ -239,6 +240,15 @@ int init_slave()
   }
 
   active_mi= new Master_info(relay_log_recovery);
+
+  /*
+    If --slave-skip-errors=... was not used, the string value for the
+    system variable has not been set up yet. Do it now.
+  */
+  if (!use_slave_mask)
+  {
+    print_slave_skip_errors();
+  }
 
   /*
     If master_host is not specified, try to read it from the master_info file.
@@ -370,7 +380,7 @@ static void print_slave_skip_errors(void)
     char *bend= buff + sizeof(slave_skip_error_names);
     int  errnum;
 
-    for (errnum= 1; errnum < MAX_SLAVE_ERROR; errnum++)
+    for (errnum= 0; errnum < MAX_SLAVE_ERROR; errnum++)
     {
       if (bitmap_is_set(&slave_error_mask, errnum))
       {
