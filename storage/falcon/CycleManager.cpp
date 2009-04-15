@@ -5,6 +5,7 @@
 #include "Thread.h"
 #include "Threads.h"
 #include "RecordVersion.h"
+#include "Value.h"
 #include "Interlock.h"
 
 static const int CYCLE_SLEEP		= 1000;
@@ -18,8 +19,11 @@ CycleManager::CycleManager(Database *db)
 {
 	database = db;
 	thread = NULL;
-	records = NULL;
-	recordVersions = NULL;
+	recordPurgatory = NULL;
+	recordVersionPurgatory = NULL;
+	valuePurgatory = NULL;
+	bufferPurgatory = NULL;
+
 	currentCycle = &cycle1;
 	cycle1.setName("CycleManager::cycle1");
 	cycle2.setName("CycleManager::cycle2");
@@ -54,30 +58,54 @@ void CycleManager::cycleManager(void)
 		thread->sleep(CYCLE_SLEEP);
 		RecordVersion *doomedRecordVersions;
 		RecordList *doomedRecords;
+		ValueList *doomedValues;
+		BufferList *doomedBuffers;
 		
 		// Pick up detrius registered for delete during cycle
 		
-		if (recordVersions)
+		if (recordVersionPurgatory)
 			for (;;)
 				{
-				doomedRecordVersions = recordVersions;
+				doomedRecordVersions = recordVersionPurgatory;
 				
-				if (COMPARE_EXCHANGE_POINTER(&recordVersions, doomedRecordVersions, NULL))
+				if (COMPARE_EXCHANGE_POINTER(&recordVersionPurgatory, doomedRecordVersions, NULL))
 					break;
 				}
 		else
 			doomedRecordVersions = NULL;
 		
-		if (records)
+		if (recordPurgatory)
 			for (;;)
 				{
-				doomedRecords = records;
+				doomedRecords = recordPurgatory;
 				
-				if (COMPARE_EXCHANGE_POINTER(&records, doomedRecords, NULL))
+				if (COMPARE_EXCHANGE_POINTER(&recordPurgatory, doomedRecords, NULL))
 					break;
 				}
 		else
 			doomedRecords = NULL;
+
+		if (valuePurgatory)
+			for (;;)
+				{
+				doomedValues = valuePurgatory;
+				
+				if (COMPARE_EXCHANGE_POINTER(&valuePurgatory, doomedValues, NULL))
+					break;
+				}
+		else
+			doomedValues = NULL;
+		
+		if (bufferPurgatory)
+			for (;;)
+				{
+				doomedBuffers = bufferPurgatory;
+				
+				if (COMPARE_EXCHANGE_POINTER(&bufferPurgatory, doomedBuffers, NULL))
+					break;
+				}
+		else
+			doomedBuffers = NULL;
 		
 		// Swap cycle clocks to start next cycle
 		
@@ -95,41 +123,83 @@ void CycleManager::cycleManager(void)
 			doomedRecordVersions = recordVersion->nextInTrans;
 			recordVersion->release();
 			}
-		
+
 		for (RecordList *recordList; (recordList = doomedRecords);)
 			{
 			doomedRecords = recordList->next;
-			recordList->record->release();
+			recordList->zombie->release();
 			delete recordList;
 			}
+
+		for (ValueList *valueList; (valueList = doomedValues);)
+			{
+			doomedValues = valueList->next;
+			delete [] (Value*) valueList->zombie;
+			delete valueList;
+			}
+
+		for (BufferList *bufferList; (bufferList = doomedBuffers);)
+			{
+			doomedBuffers = bufferList->next;
+			DELETE_RECORD (bufferList->zombie);
+			delete bufferList;
+			}
+
 		}
 }
 
-void CycleManager::queueForDelete(Record* record)
+void CycleManager::queueForDelete(Record* zombie)
 {
-	if (record->isVersion())
+	if (zombie->isVersion())
 		{
-		RecordVersion *recordVersion = (RecordVersion*) record;
+		RecordVersion *recordVersion = (RecordVersion*) zombie;
 		
 		for (;;)
 			{
-			recordVersion->nextInTrans = recordVersions;
+			recordVersion->nextInTrans = recordVersionPurgatory;
 			
-			if (COMPARE_EXCHANGE_POINTER(&recordVersions, recordVersion->nextInTrans, recordVersion))
+			if (COMPARE_EXCHANGE_POINTER(&recordVersionPurgatory, recordVersion->nextInTrans, recordVersion))
 				break;
 			}
 		}
 	else
 		{
 		RecordList *recordList = new RecordList;
-		recordList->record = record;
+		recordList->zombie = zombie;
 		
 		for (;;)
 			{
-			recordList->next = records;
+			recordList->next = recordPurgatory;
 			
-			if (COMPARE_EXCHANGE_POINTER(&records, recordList->next, recordList))
+			if (COMPARE_EXCHANGE_POINTER(&recordPurgatory, recordList->next, recordList))
 				break;
 			}
+		}
+}
+void CycleManager::queueForDelete(Value** zombie)
+{
+	ValueList *valueList = new ValueList;
+	valueList->zombie = zombie;
+
+	for (;;)
+		{
+		valueList->next = valuePurgatory;
+		
+		if (COMPARE_EXCHANGE_POINTER(&valuePurgatory, valueList->next, valueList))
+			break;
+		}
+}
+
+void CycleManager::queueForDelete(char* zombie)
+{
+	BufferList *bufferlist = new BufferList;
+	bufferlist->zombie = zombie;
+
+	for (;;)
+		{
+		bufferlist->next = bufferPurgatory;
+		
+		if (COMPARE_EXCHANGE_POINTER(&bufferPurgatory, bufferlist->next, bufferlist))
+			break;
 		}
 }

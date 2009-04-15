@@ -160,18 +160,6 @@ Record* RecordVersion::releaseNonRecursive()
 
 Record* RecordVersion::fetchVersion(Transaction * trans)
 {
-	/***
-	Sync syncPrior(format->table->getSyncPrior(this), "RecordVersion::fetchVersion");
-	
-	if (priorVersion)
-		syncPrior.lock(Shared);
-	***/
-	
-	return fetchVersionRecursive(trans);
-}
-
-Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
-{
 	// Unless the record is at least as old as the transaction, it's not for us
 
 	TransactionState* recTransState = transactionState;
@@ -195,7 +183,7 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 	if (!priorVersion)
 		return NULL;
 		
-	return priorVersion->fetchVersionRecursive(trans);
+	return priorVersion->fetchVersion(trans);
 }
 
 void RecordVersion::rollback(Transaction *transaction)
@@ -243,44 +231,27 @@ bool RecordVersion::committedBefore(TransId transId)
 
 // This is called with an exclusive lock on the recordLeaf
 
-bool RecordVersion::retire(RecordScavenge *recordScavenge)
+void RecordVersion::retire(void)
 {
-	bool neededByAnyActiveTrans = true;
-	
-	if (transactionState->committedBefore(recordScavenge->oldestActiveTransaction))
-		neededByAnyActiveTrans = false;
+	SET_THIS_RECORD_ACTIVE(false);
+	RECORD_HISTORY(this);
 
-	if (   generation <= recordScavenge->scavengeGeneration
-		&& useCount == 1
-		&& !priorVersion
-		&& !neededByAnyActiveTrans)
-		{
-		recordScavenge->recordsRetired++;
-		recordScavenge->spaceRetired += getMemUsage();
-		SET_THIS_RECORD_ACTIVE(false);
+	if (state == recDeleted)
+		expungeRecord();  // Allow this record number to be reused
 
-		if (state == recDeleted)
-			expungeRecord();  // Allow this record number to be reused
+	release();
 
-		release();
-
-		return true;
-		}
-
-	return false;
 }
 
 // Scavenge record versions replaced within a savepoint.
+// this record is staying and any prior records at 
+// the same savepoint are leaving
 
-//void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestActiveSavePointId)
 void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldestActiveSavePointId)
 {
 	if (!priorVersion)
 		return;
 
-	//Sync syncPrior(getSyncPrior(), "RecordVersion::scavengeSavepoint");
-	//syncPrior.lock(Shared);
-	
 	Record *rec = priorVersion;
 	Record *ptr = NULL;
 
@@ -292,12 +263,7 @@ void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldest
 		{
 		ptr = rec;
 		SET_RECORD_ACTIVE(rec, false);
-		/***
-		Transaction *trans = rec->getTransaction();
 
-		if (trans)
-			trans->removeRecord((RecordVersion*) rec);
-		***/
 		targetTransaction->removeRecord((RecordVersion*) rec);
 		}
 
@@ -313,12 +279,10 @@ void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldest
 	Record *prior = priorVersion;
 	prior->addRef();
 
-	//syncPrior.unlock();
-	//syncPrior.lock(Exclusive);
+	// Set this record's priorVersion to point past the leaving record(s)
 
 	setPriorVersion(rec);
 	ptr->state = recEndChain;
-	//format->table->garbageCollect(prior, this, transaction, false);
 	format->table->garbageCollect(prior, this, targetTransaction, false);
 	prior->queueForDelete();
 }
@@ -360,8 +324,6 @@ bool RecordVersion::isSuperceded()
 
 Record* RecordVersion::clearPriorVersion(void)
 {
-	//Sync syncPrior(getSyncPrior(), "RecordVersion::clearPriorVersion");
-	//syncPrior.lock(Exclusive);
 	Record * prior = priorVersion;
 	
 	if (prior && prior->useCount == 1)

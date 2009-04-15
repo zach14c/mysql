@@ -20,7 +20,8 @@ enum InjectorEventType{
 	InjectorRecoveryPhase1 = 1,
 	InjectorRecoveryPhase2 = 2,
 	InjectorRecoveryPhase3 = 3,
-	InjectorTypeMax = 4 
+	InjectorSerialLogTruncate = 4,
+	InjectorTypeMax = 5 
 };
 
 
