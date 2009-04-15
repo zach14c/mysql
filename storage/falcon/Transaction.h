@@ -60,7 +60,7 @@ public:
 	Transaction(Connection *connection, TransId seq);
 
 	State		getRelativeState(Record* record, uint32 flags);
-	State		getRelativeState (TransactionState* ts, TransId transId, uint32 flags);
+	State		getRelativeState (TransactionState* ts, uint32 flags);
 	void		removeRecordNoLock (RecordVersion *record);
 	void		removeRecord(RecordVersion *record);
 	void		removeRecord (RecordVersion *record, RecordVersion **ptr);
@@ -74,9 +74,8 @@ public:
 	void		commit();
 	void		release();
 	void		addRef();
-	//void		waitForTransaction();
-	bool		waitForTransaction (TransId transId);
-	State		waitForTransaction (TransactionState* ts, TransId transId, bool *deadlock);
+	bool		waitForTransaction (TransactionState* ts);
+	State		waitForTransaction (TransactionState* ts, bool *deadlock);
 	void		dropTable(Table* table);
 	void		truncateTable(Table* table);
 	bool		hasRecords(Table* table);

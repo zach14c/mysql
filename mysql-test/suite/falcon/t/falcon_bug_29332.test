@@ -1,5 +1,6 @@
 --source include/have_falcon.inc
 --source include/have_partition.inc
+
 #
 # Bug #28026: Falcon: crash if partitions and select for update
 #
@@ -20,7 +21,7 @@ DROP TABLE IF EXISTS t2;
 # --- Test 1 - with indexes                         --- #
 # ----------------------------------------------------- #
 --echo ------- Test 1 - with indexes -------
-CREATE TABLE t1 (a int, PRIMARY KEY (a))  engine = falcon;
+CREATE TABLE t1 (a int, PRIMARY KEY (a));
 INSERT INTO t1 VALUES (8);
 INSERT INTO t1 VALUES (9);
 
@@ -42,12 +43,13 @@ SELECT * FROM t1 WHERE a = 9 FOR UPDATE;
 
 --echo # Switch to connection default
 connection default;
-# This select should fail immediately with a deadlock since the other 
+# This select should fail immediately with a deadlock since the other
 # transaction is already wating on this.
 --real_sleep 1
 --error ER_LOCK_DEADLOCK
 SELECT * FROM t1 WHERE a = 9 FOR UPDATE;
-# Innodb automatically does a rollback. Falcon does not.
+# InnoDB automatically does a ROLLBACK. Falcon does not, therefore
+# we do an explicit ROLLBACK.
 SELECT * FROM t1 ORDER BY a;
 ROLLBACK;
 SELECT * FROM t1 ORDER BY a;
@@ -70,7 +72,7 @@ COMMIT;
 # --- Test 2 - with partitions                      --- #
 # ----------------------------------------------------- #
 --echo ------- Test 2 - with partitions ------
-CREATE TABLE t2 (a int) ENGINE = 'Falcon'
+CREATE TABLE t2 (a int)
    PARTITION BY LIST (a) (
    PARTITION p8 VALUES in (1,8,88),
    PARTITION p9 VALUES in (2,9,99));
@@ -99,7 +101,8 @@ connection default;
 --real_sleep 1
 --error ER_LOCK_DEADLOCK
 SELECT * FROM t2 WHERE a = 9 FOR UPDATE;
-# Innodb automatically does a rollback. Falcon does not.
+# Innodb automatically does a rollback. Falcon does not, therefore
+# we do an explicit ROLLBACK.
 SELECT * FROM t2 ORDER BY a;
 ROLLBACK;
 SELECT * FROM t2 ORDER BY a;

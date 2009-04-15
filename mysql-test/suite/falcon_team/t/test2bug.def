@@ -1,23 +1,15 @@
 #
+# THIS FILE IS DEPRECATED
+#
 # The falcon_team test suite is intended for unstable or otherwise
 # intermittently failing Falcon-related tests.
 # Stable Falcon tests are located in the falcon test suite.
 #
-# All tests in the falcon_team test suite should be associated with 
-# a bug report describing the test failure or issue related to the test.
+# Details about the tests in this suite are now available in
+# mysql-test/collections/falcon_team.experimental
 #
-# Note that a separate bug report is usually needed for this, it is
-# not sufficient to list the ID of the bug whose fix this test is 
-# supposed to verify.
+# NOTE:
+#  Please make sure to update that file whenever you change
+#  the contents of this test suite or resolve bugs associated
+#  with its test cases.
 #
-# Format:
-#  Test case: BugId - BugDescription
-#
-# Do not use TAB characters for whitespace.
-# Keep the list sorted by test name.
-#
-
-falcon_bug_34174 :  Bug#34174 - Infinite loop checking rolled back record in select for update
-falcon_deadlock:    Bug#43554 - Intermittent lock-wait-timeout in falcon_deadlock test
-falcon_bug_34351_B: Bug#42140 - falcon_bug_34351_B fails; sometimes
-falcon_bug_34351_C: Bug#41357 - falcon.falcon_bug_34351_C fails with assertion IS_CONSISTENT_READ

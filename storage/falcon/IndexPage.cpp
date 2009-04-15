@@ -1191,7 +1191,7 @@ Btn* IndexPage::findInsertionPoint(IndexKey *indexKey, int32 recordNumber, Index
 	return findInsertionPoint(level, indexKey, recordNumber, expandedKey, nodes, bucketEnd);
 }
 
-void IndexPage::logIndexPage(Bdb *bdb, TransId transId)
+void IndexPage::logIndexPage(Bdb *bdb, TransId transId, Index *index)
 {
 	Dbb *dbb = bdb->dbb;
 
@@ -1202,10 +1202,15 @@ void IndexPage::logIndexPage(Bdb *bdb, TransId transId)
 	ASSERT(bdb->lockType == Exclusive);
 	ASSERT(bdb->isDirty);
 	IndexPage *indexPage = (IndexPage*) bdb->buffer;
-	dbb->serialLog->logControl->indexPage.append(dbb, transId, INDEX_VERSION_1, bdb->pageNumber, indexPage->level, 
-												 indexPage->nextPage,  
-												 indexPage->length - OFFSET (IndexPage*, superNodes), 
-												 (const UCHAR*) indexPage->superNodes);
+	dbb->serialLog->logControl->indexPage.append(
+				dbb, 
+				transId,
+				index? index->indexVersion : INDEX_CURRENT_VERSION,
+				bdb->pageNumber,
+				indexPage->level,
+				indexPage->nextPage,
+				indexPage->length - OFFSET (IndexPage*, superNodes),
+				(const UCHAR*) indexPage->superNodes);
 }
  
 Btn* IndexPage::findInsertionPoint(int level, IndexKey* indexKey, int32 recordNumber, IndexKey* expandedKey, Btn* from, Btn* bucketEnd)

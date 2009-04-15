@@ -1,0 +1,51 @@
+--source include/have_falcon.inc
+
+--echo *** This is the test for known bugs in index version1 ***
+
+# Known bugs are
+# 1) In multisegment index, trailing zero bytes are sorted the same
+# 2) No differentiation between NULL and zero length values
+# 3) NULL is not the smallest value maybe > zero length value
+#
+# We use queries with "limit", as at the moment it is the only 
+# way to check if values are stored in the correct order.
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+# Test order of NULL vs empty key vs 0x00
+CREATE TABLE t1 (v varbinary(10), comment varchar(30), key(v));
+INSERT INTO t1 values ('A','A'),(0x00,'single byte zero'),('','zero length value'),(0x01, 'single byte one'),(NULL, 'SQL null');
+
+SELECT hex(v), comment FROM t1 FORCE INDEX FOR ORDER BY(v) ORDER BY v LIMIT 5 ;
+SELECT hex(v), comment FROM t1 IGNORE INDEX FOR ORDER BY(v) ORDER BY v LIMIT 5 ;
+
+# Test multisegment indexes with trailing  zero bytes
+CREATE TABLE t2(v1 varbinary(5), v2 varbinary(5), comment varchar(30));
+CREATE INDEX i2 on t2(v1,v2);
+INSERT INTO t2 values (0x00000000,0x00000000, "4 zero bytes");
+INSERT INTO t2 values (0x000000,0x000000, "3 zero bytes");
+INSERT INTO t2 values (0x0000,0x00000, "2 zero bytes");
+INSERT INTO t2 values (0x00,0x00, "1 zero byte");
+INSERT INTO t2 values ('','', "zero length value");
+INSERT INTO t2 values (NULL,NULL, "SQL NULL");
+
+SELECT hex(v1), comment FROM t2 FORCE INDEX(i2) ORDER BY v1,v2 LIMIT 6;
+SELECT hex(v1), comment FROM t2 IGNORE INDEX(i2) ORDER BY v1,v2 LIMIT 6;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;
+DROP TABLE t2;
