@@ -1784,6 +1784,11 @@ sub environment_setup {
     $ENV{'HA_EXAMPLE_SO'}="'".$plugin_filename."'";
     $ENV{'EXAMPLE_PLUGIN_LOAD'}="--plugin_load=;EXAMPLE=".$plugin_filename.";";
   }
+  else
+  {
+    $ENV{'EXAMPLE_PLUGIN_OPT'}="";
+    $ENV{'EXAMPLE_PLUGIN_LOAD'}="";
+  }
 
   # ----------------------------------------------------
   # Add the path where mysqld will find mypluglib.so
@@ -4044,6 +4049,10 @@ sub mysqld_arguments ($$$) {
            $mysqld->option("log-slave-updates"))
     {
       ; # Dont add --skip-log-bin when mysqld have --log-slave-updates in config
+    }
+    elsif ($arg eq "")
+    {
+      ; # Dont add empty arguments
     }
     else
     {
