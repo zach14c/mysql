@@ -102,7 +102,7 @@ SET_TARGET_PROPERTIES(mysqld PROPERTIES ENABLE_EXPORTS TRUE)
 SET (MYSQLD_CORE_LIBS mysys zlib dbug strings yassl taocrypt libevent vio regex backup backupstream sql)
 TARGET_LINK_LIBRARIES(mysqld ${MYSQLD_CORE_LIBS} ${MYSQLD_STATIC_ENGINE_LIBS})
 
-IF(MSVC)
+IF(MSVC AND NOT WITHOUT_DYNAMIC_PLUGINS)
   # Set module definition file. Also use non-incremental linker, 
   # incremental appears to crash from time to time,if used with /DEF option
   SET_TARGET_PROPERTIES(mysqld PROPERTIES LINK_FLAGS "/DEF:mysqld.def /INCREMENTAL:NO")
@@ -117,7 +117,7 @@ IF(MSVC)
     COMMAND cscript ARGS //nologo ${PROJECT_SOURCE_DIR}/win/create_def_file.js
                   ${PLATFORM}  ${LIB_LOCATIONS} > mysqld.def 
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/sql)
-ENDIF(MSVC)
+ENDIF(MSVC AND NOT WITHOUT_DYNAMIC_PLUGINS)
 
 ADD_DEPENDENCIES(sql GenError)
 

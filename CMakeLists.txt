@@ -82,8 +82,17 @@ SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
 SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /Zi")
 SET(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /debug")
 
-# VS2003 needs the /Op compiler option to disable floating point optimizations
+
 IF(CMAKE_GENERATOR MATCHES "Visual Studio 7")
+    # VS2003 has a bug that prevents linking mysqld with module definition file 
+    # (/DEF option for linker). Linker would incorrectly complain about multiply 
+    # defined symbols. Workaround is to disable dynamic plugins, so /DEF is not
+    # used.
+    MESSAGE("Warning: Building MySQL with Visual Studio 2003.NET is no more supported.")
+    MESSAGE("Please use a newer version of Visual Studio.")
+    SET(WITHOUT_DYNAMIC_PLUGINS TRUE)
+	
+    # VS2003 needs the /Op compiler option to disable floating point optimizations
     SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Op")
     SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Op")
     SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Op")
@@ -105,7 +114,8 @@ IF(MSVC AND NOT CMAKE_GENERATOR MATCHES "Visual Studio 7")
     SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /wd4996")
     SET(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /wd4996")
 ENDIF(MSVC AND NOT CMAKE_GENERATOR MATCHES "Visual Studio 7")
-               
+
+
 # Settings for Visual Studio 7 and above.  
 IF(MSVC)
     # replace /MDd with /MTd
@@ -214,6 +224,9 @@ ENDIF(EMBED_MANIFESTS)
 
 # Figure out what engines to build and how (statically or dynamically),
 # add preprocessor defines for storage engines.
+IF(WITHOUT_DYNAMIC_PLUGINS)
+  MESSAGE("Dynamic plugins are disabled.")
+ENDIF(WITHOUT_DYNAMIC_PLUGINS)
 
 FILE(GLOB STORAGE_SUBDIRS storage/*)
 FOREACH(SUBDIR ${STORAGE_SUBDIRS})
@@ -239,7 +252,7 @@ FOREACH(SUBDIR ${STORAGE_SUBDIRS})
 
         IF (WITH_${ENGINE}_STORAGE_ENGINE AND MYSQL_PLUGIN_STATIC)
           SET(ENGINE_BUILD_TYPE "STATIC")
-        ELSEIF(NOT WITHOUT_${ENGINE}_STORAGE_ENGINE AND MYSQL_PLUGIN_DYNAMIC)
+        ELSEIF(NOT WITHOUT_${ENGINE}_STORAGE_ENGINE AND MYSQL_PLUGIN_DYNAMIC AND NOT WITHOUT_DYNAMIC_PLUGINS)
           SET(ENGINE_BUILD_TYPE "DYNAMIC")
         ELSE(WITH_${ENGINE}_STORAGE_ENGINE AND MYSQL_PLUGIN_STATIC)
           SET(ENGINE_BUILD_TYPE "NONE")
