@@ -111,10 +111,10 @@ Record::Record(Table * tbl, Format *fmt)
 {
 	ASSERT (tbl);
 	useCount = 1;
-	
+
 	if ( !(format = fmt) )
 		format = tbl->getCurrentFormat();
-		
+
 	size = sizeof (RecordVersion);
 	encoding = noEncoding;
 	state = recData;
@@ -850,7 +850,7 @@ void Record::poke()
 
 Record* Record::releaseNonRecursive(void)
 {
-	release();
+	release(REC_HISTORY);
 	
 	return NULL;
 }
@@ -1054,6 +1054,7 @@ void Record::addHistory(int delta, const char *file, int line)
 	history[historyOffset].counter = historyCount;
 	history[historyOffset].useCount = useCount;
 	history[historyOffset].delta  = delta;
+	history[historyOffset].state = state;
 	strncpy(history[historyOffset].file, file, RECORD_HISTORY_FILE_LEN - 1);
 	history[historyOffset].line = line;
 
@@ -1062,6 +1063,7 @@ void Record::addHistory(int delta, const char *file, int line)
 
 void Record::ShowHistory(void)
 {
+	int historicState;
 	int historyOffset = (historyCount - 1) % MAX_RECORD_HISTORY;
 	Log::log("RecordNumber=%d  state=%d  historyCount=%d  historyOffset=%d\n",
 		recordNumber, state, historyCount, historyOffset);
@@ -1070,9 +1072,11 @@ void Record::ShowHistory(void)
 		{
 		if (history[a].threadId == 0)
 			break;
-		Log::log("%d ThreadId=%d  useCount=%d+(%d)=%d  File=%s Line=%d\n",
+		historicState = (int) history[a].state;
+		Log::log("%d ThreadId=%d state=%d useCount=%d+(%d)=%d  File=%s Line=%d\n",
 			history[a].counter, 
 			history[a].threadId, 
+			historicState, 
 			history[a].useCount, 
 			history[a].delta, 
 			history[a].useCount + history[a].delta, 
@@ -1084,9 +1088,11 @@ void Record::ShowHistory(void)
 		{
 		if (history[a].threadId == 0)
 			break;
-		Log::log("%d ThreadId=%d  useCount=%d+(%d)=%d  File=%s Line=%d\n",
+		historicState = (int) history[a].state;
+		Log::log("%d ThreadId=%d state=%d useCount=%d+(%d)=%d  File=%s Line=%d\n",
 			history[a].counter, 
 			history[a].threadId, 
+			historicState,
 			history[a].useCount, 
 			history[a].delta, 
 			history[a].useCount + history[a].delta, 

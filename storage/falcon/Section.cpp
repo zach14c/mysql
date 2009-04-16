@@ -52,7 +52,6 @@ static int stopSection = 40;
 
 static const int MAX_LEVELS			= 4;
 
-
 //#define VALIDATE_SPACE_SLOTS(page,maxLine)		page->validateSpaceSlots(maxLine);
 
 #ifndef VALIDATE_SPACE_SLOTS

@@ -55,7 +55,7 @@ RecordLeaf::~RecordLeaf()
 				rec->active = false;
 #endif
 				
-			records[n]->release();
+			records[n]->release(REC_HISTORY);
 			}
 }
 
@@ -159,7 +159,6 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 					{
 					SET_RECORD_ACTIVE(prior, false);
 					table->garbageCollect(prior, record, NULL, false);
-					//prior->release(REC_HISTORY);
 					prior->queueForDelete();
 					}
 				}

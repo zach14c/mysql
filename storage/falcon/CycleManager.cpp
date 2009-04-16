@@ -121,13 +121,13 @@ void CycleManager::cycleManager(void)
 		for (RecordVersion *recordVersion; (recordVersion = doomedRecordVersions);)
 			{
 			doomedRecordVersions = recordVersion->nextInTrans;
-			recordVersion->release();
+			recordVersion->release(REC_HISTORY);
 			}
 
 		for (RecordList *recordList; (recordList = doomedRecords);)
 			{
 			doomedRecords = recordList->next;
-			recordList->zombie->release();
+			recordList->zombie->release(REC_HISTORY);
 			delete recordList;
 			}
 

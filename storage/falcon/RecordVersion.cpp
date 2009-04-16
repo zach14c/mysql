@@ -59,13 +59,12 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *transactio
 	savePointId   = transaction->curSavePointId;
 	superceded    = false;
 
-	// Add a use count on the transaction state to ensure it lives as long 
-	// as the record version object
-
+	// Add a use count on the transaction state to ensure it lives 
+	// as long as the record version object
 
 	if ((priorVersion = oldVersion))
 		{
-		priorVersion->addRef();
+		priorVersion->addRef(REC_HISTORY);
 		recordNumber = oldVersion->recordNumber;
 
 		if (priorVersion->state == recChilled)
@@ -153,7 +152,7 @@ Record* RecordVersion::releaseNonRecursive()
 		priorVersion = NULL;
 		}
 
-	release();
+	release(REC_HISTORY);
 
 	return prior;
 }
@@ -240,7 +239,6 @@ void RecordVersion::retire(void)
 		expungeRecord();  // Allow this record number to be reused
 
 	release();
-
 }
 
 // Scavenge record versions replaced within a savepoint.
@@ -277,7 +275,7 @@ void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldest
 	// next staying version.  
 
 	Record *prior = priorVersion;
-	prior->addRef();
+	prior->addRef(REC_HISTORY);
 
 	// Set this record's priorVersion to point past the leaving record(s)
 
@@ -320,12 +318,12 @@ bool RecordVersion::isSuperceded()
 }
 
 // Set the priorVersion to NULL and return its pointer.
-// The caller is responsivble for releasing the associated useCount.
+// The caller is responsible for releasing the associated useCount.
 
 Record* RecordVersion::clearPriorVersion(void)
 {
 	Record * prior = priorVersion;
-	
+
 	if (prior && prior->useCount == 1)
 		{
 		priorVersion = NULL;
