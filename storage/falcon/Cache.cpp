@@ -288,9 +288,11 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 			else
 				dbb->readPage(bdb);
 			priority.finished();
-#ifdef HAVE_PAGE_NUMBER
-			ASSERT(bdb->buffer->pageNumber == pageNumber);
-#endif			
+			if(bdb->buffer->pageNumber != pageNumber)
+				{
+				FATAL("page %d tablespace %d, got wrong page number %d\n",
+					pageNumber, dbb->tableSpaceId, bdb->buffer->pageNumber);
+				}
 			if (actual != lockType)
 				bdb->downGrade(lockType);
 			}
@@ -298,20 +300,10 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 
 	Page *page = bdb->buffer;
 	
-	/***
-	if (page->checksum != (short) pageNumber)
-		FATAL ("page %d wrong page number, got %d\n",
-				 bdb->pageNumber, page->checksum);
-	***/
-	
+
 	if (pageType && page->pageType != pageType)
 		{
-		/*** future code
-		bdb->release();
-		throw SQLError (DATABASE_CORRUPTION, "page %d wrong page type, expected %d got %d\n",
-						pageNumber, pageType, page->pageType);
-		***/
-		FATAL ("page %d/%d wrong page type, expected %d got %d\n",
+		FATAL ("page %d tablespace %d, wrong page type, expected %d got %d\n",
 				 bdb->pageNumber, dbb->tableSpaceId, pageType, page->pageType);
 		}
 

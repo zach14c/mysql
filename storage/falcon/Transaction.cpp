@@ -631,23 +631,27 @@ void Transaction::addRecord(RecordVersion * record)
 			record->state = saveState;
 		}
 
+	if (database->lowMemory && !systemTransaction
+		&& deletedRecords > MAX_LOW_MEMORY_RECORDS)
+		backlogRecords();
+
+	// Now that Chilling and Backlogging is done for this transaction, 
+	// it is safe to add the current record
+
 	record->addRef(REC_HISTORY);
-	
+
 	Sync syncRec(&syncRecords,"Transaction::addRecord");
 	syncRec.lock(Exclusive);
-	
+
 	if ( (record->prevInTrans = lastRecord) )
 		lastRecord->nextInTrans = record;
 	else
 		firstRecord = record;
-		
+
 	record->nextInTrans = NULL;
 	lastRecord = record;
 	syncRec.unlock();
 	
-	if (database->lowMemory && !systemTransaction
-		&& deletedRecords > MAX_LOW_MEMORY_RECORDS)
-		backlogRecords();
 }
 
 void Transaction::removeRecord(RecordVersion *record)
@@ -782,9 +786,6 @@ bool Transaction::needToLock(Record* record)
 {
 	// Find the first visible record version
 
-	//Sync syncPrior(record->getSyncPrior(), "Transaction::needToLock");
-	//syncPrior.lock(Shared);
-
 	for (Record* candidate = record;  candidate != NULL; candidate = candidate->getPriorVersion())
 		{
 		TransactionState* transState = candidate->getTransactionState();
@@ -855,14 +856,20 @@ void Transaction::commitRecords()
 
 State Transaction::getRelativeState(Record* record, uint32 flags)
 {
-	// If this is a Record object it has no assosiated transaction
-	// and is always visible
+	// If this is a Record object it has no associated transaction
+	// and is always visible.
 	
 	if (!record->isVersion())
 		return CommittedVisible;
 
+	// This RecordVersion MUST have a TransState with a reference count.
+	// The caller has a reference count on record, and the record has a
+	// useCount on transState.
+
 	blockingRecord = record;
-	State state = getRelativeState(record->getTransactionState(), record->getTransactionId(), flags);
+	TransactionState * transactionState = record->getTransactionState();
+	ASSERT(transactionState);
+	State state = getRelativeState(transactionState, flags);
 	blockingRecord = NULL;
 
 	return state;
@@ -872,11 +879,9 @@ State Transaction::getRelativeState(Record* record, uint32 flags)
 @brief		Get the relative state between this transaction and another.
 ***/
 
-State Transaction::getRelativeState(TransactionState* transState, TransId transId, uint32 flags)
+State Transaction::getRelativeState(TransactionState* transState, uint32 flags)
 {
-	// Note: The structure of this method is still based on the
-	// original getRelativeState() - should be carefully rewritten
-
+	TransId transId = transState->transactionId;
 	if (transactionId == transId)
 		return Us;
 
@@ -910,7 +915,7 @@ State Transaction::getRelativeState(TransactionState* transState, TransId transI
 			return Active;
 
 		bool isDeadlock;
-		waitForTransaction(transState, 0 , &isDeadlock);
+		waitForTransaction(transState, &isDeadlock);
 
 		if (isDeadlock)
 			return Deadlock;
@@ -991,11 +996,11 @@ void Transaction::writeComplete(void)
 	writePending = false;
 }
 
-bool Transaction::waitForTransaction(TransId transId)
+bool Transaction::waitForTransaction(TransactionState *transState)
 {
 	bool deadlock;
-	State state = waitForTransaction(NULL, transId, &deadlock);
-	
+	State state = waitForTransaction(transState, &deadlock);
+
 	return (deadlock || state == Committed || state == Available);
 }
 
@@ -1012,8 +1017,7 @@ bool Transaction::waitForTransaction(TransId transId)
 // use inline assembly or intrinsics to generate memory barrier instead of 
 // volatile. 
 
-State Transaction::waitForTransaction(TransactionState* transState, TransId transId,
-										bool *deadlock)
+State Transaction::waitForTransaction(TransactionState* transState, bool *deadlock)
 {
 	*deadlock = false;
 	State state;
@@ -1021,45 +1025,18 @@ State Transaction::waitForTransaction(TransactionState* transState, TransId tran
 	// Increase the use count on the transaction state object to ensure
 	// the object the waitingFor pointer refers to does not get deleted
 
-	if (transState)
-		transState->addRef();
+	ASSERT(transState != NULL);
 
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject,
 								"Transaction::waitForTransaction(1)");
 	syncActiveTransactions.lock(Shared);
 
-	// If a transaction state object is not given, locate it by searching
-	// for the transaction in the active list
-
-	if (!transState)
-		{
-		Transaction* transaction; 
-
-		// transaction parameter is not given, find transaction using its ID.
-		for (transaction = transactionManager->activeTransactions.first; transaction;
-			 transaction = transaction->next)
-			if (transaction->transactionId == transId)
-				break;
-
-		// If the transaction is not found in the active list it is committed
-
-		if (!transaction)
-			return Committed;
-
-		transState = transaction->transactionState;
-		transState->addRef();
-		}
-
-	ASSERT(transState != NULL);
-
 	if (transState->state == Available || transState->state == Committed)
 		{
 		state = (State) transState->state;
-		transState->release();
-		
+
 		return state;
 		}
-
 
 	if (!COMPARE_EXCHANGE_POINTER(&transactionState->waitingFor, NULL, transState))
 		FATAL("waitingFor was not NULL");
@@ -1085,7 +1062,7 @@ State Transaction::waitForTransaction(TransactionState* transState, TransId tran
 			{
 			CycleLock *cycleLock = CycleLock::unlock();
 			transState->waitForTransaction();
-			
+
 			if (cycleLock)
 				cycleLock->lockCycle();
 			}
@@ -1097,8 +1074,6 @@ State Transaction::waitForTransaction(TransactionState* transState, TransId tran
 			// See comments about this locking further down
 
 			syncActiveTransactions.lock(Exclusive);
-			transState->release();
-				
 			throw;
 			}
 		}
@@ -1106,21 +1081,16 @@ State Transaction::waitForTransaction(TransactionState* transState, TransId tran
 	if (!COMPARE_EXCHANGE_POINTER(&transactionState->waitingFor, transState, NULL))
 		FATAL("waitingFor was not %p", transState);
 
-	// Before releasing the reference count on the transaction state object we
-	// need to aquire a exclusive lock on the active transaction list. The 
-	// cause for this is that another thread might have used this 
-	// transaction state object's waitingFor pointer to navigate to the next 
-	// transaction state object - and this thread might be the only one that 
-	// has a reference count on that transaction state object. So to avoid that 
-	// the transaction state object is released and deleted while another 
-	// thread is transversing the waitingFor list (code above) with a shared
-	// lock on it we lock it exclusively.
+	// Before returning we need to aquire an exclusive lock on 
+	// syncActiveTransactions. This acts as a 'pump' to make sure that
+	// no thread is still using the object that waitingFor was pointing to.
+	// Traversals of the waitingFor list are done with shared locks on
+	// syncActiveTransactions.  So this exclusive lock waits for those 
+	// threads to finish using those pointers.
 
 	syncActiveTransactions.lock(Exclusive);
 
 	state = (State) transState->state;
-	transState->release();
-
 	return state;
 }
 

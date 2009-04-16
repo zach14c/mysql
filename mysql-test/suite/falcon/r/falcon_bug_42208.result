@@ -1,0 +1,514 @@
+*** Bug #42208  ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(c1 tinyint unsigned null, c2 tinyint, c3 bigint, index idx(c2,c3));
+INSERT INTO t1 (c1,c2,c3) values (0,NULL,26),(0,NULL,106),(0,-128,11);
+INSERT INTO t1 (c1,c2,c3) values (0,0,26),(0,1,2),(0,126,26);
+SELECT * FROM t1 ORDER BY c2,c3;
+c1	c2	c3
+0	NULL	26
+0	NULL	106
+0	-128	11
+0	0	26
+0	1	2
+0	126	26
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 1;
+c1	c2	c3
+0	NULL	26
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 2;
+c1	c2	c3
+0	NULL	26
+0	NULL	106
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 3;
+c1	c2	c3
+0	NULL	26
+0	NULL	106
+0	-128	11
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 4;
+c1	c2	c3
+0	NULL	26
+0	NULL	106
+0	-128	11
+0	0	26
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 5;
+c1	c2	c3
+0	NULL	26
+0	NULL	106
+0	-128	11
+0	0	26
+0	1	2
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 6;
+c1	c2	c3
+0	NULL	26
+0	NULL	106
+0	-128	11
+0	0	26
+0	1	2
+0	126	26
+DROP TABLE t1;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values ("This"), (""), ("is"), (NULL), ("a"), (NULL), (""), (""), ("test"), (""), ("of"), (NULL), ("and"), ("");
+SELECT * FROM t1 ORDER BY s1;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+of
+test
+This
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 2;
+s1
+NULL
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 3;
+s1
+NULL
+NULL
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 4;
+s1
+NULL
+NULL
+NULL
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 5;
+s1
+NULL
+NULL
+NULL
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 6;
+s1
+NULL
+NULL
+NULL
+
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 7;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 8;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 9;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+SELECT * FROM t1 ORDER BY s1 LIMIT 10;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+SELECT * FROM t1 ORDER BY s1 LIMIT 11;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+SELECT * FROM t1 ORDER BY s1 LIMIT 12;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+of
+SELECT * FROM t1 ORDER BY s1 LIMIT 13;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+of
+test
+SELECT * FROM t1 ORDER BY s1 LIMIT 14;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+of
+test
+This
+DROP TABLE t1;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (""),(NULL),(""),(""),(NULL), (NULL);
+SELECT * FROM t1 ORDER BY s1;
+s1
+NULL
+NULL
+NULL
+
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 2;
+s1
+NULL
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 3;
+s1
+NULL
+NULL
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 4;
+s1
+NULL
+NULL
+NULL
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 5;
+s1
+NULL
+NULL
+NULL
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 6;
+s1
+NULL
+NULL
+NULL
+
+
+
+DROP TABLE t1;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values ("");
+SELECT * FROM t1 ORDER BY s1;
+s1
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+
+DROP TABLE t1;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (NULL);
+SELECT * FROM t1 ORDER BY s1;
+s1
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+NULL
+DROP TABLE t1;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (""), (NULL);
+SELECT * FROM t1 ORDER BY s1;
+s1
+NULL
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 2;
+s1
+NULL
+
+DROP TABLE t1;
+SET @@autocommit = 0;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values ("This"), (""), ("is"), (NULL), ("a"), (NULL), (""), (""), ("test"), (""), ("of"), (NULL), ("and"), ("");
+SELECT * FROM t1 ORDER BY s1;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+of
+test
+This
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 2;
+s1
+NULL
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 3;
+s1
+NULL
+NULL
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 4;
+s1
+NULL
+NULL
+NULL
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 5;
+s1
+NULL
+NULL
+NULL
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 6;
+s1
+NULL
+NULL
+NULL
+
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 7;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 8;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 9;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+SELECT * FROM t1 ORDER BY s1 LIMIT 10;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+SELECT * FROM t1 ORDER BY s1 LIMIT 11;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+SELECT * FROM t1 ORDER BY s1 LIMIT 12;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+of
+SELECT * FROM t1 ORDER BY s1 LIMIT 13;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+of
+test
+SELECT * FROM t1 ORDER BY s1 LIMIT 14;
+s1
+NULL
+NULL
+NULL
+
+
+
+
+
+a
+and
+is
+of
+test
+This
+DROP TABLE t1;
+COMMIT;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (""),(NULL),(""),(""),(NULL), (NULL);
+SELECT * FROM t1 ORDER BY s1;
+s1
+NULL
+NULL
+NULL
+
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 2;
+s1
+NULL
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 3;
+s1
+NULL
+NULL
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 4;
+s1
+NULL
+NULL
+NULL
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 5;
+s1
+NULL
+NULL
+NULL
+
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 6;
+s1
+NULL
+NULL
+NULL
+
+
+
+DROP TABLE t1;
+COMMIT;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values ("");
+SELECT * FROM t1 ORDER BY s1;
+s1
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+
+DROP TABLE t1;
+COMMIT;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (NULL);
+SELECT * FROM t1 ORDER BY s1;
+s1
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+NULL
+DROP TABLE t1;
+COMMIT;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (""), (NULL);
+SELECT * FROM t1 ORDER BY s1;
+s1
+NULL
+
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+s1
+NULL
+SELECT * FROM t1 ORDER BY s1 LIMIT 2;
+s1
+NULL
+
+COMMIT;
+SET @@autocommit = 1;
+SELECT count(*) FROM t1;
+count(*)
+2
+DROP TABLE t1;
