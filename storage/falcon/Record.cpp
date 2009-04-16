@@ -860,9 +860,9 @@ Record* Record::clearPriorVersion(void)
 	return NULL;
 }
 
-void Record::setPriorVersion(Record* record)
+void Record::setPriorVersion(Record *oldPriorVersion, Record *newPriorVersion)
 {
-	ASSERT(false);
+	FATAL("setPriorVersion should only be called for RecordVersions\n");
 }
 
 int Record::thaw(void)

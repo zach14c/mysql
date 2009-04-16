@@ -124,8 +124,9 @@ RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(dat
 RecordVersion::~RecordVersion()
 {
 	state = recDeleting;
-	Record *prior = priorVersion;
-	priorVersion = NULL;
+	Record* prior = priorVersion;
+	if (!COMPARE_EXCHANGE_POINTER(&priorVersion, prior, NULL))
+		FATAL("~RecordVersion; Unexpected contents in priorVersion\n");
 
 	// Avoid recursion here. May crash from too many levels
 	// if the same record is updated too often and quickly.
@@ -149,7 +150,8 @@ Record* RecordVersion::releaseNonRecursive()
 	if (useCount == 1)
 		{
 		prior = priorVersion;
-		priorVersion = NULL;
+		if (!COMPARE_EXCHANGE_POINTER(&priorVersion, prior, NULL))
+			FATAL("RecordVersion::releaseNonRecursive; Unexpected contents in priorVersion\n");
 		}
 
 	release(REC_HISTORY);
@@ -279,7 +281,7 @@ void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldest
 
 	// Set this record's priorVersion to point past the leaving record(s)
 
-	setPriorVersion(rec);
+	setPriorVersion(prior, rec);
 	ptr->state = recEndChain;
 	format->table->garbageCollect(prior, this, targetTransaction, false);
 	prior->queueForDelete();
@@ -326,23 +328,23 @@ Record* RecordVersion::clearPriorVersion(void)
 
 	if (prior && prior->useCount == 1)
 		{
-		priorVersion = NULL;
-		
-		return prior;
+		if (COMPARE_EXCHANGE_POINTER(&priorVersion, prior, NULL))
+			return prior;
 		}
-	
+
 	return NULL;
 }
 
-void RecordVersion::setPriorVersion(Record *oldVersion)
+void RecordVersion::setPriorVersion(Record *oldPriorVersion, Record *newPriorVersion)
 {
-	if (oldVersion)
-		oldVersion->addRef();
+	if (newPriorVersion)
+		newPriorVersion->addRef(REC_HISTORY);
 
-	if (priorVersion)
-		priorVersion->release();
+	if (!COMPARE_EXCHANGE_POINTER(&priorVersion, oldPriorVersion, newPriorVersion))
+		FATAL("RecordVersion::setPriorVersion; Unexpected contents in priorVersion\n");
 
-	priorVersion = oldVersion;
+	if (oldPriorVersion)
+		oldPriorVersion->release(REC_HISTORY);
 }
 
 TransId RecordVersion::getTransactionId()

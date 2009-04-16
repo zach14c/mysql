@@ -140,14 +140,17 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 
 			if (oldestVisible)
 				{
+				// Detach the older records from the oldest visible.
+
 				Record *prior = oldestVisible->clearPriorVersion();
 
 				for (Record *prune = prior; prune; prune = prune->getPriorVersion())
 					{
 					if (prune->useCount != 1)
 						{
+						// Give up, re-attach and do not prune this chain this time.
+						oldestVisible->setPriorVersion(NULL, prior);
 						prior = NULL;
-						
 						break;
 						}
 						

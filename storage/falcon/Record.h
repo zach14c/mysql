@@ -119,7 +119,7 @@ public:
 	virtual bool		isNull(int fieldId);
 	virtual Record*		releaseNonRecursive(void);
 	virtual Record*		clearPriorVersion(void);
-	virtual void		setPriorVersion(Record* record);
+	virtual void		setPriorVersion(Record *oldPriorVersion, Record *newPriorVersion);
 	virtual Record*		getPriorVersion();
 	virtual Record*		getGCPriorVersion(void);
 	virtual	void		print(void);
