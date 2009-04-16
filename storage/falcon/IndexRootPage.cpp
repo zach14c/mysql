@@ -119,8 +119,9 @@ bool IndexRootPage::addIndexEntry(Dbb * dbb, int32 indexId, IndexKey *key, int32
 		}
 		
 	// Multiple threads may attempt to update the same index. If necessary, make several attempts.
-	
-	for (int n = 0; n < 10; ++n)
+	// The loop number 1000 is klugde to silence the Bug#37056, until a proper solution is 
+	// implemented . that does  not involve loops at all
+	for (int n = 0; n < 1000; ++n)
 		{
 		/* Find insert page and position on page */
 
@@ -283,9 +284,11 @@ Bdb* IndexRootPage::findInsertionLeaf(Dbb *dbb, int32 indexId, IndexKey *indexKe
 		page = (IndexPage*) bdb->buffer;
 		
 		if (page->level == 0)
+			{
 			if (isRoot)
 				*isRoot = true;
 			return bdb;
+			}
 		}
 		
 	while (page->level > 0)
@@ -332,26 +335,21 @@ Bdb* IndexRootPage::findRoot(Dbb *dbb, int32 indexId, int32 rootPage, LockType l
 	if (rootPage)
 		return dbb->fetchPage(rootPage, PAGE_btree, lockType);
 		
-	if (indexId < 0)
-		return NULL;
+	ASSERT(indexId >= 0);
 
 	Bdb *bdb = Section::getSectionPage (dbb, INDEX_ROOT, indexId / dbb->pagesPerSection, Shared, transId);
 	BDB_HISTORY(bdb);
 
-	if (!bdb)
-		return NULL;
+	ASSERT (bdb);
 
 	SectionPage *sections = (SectionPage*) bdb->buffer;
 	int32 pageNumber = sections->pages [indexId % dbb->pagesPerSection];
 
-	if (pageNumber == 0)
-		{
-		bdb->release(REL_HISTORY);
-		return NULL;
-		}
+	ASSERT (pageNumber != 0);
 
 	bdb = dbb->handoffPage (bdb, pageNumber, PAGE_btree, lockType);
 	BDB_HISTORY(bdb);
+	ASSERT(bdb);
 	return bdb;
 }
 
@@ -541,9 +539,9 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 
 		// The order of adding these to the serial log is important.
 		// Recovery must write them in this order incase recovery itself crashes.
-		IndexPage::logIndexPage(splitBdb, transId);
-		IndexPage::logIndexPage(leftBdb, transId);
-		IndexPage::logIndexPage(bdb, transId);
+		IndexPage::logIndexPage(splitBdb, transId, indexKey->index);
+		IndexPage::logIndexPage(leftBdb, transId, indexKey->index);
+		IndexPage::logIndexPage(bdb, transId, indexKey->index);
 		
 		if (dbb->debug & DEBUG_PAGE_LEVEL)
 			{
@@ -566,10 +564,10 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 	int splitPageLevel = splitPage->level;
 	int splitPageNumber = splitBdb->pageNumber;
 
-	IndexPage::logIndexPage(splitBdb, transId);
+	IndexPage::logIndexPage(splitBdb, transId, indexKey->index);
 	splitBdb->release(REL_HISTORY);
 
-	IndexPage::logIndexPage(bdb, transId);
+	IndexPage::logIndexPage(bdb, transId, indexKey->index);
 	bdb->release(REL_HISTORY);
 
 	// We need to insert the first key of the newly created parent page
@@ -594,7 +592,7 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 			// Log parent page.
 			if (result == NodeAdded)
 				{
-				IndexPage::logIndexPage(parentBdb,transId);
+				IndexPage::logIndexPage(parentBdb,transId, indexKey->index);
 				}
 
 			parentBdb->release(REL_HISTORY);

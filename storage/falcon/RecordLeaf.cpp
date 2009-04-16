@@ -169,7 +169,7 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 
 void RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordScavenge)
 {
-	int count = 0;
+	int slotsWithRecords = 0;
 	Record **ptr, **end;
 
 	Sync sync(&syncObject, "RecordLeaf::retireRecords(syncObject)");
@@ -198,19 +198,28 @@ void RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordSc
 		{
 		Record *record = *ptr;
 		
-		if (record && recordScavenge->canBeRetired(record))
+		if (record)
 			{
-			if (record->retire(recordScavenge))
-				*ptr = NULL;		// This is like Table::insertIntoTree(NULL, ...)
+			if (   (recordScavenge->canBeRetired(record))
+				&& (COMPARE_EXCHANGE_POINTER(ptr, record, NULL)))
+				{
+				++recordScavenge->recordsRetired;
+				recordScavenge->spaceRetired += record->getMemUsage();
+				record->retire();
+				}
 			else
-				count++;
+				{
+				slotsWithRecords++;
+				++recordScavenge->recordsRemaining;
+				recordScavenge->spaceRemaining += record->getMemUsage();
+				}
 			}
 		}
 
 	// If this node is empty, store the base record number for use as an
 	// identifier when the leaf node is scavenged later.
 
-	if (!count && table->emptySections)
+	if ((slotsWithRecords == 0) && (table->emptySections))
 		table->emptySections->set(base);
 
 	return;

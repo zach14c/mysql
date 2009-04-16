@@ -24,7 +24,6 @@
 #include "SerialLog.h"
 #include "SerialLogControl.h"
 #include "IndexRootPage.h"
-#include "Index2RootPage.h"
 #include "Index.h"
 #include "Dbb.h"
 
@@ -85,19 +84,7 @@ void SRLDeleteIndex::pass2()
 	if (!control->isPostFlush())
 		return;
 
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_0:
-			Index2RootPage::redoIndexDelete(dbb, indexId);
-			break;
-		
-		case INDEX_VERSION_1:
-			IndexRootPage::redoIndexDelete(dbb, indexId);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
+	IndexRootPage::redoIndexDelete(dbb, indexId);
 }
 
 void SRLDeleteIndex::redo()
@@ -119,17 +106,5 @@ void SRLDeleteIndex::commit(void)
 	if (!dbb)
 		return;
 
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_0:
-			Index2RootPage::deleteIndex(dbb, indexId, transactionId);
-			break;
-		
-		case INDEX_VERSION_1:
-			IndexRootPage::deleteIndex(dbb, indexId, transactionId);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
+	IndexRootPage::deleteIndex(dbb, indexId, transactionId);
 }

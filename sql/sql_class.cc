@@ -2498,7 +2498,7 @@ void Query_arena::set_query_arena(Query_arena *set)
 
 void Query_arena::cleanup_stmt()
 {
-  DBUG_ASSERT("Query_arena::cleanup_stmt()" == "not implemented");
+  DBUG_ASSERT(! "Query_arena::cleanup_stmt() not implemented");
 }
 
 /*
@@ -3000,6 +3000,14 @@ Security_context::restore_security_context(THD *thd,
     thd->security_ctx= backup;
 }
 #endif
+
+
+bool Security_context::user_matches(Security_context *them)
+{
+  return ((user != NULL) && (them->user != NULL) &&
+          !strcmp(user, them->user));
+}
+
 
 /****************************************************************************
   Handling of open and locked tables states.

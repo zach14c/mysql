@@ -176,8 +176,8 @@ Record::~Record()
 #ifdef CHECK_RECORD_ACTIVITY
 	ASSERT(!active);
 #endif
-	
-	deleteData();
+
+	deleteData(true);
 }
 
 void Record::setValue(TransactionState * transaction, int id, Value * value, bool cloneFlag, bool copyFlag)
@@ -319,11 +319,6 @@ int Record::getFormatVersion()
 }
 
 Record* Record::fetchVersion(Transaction * transaction)
-{
-	return this;
-}
-
-Record* Record::fetchVersionRecursive(Transaction * transaction)
 {
 	return this;
 }
@@ -497,23 +492,12 @@ bool Record::isVersion()
 	return false;
 }
 
-bool Record::retire(RecordScavenge *recordScavenge)
+void Record::retire(void)
 {
-	if (generation <= recordScavenge->scavengeGeneration)
-		{
-		recordScavenge->spaceRetired += getMemUsage();
-		++recordScavenge->recordsRetired;
-		SET_THIS_RECORD_ACTIVE(false);
-		RECORD_HISTORY(this);
+	SET_THIS_RECORD_ACTIVE(false);
+	RECORD_HISTORY(this);
 
-		release();
-		return true;
-		}
-
-	++recordScavenge->recordsRemaining;
-	recordScavenge->spaceRemaining += getMemUsage();
-
-	return false;
+	release();
 }
 
 void Record::scavenge(TransId targetTransactionId, int oldestActiveSavePointId)
@@ -912,18 +896,31 @@ int Record::setRecordData(const UCHAR * dataIn, int dataLength)
 
 void Record::deleteData(void)
 {
+	deleteData(false);
+}
+
+void Record::deleteData(bool now)
+{
 	if (data.record)
 		{
 		switch (encoding)
 			{
 			case valueVector:
-				delete [] (Value*) data.record;
+				if (now)
+					delete [] (Value*) data.record;
+				else
+					format->table->queueForDelete((Value**) data.record);
 				break;
 
 			default:
-				DELETE_RECORD (data.record);
+				if (now)
+					{
+					DELETE_RECORD (data.record);
+					}
+				else
+					format->table->queueForDelete((char *) data.record);
 			}
-		
+
 		data.record = NULL;
 		}
 }
@@ -1022,13 +1019,6 @@ int Record::getMemUsage(void)
 	int objectSize = MemMgr::blockSize(this);
 	return objectSize + getDataMemUsage();
 }
-
-/***
-SyncObject* Record::getSyncPrior(void)
-{
-	return format->table->getSyncPrior(this);
-}
-***/
 
 SyncObject* Record::getSyncThaw(void)
 {
