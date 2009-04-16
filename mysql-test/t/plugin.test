@@ -73,14 +73,5 @@ set session sql_mode=@old_sql_mode;
 --error ER_INCORRECT_GLOBAL_LOCAL_VAR
 set session old=bla;
 
---echo #
---echo # Bug#44137: Transactional DDL locking broke dynamic plugins
---echo #
---echo # Try to restart the server - plugin should be loaded after restart
---echo #
-
---source include/restart_mysqld.inc
-SELECT @@global.example_enum_var = 'e2';
-
 UNINSTALL PLUGIN example;
 

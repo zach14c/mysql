@@ -53,12 +53,4 @@ select @@global.example_ulong_var;
 set session sql_mode=@old_sql_mode;
 set session old=bla;
 ERROR HY000: Variable 'old' is a read only variable
-#
-# Bug#44137: Transactional DDL locking broke dynamic plugins
-#
-# Try to restart the server - plugin should be loaded after restart
-#
-SELECT @@global.example_enum_var = 'e2';
-@@global.example_enum_var = 'e2'
-0
 UNINSTALL PLUGIN example;
