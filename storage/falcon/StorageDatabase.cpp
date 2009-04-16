@@ -878,7 +878,12 @@ int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int 
 			if (nullFlag)
 				{
 				values[segmentNumber]->setNull();
-				break;
+				if (index->indexVersion < INDEX_VERSION_2)
+					{
+					// Older index version do not handle NULLs correctly -it is not the smallest value.
+					// Thus, we cannot use values past NULL and need to break here.
+					break;
+					}
 				}
 
 			p += len;

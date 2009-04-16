@@ -215,6 +215,8 @@ public:
 	void			unlockRecord(int recordNumber, int verbMark);
 	void			unlockRecord(RecordVersion* record, int verbMark);
 	void			queueForDelete(Record* record);
+	void			queueForDelete(Value** record);
+	void			queueForDelete(char* record);
 
 	void			insert (Transaction *transaction, int count, Field **fields, Value **values);
 	uint			insert (Transaction *transaction, Stream *stream);
@@ -229,8 +231,6 @@ public:
 	void			deleteRecord (int recordNumber);
 	void			deleteRecord (RecordVersion *record, Transaction *transaction);
 	
-	//SyncObject*	getSyncPrior(Record* record);
-	//SyncObject*	getSyncPrior(int recordNumber);
 	SyncObject*		getSyncThaw(Record* record);
 	SyncObject*		getSyncThaw(int recordNumber);
 
@@ -238,7 +238,6 @@ public:
 	SyncObject		syncObject;
 	SyncObject		syncTriggers;
 	SyncObject		syncAlter;				// prevent concurrent Alter statements.
-	//SyncObject	syncPriorVersions[SYNC_VERSIONS_SIZE];
 	SyncObject		syncThaw[SYNC_THAW_SIZE];
 	Table			*collision;				// Hash collision in database
 	Table			*idCollision;			// mod(id) collision in database

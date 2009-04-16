@@ -42,6 +42,8 @@ void ErrorInjector::parse(const char *spec)
 		type = InjectorRecoveryPhase2;
 	else if (strstr(spec,"type=RecoveryPhase3"))
 		type = InjectorRecoveryPhase3;
+	else if (strstr(spec,"type=SerialLogTruncate"))
+		type = InjectorSerialLogTruncate;
 	
 	param=-1;
 	const char *p= strstr(spec,"param=");

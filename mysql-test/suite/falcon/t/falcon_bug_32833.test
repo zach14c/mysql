@@ -20,7 +20,7 @@ DROP PROCEDURE IF EXISTS p1;
 --enable_warnings
 
 --echo # Create table
-CREATE TABLE t1 (int_column INT, char_column CHAR(5) CHARACTER SET UTF32) 
+CREATE TABLE t1 (int_column INT, char_column CHAR(5) CHARACTER SET UTF32)
   PARTITION BY KEY(char_column);
 
 --echo # Create and call procedure for populating table
@@ -45,25 +45,18 @@ END//
 DELIMITER ;//
 CALL p1();
 
---disable_warnings
 SELECT count(*) FROM t1;
-# SELECT int_column, hex(char_column) FROM t1;
---enable_warnings
 
 --echo # Change column from UTF32 to UTF8
 --disable_warnings
 ALTER TABLE t1 MODIFY COLUMN char_column CHAR(5) CHARACTER SET utf8;
-# SELECT int_column, hex(char_column) FROM t1;
 --enable_warnings
-
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
-
 --echo # Add index to UTF8 column
 CREATE INDEX i ON t1 (char_column);
-# SELECT int_column, hex(char_column) FROM t1;
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
@@ -73,7 +66,5 @@ SELECT count(*) FROM t1;
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
-
---echo # Final cleanup
 DROP TABLE t1;
 DROP PROCEDURE p1;

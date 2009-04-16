@@ -1,0 +1,162 @@
+--source include/have_falcon.inc
+
+#
+# Bug #42208: Falcon's ORDER BY ..LIMIT gives wrong/inconsistent results on NULL values
+#
+--echo *** Bug #42208  ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+# Testing the case from the bug report
+
+CREATE TABLE t1(c1 tinyint unsigned null, c2 tinyint, c3 bigint, index idx(c2,c3));
+INSERT INTO t1 (c1,c2,c3) values (0,NULL,26),(0,NULL,106),(0,-128,11);
+INSERT INTO t1 (c1,c2,c3) values (0,0,26),(0,1,2),(0,126,26);
+SELECT * FROM t1 ORDER BY c2,c3;
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 1;
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 2;
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 3;
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 4;
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 5;
+SELECT * FROM t1 ORDER BY c2,c3 LIMIT 6;
+DROP TABLE t1;
+
+# Testing some other interesting cases as too, that will
+# be affected by the patch
+
+# Testing single field indexes to see that empty string and NULL sort correctly
+
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values ("This"), (""), ("is"), (NULL), ("a"), (NULL), (""), (""), ("test"), (""), ("of"), (NULL), ("and"), ("");
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 2; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 3; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 4; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 5; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 6; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 7; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 8;
+SELECT * FROM t1 ORDER BY s1 LIMIT 9; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 10; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 11; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 12; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 13; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 14; 
+DROP TABLE t1;
+
+# Testing special cases with only NULLs and empty strings
+
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (""),(NULL),(""),(""),(NULL), (NULL);
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 2; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 3; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 4; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 5;
+SELECT * FROM t1 ORDER BY s1 LIMIT 6;  
+DROP TABLE t1;
+
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values ("");
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (NULL);
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (""), (NULL);
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 2;
+DROP TABLE t1;
+
+# Then we are testing the for single field index with 
+# autocommit of, to test the access through the deferred
+# indexes
+
+SET @@autocommit = 0;
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values ("This"), (""), ("is"), (NULL), ("a"), (NULL), (""), (""), ("test"), (""), ("of"), (NULL), ("and"), ("");
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 2; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 3; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 4; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 5; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 6; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 7; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 8;
+SELECT * FROM t1 ORDER BY s1 LIMIT 9; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 10; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 11; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 12; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 13; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 14; 
+DROP TABLE t1;
+COMMIT;
+
+# Testing special cases with only NULLs and empty strings
+
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (""),(NULL),(""),(""),(NULL), (NULL);
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 2; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 3; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 4; 
+SELECT * FROM t1 ORDER BY s1 LIMIT 5;
+SELECT * FROM t1 ORDER BY s1 LIMIT 6;  
+DROP TABLE t1;
+COMMIT;
+
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values ("");
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+DROP TABLE t1;
+COMMIT;
+
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (NULL);
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+DROP TABLE t1;
+COMMIT;
+
+CREATE TABLE t1 (s1 varchar(10), key(s1));
+INSERT INTO t1 values (""), (NULL);
+SELECT * FROM t1 ORDER BY s1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 1;
+SELECT * FROM t1 ORDER BY s1 LIMIT 2;
+COMMIT;
+
+SET @@autocommit = 1;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;
