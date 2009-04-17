@@ -731,3 +731,11 @@ drop table t1;
 disconnect con1;
 disconnect con2;
 connection default;
+
+#
+# Bug#44151 using handler commands on information_schema tables crashes server
+#
+USE information_schema;
+--error ER_WRONG_USAGE
+HANDLER COLUMNS OPEN;
+USE test;
