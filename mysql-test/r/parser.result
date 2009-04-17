@@ -628,54 +628,5 @@ ERROR 42000: You have an error in your SQL syntax; check the manual that corresp
 BACKUP DATABASE *, db1, db2, db3 to 'broken.bak';
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ' db1, db2, db3 to 'broken.bak'' at line 1
 #
-# Bug#39559: dump of stored procedures / functions with C-style 
-#     comment can't be read back
-#
-+----------+--------+
-| expected | result |
-+----------+--------+
-|        2 |      2 | 
-+----------+--------+
-+----------+--------+
-| expected | result |
-+----------+--------+
-|        1 |      1 | 
-+----------+--------+
-+----------+--------+
-| expected | result |
-+----------+--------+
-|        3 |      3 | 
-+----------+--------+
-+----------+--------+
-| expected | result |
-+----------+--------+
-|        2 |      2 | 
-+----------+--------+
-+----------+--------+
-| expected | result |
-+----------+--------+
-|        7 |      7 | 
-+----------+--------+
-+----------+--------+
-| expected | result |
-+----------+--------+
-|        8 |      8 | 
-+----------+--------+
-+----------+--------+
-| expected | result |
-+----------+--------+
-|        7 |      7 | 
-+----------+--------+
-+----------+--------+
-| expected | result |
-+----------+--------+
-|        4 |      4 | 
-+----------+--------+
-+----------+--------+
-| expected | result |
-+----------+--------+
-|        4 |      4 | 
-+----------+--------+
-#
 # End of 5.1 tests
 #
