@@ -27,6 +27,7 @@
 #include "SyncObject.h"
 #include "SerialLog.h"
 #include "SavePoint.h"
+#include "TransactionState.h"
 
 static const int NO_TRANSACTION = 0;
 
@@ -44,34 +45,6 @@ class InfoTable;
 class Thread;
 class TransactionManager;
 
-// Transaction States
-
-enum State {
-	Active,					// 0
-	Limbo,					// 1
-	Committed,				// 2
-	RolledBack,				// 3
-
-	// The following are 'relative states'.  See getRelativeState()
-	
-	Us,						// 4
-	CommittedVisible,		// 5
-	CommittedInvisible,		// 6
-	WasActive,				// 7
-	Deadlock,				// 8
-	
-	// And the remaining are for transactions pending reuse
-	
-	Available,				// 9
-	Initializing			// 10
-	};
-
-struct TransState {
-	Transaction	*transaction;
-	TransId		transactionId;
-	int			state;
-	};
-
 static const int LOCAL_SAVE_POINTS = 5;
 
 static const int FOR_READING = 0;
@@ -87,12 +60,13 @@ public:
 	Transaction(Connection *connection, TransId seq);
 
 	State		getRelativeState(Record* record, uint32 flags);
-	State		getRelativeState (Transaction *transaction, TransId transId, uint32 flags);
+	State		getRelativeState (TransactionState* ts, uint32 flags);
 	void		removeRecordNoLock (RecordVersion *record);
 	void		removeRecord(RecordVersion *record);
 	void		removeRecord (RecordVersion *record, RecordVersion **ptr);
 	void		commitRecords();
 	bool		visible (Transaction *transaction, TransId transId, int forWhat);
+	bool		visible(const TransactionState* transState, int forWhat) const;
 	bool		needToLock(Record* record);
 	void		addRecord (RecordVersion *record);
 	void		prepare(int xidLength, const UCHAR *xid);
@@ -100,9 +74,8 @@ public:
 	void		commit();
 	void		release();
 	void		addRef();
-	void		waitForTransaction();
-	bool		waitForTransaction (TransId transId);
-	State		waitForTransaction (Transaction *transaction, TransId transId, bool *deadlock);
+	bool		waitForTransaction (TransactionState* ts);
+	State		waitForTransaction (TransactionState* ts, bool *deadlock);
 	void		dropTable(Table* table);
 	void		truncateTable(Table* table);
 	bool		hasRecords(Table* table);
@@ -134,19 +107,22 @@ public:
 
 	inline bool isActive()
 		{
-		return state == Active || state == Limbo;
+		return transactionState->state == Active || transactionState->state == Limbo;
+		}
+
+	State getState() const
+		{
+		return static_cast<State>(transactionState->state);
 		}
 
 	Connection		*connection;
 	Database		*database;
 	TransactionManager	*transactionManager;
 	TransId			transactionId;  // used also as startEvent by dep.mgr.
-	TransId			commitId;       // used as commitEvent by dep.mgr.
 	TransId			blockedBy;
 	int				curSavePointId;
 	Transaction		*next;			// next in database
 	Transaction		*prior;			// next in database
-	volatile	Transaction		*waitingFor;
 	SavePoint		*savePoints;
 	SavePoint		*freeSavePoints;
 	SavePoint		localSavePoints[LOCAL_SAVE_POINTS];
@@ -164,10 +140,9 @@ public:
 	bool			systemTransaction;
 	bool			hasUpdates;
 	bool			writePending;
-	bool			pendingPageWrites;
+	//bool			pendingPageWrites;
 	bool			hasLocks;
 	SyncObject		syncObject;
-	SyncObject		syncIsActive;		// locked while transaction is active
 	SyncObject		syncDeferredIndexes;
 	SyncObject		syncRecords;
 	SyncObject		syncSavepoints;
@@ -183,8 +158,8 @@ public:
 	uint32			deletedRecords;		// active deleted records (exclusive of backllogged ones)
 	RecordVersion	**chillPoint;		// points to a pointer to the first non-chilled record
 	int				scanIndexCount;
+	TransactionState* transactionState;
 
-	volatile INTERLOCK_TYPE	state;
 	volatile INTERLOCK_TYPE	useCount;
 	volatile INTERLOCK_TYPE	inList;
 

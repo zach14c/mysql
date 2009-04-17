@@ -131,11 +131,8 @@ SET @@global.keep_files_on_create = test;
 SET @@session.keep_files_on_create = ONN;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.keep_files_on_create = ONF;
-
+--error ER_WRONG_VALUE_FOR_VAR
 SET @@session.keep_files_on_create = OF;
-SELECT @@session.keep_files_on_create;
---echo 'Bug# 34828: FN_DYNVARS_054_05 - OF is also working as OFF and no error is coming';
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.keep_files_on_create = 'OFN';
 --Error ER_WRONG_VALUE_FOR_VAR

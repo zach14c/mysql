@@ -41,5 +41,5 @@ CHECKSUM TABLE t1;
 
 --echo Clean-up
 DROP DATABASE mysqltest;
-let $MYSQLD_DATADIR= `SELECT @@datadir`;
-remove_file $MYSQLD_DATADIR/test.ba;
+let $MYSQLD_BACKUPDIR= `SELECT @@backupdir`;
+remove_file $MYSQLD_BACKUPDIR/test.ba;

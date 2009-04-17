@@ -49,7 +49,7 @@
 #undef PARAMETER_BOOL
 extern uint falcon_io_threads;
 
-//#define STOP_PAGE		55
+//#define STOP_PAGE		15380
 #define TRACE_FILE	"cache.trace"
 
 static FILE			*traceFile;
@@ -100,8 +100,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 
 	flushBitmap = new Bitmap;
 	numberIoThreads = falcon_io_threads;
-	ioThreads = new Thread*[numberIoThreads];
-	memset(ioThreads, 0, numberIoThreads * sizeof(ioThreads[0]));
+	ioThreads = NULL;
 	flushing = false;
 	recovering = false;
 	
@@ -144,8 +143,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 
 	validateCache();
 
-	for (int n = 0; n < numberIoThreads; ++n)
-		ioThreads[n] = database->threads->start("Cache::Cache", &Cache::ioThread, this);
+	startThreads();
 }
 
 Cache::~Cache()
@@ -290,9 +288,11 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 			else
 				dbb->readPage(bdb);
 			priority.finished();
-#ifdef HAVE_PAGE_NUMBER
-			ASSERT(bdb->buffer->pageNumber == pageNumber);
-#endif			
+			if(bdb->buffer->pageNumber != pageNumber)
+				{
+				FATAL("page %d tablespace %d, got wrong page number %d\n",
+					pageNumber, dbb->tableSpaceId, bdb->buffer->pageNumber);
+				}
 			if (actual != lockType)
 				bdb->downGrade(lockType);
 			}
@@ -300,20 +300,10 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 
 	Page *page = bdb->buffer;
 	
-	/***
-	if (page->checksum != (short) pageNumber)
-		FATAL ("page %d wrong page number, got %d\n",
-				 bdb->pageNumber, page->checksum);
-	***/
-	
+
 	if (pageType && page->pageType != pageType)
 		{
-		/*** future code
-		bdb->release();
-		throw SQLError (DATABASE_CORRUPTION, "page %d wrong page type, expected %d got %d\n",
-						pageNumber, pageType, page->pageType);
-		***/
-		FATAL ("page %d/%d wrong page type, expected %d got %d\n",
+		FATAL ("page %d tablespace %d, wrong page type, expected %d got %d\n",
 				 bdb->pageNumber, dbb->tableSpaceId, pageType, page->pageType);
 		}
 
@@ -790,6 +780,10 @@ void Cache::ioThread(void)
 	UCHAR *end = (UCHAR*) ((UIPTR) (rawBuffer + ASYNC_BUFFER_SIZE) / pageSize * pageSize);
 	flushLock.lock(Exclusive);
 	
+	// Update that a new IO thread has started. Use flushLock to protect this.
+
+	numberIoThreadsStarted++;
+
 	// This is the main loop.  Write blocks until there's nothing to do, then sleep
 	
 	for (;;)
@@ -1112,6 +1106,40 @@ void Cache::closeTraceFile(void)
 		traceFile = NULL;
 		}
 #endif
+}
+
+void Cache::startThreads()
+{
+	// Allocate memory for array with pointers to the IO threads
+
+	ioThreads = new Thread*[numberIoThreads];
+	memset(ioThreads, 0, numberIoThreads * sizeof(ioThreads[0]));
+	numberIoThreadsStarted = 0;
+
+	// Start the IO threads
+
+	for (int n = 0; n < numberIoThreads; ++n)
+		ioThreads[n] = database->threads->start("Cache::Cache", 
+												&Cache::ioThread, this);
+
+	// Wait for the IO threads to start
+
+	while (true)
+		{
+		// numberIoThreadsStarted is protected by using syncFlush
+
+		Sync sync(&syncFlush, "Cache::startThreads");
+		sync.lock(Exclusive);
+
+		if (numberIoThreadsStarted == numberIoThreads)
+			break;
+
+		sync.unlock();
+
+		// Take a short sleep to avoid busy-waiting
+
+		Thread::getThread("Cache::startThreads")->sleep(1);
+		}
 }
 
 void Cache::flushWait(void)

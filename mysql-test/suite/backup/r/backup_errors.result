@@ -1,18 +1,14 @@
 DROP DATABASE IF EXISTS adb;
 DROP DATABASE IF EXISTS bdb;
+PURGE BACKUP LOGS;
 # non-existent backup archive
 RESTORE FROM 'test.bak';
-ERROR HY000: File 'MYSQLTEST_VARDIR/mysqld.1/data/test.bak' not found (Errcode: #)
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "RESTORE FROM 'test%";
+ERROR HY000: File 'MYSQLD_DATADIR/test.bak' not found (Errcode: #)
 verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	restore	test.bak
-SELECT notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	restore	test.bak	RESTORE FROM 'test.bak'
+SELECT notes FROM mysql.backup_progress;
 notes
 starting
 running
@@ -21,59 +17,69 @@ error
 CREATE DATABASE adb;
 CREATE DATABASE bdb;
 CREATE TABLE bdb.t1(a int) ENGINE=MEMORY;
+PURGE BACKUP LOGS;
 # invalid location
-BACKUP DATABASE adb TO '';
+BACKUP DATABASE adb TO '' ;
 ERROR HY000: Malformed file path ''
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Malformed file path ''
 Warning	#	Operation aborted
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE adb TO%";
 verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	backup	
-SELECT notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup		BACKUP DATABASE adb TO ''
+SELECT notes FROM mysql.backup_progress;
 notes
 starting
 running
 Malformed file path ''
 error
-# don't overwrite existing files
-BACKUP DATABASE adb TO "bdb/t1.frm";
-ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/mysqld.1/data/bdb/t1.frm' (Errcode: #)
+PURGE BACKUP LOGS;
+BACKUP DATABASE adb TO 'invalid/location' ;
+ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/invalid/location' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/mysqld.1/data/bdb/t1.frm' (Errcode: #)
+Error	#	Can't create/write to file 'MYSQLD_DATADIR/invalid/location' (Errcode: #)
+Error	#	Can't write to backup location 'invalid/location'
+Warning	#	Operation aborted
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	location	BACKUP DATABASE adb TO 'invalid/location'
+SELECT notes FROM mysql.backup_progress;
+notes
+starting
+running
+Can't write to backup location 'invalid/location'
+error
+# don't overwrite existing files
+BACKUP DATABASE adb TO "bdb/t1.frm" ;
+ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/bdb/t1.frm' (Errcode: #)
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Can't create/write to file 'MYSQLD_DATADIR/bdb/t1.frm' (Errcode: #)
 Error	#	Can't write to backup location 'bdb/t1.frm'
 Warning	#	Operation aborted
-BACKUP DATABASE adb TO "test.bak";
+BACKUP DATABASE adb TO "test.bak" ;
 backup_id
 #
 SHOW WARNINGS;
 Level	Code	Message
+PURGE BACKUP LOGS;
 # don't overwrite existing backup image
-BACKUP DATABASE adb TO "test.bak";
-ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/mysqld.1/data/test.bak' (Errcode: #)
+BACKUP DATABASE adb TO "test.bak" ;
+ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/mysqld.1/data/test.bak' (Errcode: #)
+Error	#	Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 Error	#	Can't write to backup location 'test.bak'
 Warning	#	Operation aborted
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE adb TO%";
 verify backup history and progress logs for backup_state.
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	backup	test.bak
-SELECT notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	test.bak	BACKUP DATABASE adb TO "test.bak"
+SELECT notes FROM mysql.backup_progress;
 notes
 starting
 running
@@ -82,39 +88,54 @@ error
 # non-existent database
 DROP DATABASE IF EXISTS foo;
 DROP DATABASE IF EXISTS bar;
-BACKUP DATABASE foo TO 'test.bak';
+BACKUP DATABASE foo TO 'test.bak' ;
 ERROR 42000: Unknown database 'foo'
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Unknown database 'foo'
 Warning	#	Operation aborted
-BACKUP DATABASE test,foo,bdb,bar TO 'test.bak';
+PURGE BACKUP LOGS;
+BACKUP DATABASE test,foo,bdb,bar TO 'test.bak' ;
 ERROR 42000: Unknown database 'foo,bar'
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Unknown database 'foo,bar'
 Warning	#	Operation aborted
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE test,foo,bdb,bar TO%";
 verify backup history and progress logs:
-SELECT backup_state,operation,backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	backup	test.bak
-SELECT notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation,backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	test.bak	BACKUP DATABASE test,foo,bdb,bar TO 'test.bak'
+SELECT notes FROM mysql.backup_progress;
 notes
 starting
 running
 Unknown database 'foo,bar'
 error
+PURGE BACKUP LOGS;
+CREATE DATABASE foo;
+CREATE DATABASE bar;
+# 
 # repeated database
-BACKUP DATABASE foo,test,bar,foo TO 'test.bak';
+# 
+BACKUP DATABASE foo, bar, foo TO 'test.bak' ;
 ERROR 42000: Not unique database: 'foo'
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Not unique database: 'foo'
+Warning	#	Operation aborted
+verify backup history and progress logs for backup_state.
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	test.bak	BACKUP DATABASE foo, bar, foo TO 'test.bak'
+SELECT notes FROM mysql.backup_progress;
+notes
+starting
+running
+Not unique database: 'foo'
+error
+DROP DATABASE foo;
+DROP DATABASE bar;
+PURGE BACKUP LOGS;
 use adb;
 create table t1 (a int);
 create procedure p1() backup database test to 'test.bak';
@@ -139,118 +160,109 @@ do restore from 'test.bak';
 ERROR 0A000: RESTORE is not allowed in stored procedures
 DROP DATABASE adb;
 DROP DATABASE bdb;
+PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 1
-BACKUP DATABASE mysql TO 't.bak';
+BACKUP DATABASE mysql TO 't.bak' ;
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'mysql' cannot be included in a backup
 Warning	#	Operation aborted
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE mysql TO%";
 verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	backup	t.bak
-SELECT notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	t.bak	BACKUP DATABASE mysql TO 't.bak'
+SELECT notes FROM mysql.backup_progress;
 notes
 starting
 running
 Database 'mysql' cannot be included in a backup
 error
+PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 2
-BACKUP DATABASE information_schema TO 't.bak';
+BACKUP DATABASE information_schema TO 't.bak' ;
 ERROR HY000: Database 'information_schema' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'information_schema' cannot be included in a backup
 Warning	#	Operation aborted
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE information_schema TO%";
 verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	backup	t.bak
-SELECT  notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	t.bak	BACKUP DATABASE information_schema TO 't.bak'
+SELECT  notes FROM mysql.backup_progress;
 notes
 starting
 running
 Database 'information_schema' cannot be included in a backup
 error
+PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 3
-BACKUP DATABASE mysql, information_schema TO 't.bak';
+BACKUP DATABASE mysql, information_schema TO 't.bak' ;
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'mysql' cannot be included in a backup
 Warning	#	Operation aborted
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE mysql, information_schema TO%";
 verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	backup	t.bak
-SELECT notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	t.bak	BACKUP DATABASE mysql, information_schema TO 't.bak'
+SELECT notes FROM mysql.backup_progress;
 notes
 starting
 running
 Database 'mysql' cannot be included in a backup
 error
+PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 4
-BACKUP DATABASE mysql, test TO 't.bak';
+BACKUP DATABASE mysql, test TO 't.bak' ;
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'mysql' cannot be included in a backup
 Warning	#	Operation aborted
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE mysql, test TO%";
 verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	backup	t.bak
-SELECT notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	t.bak	BACKUP DATABASE mysql, test TO 't.bak'
+SELECT notes FROM mysql.backup_progress;
 notes
 starting
 running
 Database 'mysql' cannot be included in a backup
 error
+PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 5
-BACKUP DATABASE information_schema, test TO 't.bak';
+BACKUP DATABASE information_schema, test TO 't.bak' ;
 ERROR HY000: Database 'information_schema' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'information_schema' cannot be included in a backup
 Warning	#	Operation aborted
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	t.bak	BACKUP DATABASE information_schema, test TO 't.bak'
+SELECT notes FROM mysql.backup_progress;
+notes
+starting
+running
+Database 'information_schema' cannot be included in a backup
+error
+PURGE BACKUP LOGS;
 Backup of mysql, information_schema scenario 6
-BACKUP DATABASE mysql, information_schema, test TO 't.bak';
+BACKUP DATABASE mysql, information_schema, test TO 't.bak' ;
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'mysql' cannot be included in a backup
 Warning	#	Operation aborted
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE mysql, information_schema, test TO%";
 verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	backup	t.bak
-SELECT notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	t.bak	BACKUP DATABASE mysql, information_schema, test TO 't.bak'
+SELECT notes FROM mysql.backup_progress;
 notes
 starting
 running
@@ -263,12 +275,12 @@ CREATE DATABASE test_ob_error;
 CREATE TABLE test_ob_error.t1 (col_a int);
 INSERT INTO test_ob_error.t1 VALUES (1), (2), (3), (4), (5);
 Backup the database;
-BACKUP DATABASE test_ob_error TO 'ob_err.bak';
+BACKUP DATABASE test_ob_error TO 'ob_err.bak' ;
 backup_id
 #
 DROP TABLE mysql.backup_history;
 Backup the database;
-BACKUP DATABASE test_ob_error TO 'ob_err.bak';
+BACKUP DATABASE test_ob_error TO 'ob_err.bak' ;
 ERROR HY000: Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair.
 SHOW WARNINGS;
 Level	Code	Message
@@ -279,7 +291,7 @@ CREATE TABLE mysql.backup_history LIKE test.ob_copy;
 DROP TABLE test.ob_copy;
 DROP TABLE mysql.backup_progress;
 Backup the database;
-BACKUP DATABASE test_ob_error TO 'ob_err.bak';
+BACKUP DATABASE test_ob_error TO 'ob_err.bak' ;
 ERROR HY000: Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair.
 SHOW WARNINGS;
 Level	Code	Message
@@ -296,6 +308,7 @@ after backup starts
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE IF EXISTS db1;
 CREATE DATABASE db1;
+PURGE BACKUP LOGS;
 start backup but stop just before adding metadata to backup image
 SET DEBUG_SYNC= 'backup_before_write_preamble SIGNAL running WAIT_FOR db_will_fail';
 BACKUP DATABASE db1 TO 'bup_db1.bak';
@@ -309,6 +322,16 @@ ERROR HY000: Failed to obtain meta-data for database `db1`
 Test that backup fails with error if a table used by 
 a trigger cannot be opened
 SET DEBUG_SYNC= 'reset';
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file, command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	bup_db1.bak	BACKUP DATABASE db1 TO 'bup_db1.bak'
+SELECT notes FROM mysql.backup_progress;
+notes
+starting
+running
+Failed to obtain meta-data for database `db1`
+error
 DROP DATABASE IF EXISTS db1;
 CREATE DATABASE db1;
 CREATE TABLE db1.t1 (i int);
@@ -320,19 +343,15 @@ END;||
 SET DEBUG_SYNC= 'reset';
 Setting debug point that will make backup fail when adding the
 trigger metadata
+PURGE BACKUP LOGS;
 SET SESSION DEBUG='+d,backup_fail_add_trigger';
-BACKUP DATABASE db1 TO 'bup_db1.bak';
+BACKUP DATABASE db1 TO 'bup_db1.bak' ;
 ERROR HY000: Failed to obtain meta-data for trigger `db1`.`trg`
-Get last backup_id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
-WHERE command LIKE "BACKUP DATABASE db1 TO%";
 verify backup history and progress logs:
-SELECT backup_state,operation, backup_file FROM mysql.backup_history
-WHERE backup_id=@bup_id;
-backup_state	operation	backup_file
-error	backup	bup_db1.bak
-SELECT notes FROM mysql.backup_progress
-WHERE backup_id=@bup_id;
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	bup_db1.bak	BACKUP DATABASE db1 TO 'bup_db1.bak'
+SELECT notes FROM mysql.backup_progress;
 notes
 starting
 running
@@ -340,7 +359,6 @@ Failed to obtain meta-data for trigger `db1`.`trg`
 error
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE db1;
-SET SESSION DEBUG='';
 
 Done testing for Bug#38624
 
@@ -354,7 +372,7 @@ CREATE TABLE table1 (text VARCHAR(20));
 INSERT INTO table1 VALUES ('Inserted before');
 
 Backup database
-BACKUP DATABASE db1 TO 'overwrite.bak';
+BACKUP DATABASE db1 TO 'overwrite.bak' ;
 backup_id
 #
 
@@ -393,45 +411,67 @@ Inserted before
 # Test error handling by backup code when injecting commit blocker error.
 #
 SET SESSION DEBUG='+d,backup_grl_fail';
-BACKUP DATABASE db1 TO 'overwrite1.bak';
+BACKUP DATABASE db1 TO 'overwrite1.bak' ;
 ERROR HY000: Backup failed to synchronize table images.
 SET SESSION DEBUG='-d';
 
+PURGE BACKUP LOGS;
 SET SESSION DEBUG='+d,backup_grl_block_commit_fail';
-BACKUP DATABASE db1 TO 'overwrite1.bak';
+BACKUP DATABASE db1 TO 'overwrite1.bak' ;
 ERROR HY000: Backup failed to synchronize table images.
 SET SESSION DEBUG='-d';
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	overwrite1.bak	BACKUP DATABASE db1 TO 'overwrite1.bak'
+SELECT notes FROM mysql.backup_progress;
+notes
+starting
+running
+Backup failed to synchronize table images.
+error
 #
 # Test that BACKUP and RESTORE clears warning stack
 #
-BACKUP DATABASE db1 TO 'test.bak';
+BACKUP DATABASE db1 TO 'test.bak' ;
 backup_id
 #
 # Generate warning - test.bak cannot be overwritten
-BACKUP DATABASE db1 TO 'test.bak';
-ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/mysqld.1/data/test.bak' (Errcode: #)
+BACKUP DATABASE db1 TO 'test.bak' ;
+ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/mysqld.1/data/test.bak' (Errcode: #)
+Error	#	Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 Error	#	Can't write to backup location 'test.bak'
 Warning	#	Operation aborted
 
 # Test that there are no warnings after successful BACKUP
-BACKUP DATABASE db1 TO 'newtest.bak';
+BACKUP DATABASE db1 TO 'newtest.bak' ;
 backup_id
 #
 SHOW WARNINGS;
 Level	Code	Message
 
+PURGE BACKUP LOGS;
 # Generate warning - test.bak cannot be overwritten
-BACKUP DATABASE db1 TO 'test.bak';
-ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/mysqld.1/data/test.bak' (Errcode: #)
+BACKUP DATABASE db1 TO 'test.bak' ;
+ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/mysqld.1/data/test.bak' (Errcode: #)
+Error	#	Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 Error	#	Can't write to backup location 'test.bak'
 Warning	#	Operation aborted
 
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file,command FROM mysql.backup_history;
+backup_state	operation	backup_file	command
+error	backup	test.bak	BACKUP DATABASE db1 TO 'test.bak'
+SELECT notes FROM mysql.backup_progress;
+notes
+starting
+running
+Can't write to backup location 'test.bak'
+error
 # Test that there are no warnings after successful RESTORE
 RESTORE FROM 'newtest.bak' OVERWRITE;
 backup_id
@@ -439,4 +479,119 @@ backup_id
 SHOW WARNINGS;
 Level	Code	Message
 
+#
+# Test error handling by injecting errors into RESTORE
+#
+# Make backup image with objects necessary for error injection
+CREATE TABLE table2 (i int NOT NULL) ENGINE=CSV;
+INSERT INTO table2 values (1),(2);
+CREATE TRIGGER db1.trg AFTER INSERT ON db1.table2 FOR EACH ROW
+BEGIN
+INSERT INTO db1.table1(v) VALUES ('Test trigger fired');
+END;||
+BACKUP DATABASE db1 TO 'errorinject.bak' ;
+backup_id
+#
+DROP DATABASE db1;
+#
+# Backup image created. Start RESTORE with error injection
+#
+# Error injection in RESTORE: Read header
+#
+SET SESSION DEBUG='+d,restore_read_header';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't read backup archive preamble
+SET SESSION DEBUG='-d';
+#
+# Error injection in RESTORE: Get next chunk;
+# Called from prepare_for_restore, after read_header
+#
+SET SESSION DEBUG='+d,restore_prepare_next_chunk_1';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't go to the next chunk in backup stream
+SET SESSION DEBUG='-d';
+#
+# Error injection in RESTORE: Read catalog
+#
+SET SESSION DEBUG='+d,restore_read_catalog';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't read backup archive preamble
+SET SESSION DEBUG='-d';
+#
+# Error injection in RESTORE: Get next chunk;
+# Called from prepare_for_restore, after read_catalog
+#
+SET SESSION DEBUG='+d,restore_prepare_next_chunk_2';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't go to the next chunk in backup stream
+SET SESSION DEBUG='-d';
+#
+# Error injection in RESTORE: Read metadata from stream
+#
+SET SESSION DEBUG='+d,restore_read_meta_data';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Error when reading meta-data
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Get next chunk;
+# Called from do_restore
+#
+SET SESSION DEBUG='+d,restore_stream_next_chunk';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't go to the next chunk in backup stream
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Lock tables
+#
+SET SESSION DEBUG='+d,restore_lock_tables_for_restore';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Open and lock tables failed in RESTORE
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Restore table data
+#
+SET SESSION DEBUG='+d,restore_tbl_data_read';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Error when reading data from backup stream
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Send data (default driver)
+#
+SET SESSION DEBUG='+d,restore_default_send_data';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Error when sending data (for table #1) to Default restore driver
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Restore trigger
+#
+SET SESSION DEBUG='+d,restore_trigger';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Could not restore trigger `db1`.`trg`
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Read summary
+#
+SET SESSION DEBUG='+d,restore_read_summary';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Error when reading summary section of backup image
+SET SESSION DEBUG='-d';
+#
+# Test error handling by injecting errors into BACKUP
+#
+#
+# Error injection in si_object.cc:get_database_stub
+#
+SET SESSION DEBUG='+d,siobj_get_db_stub';
+BACKUP DATABASE db1 TO 'failed1.bak';
+ERROR HY000: Failed to add database `db1` to the catalog
+SET SESSION DEBUG='-d';
+#
+# Cleanup
+#
 DROP DATABASE db1;

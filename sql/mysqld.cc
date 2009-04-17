@@ -26,7 +26,7 @@
 #include "mysqld_suffix.h"
 #include "mysys_err.h"
 #include "events.h"
-#include "ddl_blocker.h"
+#include "bml.h"
 #include "sql_audit.h"
 #include "debug_sync.h"
 #include <waiting_threads.h>
@@ -332,17 +332,25 @@ TYPELIB sql_mode_typelib= { array_elements(sql_mode_names)-1,"",
 
 static const char *optimizer_switch_names[]=
 {
-  "no_materialization", "no_semijoin", "no_loosescan", "no_firstmatch",
-  NullS
+  "firstmatch", 
+  "index_merge","index_merge_union","index_merge_sort_union", 
+  "index_merge_intersection", 
+  "loosescan","materialization", "semijoin", 
+  "default", NullS
 };
 
 /* Corresponding defines are named OPTIMIZER_SWITCH_XXX */
 static const unsigned int optimizer_switch_names_len[]=
 {
-  /*no_materialization*/          18,
-  /*no_semijoin*/                 11,
-  /*no_loosescan*/                12,
-  /*no_firstmatch*/               13
+  sizeof("firstmatch") - 1,
+  sizeof("index_merge") - 1,
+  sizeof("index_merge_union") - 1,
+  sizeof("index_merge_sort_union") - 1,
+  sizeof("index_merge_intersection") - 1,
+  sizeof("loosescan") - 1,
+  sizeof("materialization") - 1,
+  sizeof("semijoin") - 1,
+  sizeof("default") - 1
 };
 
 TYPELIB optimizer_switch_typelib= { array_elements(optimizer_switch_names)-1,"",
@@ -412,6 +420,15 @@ static uint kill_cached_threads, wake_thread;
 static ulong max_used_connections;
 static volatile ulong cached_thread_count= 0;
 static const char *sql_mode_str= "OFF";
+/* Text representation for OPTIMIZER_SWITCH_DEFAULT */
+static const char *optimizer_switch_str="firstmatch=on,"
+                                        "index_merge=on,"
+                                        "index_merge_union=on,"
+                                        "index_merge_sort_union=on,"
+                                        "index_merge_intersection=on,"
+                                        "loosescan=on,"
+                                        "materialization=on,"
+                                        "semijoin=on";
 static char *mysqld_user, *mysqld_chroot, *log_error_file_ptr;
 static char *opt_init_slave, *language_ptr, *opt_init_connect;
 static char *default_character_set_name;
@@ -429,7 +446,7 @@ static pthread_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 /* Global variables */
 
-extern DDL_blocker_class *DDL_blocker;
+extern BML_class *BML_instance;
 bool opt_update_log, opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log;
 my_bool opt_backup_history_log;
@@ -497,9 +514,11 @@ extern const char *opt_ndb_distribution;
 extern enum ndb_distribution opt_ndb_distribution_id;
 #endif
 my_bool opt_readonly, use_temp_pool, relay_log_purge;
+my_bool relay_log_recovery;
 my_bool opt_sync_frm, opt_allow_suspicious_udfs;
 my_bool opt_secure_auth= 0;
 char* opt_secure_file_priv= 0;
+char* opt_secure_backup_file_priv= 0;
 my_bool opt_log_slow_admin_statements= 0;
 my_bool opt_log_slow_slave_statements= 0;
 my_bool lower_case_file_system= 0;
@@ -580,7 +599,8 @@ ulong max_prepared_stmt_count;
 ulong prepared_stmt_count=0;
 ulong thread_id=1L,current_pid;
 ulong slow_launch_threads = 0;
-uint sync_binlog_period= 0, sync_relaylog_period= 0;
+uint sync_binlog_period= 0, sync_relaylog_period= 0,
+     sync_relayloginfo_period= 0, sync_masterinfo_period= 0;
 ulong expire_logs_days = 0;
 ulong rpl_recovery_rank=0;
 const char *log_output_str= "FILE";
@@ -1404,6 +1424,7 @@ void clean_up(bool print_message)
   x_free(opt_bin_logname);
   x_free(opt_relay_logname);
   x_free(opt_secure_file_priv);
+  x_free(opt_secure_backup_file_priv);
   bitmap_free(&temp_pool);
   free_max_user_conn();
 #ifdef HAVE_REPLICATION
@@ -1522,7 +1543,7 @@ static void clean_up_mutexes()
   (void) pthread_cond_destroy(&COND_thread_cache);
   (void) pthread_cond_destroy(&COND_flush_thread_cache);
   (void) pthread_cond_destroy(&COND_manager);
-  DDL_blocker_class::destroy_DDL_blocker_class_instance();
+  BML_class::destroy_BML_class_instance();
   DBUG_VOID_RETURN;
 }
 
@@ -3524,7 +3545,6 @@ static int init_common_variables(const char *conf_file_name, int argc,
   global_system_variables.character_set_client= default_charset_info;
 
   global_system_variables.optimizer_use_mrr= 1;
-  global_system_variables.optimizer_switch= 0;
 
   if (!(character_set_filesystem= 
         get_charset_by_csname(character_set_filesystem_name,
@@ -3729,7 +3749,7 @@ static int init_thread_environment()
   /*
     Initialize the DDL blocker
   */
-  DDL_blocker= DDL_blocker_class::get_DDL_blocker_class_instance();
+  BML_instance= BML_class::get_BML_class_instance();
 
   sp_cache_init();
 #ifdef HAVE_EVENT_SCHEDULER
@@ -4089,7 +4109,7 @@ server.");
 #ifndef EMBEDDED_LIBRARY
   if (backup_init())
   {
-    sql_print_error("Failed to initialize online backup.");
+    sql_print_error("Failed to initialize MySQL backup.");
     unireg_abort(1);
   }
 #endif
@@ -5796,6 +5816,7 @@ enum options_mysqld
   OPT_QUERY_CACHE_TYPE, OPT_QUERY_CACHE_WLOCK_INVALIDATE, OPT_RECORD_BUFFER,
   OPT_RECORD_RND_BUFFER, OPT_DIV_PRECINCREMENT, OPT_RELAY_LOG_SPACE_LIMIT,
   OPT_RELAY_LOG_PURGE,
+  OPT_RELAY_LOG_RECOVERY,
   OPT_SLAVE_NET_TIMEOUT, OPT_SLAVE_COMPRESSED_PROTOCOL, OPT_SLOW_LAUNCH_TIME,
   OPT_SLAVE_TRANS_RETRIES, OPT_READONLY, OPT_DEBUGGING,
   OPT_SORT_BUFFER, OPT_TABLE_OPEN_CACHE, OPT_TABLE_DEF_CACHE,
@@ -5832,6 +5853,7 @@ enum options_mysqld
   OPT_SYSDATE_IS_NOW,
   OPT_OPTIMIZER_SEARCH_DEPTH,
   OPT_OPTIMIZER_PRUNE_LEVEL,
+  OPT_OPTIMIZER_SWITCH,
   OPT_UPDATABLE_VIEWS_WITH_LIMIT,
   OPT_SP_AUTOMATIC_PRIVILEGES,
   OPT_MAX_SP_RECURSION_DEPTH,
@@ -5855,6 +5877,7 @@ enum options_mysqld
   OPT_THREAD_HANDLING,
   OPT_INNODB_ROLLBACK_ON_TIMEOUT,
   OPT_SECURE_FILE_PRIV,
+  OPT_SECURE_BACKUP_FILE_PRIV,
   OPT_MIN_EXAMINED_ROW_LIMIT,
   OPT_LOG_SLOW_SLAVE_STATEMENTS,
 #if defined(ENABLED_DEBUG_SYNC)
@@ -5873,6 +5896,8 @@ enum options_mysqld
   OPT_GENERAL_LOG_FILE,
   OPT_SLOW_QUERY_LOG_FILE,
   OPT_SYNC_RELAY_LOG,
+  OPT_SYNC_RELAY_LOG_INFO,
+  OPT_SYNC_MASTER_INFO,
   OPT_BACKUP_HISTORY_LOG_FILE,
   OPT_BACKUP_PROGRESS_LOG_FILE,
   OPT_IGNORE_BUILTIN_INNODB
@@ -6574,6 +6599,10 @@ Can't be set to 1 if --log-slave-updates is used.",
    "Limit LOAD DATA, SELECT ... OUTFILE, and LOAD_FILE() to files within specified directory",
    (uchar**) &opt_secure_file_priv, (uchar**) &opt_secure_file_priv, 0,
    GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"secure-backup-file-priv", OPT_SECURE_BACKUP_FILE_PRIV,
+   "Limit BACKUP and RESTORE to files within specified directory",
+   (uchar**) &opt_secure_backup_file_priv, (uchar**) &opt_secure_backup_file_priv, 0,
+   GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"server-id",	OPT_SERVER_ID,
    "Uniquely identifies the server instance in the community of replication partners.",
    (uchar**) &server_id, (uchar**) &server_id, 0, GET_ULONG, REQUIRED_ARG, 0, 0, UINT_MAX32,
@@ -7057,6 +7086,13 @@ The minimum value for this variable is 4096.",
    (uchar**) &global_system_variables.optimizer_search_depth,
    (uchar**) &max_system_variables.optimizer_search_depth,
    0, GET_ULONG, OPT_ARG, MAX_TABLES+1, 0, MAX_TABLES+2, 0, 1, 0},
+  {"optimizer_switch", OPT_OPTIMIZER_SWITCH,
+   "optimizer_switch=option=val[,option=val...], where option={index_merge, "
+   "index_merge_union, index_merge_sort_union, index_merge_intersection} and "
+   "val={on, off, default}.",
+   (uchar**) &optimizer_switch_str, (uchar**) &optimizer_switch_str, 0, GET_STR, REQUIRED_ARG, 
+   /*OPTIMIZER_SWITCH_DEFAULT*/0,
+   0, 0, 0, 0, 0},
   {"plugin_dir", OPT_PLUGIN_DIR,
    "Directory for plugins.",
    (uchar**) &opt_plugin_dir_ptr, (uchar**) &opt_plugin_dir_ptr, 0,
@@ -7145,6 +7181,13 @@ The minimum value for this variable is 4096.",
    (uchar**) &relay_log_purge,
    (uchar**) &relay_log_purge, 0, GET_BOOL, NO_ARG,
    1, 0, 1, 0, 1, 0},
+  {"relay_log_recovery", OPT_RELAY_LOG_RECOVERY,
+   "Enables automatic relay log recovery right after the database startup, "
+   "which means that the IO Thread starts re-fetching from the master " 
+   "right after the last transaction processed.",
+   (uchar**) &relay_log_recovery,
+   (uchar**) &relay_log_recovery, 0, GET_BOOL, NO_ARG,
+   0, 0, 1, 0, 1, 0},
   {"relay_log_space_limit", OPT_RELAY_LOG_SPACE_LIMIT,
    "Maximum space to use for all relay logs.",
    (uchar**) &relay_log_space_limit,
@@ -7189,6 +7232,16 @@ The minimum value for this variable is 4096.",
    "Synchronously flush relay log to disk after every #th event. "
    "Use 0 (default) to disable synchronous flushing.",
    (uchar**) &sync_relaylog_period, (uchar**) &sync_relaylog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
+  {"sync-relay-log-info", OPT_SYNC_RELAY_LOG_INFO,
+   "Synchronously flush relay log info to disk after #th transaction. "
+   "Use 0 (default) to disable synchronous flushing.",
+   (uchar**) &sync_relayloginfo_period, (uchar**) &sync_relayloginfo_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
+  {"sync-master-info", OPT_SYNC_MASTER_INFO,
+   "Synchronously flush master info to disk after every #th event. "
+   "Use 0 (default) to disable synchronous flushing.",
+   (uchar**) &sync_masterinfo_period, (uchar**) &sync_masterinfo_period, 0, GET_UINT,
    REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
   {"sync-frm", OPT_SYNC_FRM, "Sync .frm to disk on create. Enabled by default.",
    (uchar**) &opt_sync_frm, (uchar**) &opt_sync_frm, 0, GET_BOOL, NO_ARG, 1, 0,
@@ -7317,8 +7370,9 @@ static int show_slave_running(THD *thd, SHOW_VAR *var, char *buff)
   var->type= SHOW_MY_BOOL;
   pthread_mutex_lock(&LOCK_active_mi);
   var->value= buff;
-  *((my_bool *)buff)= (my_bool) (active_mi && active_mi->slave_running &&
-                                 active_mi->rli.slave_running);
+  *((my_bool *)buff)= (my_bool) (active_mi && 
+                                 active_mi->slave_running == MYSQL_SLAVE_RUN_CONNECT &&
+                                 active_mi->rli->slave_running);
   pthread_mutex_unlock(&LOCK_active_mi);
   return 0;
 }
@@ -7334,9 +7388,9 @@ static int show_slave_retried_trans(THD *thd, SHOW_VAR *var, char *buff)
   {
     var->type= SHOW_LONG;
     var->value= buff;
-    pthread_mutex_lock(&active_mi->rli.data_lock);
-    *((long *)buff)= (long)active_mi->rli.retried_trans;
-    pthread_mutex_unlock(&active_mi->rli.data_lock);
+    pthread_mutex_lock(&active_mi->rli->data_lock);
+    *((long *)buff)= (long)active_mi->rli->retried_trans;
+    pthread_mutex_unlock(&active_mi->rli->data_lock);
   }
   else
     var->type= SHOW_UNDEF;
@@ -7351,9 +7405,9 @@ static int show_slave_received_heartbeats(THD *thd, SHOW_VAR *var, char *buff)
   {
     var->type= SHOW_LONGLONG;
     var->value= buff;
-    pthread_mutex_lock(&active_mi->rli.data_lock);
+    pthread_mutex_lock(&active_mi->rli->data_lock);
     *((longlong *)buff)= active_mi->received_heartbeats;
-    pthread_mutex_unlock(&active_mi->rli.data_lock);
+    pthread_mutex_unlock(&active_mi->rli->data_lock);
   }
   else
     var->type= SHOW_UNDEF;
@@ -7901,6 +7955,7 @@ static int mysql_init_variables(void)
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
   opt_secure_file_priv= 0;
+  opt_secure_backup_file_priv= 0;
   opt_bootstrap= opt_myisam_logical_log= 0;
   mqh_used= 0;
   segfaulted= kill_in_progress= 0;
@@ -8018,7 +8073,8 @@ static int mysql_init_variables(void)
     when collecting index statistics for MyISAM tables.
   */
   global_system_variables.myisam_stats_method= MI_STATS_METHOD_NULLS_NOT_EQUAL;
-
+  
+  global_system_variables.optimizer_switch= OPTIMIZER_SWITCH_DEFAULT;
   /* Variables that depends on compile options */
 #ifndef DBUG_OFF
   default_dbug_option=IF_WIN("d:t:i:O,\\mysqld.trace",
@@ -8631,6 +8687,29 @@ mysqld_get_one_option(int optid,
 						   sql_mode);
     break;
   }
+  case OPT_OPTIMIZER_SWITCH:
+  {
+    bool not_used;
+    char *error= 0;
+    uint error_len= 0;
+    optimizer_switch_str= argument;
+    global_system_variables.optimizer_switch=
+      (ulong)find_set_from_flags(&optimizer_switch_typelib, 
+                                 optimizer_switch_typelib.count, 
+                                 global_system_variables.optimizer_switch,
+                                 global_system_variables.optimizer_switch,
+                                 argument, strlen(argument), NULL,
+                                 &error, &error_len, &not_used);
+     if (error)
+     {
+       char buf[512];
+       char *cbuf= buf;
+       cbuf += my_snprintf(buf, 512, "Error in parsing optimizer_switch setting near %*s\n", error_len, error);
+       sql_perror(buf);
+       return 1;
+     }
+    break;
+  }
   case OPT_ONE_THREAD:
     global_system_variables.thread_handling=
       SCHEDULER_ONE_THREAD_PER_CONNECTION;
@@ -8981,6 +9060,17 @@ static int fix_paths(void)
     convert_dirname(buff, opt_secure_file_priv, NullS);
     my_free(opt_secure_file_priv, MYF(0));
     opt_secure_file_priv= my_strdup(buff, MYF(MY_FAE));
+  }
+
+  /*
+    Convert the secure-backup-file-priv option to system format, allowing
+    a quick strcmp to check if read or write is in an allowed dir
+   */
+  if (opt_secure_backup_file_priv)
+  {
+    convert_dirname(buff, opt_secure_backup_file_priv, NullS);
+    my_free(opt_secure_backup_file_priv, MYF(0));
+    opt_secure_backup_file_priv= my_strdup(buff, MYF(MY_FAE));
   }
   return 0;
 }

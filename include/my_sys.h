@@ -186,6 +186,18 @@ extern char *my_strndup(const char *from, size_t length,
 #define ORIG_CALLER_INFO    /* nothing */
 #endif
 
+/*
+  ERROR INJECTION: Non-thread-safe global variable to request error inject.
+  Set this variable to non-zero to request the next my_malloc() to fail.
+  This works with my_malloc.c:my_malloc() and safemalloc.c:_mymalloc().
+  If using this in tests, note that the error messages produced by
+  my_malloc and safemalloc are different. You may need to modify the
+  results with --replace_regex. You may find examples in
+  client/backup_stream.c and backup_client_coverage.test.
+  The global variable is defined in my_static.c.
+*/
+IF_DBUG(extern int my_malloc_error_inject);
+
 #ifdef HAVE_LARGE_PAGES
 extern uint my_get_large_page_size(void);
 extern uchar * my_large_malloc(size_t size, myf my_flags);
@@ -233,6 +245,16 @@ extern ulong my_thread_stack_size;
 
 extern const char *(*proc_info_hook)(void *, const char *, const char *,
                                      const char *, const unsigned int);
+
+#if defined(ENABLED_DEBUG_SYNC)
+extern void (*debug_sync_C_callback_ptr)(const char *, size_t);
+#define DEBUG_SYNC_C(_sync_point_name_) do {                            \
+    if (debug_sync_C_callback_ptr != NULL)                              \
+      (*debug_sync_C_callback_ptr)(STRING_WITH_LEN(_sync_point_name_)); } \
+  while(0)
+#else
+#define DEBUG_SYNC_C(_sync_point_name_)
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 
 #ifdef HAVE_LARGE_PAGES
 extern my_bool my_use_large_pages;

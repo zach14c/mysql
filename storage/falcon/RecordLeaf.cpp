@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -70,7 +70,7 @@ Record* RecordLeaf::fetch(int32 id)
 	Record *record = records[id];
 
 	if (record)
-		record->addRef();
+		record->addRef(REC_HISTORY);
 
 	return record;
 }
@@ -140,8 +140,6 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 
 			if (oldestVisible)
 				{
-				ASSERT(oldestVisible->state != recLock);
-
 				Record *prior = oldestVisible->clearPriorVersion();
 
 				for (Record *prune = prior; prune; prune = prune->getPriorVersion())
@@ -149,19 +147,20 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 					if (prune->useCount != 1)
 						{
 						prior = NULL;
+						
 						break;
 						}
+						
 					recordScavenge->recordsPruned++;
 					recordScavenge->spacePruned += prune->getMemUsage();
 					}
 
 				if (prior)
 					{
-#ifdef CHECK_RECORD_ACTIVITY
-					prior->active = false;
-#endif
+					SET_RECORD_ACTIVE(prior, false);
 					table->garbageCollect(prior, record, NULL, false);
-					prior->release();
+					//prior->release(REC_HISTORY);
+					prior->queueForDelete();
 					}
 				}
 			}
@@ -170,7 +169,7 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 
 void RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordScavenge)
 {
-	int count = 0;
+	int slotsWithRecords = 0;
 	Record **ptr, **end;
 
 	Sync sync(&syncObject, "RecordLeaf::retireRecords(syncObject)");
@@ -199,19 +198,28 @@ void RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordSc
 		{
 		Record *record = *ptr;
 		
-		if (record && recordScavenge->canBeRetired(record))
+		if (record)
 			{
-			if (record->retire(recordScavenge))
-				*ptr = NULL;
+			if (   (recordScavenge->canBeRetired(record))
+				&& (COMPARE_EXCHANGE_POINTER(ptr, record, NULL)))
+				{
+				++recordScavenge->recordsRetired;
+				recordScavenge->spaceRetired += record->getMemUsage();
+				record->retire();
+				}
 			else
-				count++;
+				{
+				slotsWithRecords++;
+				++recordScavenge->recordsRemaining;
+				recordScavenge->spaceRemaining += record->getMemUsage();
+				}
 			}
 		}
 
 	// If this node is empty, store the base record number for use as an
 	// identifier when the leaf node is scavenged later.
 
-	if (!count && table->emptySections)
+	if ((slotsWithRecords == 0) && (table->emptySections))
 		table->emptySections->set(base);
 
 	return;

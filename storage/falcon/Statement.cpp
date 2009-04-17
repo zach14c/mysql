@@ -1309,8 +1309,11 @@ void Statement::upgradeTable(Syntax * syntax)
 	END_FOR;
 
 	if (!transaction)
+		{
 		transaction = database->getSystemTransaction();
-
+		transaction->addRef();
+		}
+		
 	FOR_OBJECTS (Index*, index, &newIndexes)
 		if (!database->formatting)
 			{
@@ -2329,7 +2332,7 @@ void Statement::dropIndex(Syntax *syntax)
 
 	Transaction *sysTransaction = database->getSystemTransaction();
 	table->dropIndex(name, sysTransaction);
-	database->commitSystemTransaction();
+//	database->commitSystemTransaction();
 
 	Index::deleteIndex (database, schema, name);
 	database->commitSystemTransaction();

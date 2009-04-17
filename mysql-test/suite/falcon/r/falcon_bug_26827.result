@@ -1,5 +1,5 @@
-SET @@storage_engine = Falcon;
 *** Bug #26827 ***
+SET @@storage_engine = 'Falcon';
 DROP TABLE IF EXISTS t1;
 CREATE TABLE t1 (a int, b int)
 PARTITION BY list(a) (
@@ -12,4 +12,7 @@ UPDATE t1 SET a = 2 WHERE a = 1;
 SELECT * FROM t1;
 a	b
 2	1
+SELECT count(*) FROM t1;
+count(*)
+1
 DROP TABLE t1;

@@ -17,7 +17,7 @@
 #define RPL_RLI_H
 
 #include "rpl_tblmap.h"
-#include "rpl_reporting.h"
+#include "rpl_info.h"
 #include "rpl_utility.h"
 
 struct RPL_TABLE_LIST;
@@ -49,7 +49,7 @@ class Master_info;
 
 *****************************************************************************/
 
-class Relay_log_info : public Slave_reporting_capability
+class Relay_log_info : public Rpl_info
 {
 public:
   /**
@@ -80,14 +80,10 @@ public:
   bool replicate_same_server_id;
 
   /*** The following variables can only be read when protect by data lock ****/
-
   /*
-    info_fd - file descriptor of the info file. set only during
-    initialization or clean up - safe to read anytime
     cur_log_fd - file descriptor of the current read  relay log
   */
-  File info_fd,cur_log_fd;
-
+  File cur_log_fd;
   /*
     Protected with internal locks.
     Must get data_lock when resetting the logs.
@@ -96,10 +92,13 @@ public:
   LOG_INFO linfo;
   IO_CACHE cache_buf,*cur_log;
 
-  /* The following variables are safe to read any time */
+  /*
+   * Identifies when the recovery process is going on.
+   * See sql/slave.cc:init_recovery for further details.
+   */ 
+  bool is_relay_log_recovery;
 
-  /* IO_CACHE of the info file - set only during init or end */
-  IO_CACHE info_file;
+  /* The following variables are safe to read any time */
 
   /*
     When we restart slave thread we need to have access to the previously
@@ -107,19 +106,6 @@ public:
     thread, read only by SQL thread.
   */
   TABLE *save_temporary_tables;
-
-  /*
-    standard lock acquistion order to avoid deadlocks:
-    run_lock, data_lock, relay_log.LOCK_log, relay_log.LOCK_index
-  */
-  pthread_mutex_t data_lock,run_lock;
-
-  /*
-    start_cond is broadcast when SQL thread is started
-    stop_cond - when stopped
-    data_cond - when data protected by data_lock changes
-  */
-  pthread_cond_t start_cond, stop_cond, data_cond;
 
   /* parent Master_info structure */
   Master_info *mi;
@@ -200,18 +186,8 @@ public:
   */
   volatile uint32 slave_skip_counter;
   volatile ulong abort_pos_wait;	/* Incremented on change master */
-  volatile ulong slave_run_id;		/* Incremented on slave start */
   pthread_mutex_t log_space_lock;
   pthread_cond_t log_space_cond;
-  THD * sql_thd;
-#ifndef DBUG_OFF
-  int events_till_abort;
-#endif  
-
-  /* if not set, the value of other members of the structure are undefined */
-  bool inited;
-  volatile bool abort_slave;
-  volatile uint slave_running;
 
   /* 
      Condition and its parameters from START SLAVE UNTIL clause.
@@ -260,6 +236,7 @@ public:
   char ign_master_log_name_end[FN_REFLEN];
   ulonglong ign_master_log_pos_end;
 
+  Relay_log_info(bool is_slave_recovery);
   /* 
     Indentifies where the SQL Thread should create temporary files for the
     LOAD DATA INFILE. This is used for security reasons.
@@ -267,11 +244,10 @@ public:
   char slave_patternload_file[FN_REFLEN]; 
   size_t slave_patternload_file_size;  
 
-  Relay_log_info();
-  ~Relay_log_info();
+  virtual ~Relay_log_info();
 
-  /*
-    Invalidate cached until_log_name and group_relay_log_name comparison 
+  /**
+    Invalidates cached until_log_name and group_relay_log_name comparison 
     result. Should be called after any update of group_realy_log_name if
     there chances that sql_thread is running.
   */
@@ -281,8 +257,9 @@ public:
       until_log_names_cmp_result= UNTIL_LOG_NAMES_CMP_UNKNOWN;
   }
 
-  /*
-    The same as previous but for group_master_log_name. 
+  /**
+    The same as @c notify_group_relay_log_name_update but for
+    @c group_master_log_name.
   */
   inline void notify_group_master_log_name_update()
   {
@@ -302,7 +279,9 @@ public:
 		   longlong timeout);
   void close_temporary_tables();
 
-  /* Check if UNTIL condition is satisfied. See slave.cc for more. */
+  /** 
+   Checks if UNTIL condition is satisfied. See slave.cc for more. 
+  */
   bool is_until_satisfied(my_off_t master_beg_pos);
   inline ulonglong until_pos()
   {
@@ -323,9 +302,9 @@ public:
     return (td);
   }
 
-  /*
+  /**
     Last charset (6 bytes) seen by slave SQL thread is cached here; it helps
-    the thread save 3 get_charset() per Query_log_event if the charset is not
+    the thread save 3 @c get_charset() per @c Query_log_event if the charset is not
     changing from event to event (common situation).
     When the 6 bytes are equal to 0 is used to mean "cache is invalidated".
   */
@@ -410,17 +389,29 @@ public:
      @retval false Replication thread is currently not inside a group
    */
   bool is_in_group() const {
-    return (sql_thd->options & OPTION_BEGIN) ||
+    return (info_thd->options & OPTION_BEGIN) ||
       (m_flags & (1UL << IN_STMT));
   }
+
+  int count_relay_log_space();
+
+  int init_info(bool abort_if_no_info);
+  void end_info();
+  int flush_current_log();
+  void inject_master_info(Master_info *info);
+
+private:
+  virtual int do_check()= 0;
+  virtual int do_init_info()= 0;
+  virtual void do_end_info()= 0;
+  virtual int do_flush_info()= 0;
+  virtual int do_reset_info()= 0;
+
+  Relay_log_info& operator=(const Relay_log_info& info);
+  Relay_log_info(const Relay_log_info& info);
 
 private:
   uint32 m_flags;
 };
-
-
-// Defined in rpl_rli.cc
-int init_relay_log_info(Relay_log_info* rli, const char* info_fname);
-
 
 #endif /* RPL_RLI_H */

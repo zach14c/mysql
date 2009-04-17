@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -58,6 +58,8 @@
 #include "Section.h"
 #include "BackLog.h"
 #include "Thread.h"
+#include "CycleLock.h"
+#include "CycleManager.h"
 
 #ifndef STORAGE_ENGINE
 #include "Trigger.h"
@@ -170,6 +172,7 @@ Table::~Table()
 
 Field* Table::findField(const char * fieldName)
 {
+	//const char *name = database->getSymbol(fieldName);
 	const char *name = database->getString(fieldName);
 	Sync sync(&syncObject, "Table::findField");
 	sync.lock(Shared);
@@ -322,6 +325,7 @@ void Table::save()
 void Table::insert(Transaction *transaction, int count, Field **fieldVector, Value **values)
 {
 	database->preUpdate();
+	CycleLock cycleLock(database);
 	
 	if (view)
 		{
@@ -334,7 +338,8 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		findSections();
 
 	RecordVersion *record = NULL;
-	bool inserted = false;
+	bool insertedIntoTree = false;
+	bool addedToTransaction = false;
 	int32 recordNumber = -1;
 
 	try
@@ -349,7 +354,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		FOR_FIELDS(field, this)
 			if (field->defaultValue)
-				record->setValue(transaction, field->id, field->defaultValue, false, false);
+				record->setValue(transaction->transactionState, field->id, field->defaultValue, false, false);
 		END_FOR;
 
 		// Copy field values into record
@@ -364,7 +369,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 			if(field->repository)
 				value = field->repository->defaultRepository(field, value, &temp);
 
-			record->setValue(transaction, field->id, value, false, false);
+			record->setValue(transaction->transactionState, field->id, value, false, false);
 			}
 
 		fireTriggers(transaction, PreInsert, NULL, record);
@@ -382,30 +387,38 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		// Make insert/update atomic, then check for unique index duplicats
 		
-		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction);
+		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction->transactionState);
 
 		checkNullable(record);  // Verify that record is valid
 
+		// If insertStub says it is free, then there should never be 
+		// anything in the record tree for this record number.
+
+		if (!insertIntoTree(record, NULL, recordNumber))
+			FATAL("Table::insert(Field, Value) cannot insertIntoTree");
+		insertedIntoTree = true;
+
 		transaction->addRecord(record);
-		insertIntoTree(record, NULL, recordNumber);
-		inserted = true;
+		addedToTransaction = true;
+
 		insertIndexes(transaction, record);
 		updateInversion(record, transaction);
 		fireTriggers(transaction, PostInsert, NULL, record);
 		record->state = recData;
-		record->release();
+		record->release(REC_HISTORY);
 		}
 	catch (...)
 		{
-		if (inserted)
-			{
+		if (insertedIntoTree)
+			if (!insertIntoTree(NULL, record, recordNumber))
+				FATAL("Table::insert(Field, Value) cannot backout insertIntoTree");
+
+		if (addedToTransaction)
 			transaction->removeRecord(record);
-			insertIntoTree(NULL, record, recordNumber);
-			}
 
 		if (recordNumber >= 0)
 			{
-			dbb->updateRecord(dataSection, recordNumber, NULL, transaction, false);
+			dbb->updateRecord(dataSection, recordNumber, NULL, transaction->transactionState, false);
 			dataSection->expungeRecord(recordNumber);
 			record->recordNumber = -1;
 			}
@@ -414,10 +427,8 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		if (record)
 			{
-#ifdef CHECK_RECORD_ACTIVITY
-			record->active = false;
-#endif
-			record->release();
+			SET_RECORD_ACTIVE(record, false);
+			record->queueForDelete();
 			}
 
 		throw;
@@ -494,6 +505,14 @@ int Table::numberFields()
 	return fieldCount;
 }
 
+// fetchNext(int32 start) finds the next record in the database
+// using sequential access.  It uses and balances 3 different 
+// ways to find the next record.  It does this concurrently.
+// 1) recordBitmap is the first place it checks. It is assumed to 
+//    have a bit set for every record known below its highwater mark.
+// 2) Record Tree;  accessed by fetch(). tracks ecords in cache.
+// 3) RecordLocatorPages; accessed by databaseFetch & dbb->findNextRecord
+
 Record* Table::fetchNext(int32 start)
 {
 	if (view)
@@ -513,25 +532,25 @@ Record* Table::fetchNext(int32 start)
 		int32 bitNumber = recordBitmap->nextSet(recordNumber);
 
 		// If no bit and we've seen the end of the table, we're done
-		
+
 		if (bitNumber < 0)
 			{
 			if (eof)
 				return NULL;
-			
-			recordNumber = highWater;
+
+			recordNumber = recordBitmapHighWater;
 			}
-		else if (eof || bitNumber < highWater)
+		else if (eof || bitNumber < recordBitmapHighWater)
 			{
 			// Record should exist somewhere
-			
+
 			if (records && (record = records->fetch(bitNumber)))
 				{
 				// Don't bother with a record that is half-way inserted.
 
 				if (record->state == recInserting)
 					{
-					record->release();
+					record->release(REC_HISTORY);
 					recordNumber = bitNumber + 1;
 					continue;
 					}
@@ -544,6 +563,12 @@ Record* Table::fetchNext(int32 start)
 
 			sync.unlock();
 
+			// The bit is set below the highwater mark,
+			// but the record is not found in the tree.
+			// Look for it in the record cache.  If found,
+			// add it to the tree, allowing for concurrency.
+			// Try this three times before giving up.
+
 			for (int n = 0; (record = databaseFetch(bitNumber)); ++n)
 				{
 				if (insertIntoTree(record, NULL, bitNumber))
@@ -553,51 +578,64 @@ Record* Table::fetchNext(int32 start)
 					return record;
 					}
 
-#ifdef CHECK_RECORD_ACTIVITY
-				record->active = false;
-#endif
-				record->release();
+				SET_RECORD_ACTIVE(record, false);
+				record->release(REC_HISTORY);
+
 				sync.lock(Shared);
-				
 				if ((record = records->fetch(bitNumber)))
 					{
 					record->poke();
-					
+
 					return record;
 					}
-				
 				sync.unlock();
-				ASSERT(n < 2);
+
+				ASSERT(n < 3);
 				}
+
+			// Table::databaseFetch returned NULL.  That bit should no longer be set.
+			// But Table::syncObject is not currently locked.  
+			// While you are reading this, another thread may be adding this record 
+			// and setting the bit.  So get an exclusive lock and double check that it
+			// is not in the tree.
 			
-			// Record has gotten lost; no serious cause for concern
-			
-			sync.lock(Shared);
+			sync.lock(Exclusive);
+			if (records && (record = records->fetch(bitNumber)))
+				{
+				record->poke();		// Whoops, there it is!
+				return record;
+				}
+
+			// The record did not re-appear.  Clear the bit and try the next bit.
+
+			recordBitmap->clear(bitNumber);
 			recordNumber = bitNumber + 1;
-			
+			sync.unlock();
+			sync.lock(Shared);
+
 			continue;
 			}
 
 		// We're above the high water mark; let's find the next record in the database
-		
+
 		int32 recNumber = dbb->findNextRecord(dataSection, recordNumber, &stream);
-		
+
 		// If we didn't find anything else, mark table as read and try again
-		
+
 		if (recNumber < 0)
 			{
 			eof = true;
-			
+
 			if (bitNumber < 0)
 				return NULL;
 
 			continue;
 			}
 
-		highWater = recNumber + 1;
+		recordBitmapHighWater = recNumber + 1;
 
 		// If we've got that record in memory, use it instead
-		
+
 		if (records && (record = records->fetch(recNumber)))
 			{
 			if (recNumber <= bitNumber)
@@ -630,10 +668,8 @@ Record* Table::fetchNext(int32 start)
 				}
 			else
 				{
-#ifdef CHECK_RECORD_ACTIVITY
-				record->active = false;
-#endif
-				record->release();
+				SET_RECORD_ACTIVE(record, false);
+				record->release(REC_HISTORY);
 				}
 			
 			sync.lock(Shared);
@@ -863,7 +899,7 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	deleting = false;
 	foreignKeys = NULL;
 	records = NULL;
-	highWater = 0;
+	recordBitmapHighWater = 0;
 	eof = false;
 	markedForDelete = false;
 	primaryKey = NULL;
@@ -882,9 +918,6 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	syncObject.setName("Table::syncObject");
 	syncTriggers.setName("Table::syncTriggers");
 	syncAlter.setName("Table::syncAlter");
-	
-	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
-		syncPriorVersions[n].setName("Table::syncPriorVersions");
 	
 	for (int n = 0; n < SYNC_THAW_SIZE; n++)
 		syncThaw[n].setName("Table::syncThaw");
@@ -928,21 +961,19 @@ Record* Table::fetch(int32 recordNumber)
 		if (backloggedRecords)
 			{
 			int32 backlogId = backloggedRecords->get(recordNumber);
-			
+
 			if (backlogId)
 				{
 				sync.unlock();
 				sync.lock(Exclusive);
 				record = database->backLog->fetch(backlogId);
-				
+
 				if (insertIntoTree(record, NULL, recordNumber))
 					return record;
-				
-#ifdef CHECK_RECORD_ACTIVITY
-				record->active = false;
-#endif
-				record->release();
-				
+
+				SET_RECORD_ACTIVE(record, false);
+				record->release(REC_HISTORY);
+
 				continue;
 				}
 			}
@@ -957,10 +988,8 @@ Record* Table::fetch(int32 recordNumber)
 		if (insertIntoTree(record, NULL, recordNumber))
 			return record;
 		
-#ifdef CHECK_RECORD_ACTIVITY
-		record->active = false;
-#endif
-		record->release();
+		SET_RECORD_ACTIVE(record, false);
+		record->release(REC_HISTORY);
 		sync.lock(Shared);
 		}
 }
@@ -991,43 +1020,53 @@ Record* Table::treeFetch(int32 recordNumber)
 	return section->fetch(id);
 }
 
+// Read a record chain from the backlog. If another thread
+// beats us to it, just read from the tree. Try multiple
+// times, if necessary.
+
 Record* Table::backlogFetch(int32 recordNumber)
 {
 	if (backloggedRecords)
 		{
 		int32 backlogId = backloggedRecords->get(recordNumber);
-		
-		if (backlogId)
+		int attempts = 5;
+
+		while (backlogId && attempts--)
 			{
 			Record *record = database->backLog->fetch(backlogId);
-			ASSERT (insertIntoTree(record, NULL, recordNumber));
-			
-			return record;
+
+			if (record)
+				{
+				if (insertIntoTree(record, NULL, recordNumber))
+					{
+					RECORD_HISTORY(record);
+					return record;
+					}
+				record->release();
+				}
+
+			if ((record = fetch(recordNumber)))
+				return record;
 			}
 		}
-	
-	return NULL;	
+
+	return NULL;
 }
 
 void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transaction)
 {
-#ifdef CHECK_RECORD_ACTIVITY
-	recordToRollback->active = false;
-#endif
+	SET_RECORD_ACTIVE(recordToRollback, false);
 
 	int priorState = recordToRollback->state;
 	recordToRollback->state = recRollback;
 
 	// Find the record that will become the current version.
-	// syncPrior is not needed here. No other thread can change this
-	// priorVersion now. Changing the base record is protected by
-	// RecordLeaf::syncObject
 
 	Record *priorRecord = recordToRollback->getPriorVersion();
 
 	if (priorRecord)
 		{
-		priorRecord->addRef();
+		priorRecord->addRef(REC_HISTORY);
 		priorRecord->setSuperceded(false);
 		}
 
@@ -1039,10 +1078,10 @@ void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transa
 			return;
 
 		// The store of this record into the record leaf failed. No way to recover.
+		// While the base record is uncommitted, only that transaction can change it.
 
 		recordToRollback->printRecord("Table::rollbackRecord failed");
-		//insert(priorRecord, recordToRollback, recordToRollback->recordNumber);
-		ASSERT(false);
+		FATAL("Table::rollbackRecord-insertIntoTree failed, priorState =", priorState );
 		}
 
 	if (!priorRecord && recordToRollback->recordNumber >= 0)
@@ -1054,7 +1093,7 @@ void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transa
 		deleteRecordBacklog(recordToRollback->recordNumber);
 	
 	if (priorRecord)
-		priorRecord->release();
+		priorRecord->release(REC_HISTORY);
 }
 
 void Table::addFormat(Format * format)
@@ -1064,7 +1103,7 @@ void Table::addFormat(Format * format)
 	formats [slot] = format;
 }
 
-int32 Table::getBlobId(Value * value, int32 oldId, bool cloneFlag, Transaction *transaction)
+int32 Table::getBlobId(Value * value, int32 oldId, bool cloneFlag, TransactionState *transaction)
 {
 	int32 id;
 
@@ -1148,7 +1187,7 @@ int32 Table::getBlobId(Value * value, int32 oldId, bool cloneFlag, Transaction *
 }
 
 
-int32 Table::getIndirectId(BlobReference *reference, Transaction *transaction)
+int32 Table::getIndirectId(BlobReference *reference, TransactionState *transaction)
 {
 	if (!blobSection)
 		blobSection = dbb->findSection(blobSectionId);
@@ -1192,7 +1231,7 @@ void Table::makeSearchable(Field * field, Transaction *transaction)
 					Log::debug("%d records inverted with %d words\n", records, words);
 				}
 				
-		record->release();
+		record->release(REC_HISTORY);
 		}
 
 	database->flushInversion(transaction);
@@ -1217,7 +1256,7 @@ void Table::makeNotSearchable(Field *field, Transaction *transaction)
 				database->removeFromInversion(&stream, transaction);
 				}
 				
-		record->release();
+		record->release(REC_HISTORY);
 		}
 
 	database->flushInversion(transaction);
@@ -1234,27 +1273,30 @@ void Table::makeNotSearchable(Field *field, Transaction *transaction)
 			If a duplicate is found, an exception should be caught by the caller.
 		non-unique indexes are  updated without any check
 **/
+
 void Table::updateIndexes(Transaction *transaction, RecordVersion *record, Record *oldRecord)
 {
 	if (indexes)
-	{
-	FOR_INDEXES(index, this);
-		Sync sync(&(index->syncUnique), "Table::updateIndexes");
-		if(needUniqueCheck(index,record))
-			for(;;)
-			{
-			sync.lock(Exclusive);
-			if (!checkUniqueIndex(index, transaction, record , &sync))
-				break;
-			}
-		index->update(oldRecord, record, transaction);
-	END_FOR;
-	}
+		FOR_INDEXES(index, this);
+			Sync sync(&(index->syncUnique), "Table::updateIndexes");
+			
+			if (needUniqueCheck(index,record))
+				for (;;)
+					{
+					sync.lock(Exclusive);
+					
+					if (!checkUniqueIndex(index, transaction, record , &sync))
+						break;
+					}
+					
+			index->update(oldRecord, record, transaction);
+		END_FOR;
 }
 
 /**
 @brief		Uniqueness check combined with index insert (atomic)
 **/
+
 void Table::insertIndexes(Transaction *transaction, RecordVersion *record)
 {
 	if (indexes)
@@ -1265,7 +1307,7 @@ void Table::insertIndexes(Transaction *transaction, RecordVersion *record)
 			Sync syncUnique(&index->syncUnique, "Table::insertIndexes");
 			
 			if (needUniqueCheck(index,record))
-				for(;;)
+				for (;;)
 					{
 					syncUnique.lock(Exclusive);
 					
@@ -1292,6 +1334,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 	RecordVersion *record = NULL;
 	bool updated = false;
 	int recordNumber = oldRecord->recordNumber;
+	CycleLock cycleLock(database);
 	
 	try
 		{
@@ -1306,7 +1349,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 			Value value;
 			int id = field->id;
 			oldRecord->getValue(id, &value);
-			record->setValue(transaction, id, &value, true, false);
+			record->setValue(transaction->transactionState, id, &value, true, false);
 		END_FOR;
 
 		// Copy field values being changed
@@ -1321,7 +1364,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 			if (field->repository)
 				value = field->repository->defaultRepository(field, value, &temp);
 
-			record->setValue(transaction, field->id, value, false, false);
+			record->setValue(transaction->transactionState, field->id, value, false, false);
 			}
 
 		// Fire pre-operation triggers
@@ -1356,8 +1399,8 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 		// If this is a re-update in the same transaction and the same savepoint,
 		// carefully remove the prior version.
 
-		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
-		record->release();
+		record->scavengeSavepoint(transaction, transaction->curSavePointId);
+		record->release(REC_HISTORY);
 		}
 	catch (...)
 		{
@@ -1377,11 +1420,8 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 			if (record->state == recLock)
 				record->deleteData();
 
-#ifdef CHECK_RECORD_ACTIVITY
-			record->active = false;
-#endif
-
-			record->release();
+			SET_RECORD_ACTIVE(record, false);
+			record->queueForDelete();
 			}
 
 		throw;
@@ -1390,6 +1430,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 
 void Table::reIndexInversion(Transaction *transaction)
 {
+	CycleLock cycleLock(database);
 	bool hits = false;
 
 	FOR_FIELDS(field, this)
@@ -1410,9 +1451,6 @@ void Table::reIndexInversion(Transaction *transaction)
 		next = record->recordNumber + 1;
 		
 		{
-			Sync syncPrior(getSyncPrior(record->recordNumber), "Table::reIndexInversion");
-			syncPrior.lock(Shared);
-	
 			for (Record *version = record; version; version = version->getPriorVersion())
 				if (version->hasRecord())
 					FOR_FIELDS(field, this)
@@ -1427,7 +1465,7 @@ void Table::reIndexInversion(Transaction *transaction)
 					END_FOR;
 		}
 			
-		record->release();
+		record->release(REC_HISTORY);
 		}
 }
 
@@ -1511,17 +1549,20 @@ ForeignKey* Table::findForeignKey(ForeignKey * key)
 void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 {
 	database->preUpdate();
+	CycleLock cycleLock(database);
 
-	// syncPrior is not needed here.  It is handled in fetchVersion()
 	Record *candidate = fetch(orgRecord->recordNumber);
+	
 	if (!candidate)
 		return;
-	
+		
+	RECORD_HISTORY(candidate);
+
 	checkAncestor(candidate, orgRecord);
 	RecordVersion *record;
 	bool wasLock = false;
 	
-	if (candidate->state == recLock && candidate->getTransaction() == transaction)
+	if (candidate->state == recLock && candidate->getTransactionState() == transaction->transactionState)
 		{
 		if (candidate->getSavePointId() == transaction->curSavePointId)
 			{
@@ -1538,13 +1579,14 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 		
 		if (oldVersion != candidate)
 			{
-			candidate->release();
+			candidate->release(REC_HISTORY);
+			
 			throw SQLError(UPDATE_CONFLICT, "delete conflict in table %s.%s record %d", schemaName, name, orgRecord->recordNumber);
 			}
 		
 		ASSERT(candidate->hasRecord());
 		record = allocRecordVersion(NULL, transaction, candidate);
-		candidate->release();
+		candidate->release(REC_HISTORY);
 		}
 
 	record->state = recDeleted;
@@ -1570,7 +1612,7 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 	if (wasLock)
 		{
 		record->state = recDeleted;
-		--transaction->deletedRecords;
+			--transaction->deletedRecords;
 		}
 	else
 		{
@@ -1580,11 +1622,8 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 			}
 		catch (...)
 			{
-#ifdef CHECK_RECORD_ACTIVITY
-			record->active = false;
-#endif
-
-			record->release();
+			SET_RECORD_ACTIVE(record, false);
+			record->release(REC_HISTORY);
 
 			throw;
 			}
@@ -1593,7 +1632,7 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 		}
 	
 	dataSection->reserveRecordNumber(record->recordNumber);
-	record->release();
+	record->release(REC_HISTORY);
 	fireTriggers(transaction, PostDelete, orgRecord, NULL);
 }
 
@@ -1852,21 +1891,17 @@ const char* Table::getSchema()
 void Table::populateIndex(Index * index, Transaction *transaction)
 {
 	Record *record;
+	CycleLock cycleLock(database);
 
 	for (int32 next = 0, count = 0; (record = fetchNext(next)); ++count)
 		{
 		next = record->recordNumber + 1;
 
-		{
-			Sync syncPrior(getSyncPrior(record->recordNumber), "Table::populateIndex");
-			syncPrior.lock(Shared);
-		
-			for (Record *version = record; version; version = version->getPriorVersion())
-				if (version->hasRecord())
-					index->insert(version, transaction);
-		}
+		for (Record *version = record; version; version = version->getPriorVersion())
+			if (version->hasRecord())
+				index->insert(version, transaction);
 
-		record->release();
+		record->release(REC_HISTORY);
 
 #ifdef _DEBUG
 		if (count && count % 100000 == 0)
@@ -1905,6 +1940,7 @@ void Table::pruneRecords(RecordScavenge *recordScavenge)
 
 	Sync syncObj(&syncObject, "Table::pruneRecords");
 	syncObj.lock(Shared);
+	CycleLock cyleLock(database);
 
 	if (records)
 		records->pruneRecords(this, 0, recordScavenge);
@@ -1917,6 +1953,7 @@ void Table::retireRecords(RecordScavenge *recordScavenge)
 
 	Sync syncObj(&syncObject, "Table::retireRecords");
 	syncObj.lock(Shared);
+	CycleLock cyleLock(database);
 
 	if (!records)
 		return;
@@ -1956,62 +1993,51 @@ void Table::retireRecords(RecordScavenge *recordScavenge)
 bool Table::insertIntoTree(Record * record, Record *prior, int recordNumber)
 {
 	ageGroup = database->currentGeneration;
-	Sync sync(&syncObject, "Table::insert");
 
-	if (record)
-		{
-#ifdef CHECK_RECORD_ACTIVITY
-		record->active = true;
-#endif
-		sync.lock(Shared);
-		
-		if (!recordBitmap->setSafe(recordNumber))
-			{
-			sync.unlock();
-			sync.lock(Exclusive);
-			recordBitmap->set(recordNumber);
-			}
-		}
-	else
-		{
+	Sync sync(&syncObject, "Table::insert");
+	
+	if (!record || !records)
 		sync.lock(Exclusive);
-		recordBitmap->clear(recordNumber);
-		}
+	else
+		sync.lock(Shared);
 
 	if (!records)
-		{
-		if (sync.state != Exclusive)
-			{
-			sync.unlock();
-			sync.lock(Exclusive);
-			}
-			
-		if (!records)
-			records = NEW RecordLeaf;
-		}
-	
+		records = NEW RecordLeaf;
+
 	// Bump the record use count on the assumption that the 
 	// store will succeed.  Release it later if it fails.
 	
 	if (record)
-		record->addRef();
+		record->addRef(REC_HISTORY);
 		
 	if (records->store(record, prior, recordNumber, &records))
 		{
 		if (prior)
 			{
-#ifdef CHECK_RECORD_ACTIVITY
-			prior->active = false;
-#endif
-			prior->release();
+			SET_RECORD_ACTIVE(prior, false);
+			prior->release(REC_HISTORY);
 			}
-		
+
+		if (record)
+			{
+			SET_RECORD_ACTIVE(record, true);
+
+			if (!recordBitmap->setSafe(recordNumber))
+				{
+				sync.unlock();
+				sync.lock(Exclusive);
+				recordBitmap->set(recordNumber);
+				}
+			}
+
 		return true;
 		}
-	
+
+	// The store() failed.
+
 	if (record)
-		record->release();
-	
+		record->release(REC_HISTORY);
+
 	return false;
 }
 
@@ -2049,9 +2075,6 @@ bool Table::duplicateBlob(Value * blob, int fieldId, Record * recordChain)
 			return isDuplicate;
 		}
 
-	Sync syncPrior(getSyncPrior(recordChain), "Table::duplicateBlob");
-	syncPrior.lock(Shared);
-	
 	for (Record *record = recordChain; record; record = record->getPriorVersion())
 		if (record->hasRecord())
 			{
@@ -2136,9 +2159,7 @@ void Table::garbageCollect(Record *leaving, Record *staying, Transaction *transa
 
 	Sync sync (&syncObject, "Table::garbageCollect(Obj)");
 	sync.lock(Shared);
-	
-	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(prior)");
-	syncPrior.lock(Shared);
+	CycleLock cycleLock(database);
 	
 	// Clean up field indexes
 
@@ -2383,7 +2404,7 @@ void Table::reIndex(Transaction *transaction)
 					index->insert(version, transaction);
 				END_FOR;
 				
-		record->release();
+		record->release(REC_HISTORY);
 		}
 }
 
@@ -2532,7 +2553,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 {
 	Record *rec;
 	Record *oldRecord = record->getPriorVersion();
-	Transaction *activeTransaction = NULL;
+	//Transaction *activeTransaction = NULL;
+	TransactionState *activeTransState = NULL;
 	State state = CommittedVisible;
 
 	if (oldRecord && recordNumber == oldRecord->recordNumber)
@@ -2546,9 +2568,6 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 	if ( !(rec = fetch(recordNumber)) )
 		return false;	 // Check next record number.
 
-	Sync syncPrior(getSyncPrior(recordNumber), "Table::checkUniqueRecordVersion");
-	syncPrior.lock(Shared);
-	
 	for (Record *dup = rec; dup; dup = dup->getPriorVersion())
 		{
 		if (dup == record)
@@ -2578,11 +2597,11 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 				case CommittedVisible:
 				case Us:
 					// No conflict with a visible deleted record.
-					rec->release();
+					rec->release(REC_HISTORY);
 					
-					if (activeTransaction)
-						activeTransaction->release();
-						
+					if (activeTransState)
+						activeTransState->release();
+					
 					return false;	// Check next record number.
 
 				case CommittedInvisible:
@@ -2597,8 +2616,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 					// Keep looking for a possible duplicate conflict,
 					// either visible, or pending at a savepoint.
 
-					activeTransaction = dup->getTransaction();
-					activeTransaction->addRef();
+					activeTransState = dup->getTransactionState();
+					activeTransState->addRef();
 					
 					continue;
 
@@ -2620,38 +2639,35 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			{
 			if (state == Active)
 				{
-				dup->addRef();
-				syncPrior.unlock(); // release lock before wait
+				dup->addRef(REC_HISTORY);
 				syncUnique->unlock(); // release lock before wait
 
 				// Wait for that transaction, then restart checkUniqueIndexes()
 
 				state = transaction->getRelativeState(dup, WAIT_IF_ACTIVE);
-				dup->release();  // We are done with this now.
+				dup->release(REC_HISTORY);  // We are done with this now.
 
 				if (state != Deadlock)
 					{
-					rec->release();
+					rec->release(REC_HISTORY);
 					
-					if (activeTransaction)
-						activeTransaction->release();
+					if (activeTransState)
+						activeTransState->release();
 					
 					return true;  // retry after a wait
 					}
 				}
 
-			else if (activeTransaction)
+			else if (activeTransState)
 				{
-				syncPrior.unlock(); // release lock before wait
 				syncUnique->unlock(); // release lock before wait
 
-				state = transaction->getRelativeState(activeTransaction,
-						activeTransaction->transactionId, WAIT_IF_ACTIVE);
+				state = transaction->getRelativeState(activeTransState, WAIT_IF_ACTIVE);
 
 				if (state != Deadlock)
 					{
-					activeTransaction->release();
-					rec->release();
+					activeTransState->release();
+					rec->release(REC_HISTORY);
 
 					return true;  // retry after a wait
 					}
@@ -2659,10 +2675,10 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 			// Found a duplicate conflict or a deadlock.
 
-			rec->release();
+			rec->release(REC_HISTORY);
 
-			if (activeTransaction)
-				activeTransaction->release();
+			if (activeTransState)
+				activeTransState->release();
 
 			const char *text = "duplicate values for key %s in table %s.%s";
 			int code = UNIQUE_DUPLICATE;
@@ -2690,11 +2706,12 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			// Only wait on this record if the duplicate is visible or pending
 			// at a savepoint.
 
-			if (!activeTransaction)
+			if (!activeTransState)
 				{
-				activeTransaction = dup->getTransaction();
-				if (activeTransaction)
-					activeTransaction->addRef();
+				activeTransState = dup->getTransactionState();
+				
+				if (activeTransState)
+					activeTransState->addRef();
 				}
 
 			continue;  // check next record version
@@ -2705,10 +2722,10 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 		if (state == Us)
 			{
-			rec->release();
+			rec->release(REC_HISTORY);
 			
-			if (activeTransaction)
-				activeTransaction->release();
+			if (activeTransState)
+				activeTransState->release();
 				
 			return false;	 // Check next record number.
 			}
@@ -2718,20 +2735,20 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 		if (state == CommittedVisible)
 			{
-			rec->release();
+			rec->release(REC_HISTORY);
 			
-			if (activeTransaction)
-				activeTransaction->release();
+			if (activeTransState)
+				activeTransState->release();
 				
 			return false;	// Check next record number
 			}
 		}	// for each record version...
 
 	if (rec)
-		rec->release();
+		rec->release(REC_HISTORY);
 		
-	if (activeTransaction)
-		activeTransaction->release();
+	if (activeTransState)
+		activeTransState->release();
 
 	return false;	// Check next record number
 }
@@ -2826,15 +2843,13 @@ void Table::validateBlobs(int optionMask)
 	Bitmap references;
 	Record *record;
 	int32 next;
+	CycleLock cycleLock(database);
 
 	for (next = 0; (record = fetchNext(next));)
 		{
 		next = record->recordNumber + 1;
 		
 		{
-			Sync syncPrior(getSyncPrior(record->recordNumber), "Table::validateBlobs");
-			syncPrior.lock(Shared);
-		
 			for (Record *version = record; version; version = version->getPriorVersion())
 				if (version->hasRecord())
 					for (field = fields; field; field = field->next)
@@ -2847,7 +2862,7 @@ void Table::validateBlobs(int optionMask)
 							}
 		}
 						
-		record->release();
+		record->release(REC_HISTORY);
 		}
 
 	Bitmap inventory;
@@ -2864,7 +2879,7 @@ void Table::validateBlobs(int optionMask)
 			Log::debug ("Orphan blob %d, table %s.%s, blob section %d\n", next, schemaName, name, blobSectionId);
 			
 			if (optionMask & validateRepair)
-				dbb->updateRecord(blobSection, next, (Stream*) NULL, (Transaction*) NULL, false);
+				dbb->updateRecord(blobSection, next, (Stream*) NULL, (TransactionState*) NULL, false);
 			}
 		}
 
@@ -3030,7 +3045,8 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 {
 	database->preUpdate();
 	RecordVersion *record = NULL;
-	bool inserted = false;
+	bool insertedIntoTree = false;
+	bool addedToTransaction = false;
 	int32 recordNumber = -1;
 
 	if (!dataSection)
@@ -3048,32 +3064,35 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		record = allocRecordVersion(fmt, transaction, NULL);
 		record->state = recInserting;
 		record->setEncodedRecord(stream, false);
-		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction);
+		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction->transactionState);
 		
 		// Make insert/update atomic, then check for unique index duplicats
+		// If insertStub says it is free, then there should never be 
+		// anything in the record tree for this record number.
 
-
-		// Do the actual insert
+		if (!insertIntoTree(record, NULL, recordNumber))
+			FATAL("Table::insert(Stream) cannot InsertIntoTree");
+		insertedIntoTree = true;
 
 		transaction->addRecord(record);
-		bool ret = insertIntoTree(record, NULL, recordNumber);
-		inserted = true;
+		addedToTransaction = true;
+
 		insertIndexes(transaction, record);
-		ASSERT(ret);
 		record->state = recData;
-		record->release();
+		record->release(REC_HISTORY);
 		}
 	catch (...)
 		{
-		if (inserted)
-			{
+		if (insertedIntoTree)
+			if (!insertIntoTree(NULL, record, recordNumber))
+				FATAL("Table::insert(Stream) cannot backout insertIntoTree");
+
+		if (addedToTransaction)
 			transaction->removeRecord(record);
-			insertIntoTree(NULL, record, recordNumber);
-			}
 
 		if (recordNumber >= 0)
 			{
-			dbb->updateRecord(dataSection, recordNumber, NULL, transaction, false);
+			dbb->updateRecord(dataSection, recordNumber, NULL, transaction->transactionState, false);
 			dataSection->expungeRecord(recordNumber);
 			record->recordNumber = -1;
 			}
@@ -3082,10 +3101,8 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 
 		if (record)
 			{
-#ifdef CHECK_RECORD_ACTIVITY
-			record->active = false;
-#endif
-			record->release();
+			SET_RECORD_ACTIVE(record, false);
+			record->queueForDelete();
 			}
 
 		throw;
@@ -3099,13 +3116,16 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	database->preUpdate();
 	
 	Record *candidate = fetch(orgRecord->recordNumber);
+	
 	if (!candidate)
 		return;
+		
+	RECORD_HISTORY(candidate);
 
 	checkAncestor(candidate, orgRecord);
 	Record *oldRecord = candidate;
 
-	if (candidate->getTransaction() == transaction)
+	if (candidate->getTransactionState() == transaction->transactionState)
 		{
 		if (candidate->state == recLock)
 			oldRecord = oldRecord->getPriorVersion();
@@ -3116,7 +3136,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	if (!oldRecord)
 		{
 		ASSERT(false);
-		candidate->release();
+		candidate->release(REC_HISTORY);
 		
 		return;
 		}
@@ -3124,12 +3144,12 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	RecordVersion *record = NULL;
 	bool updated = false;
 	
-	if (candidate->state == recLock && candidate->getTransaction() == transaction)
+	if (candidate->state == recLock && candidate->getTransactionState() == transaction->transactionState)
 		{
 		if (candidate->getSavePointId() == transaction->curSavePointId)
 			{
 			record = (RecordVersion*) candidate;	// Use the lock record for the new version.
-			oldRecord->addRef();
+			oldRecord->addRef(REC_HISTORY);
 			}
 		else
 			oldRecord = candidate;
@@ -3137,8 +3157,8 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	else
 		if (candidate != oldRecord)
 			{
-			oldRecord->addRef();
-			candidate->release();
+			oldRecord->addRef(REC_HISTORY);
+			candidate->release(REC_HISTORY);
 			}
 		
 	try
@@ -3188,10 +3208,10 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 		// If this is a re-update in the same transaction and the same savepoint,
 		// carefully remove the prior version.
 
-		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
-		record->release();
+		record->scavengeSavepoint(transaction, transaction->curSavePointId);
+		record->release(REC_HISTORY);
 
-		oldRecord->release();	// This reference originated in this function.
+		oldRecord->release(REC_HISTORY);	// This reference originated in this function.
 		}
 	catch (...)
 		{
@@ -3213,14 +3233,10 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 			if (record->state == recLock)
 				record->deleteData();
 
-#ifdef CHECK_RECORD_ACTIVITY
-			record->active = false;
-#endif
-
-			record->release();
+			SET_RECORD_ACTIVE(record, false);
+			oldRecord->release(REC_HISTORY);
+			record->queueForDelete();
 			}
-
-		oldRecord->release();
 
 		throw;
 		}
@@ -3267,10 +3283,10 @@ int Table::storeBlob(Transaction *transaction, uint32 length, const UCHAR *data)
 	if (!blobSection)
 		blobSection = dbb->findSection(blobSectionId);
 		
-	int32 recordNumber = dbb->insertStub(blobSection, transaction);
+	int32 recordNumber = dbb->insertStub(blobSection, transaction->transactionState);
 	Stream stream;
 	stream.putSegment((int) length, (const char*) data, false);
-	dbb->updateBlob(blobSection, recordNumber, &stream, transaction);
+	dbb->updateBlob(blobSection, recordNumber, &stream, transaction->transactionState);
 
 	return recordNumber;
 }
@@ -3321,9 +3337,6 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 {
 	Sync syncTable(&syncObject, "Table::validateAndInsert");
 
-	// Do not need syncPrior here since this is a new record.
-	// No other thread can see this record's priorVersion pointer.
-
 	Record *prior = record->getPriorVersion();
 
 	for (int n = 0; n < 10; ++n)
@@ -3336,29 +3349,36 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 			if (current)
 				{
 				if (current == prior)
-					current->release();
+					current->release(REC_HISTORY);
 				else
 					{
 					// The current record is not our prior. If it is committed, we have
 					// an update conflict.  If not, wait on that trans and, if it is not
-					// committed, try again.
+					// committed, try again.  (transState == NULL) means committed.
 
-					TransId transId = current->getTransactionId();
-					current->release();
+					TransactionState *transState = current->getTransactionState();
+					if (!transState)
+						throw SQLError(UPDATE_CONFLICT, "update conflict in table %s.%s record %d", schemaName, name, record->recordNumber);
+
+					transState->addRef();
+					current->release(REC_HISTORY);
 					syncTable.unlock();
 
-					if (transaction->waitForTransaction(transId))
+					if (transaction->waitForTransaction(transState))
 						{
 						current = fetch(record->recordNumber);
 						
 						if (current == prior)
-							current->release();
+							current->release(REC_HISTORY);
 						else
 							{
-							transaction->blockedBy = transId;
+							transaction->blockedBy = transState->transactionId;
+							transState->release();
 							throw SQLError(UPDATE_CONFLICT, "update conflict in table %s.%s record %d", schemaName, name, record->recordNumber);
 							}
 						}
+
+					transState->release();
 					}
 				}
 			}
@@ -3368,10 +3388,8 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 		
 		if (n >= 7)
 			Log::debug("Table::validateAndInsert: things going badly (%d)\n", n);
-			
-#ifdef CHECK_RECORD_ACTIVITY
-		record->active = false;
-#endif
+
+		SET_RECORD_ACTIVE(record, false);
 		}
 		
 	throw SQLError(UPDATE_CONFLICT, "unexpected update conflict in table %s.%s record %d", schemaName, name, record->recordNumber);
@@ -3396,6 +3414,7 @@ void Table::waitForWriteComplete()
 
 void Table::unlockRecord(int recordNumber, int verbMark)
 {
+	CycleLock cycleLock(database);
 	Record *record = fetch(recordNumber);
 
 	if (record)
@@ -3403,7 +3422,7 @@ void Table::unlockRecord(int recordNumber, int verbMark)
 		if (record->state == recLock)
 			unlockRecord((RecordVersion*) record, verbMark);
 
-		record->release();
+		record->release(REC_HISTORY);
 		}
 }
 
@@ -3431,9 +3450,6 @@ void Table::unlockRecord(RecordVersion* record, int verbMark)
 
 void Table::checkAncestor(Record* current, Record* oldRecord)
 {
-	Sync syncPrior(getSyncPrior(current), "Table::checkAncestor");
-	syncPrior.lock(Shared);
-	
 	for (Record *record = current; record; record = record->getPriorVersion())
 		if (record == oldRecord)
 			return;
@@ -3461,11 +3477,11 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 
 	// If we already have this locked or updated, get the active version
 
-	if (source->getTransaction() == transaction)
+	if (source->getTransactionState() == transaction->transactionState)
 		{
 		if (source->state == recDeleted)
 			{
-			source->release();
+			source->release(REC_HISTORY);
 			
 			return NULL;
 			}
@@ -3477,12 +3493,9 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 		// There is only one lock record.  It is at the savepoint 
 		// where it was locked. The prior record is the real record.
 
-		Sync syncPrior(getSyncPrior(source), "Table::fetchForUpdate");
-		syncPrior.lock(Shared);
-	
 		Record *prior = source->getPriorVersion();
-		prior->addRef();
-		source->release();
+		prior->addRef(REC_HISTORY);
+		source->release(REC_HISTORY);
 
 		return prior;
 		}
@@ -3495,7 +3508,7 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 
 		if (!transaction->needToLock(source))
 			{
-			source->release();
+			source->release(REC_HISTORY);
 
 			return NULL;
 			}
@@ -3510,7 +3523,7 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 				// CommittedInvisible only happens for consistent read.
 
 				ASSERT(IS_CONSISTENT_READ(transaction->isolationLevel));
-				source->release();
+				source->release(REC_HISTORY);
 				Log::debug("Table::fetchForUpdate: Update Conflict: TransId=%d, RecordNumber=%d, Table %s.%s\n", 
 					transaction->transactionId, source->recordNumber, schemaName, name);
 				throw SQLError(UPDATE_CONFLICT, "update conflict in table %s.%s", schemaName, name);
@@ -3519,14 +3532,14 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 				{
 				if (source->state == recDeleted)
 					{
-					source->release();
+					source->release(REC_HISTORY);
 
 					return NULL;
 					}
 
 				if (source->state == recChilled	&& !source->thaw())
 					{
-					source->release();
+					source->release(REC_HISTORY);
 
 					return NULL;
 					}
@@ -3543,22 +3556,18 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 				if (insertIntoTree(lockRecord, source, recordNumber))
 					{
 					transaction->addRecord(lockRecord);
-					lockRecord->release();
-
-					ASSERT(source->useCount >= 2);
+					lockRecord->release(REC_HISTORY);
 
 					return source;
 					}
 
-#ifdef CHECK_RECORD_ACTIVITY
-				lockRecord->active = false;
-#endif
-				lockRecord->release();
+				SET_RECORD_ACTIVE(lockRecord, false);
+				lockRecord->release(REC_HISTORY);
 				}
 				break;
 
 			case Deadlock:
-				source->release();
+				source->release(REC_HISTORY);
 				throw SQLError(DEADLOCK, "Deadlock on table %s.%s, tid %d", schemaName, name, transaction->transactionId);
 
 			case WasActive:
@@ -3566,12 +3575,12 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 				break;  // need to re-fetch the base record
 
 			default:
-				source->release();
+				source->release(REC_HISTORY);
 				Log::debug("Table::fetchForUpdate: unexpected state %d\n", state);
 				throw SQLError(RUNTIME_ERROR, "unexpected transaction state %d", state);
 			}
 
-		source->release();
+		source->release(REC_HISTORY);
 
 		source = fetch(recordNumber);
 
@@ -3591,15 +3600,20 @@ void Table::optimize(Connection *connection)
 	int recordNumber = 0;
 	Transaction *transaction = connection->getTransaction();
 	
-	for (Record *candidate; (candidate = fetchNext(recordNumber));)
+	// Fetch every base record in this table. Count each
+	// base record that has a version visible to this transaction.
+	// Be sure to release the base record afterwards.
+	
+	for (Record *record; (record = fetchNext(recordNumber));)
 		{
-		recordNumber = candidate->recordNumber + 1;
-		Record *record = candidate->fetchVersion(transaction);
+		recordNumber = record->recordNumber + 1;
+		Record *recordVersion = record->fetchVersion(transaction);
 		
-		if (record)
+		if (recordVersion)
 			++count;
 		
-		candidate->release(); // no need to keep it around
+		RECORD_HISTORY(record);
+		record->release(REC_HISTORY); // no need to keep it around
 		}
 	
 	cardinality = count;
@@ -3653,10 +3667,7 @@ RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transactio
 		{
 		try
 			{
-			if ((++database->recordPoolAllocCount & 0x7F) == 0)
-				database->checkRecordScavenge();
-
-			return POOL_NEW(database->recordDataPool) RecordVersion(this, format, transaction, priorVersion);
+			return POOL_NEW(database->recordVersionPool) RecordVersion(this, format, transaction, priorVersion);
 			}
 
 		catch (SQLException& exception)
@@ -3690,10 +3701,7 @@ Record* Table::allocRecord(int recordNumber, Stream* stream)
 		{
 		try
 			{
-			if ((++database->recordPoolAllocCount & 0x7F) == 0)
-				database->checkRecordScavenge();
-
-			return POOL_NEW(database->recordDataPool) Record (this, recordNumber, stream);
+			return POOL_NEW(database->recordPool) Record (this, recordNumber, stream);
 			}
 
 		catch (SQLException& exception)
@@ -3741,32 +3749,31 @@ void Table::findSections(void)
 
 bool Table::validateUpdate(int32 recordNumber, TransId transactionId)
 {
+	CycleLock cycleLock(database);
+
 	if (deleting)
 		return false;
 
 	Record *record = treeFetch(recordNumber);
 	Record *initial = record;
 	
-	Sync syncPrior(getSyncPrior(recordNumber), "Table::validateUpdate");
-	syncPrior.lock(Shared);
-	
 	while (record)
 		{
 		if (record->getTransactionId() == transactionId)
 			{
-			record->release();
+			record->release(REC_HISTORY);
 			
 			return true;
 			}
 		
-		Transaction *transaction = record->getTransaction();
+		TransactionState *transactionState = record->getTransactionState();
 		
-		if (!transaction || transaction->state == Committed)
+		//if (transactionState->getState() == Committed)
+		if (transactionState->isCommitted())
 			{
-#ifdef CHECK_RECORD_ACTIVITY
-			record->active = false;
-#endif
-			record->release();
+			SET_RECORD_ACTIVE(record, false);
+			record->release(REC_HISTORY);
+			
 			return false;
 			}
 		
@@ -3783,7 +3790,7 @@ bool Table::validateUpdate(int32 recordNumber, TransId transactionId)
 			}
 
 		next->addRef();
-		record->release();
+		record->release(REC_HISTORY);
 		record = next;
 		}
 	
@@ -3795,7 +3802,9 @@ void Table::expungeRecord(int32 recordNumber)
 	dataSection->expungeRecord(recordNumber);
 }
 
-int32 Table::backlogRecord(RecordVersion* record)
+// Write out the current record chain to the backlog tablespace.
+
+bool Table::backlogRecord(RecordVersion* record, Bitmap* backlogBitmap)
 {
 	Sync sync(&syncObject, "Table::backlogRecord");
 	sync.lock(Exclusive);
@@ -3804,6 +3813,9 @@ int32 Table::backlogRecord(RecordVersion* record)
 		backloggedRecords = new SparseArray<int32, BL_SIZE>;
 
 	int32 backlogId = backloggedRecords->get(record->recordNumber);
+	bool inserted = false;
+	
+	// Update if already backlogged, else insert
 	
 	if (backlogId)
 		database->backLog->update(backlogId, record);
@@ -3811,12 +3823,33 @@ int32 Table::backlogRecord(RecordVersion* record)
 		{
 		backlogId = database->backLog->save(record);
 		backloggedRecords->set(record->recordNumber, backlogId);
+		inserted = true;
 		}
 	
-	ASSERT(insertIntoTree(NULL, record, record->recordNumber));
-	recordBitmap->set(record->recordNumber);
+	// Now that the record is backlogged, replace it with a null
+	// base record in the record tree
 	
-	return backlogId;
+	if (insertIntoTree(NULL, record, record->recordNumber))
+		{
+		if (backlogBitmap)
+			backlogBitmap->set(backlogId);
+		return true;
+		}
+		
+	// If the tree insert failed, then there must be a new base
+	// record and the old backlog record is no good.
+	// Remove the record number from the sparse array and
+	// remove the backlog record from the repository.
+		
+	backloggedRecords->set(record->recordNumber, 0);
+	database->backLog->deleteRecord(backlogId);
+		
+	// Remove from caller's backlog bitmap
+		
+	if (backlogBitmap)
+		backlogBitmap->clear(backlogId);
+	
+	return false;
 }
 
 void Table::deleteRecordBacklog(int32 recordNumber)
@@ -3832,19 +3865,6 @@ void Table::deleteRecordBacklog(int32 recordNumber)
 		backloggedRecords->set(recordNumber, 0);
 		database->backLog->deleteRecord(backlogId);
 		}
-}
-
-SyncObject* Table::getSyncPrior(Record* record)
-{
-	int recNumber = (record->recordNumber == -1) ? 0 : record->recordNumber;
-	int lockNumber = recNumber % SYNC_VERSIONS_SIZE;
-	return syncPriorVersions + lockNumber;
-}
-
-SyncObject* Table::getSyncPrior(int recordNumber)
-{
-	int lockNumber = recordNumber % SYNC_VERSIONS_SIZE;
-	return syncPriorVersions + lockNumber;
 }
 
 SyncObject* Table::getSyncThaw(Record* record)
@@ -3864,4 +3884,19 @@ static bool needUniqueCheck(Index *index, Record *record)
 	Record *oldRecord = record->getPriorVersion();
 	return (INDEX_IS_UNIQUE(index->type) &&
 		(!oldRecord || index->changed(record, oldRecord)));
+}
+
+void Table::queueForDelete(Record* record)
+{
+	database->cycleManager->queueForDelete(record);
+}
+
+void Table::queueForDelete(Value** zombie)
+{
+	database->cycleManager->queueForDelete(zombie);
+}
+
+void Table::queueForDelete(char * zombie)
+{
+	database->cycleManager->queueForDelete(zombie);
 }

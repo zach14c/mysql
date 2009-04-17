@@ -34,7 +34,7 @@ class Dbb;
 class Bdb;
 class Bitmap;
 class IndexKey;
-
+class Index;
 
 class IndexPage : public Page
 {
@@ -77,10 +77,9 @@ public:
 	static void		printNode(int i, IndexPage * page, int32 pageNumber, IndexNode & node, bool inversion = false);
 	static void		printNode(IndexPage *page, int32 pageNumber, Btn *node, bool inversion = false);
 	static int32	getRecordNumber(const UCHAR *ptr);
-	static void		logIndexPage (Bdb *bdb, TransId transId);
+	static void		logIndexPage (Bdb *bdb, TransId transId, Index* index);
 
-	int32	parentPage;
-	int32	priorPage;
+	int32	unused[2]; // used to be parent and prior pages
 	int32	nextPage;
 	//short	level;
 	UCHAR	level;

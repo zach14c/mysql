@@ -98,6 +98,7 @@ class Database;
 class Validation;
 class SerialLog;
 class Transaction;
+class TransactionState;
 class IndexKey;
 class RecordVersion;
 class DeferredIndex;
@@ -107,85 +108,94 @@ class DatabaseClone;
 class Dbb : public IO  
 {
 public:
-	void updateTableSpaceSection (int id);
 	Dbb(Database *database);
 	Dbb (Dbb *dbb, int tableSpaceId);
 	virtual ~Dbb();
 
-	void	createSection(int32 sectionId, TransId transId);
+	// database oriented functions
 	void	dropDatabase();
-	void	enableSerialLog();
-	void	updateRecord(int32 sectionId, int32 recordId, Stream *stream, TransId transId, bool earlyWrite);
 	void	reportStatistics();
-	bool	hasDirtyPages();
-	bool	deleteShadow (DatabaseCopy *shadow);
+	Cache*	open(const char *fileName, int64 cacheSize, TransId transId);
+	Cache*	create(const char *fileName, int pageSize, int64 cacheSize, FileType fileType, 
+		TransId transId, const char *logRoot, bool useExistingFile = false);
 	void	close();
+	void	init(int pageSz, int cacheSize);
 	void	init();
 	void	initRepository(Hdr *header);
-	void	freePage (int32 pageNumber);
-	void	expungeRecord (Section *section, int32 recordNumber);
-	void	printPage (int pageNumber);
-	//void	cloneFile (DatabaseClone *file, bool isShadow);
-	void	cloneFile (Database *database, const char *fileName, bool createShadow);
-	void	analyzeSection (int sectionId, const char *sectionName, int indentation, Stream *stream);
-	void	analyseIndex(int32 indexId, int indexVersion, const char *indexName, int indentation, Stream *stream);
-	void	createInversion(TransId transId);
-	Section* getSequenceSection(TransId transId);
-	Bdb*	getSequencePage (int sequenceId, LockType lockType, TransId transId);
-	int64	updateSequence(int sequenceId, int64 delta, TransId transId);
-	int		createSequence(QUAD initialValue, TransId transId);
-	bool	deleteIndexEntry (int32 indexId, int indexVersion, IndexKey *key, int32 recordNumber, TransId transId);
-	void	validate (int optionMask);
-	void	shutdown (TransId transId);
-	void	deleteSection (int32 sectionId, TransId transId);
-	void	freePage (Bdb *bdb, TransId transId);
+	void	setODSMinorVersion(int minor);
+	void	validate(int optionMask);
+	void	shutdown(TransId transId);
 	void	clearDebug();
 	void	setDebug();
-	void	deleteIndex (int32 indexId, int indexVersion, TransId transId);
-	Cache*	open (const char *fileName, int64 cacheSize, TransId transId);
-	void	flush();
-	bool	addIndexEntry (int32 indexId, int indexVersion, IndexKey *key, int32 recordNumber, TransId transId);
-	int32	createIndex(TransId transId, int indexVersion);
-	int32	findNextRecord (Section *section, int32 startingRecord, Stream *stream);
-	bool	fetchRecord (int32 sectionId, int32 recordNumber, Stream *stream);
+	void	cloneFile(Database *database, const char *fileName, bool createShadow);
+	void	addShadow(DatabaseCopy* shadow);
+	bool	deleteShadow(DatabaseCopy *shadow);
 
-	void	redoSequencePage(int pageSequence, int32 pageNumber);
-	int64	redoSequence(int sequenceId, int64 sequence);
-	void	redoDataPage (int sectionId, int32 pageNumber, int32 locatorPageNumber);
-	void	redoRecordLocatorPage(int sectionId, int sequence, int32 pageNumber, bool isPostFlush);
-	void	redoFreePage (int32 pageNumber);
-	void	reInsertStub(int32 sectionId, int32 recordId, TransId transId);
-	void	reallocPage (int32 pageNumber);
-
-	Section*	findSection (int32 sectionId);
-	void	logRecord (int32 sectionId, int32 recordId, Stream *stream, Transaction *transaction);
-	int32	insertStub (int32 sectionId, Transaction *transaction);
-	int32	createSection(TransId transId);
-	Bdb*	handoffPage (Bdb *bdb, int32 pageNumber, PageType pageType, LockType lockType);
-	Bdb*	allocPage (PageType pageType, TransId transId);
-	Bdb*	fetchPage (int32 pageNumber, PageType pageType, LockType lockType);
-	Bdb*	fakePage (int32 pageNumber, PageType pageType, TransId transId);
-	Bdb*	trialFetch(int32 pageNumber, PageType pageType, LockType lockType);
-	void	init(int pageSz, int cacheSize);
-	Cache*	create (const char *fileName, int pageSize, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot, 
-		bool useExistingFile = false);
-
+	// Cache oriened functions
 	void	validateCache(void);
+	void	setCacheRecovering(bool state);
+	bool	hasDirtyPages();
+	void	flush();
+
+	// Sequence oriented functions
+	int		createSequence(QUAD initialValue, TransId transId);
+	int64	updateSequence(int sequenceId, int64 delta, TransId transId);
+	Section* getSequenceSection(TransId transId);
+
+	// Index oriented functions
+	bool	indexInUse(int indexId);
+	bool	addIndexEntry(int32 indexId, int indexVersion, IndexKey *key, int32 recordNumber, TransId transId);
+	int32	createIndex(TransId transId, int indexVersion);
+	void	deleteIndex(int32 indexId, int indexVersion, TransId transId);
+	bool	deleteIndexEntry (int32 indexId, int indexVersion, IndexKey *key, int32 recordNumber, TransId transId);
+	void	analyseIndex(int32 indexId, int indexVersion, const char *indexName, int indentation, Stream *stream);
+	void	createInversion(TransId transId);
+
+	// Record oriented functions
+	int32	findNextRecord(Section *section, int32 startingRecord, Stream *stream);
+	bool	fetchRecord(int32 sectionId, int32 recordNumber, Stream *stream);
+	bool	fetchRecord(Section* section, int32 recordNumber, Stream* stream);
+	void	updateRecord(int32 sectionId, int32 recordId, Stream *stream, TransId transId, bool earlyWrite);
+	void	updateRecord(Section* section, int32 recordId, Stream* stream, TransactionState* transaction, bool earlyWrite);
+	void	expungeRecord(Section *section, int32 recordNumber);
+	void	updateBlob(Section *blobSection, int recordNumber, Stream* blob, TransactionState* transaction);
+
+	// Page oriented functions
+	void	reallocPage(int32 pageNumber);
+	Bdb*	allocPage(PageType pageType, TransId transId);
+	Bdb*	fetchPage(int32 pageNumber, PageType pageType, LockType lockType);
+	Bdb*	fakePage(int32 pageNumber, PageType pageType, TransId transId);
+	Bdb*	trialFetch(int32 pageNumber, PageType pageType, LockType lockType);
+	Bdb*	handoffPage(Bdb *bdb, int32 pageNumber, PageType pageType, LockType lockType);
+	Bdb*	getSequencePage(int sequenceId, LockType lockType, TransId transId);
+	void	freePage(int32 pageNumber);
+	void	freePage(Bdb *bdb, TransId transId);
+	void	printPage(int pageNumber);
+	void	printPage(Bdb* bdb);
+
+	// Section Page functions
+	bool	sectionInUse(int sectionId);
+	Section*	findSection(int32 sectionId);
+	int32	insertStub(int32 sectionId, TransactionState *transaction);
+	int32	insertStub(Section* section, TransactionState* transaction);
+	void	reInsertStub(int32 sectionId, int32 recordId, TransId transId);
+	int32	createSection(TransId transId);
+	void	createSection(int32 sectionId, TransId transId);
+	void	deleteSection(int32 sectionId, TransId transId);
+	void	analyzeSection(int sectionId, const char *sectionName, int indentation, Stream *stream);
+	void	analyzeSpace(int indentation, Stream* stream);
+	void	updateTableSpaceSection(int id);
+
+	// Serial Log oriented functions
+	void	logRecord(int32 sectionId, int32 recordId, Stream *stream, Transaction *transaction);
 	void	logUpdatedRecords(Transaction* transaction, RecordVersion* records, bool chill = false);
 	void	logIndexUpdates(DeferredIndex* deferredIndex);
-	bool	sectionInUse(int sectionId);
-	bool	indexInUse(int indexId);
-	void	analyzeSpace(int indentation, Stream* stream);
-	void	upgradeSequenceSection(void);
-	int32	insertStub(Section* section, Transaction* transaction);
-	void	updateRecord(Section* section, int32 recordId, Stream* stream, Transaction* transaction, bool earlyWrite);
-	bool	fetchRecord(Section* section, int32 recordNumber, Stream* stream);
-	void	addShadow(DatabaseCopy* shadow);
-	void	skewHeader(Hdr* header);
-	void	printPage(Bdb* bdb);
-	void	updateBlob(Section *blobSection, int recordNumber, Stream* blob, Transaction* transaction);
 	void	updateSerialLogBlockSize(void);
-	void	setCacheRecovering(bool state);
+	void	redoSequencePage(int pageSequence, int32 pageNumber);
+	int64	redoSequence(int sequenceId, int64 sequence);
+	void	redoDataPage(int sectionId, int32 pageNumber, int32 locatorPageNumber);
+	void	redoRecordLocatorPage(int sectionId, int sequence, int32 pageNumber, bool isPostFlush);
+	void	redoFreePage(int32 pageNumber);
 	
 	Cache		*cache;
 	Database	*database;

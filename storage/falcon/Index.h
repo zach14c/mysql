@@ -26,10 +26,13 @@
 
 #include "Types.h"
 #include "Queue.h"
+#include "SQLError.h"
+#include "IndexKey.h"
 
 static const int INDEX_VERSION_0		= 0;
 static const int INDEX_VERSION_1		= 1;
-static const int INDEX_CURRENT_VERSION	= INDEX_VERSION_1;
+static const int INDEX_VERSION_2		= 2;
+static const int INDEX_CURRENT_VERSION	= INDEX_VERSION_2;
 
 //#define CHECK_DEFERRED_INDEXES
 
@@ -109,6 +112,9 @@ public:
 	void		makeKey (Record *record, IndexKey *key);
 	void		makeKey (int count, Value **values, IndexKey *key, bool highKey);
 	void		makeKey (Field *field, Value *value, int segment, IndexKey *key, bool highKey);
+	void		makeMultiSegmentKey(int count, Value **values, IndexKey *indexKey, bool highKey);
+	void		makeMultiSegmentKeyV1(int count, Value **values, IndexKey *indexKey, bool highKey);
+
 
 	void		detachDeferredIndex(DeferredIndex *deferredIndex);
 	UCHAR		getPadByte(void);
@@ -140,6 +146,7 @@ public:
 	int			indexId;
 	int			indexVersion;
 	int			type;
+	int			maxKeyLength;
 	int			*partialLengths;
 	uint64		*recordsPerSegment;
 	bool		savePending;
@@ -155,6 +162,13 @@ public:
 	SyncObject	syncDIHash;
 	SyncObject	syncUnique;
 	IndexWalker* positionIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, Transaction* transaction);
+
+private:
+	static inline void checkIndexKeyOverflow(int len, int maxLen = MAX_PHYSICAL_KEY_LENGTH)
+	{
+		if(len > maxLen)
+			throw SQLError (INDEX_OVERFLOW, "maximum index key length exceeded");
+	}
 };
 
 #endif // !defined(AFX_INDEX_H__02AD6A44_A433_11D2_AB5B_0000C01D2301__INCLUDED_)

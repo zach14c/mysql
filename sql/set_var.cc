@@ -491,6 +491,8 @@ static sys_var_thd_ulong        sys_optimizer_prune_level(&vars, "optimizer_prun
                                                   &SV::optimizer_prune_level);
 static sys_var_thd_ulong        sys_optimizer_search_depth(&vars, "optimizer_search_depth",
                                                    &SV::optimizer_search_depth);
+static sys_var_thd_optimizer_switch   sys_optimizer_switch(&vars, "optimizer_switch",
+                                     &SV::optimizer_switch);
 
 const char *optimizer_use_mrr_names[] = {"auto", "force", "disable", NullS};
 TYPELIB optimizer_use_mrr_typelib= {
@@ -606,6 +608,8 @@ sys_query_cache_wlock_invalidate(&vars, "query_cache_wlock_invalidate",
 static sys_var_bool_ptr	sys_secure_auth(&vars, "secure_auth", &opt_secure_auth);
 static sys_var_const_str_ptr sys_secure_file_priv(&vars, "secure_file_priv",
                                              &opt_secure_file_priv);
+static sys_var_const_str_ptr sys_secure_backup_file_priv(&vars, "secure_backup_file_priv",
+                                             &opt_secure_backup_file_priv);
 static sys_var_long_ptr	sys_server_id(&vars, "server_id", &server_id, fix_server_id);
 static sys_var_bool_ptr	sys_slave_compressed_protocol(&vars, "slave_compressed_protocol",
 						      &opt_slave_compressed_protocol);
@@ -630,8 +634,6 @@ static sys_var_thd_ulong	sys_sort_buffer(&vars, "sort_buffer_size",
 */
 static sys_var_thd_sql_mode    sys_sql_mode(&vars, "sql_mode",
                                             &SV::sql_mode);
-static sys_var_thd_optimizer_switch   sys_optimizer_switch(&vars, "optimizer_switch",
-                                     &SV::optimizer_switch);
 #if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
 extern char *opt_ssl_ca, *opt_ssl_capath, *opt_ssl_cert, *opt_ssl_cipher,
             *opt_ssl_key;
@@ -1408,7 +1410,7 @@ static void fix_max_binlog_size(THD *thd, enum_var_type type)
   mysql_bin_log.set_max_size(max_binlog_size);
 #ifdef HAVE_REPLICATION
   if (!max_relay_log_size)
-    active_mi->rli.relay_log.set_max_size(max_binlog_size);
+    active_mi->rli->relay_log.set_max_size(max_binlog_size);
 #endif
   DBUG_VOID_RETURN;
 }
@@ -1419,7 +1421,7 @@ static void fix_max_relay_log_size(THD *thd, enum_var_type type)
   DBUG_PRINT("info",("max_binlog_size=%lu max_relay_log_size=%lu",
                      max_binlog_size, max_relay_log_size));
 #ifdef HAVE_REPLICATION
-  active_mi->rli.relay_log.set_max_size(max_relay_log_size ?
+  active_mi->rli->relay_log.set_max_size(max_relay_log_size ?
                                         max_relay_log_size: max_binlog_size);
 #endif
   DBUG_VOID_RETURN;
@@ -2598,7 +2600,17 @@ static int  sys_check_log_path(THD *thd,  set_var *var)
   if (!(res= var->value->val_str(&str)))
     goto err;
 
-  log_file_str= res->c_ptr();
+  /*
+    Check maximum string length and error if too long.
+    Do not set the value.
+  */
+  if (res->length() > FN_REFLEN)
+  {
+    my_error(ER_PATH_LENGTH, MYF(0), var->var->name);
+    return 1;
+  }
+
+  log_file_str= res->c_ptr_safe();
   bzero(&f_stat, sizeof(MY_STAT));
 
   path_length= unpack_filename(path, log_file_str);
@@ -2805,7 +2817,7 @@ static bool sys_update_backup_history_log_path(THD *thd, set_var * var)
   String str(buff,sizeof(buff), system_charset_info), *res;
 
   res= var->value->val_str(&str);
-  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+  if (my_strcasecmp(system_charset_info, res->c_ptr_safe(), 
       sys_var_backup_progress_log_path.value) == 0)
   {
     my_error(ER_BACKUP_LOGPATHS, MYF(0));
@@ -2833,7 +2845,7 @@ static bool sys_update_backup_progress_log_path(THD *thd, set_var * var)
   String str(buff,sizeof(buff), system_charset_info), *res;
 
   res= var->value->val_str(&str);
-  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+  if (my_strcasecmp(system_charset_info, res->c_ptr_safe(), 
       sys_var_backup_history_log_path.value) == 0)
   {
     my_error(ER_BACKUP_LOGPATHS, MYF(0));
@@ -3010,7 +3022,7 @@ static int sys_check_backupdir(THD *thd, set_var *var)
   if (!(res= var->value->val_str(&str)))
     goto err;
 
-  log_file_str= res->c_ptr();
+  log_file_str= res->c_ptr_safe();
   bzero(&f_stat, sizeof(MY_STAT));
 
   /* Get dirname of the file path. */
@@ -3052,7 +3064,7 @@ err:
 static bool sys_update_backupdir(THD *thd, set_var * var)
 {
   char buff[FN_REFLEN];
-  char *res= 0, *old_value= NULL;
+  char *new_value= 0, *copied_value= NULL;
   bool result= 0;
   uint str_length;
   String str(buff, sizeof(buff), system_charset_info);
@@ -3063,16 +3075,26 @@ static bool sys_update_backupdir(THD *thd, set_var * var)
 
     if (!(strres= var->value->val_str(&str)))
       goto err;
-    old_value= strres->c_ptr();
+    copied_value= strres->c_ptr_safe();
     str_length= strres->length();
   }
   else
   {
-    old_value= make_default_backupdir(buff);
-    str_length= strlen(old_value);
+    copied_value= make_default_backupdir(buff);
+    str_length= strlen(copied_value);
   }
 
-  if (!(res= my_strndup(old_value, str_length, MYF(MY_FAE+MY_WME))))
+  /*
+    Check maximum string length and error if too long.
+    Do not set the value.
+  */
+  if (str_length > FN_REFLEN)
+  {
+    my_error(ER_PATH_LENGTH, MYF(0), var->var->name);
+    return 1;
+  }
+
+  if (!(new_value= my_strndup(copied_value, str_length, MYF(MY_FAE+MY_WME))))
   {
     result= 1;
     goto err;
@@ -3080,8 +3102,8 @@ static bool sys_update_backupdir(THD *thd, set_var * var)
 
   pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
-  old_value= sys_var_backupdir.value;
-  sys_var_backupdir.value= res;
+  my_free(sys_var_backupdir.value, MYF(MY_ALLOW_ZERO_PTR));
+  sys_var_backupdir.value= new_value;
   sys_var_backupdir.value_length= str_length;
   logger.unlock();
   pthread_mutex_unlock(&LOCK_global_system_variables);
@@ -3579,9 +3601,15 @@ static bool set_option_autocommit(THD *thd, set_var *var)
     need to commit any outstanding transactions.
    */
   if (var->save_result.ulong_value != 0 &&
-      (thd->options & OPTION_NOT_AUTOCOMMIT) &&
-      trans_commit(thd))
-    return 1;
+      (thd->options & OPTION_NOT_AUTOCOMMIT))
+  {
+    if (trans_commit(thd))
+      return TRUE;
+
+    close_thread_tables(thd);
+    if (!thd->locked_tables_mode)
+      thd->mdl_context.release_all_locks();
+  }
 
   if (var->save_result.ulong_value != 0)
     thd->options&= ~((sys_var_thd_bit*) var->var)->bit_flag;
@@ -4443,17 +4471,17 @@ symbolic_mode_representation(THD *thd, ulonglong val, LEX_STRING *rep)
 {
   char buff[STRING_BUFFER_USUAL_SIZE*8];
   String tmp(buff, sizeof(buff), &my_charset_latin1);
-
+  int i;
+  ulonglong bit;
   tmp.length(0);
-
-  for (uint i= 0; val; val>>= 1, i++)
+ 
+  for (i= 0, bit=1; bit != OPTIMIZER_SWITCH_LAST; i++, bit= bit << 1)
   {
-    if (val & 1)
-    {
-      tmp.append(optimizer_switch_typelib.type_names[i],
-                 optimizer_switch_typelib.type_lengths[i]);
-      tmp.append(',');
-    }
+    tmp.append(optimizer_switch_typelib.type_names[i],
+               optimizer_switch_typelib.type_lengths[i]);
+    tmp.append('=');
+    tmp.append((val & bit)? "on":"off");
+    tmp.append(',');
   }
 
   if (tmp.length())
@@ -4478,10 +4506,52 @@ uchar *sys_var_thd_optimizer_switch::value_ptr(THD *thd, enum_var_type type,
 }
 
 
+/*
+  Check (and actually parse) string representation of @@optimizer_switch.
+*/
+
+bool sys_var_thd_optimizer_switch::check(THD *thd, set_var *var)
+{
+  bool not_used;
+  char buff[STRING_BUFFER_USUAL_SIZE], *error= 0;
+  uint error_len= 0;
+  String str(buff, sizeof(buff), system_charset_info), *res;
+
+  if (!(res= var->value->val_str(&str)))
+  {
+    strmov(buff, "NULL");
+    goto err;
+  }
+  
+  if (res->length() == 0)
+  {
+    buff[0]= 0;
+    goto err;
+  }
+
+  var->save_result.ulong_value= 
+    (ulong)find_set_from_flags(&optimizer_switch_typelib, 
+                               optimizer_switch_typelib.count, 
+                               thd->variables.optimizer_switch,
+                               global_system_variables.optimizer_switch,
+                               res->c_ptr_safe(), res->length(), NULL,
+                               &error, &error_len, &not_used);
+  if (error_len)
+  {
+    strmake(buff, error, min(sizeof(buff) - 1, error_len));
+    goto err;
+  }
+  return FALSE;
+err:
+  my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), name, buff);
+  return TRUE;
+}
+
+
 void sys_var_thd_optimizer_switch::set_default(THD *thd, enum_var_type type)
 {
   if (type == OPT_GLOBAL)
-    global_system_variables.*offset= 0;
+    global_system_variables.*offset= OPTIMIZER_SWITCH_DEFAULT;
   else
     thd->variables.*offset= global_system_variables.*offset;
 }

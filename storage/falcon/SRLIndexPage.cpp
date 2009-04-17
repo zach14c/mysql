@@ -24,7 +24,6 @@
 #include "SerialLogTransaction.h"
 #include "Dbb.h"
 #include "IndexRootPage.h"
-#include "Index2RootPage.h"
 #include "Index.h"
 
 //////////////////////////////////////////////////////////////////////
@@ -41,7 +40,7 @@ SRLIndexPage::~SRLIndexPage()
 
 }
 
-void SRLIndexPage::append(Dbb *dbb, TransId transId, int idxVersion, int32 page, int32 lvl, int32 up, int32 left, int32 right, int length, const UCHAR *data)
+void SRLIndexPage::append(Dbb *dbb, TransId transId, int idxVersion, int32 page, int32 lvl, int32 right, int length, const UCHAR *data)
 {
 	START_RECORD(srlIndexPage, "SRLIndexPage::append");
 	
@@ -57,8 +56,6 @@ void SRLIndexPage::append(Dbb *dbb, TransId transId, int idxVersion, int32 page,
 	putInt(idxVersion);	
 	putInt(page);
 	putInt(lvl);
-	putInt(up);
-	putInt(left);
 	putInt(right);
 	putInt(length);
 	putData(length, data);
@@ -78,15 +75,16 @@ void SRLIndexPage::read()
 
 	pageNumber = getInt();
 	level = getInt();
-	parent = getInt();
-	prior = getInt();
+	if (control->version < srlVersion19)
+		{
+		getInt(); // parent pointer
+		getInt(); // prior pointer
+		}
 	next = getInt();
 	length = getInt();
 	data = getData(length);
 
-	if (log->tracePage && (log->tracePage == pageNumber ||
-						   log->tracePage == prior ||
-						   log->tracePage == next))
+	if (log->tracePage && (log->tracePage == pageNumber || log->tracePage == next))
 		print();
 }
 
@@ -97,38 +95,23 @@ void SRLIndexPage::pass1()
 
 void SRLIndexPage::pass2()
 {
-	if (log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse))
-		{
-		if (log->tracePage == pageNumber)
+	if (log->tracePage == pageNumber)
 			print();
 
+	if (log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse))
+		{
 		if (control->isPostFlush())
-			switch (indexVersion)
-				{
-				case INDEX_VERSION_0:
-					Index2RootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, parent, level, prior, next, length, data);
-					break;
-				
-				case INDEX_VERSION_1:
-					{
-					bool haveSuperNodes = (control->version >=srlVersion14);
-					IndexRootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, parent, level, prior, next, length, data,
-						haveSuperNodes);
-					}
-					break;
-				
-				default:
-					ASSERT(false);
-				}
+			{
+			bool haveSuperNodes = (control->version >=srlVersion14);
+			IndexRootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, level, next, length, data,
+				haveSuperNodes);
+			}
 		}
-	else 
-		if (log->tracePage == pageNumber)
-			print();
 }
 
 void SRLIndexPage::print()
 {
-	logPrint("Index page %d/%d, level %d, parent %d, prior %d, next %d\n", pageNumber, tableSpaceId, level, parent, prior, next);
+	logPrint("Index page %d/%d, level %d, next %d\n", pageNumber, tableSpaceId, level, next);
 }
 
 void SRLIndexPage::redo()

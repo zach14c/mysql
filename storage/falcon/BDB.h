@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright © 2006-2008 MySQL AB, 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -44,7 +44,6 @@
 		char		file[BDB_HISTORY_FILE_LEN];
 	};
 #else
-	#define HISTORY
 	#define ADD_HISTORY
 	#define COMMA_ADD_HISTORY
 	#define REL_HISTORY
@@ -70,7 +69,6 @@ public:
 	Bdb();
 	~Bdb();
 #ifdef COLLECT_BDB_HISTORY
-	void	ShowAllHistory(void);
 	void	ShowHistory(void);
 	void	initHistory();
 	void	addHistory(int delta, const char *file, int line);

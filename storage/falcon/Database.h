@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -34,7 +34,9 @@
 #define ODS_MINOR_VERSION1	1		// Has serial log
 #define ODS_MINOR_VERSION2	2		// Has SequencePages external to the section tree
 #define ODS_MINOR_VERSION3	3		// Switch to variable length record numbers in index
-#define ODS_MINOR_VERSION	ODS_MINOR_VERSION3
+#define ODS_MINOR_VERSION4	4		// Accidentially fixed multisegment keys wrt padding
+#define ODS_MINOR_VERSION5	5		// New multisegment index format
+#define ODS_MINOR_VERSION	ODS_MINOR_VERSION4
 
 #define COMBINED_VERSION(major,minor)	(major * 100 + minor)
 #define VERSION_CURRENT					COMBINED_VERSION(ODS_VERSION, ODS_MINOR_VERSION)					
@@ -61,7 +63,7 @@ static const int OUT_OF_RECORD_MEMORY_RETRIES = 10;
 
 // Milliseconds per iteration to wait for the Scavenger
 
-static const int SCAVENGE_WAIT_MS			  = 20;
+static const int SCAVENGE_WAIT_MS			  = 50;
 
 // Scavenger cycles per call to updateCardinalities()
 
@@ -120,11 +122,13 @@ class IndexKey;
 class InfoTable;
 class TableSpace;
 class MemMgr;
+class MemControl;
 class RecordScavenge;
 class PriorityScheduler;
 class SQLException;
 class BackLog;
 class SyncHandler;
+class CycleManager;
 
 struct JavaCallback;
 
@@ -146,6 +150,8 @@ public:
 	const char*		fetchTemplate (JString applicationName, JString templateName, TemplateContext *context);
 	void			licenseCheck();
 	void			serverOperation (int op, Parameters *parameters);
+	void			scavenge(bool forced = false);
+	void			scavengeCompiledStatements(void);
 	void			scavengeRecords(bool forced = false);
 	void			pruneRecords(RecordScavenge* recordScavenge);
 	void			retireRecords(RecordScavenge* recordScavenge);
@@ -173,12 +179,12 @@ public:
 	static void		scavengerThreadMain(void * database);
 	void			scavengerThreadMain(void);
 	void			scavengerThreadWakeup(void);
-	void			scavenge(bool forced = false);
 	void			validate (int optionMask);
 	Role*			findRole(const char *schemaName, const char * roleName);
 	User*			findUser (const char *account);
 	User*			createUser (const char *account, const char *password, bool encrypted, Coterie *coterie);
 	int				getMaxKeyLength(void);
+	void			checkODSVersion23();
 
 #ifndef STORAGE_ENGINE
 	void		startSessionManager();
@@ -254,7 +260,7 @@ public:
 	void			setIOError(SQLException* exception);
 	void			clearIOError(void);
 	void			flushWait(void);
-	void			setLowMemory(void);
+	void			setLowMemory(uint64 spaceNeeded);
 	void			clearLowMemory(void);
 
 
@@ -319,6 +325,7 @@ public:
 	TransactionManager	*transactionManager;
 	FilterSetManager	*filterSetManager;
 	TableSpaceManager	*tableSpaceManager;
+	CycleManager		*cycleManager;
 	SyncHandler			*syncHandler;
 	SearchWords			*searchWords;
 	Thread				*tickerThread;
@@ -331,7 +338,10 @@ public:
 	volatile INTERLOCK_TYPE	scavengeForced;
 	PageWriter			*pageWriter;
 	PreparedStatement	*updateCardinality;
-	MemMgr				*recordDataPool;
+	MemControl			*recordMemoryControl;
+	MemMgr				*recordDataPool;	// Record data pool (no object metadata)
+	MemMgr				*recordPool;		// Record object pool
+	MemMgr				*recordVersionPool;	// RecordVersion object pool
 	time_t				startTime;
 	
 	volatile int		deltaTime;
@@ -355,6 +365,7 @@ public:
 	uint64				lastGenerationMemory;
 	uint64				lastActiveMemoryChecked;
 	uint64				scavengeCount;
+	uint64				lowMemoryCount;
 	time_t				creationTime;
 	volatile time_t		lastScavenge;
 };

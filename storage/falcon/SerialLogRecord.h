@@ -26,12 +26,29 @@
 
 #include "SerialLog.h"
 #include "Sync.h"
+#include "ErrorInjector.h"
+
+//The purpose of thís helper class is to supply event to error injector when a 
+//log entry is written. Event is fired, when destructor of the helper object is
+//called.
+class SRLErrorInjectorHelper
+{
+	int srlId;
+public:
+	SRLErrorInjectorHelper(int id):srlId(id) {};
+	~SRLErrorInjectorHelper()
+	{
+		ERROR_INJECTOR_EVENT(InjectorSerialLogAppend, srlId);
+	}
+};
 
 #define START_RECORD(id,where)\
 	Sync sync(&log->syncWrite, where);\
+	SRLErrorInjectorHelper inject(id); \
 	sync.lock(Exclusive);\
 	startRecord();\
 	putInt(id);
+	
 
 static const int srlEnd				= 0;
 static const int srlSwitchLog		= 1;

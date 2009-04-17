@@ -40,24 +40,6 @@ SRLUpdateRecords::~SRLUpdateRecords(void)
 
 bool SRLUpdateRecords::chill(Transaction *transaction, RecordVersion *record, uint dataLength)
 {
-	Sync syncPrior(record->getSyncPrior(), "SRLUpdateRecords::chill");
-	
-	// Exclusively lock the record chain before chilling the record. Use a 50ms wait to defer
-	// to other tasks accessing the record chain.
-	//
-	// This is a provisional resolution to a syncPrior/syncWrite deadlock that can be triggered
-	// by a low-level thaw on a concurrent thread already holding syncPrior. Such a deadlock
-	// can occur while pruning record versions during during a scavenge.
-	
-	try
-		{
-		syncPrior.lock(Exclusive, 50);
-		}
-	catch (...)
-		{
-		return false;
-		}
-	
 	// Record data has been written to the serial log, so release the data
 	// buffer and set the state accordingly
 	

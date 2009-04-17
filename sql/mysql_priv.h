@@ -571,12 +571,27 @@ enum open_table_mode
 #define MODE_NO_ENGINE_SUBSTITUTION     (MODE_HIGH_NOT_PRECEDENCE*2)
 #define MODE_PAD_CHAR_TO_FULL_LENGTH    (ULL(1) << 31)
 
+/* @@optimizer_switch flags. These must be in sync with optimizer_switch_typelib */
+#define OPTIMIZER_SWITCH_FIRSTMATCH 1
+#define OPTIMIZER_SWITCH_INDEX_MERGE 2
+#define OPTIMIZER_SWITCH_INDEX_MERGE_UNION 4
+#define OPTIMIZER_SWITCH_INDEX_MERGE_SORT_UNION 8
+#define OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT 16
+#define OPTIMIZER_SWITCH_LOOSE_SCAN 32
+#define OPTIMIZER_SWITCH_MATERIALIZATION 64
+#define OPTIMIZER_SWITCH_SEMIJOIN 128
+#define OPTIMIZER_SWITCH_LAST 256
 
-/* @@optimizer_switch flags */
-#define OPTIMIZER_SWITCH_NO_MATERIALIZATION 1
-#define OPTIMIZER_SWITCH_NO_SEMIJOIN 2
-#define OPTIMIZER_SWITCH_NO_LOOSE_SCAN 4
-#define OPTIMIZER_SWITCH_NO_FIRSTMATCH 8
+/* The following must be kept in sync with optimizer_switch_str in mysqld.cc */
+#define OPTIMIZER_SWITCH_DEFAULT (OPTIMIZER_SWITCH_FIRSTMATCH | \
+                                  OPTIMIZER_SWITCH_INDEX_MERGE | \
+                                  OPTIMIZER_SWITCH_INDEX_MERGE_UNION | \
+                                  OPTIMIZER_SWITCH_INDEX_MERGE_SORT_UNION | \
+                                  OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT | \
+                                  OPTIMIZER_SWITCH_LOOSE_SCAN | \
+                                  OPTIMIZER_SWITCH_MATERIALIZATION | \
+                                  OPTIMIZER_SWITCH_SEMIJOIN)
+
 
 /*
   Replication uses 8 bytes to store SQL_MODE in the binary log. The day you
@@ -792,7 +807,7 @@ extern my_decimal decimal_zero;
 void free_items(Item *item);
 void cleanup_items(Item *item);
 class THD;
-void close_thread_tables(THD *thd, bool skip_mdl= 0);
+void close_thread_tables(THD *thd, bool is_back_off= 0);
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
 bool check_one_table_access(THD *thd, ulong privilege, TABLE_LIST *tables);
@@ -1868,6 +1883,10 @@ extern enum_field_types agg_field_type(Item **items, uint nitems);
 /* strfunc.cc */
 ulonglong find_set(TYPELIB *lib, const char *x, uint length, CHARSET_INFO *cs,
 		   char **err_pos, uint *err_len, bool *set_warning);
+ulonglong find_set_from_flags(TYPELIB *lib, uint default_name,
+                              ulonglong cur_set, ulonglong default_set,
+                              const char *str, uint length, CHARSET_INFO *cs,
+                              char **err_pos, uint *err_len, bool *set_warning);
 uint find_type(const TYPELIB *lib, const char *find, uint length,
                bool part_match);
 uint find_type2(const TYPELIB *lib, const char *find, uint length,
@@ -1971,10 +1990,12 @@ extern ulong specialflag;
 #ifdef MYSQL_SERVER
 extern ulong current_pid;
 extern ulong expire_logs_days;
-extern uint sync_binlog_period, sync_relaylog_period;
+extern uint sync_binlog_period, sync_relaylog_period, 
+            sync_relayloginfo_period, sync_masterinfo_period;
 extern ulong opt_tc_log_size, tc_log_max_pages_used, tc_log_page_size;
 extern ulong tc_log_page_waits;
 extern my_bool relay_log_purge, opt_innodb_safe_binlog, opt_innodb;
+extern my_bool relay_log_recovery;
 extern uint test_flags,select_errors,ha_open_options;
 extern uint protocol_version, mysqld_port, dropping_tables;
 extern uint delay_key_write_options;
@@ -2014,6 +2035,7 @@ extern my_bool opt_readonly, lower_case_file_system;
 extern my_bool opt_enable_named_pipe, opt_sync_frm, opt_allow_suspicious_udfs;
 extern my_bool opt_secure_auth;
 extern char* opt_secure_file_priv;
+extern char* opt_secure_backup_file_priv;
 extern my_bool opt_log_slow_admin_statements, opt_log_slow_slave_statements;
 extern my_bool sp_automatic_privileges, opt_noacl;
 extern my_bool opt_old_style_user_limits, trust_function_creators;

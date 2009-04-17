@@ -50,6 +50,7 @@ public:
 	int		nextSpaceSlot(int priorSlot);
 	int		findSpaceSlot(int32 pageNumber);
 	void	validateSpaceSlots(void);
+	void	validateSpaceSlots(short linesPerPage);
 	void	corrupt(void);
 	void	printPage(void);
 	void	setIndexSlot(int slot, int32 page, int line, int availableSpace);

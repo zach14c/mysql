@@ -1314,7 +1314,7 @@ void log_msg(const char *fmt, ...)
 void cat_file(DYNAMIC_STRING* ds, const char* filename)
 {
   int fd;
-  uint len;
+  size_t len;
   char buff[512];
 
   if ((fd= my_open(filename, O_RDONLY, MYF(0))) < 0)
@@ -1619,7 +1619,7 @@ int compare_files2(File fd, const char* filename2)
 {
   int error= RESULT_OK;
   File fd2;
-  uint len, len2;
+  size_t len, len2;
   char buff[512], buff2[512];
 
   if ((fd2= my_open(filename2, O_RDONLY, MYF(0))) < 0)
@@ -6916,14 +6916,6 @@ end:
     dynstr_free(&ds_execute_warnings);
   }
 
-
-  /* Close the statement if - no reconnect, need new prepare */
-  if (mysql->reconnect)
-  {
-    mysql_stmt_close(stmt);
-    cur_con->stmt= NULL;
-  }
-
   /*
     We save the return code (mysql_stmt_errno(stmt)) from the last call sent
     to the server into the mysqltest builtin variable $mysql_errno. This
@@ -6931,6 +6923,13 @@ end:
   */
 
   var_set_errno(mysql_stmt_errno(stmt));
+
+  /* Close the statement if reconnect, need new prepare */
+  if (mysql->reconnect)
+  {
+    mysql_stmt_close(stmt);
+    cur_con->stmt= NULL;
+  }
 
   DBUG_VOID_RETURN;
 }
@@ -7217,7 +7216,7 @@ void init_re_comp(my_regex_t *re, const char* str)
     char erbuf[100];
     int len= my_regerror(err, re, erbuf, sizeof(erbuf));
     die("error %s, %d/%d `%s'\n",
-	re_eprint(err), len, (int)sizeof(erbuf), erbuf);
+	re_eprint(err), (int)len, (int)sizeof(erbuf), erbuf);
   }
 }
 
@@ -7273,7 +7272,7 @@ int match_re(my_regex_t *re, char *str)
     char erbuf[100];
     int len= my_regerror(err, re, erbuf, sizeof(erbuf));
     die("error %s, %d/%d `%s'\n",
-	re_eprint(err), len, (int)sizeof(erbuf), erbuf);
+	re_eprint(err), (int)len, (int)sizeof(erbuf), erbuf);
   }
   return 0;
 }

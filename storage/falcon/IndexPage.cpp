@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -424,8 +424,6 @@ Bdb* IndexPage::splitIndexPageMiddle(Dbb * dbb, Bdb *bdb, IndexKey *splitKey, Tr
 		printPage (splitBdb, false);
 		}
 
-	logIndexPage(splitBdb, transId);
-
 	return splitBdb;
 }
 
@@ -628,8 +626,7 @@ Bdb* IndexPage::findLevel(Dbb * dbb, int32 indexId, Bdb *bdb, int level, IndexKe
 		IndexNode node (page->findNodeInBranch(indexKey, recordNumber));
 
 		int32 pageNumber = node.getNumber();
-		int32 parentPageNumber = bdb->pageNumber;
-		
+
 		if (pageNumber == END_BUCKET)
 			{
 			if (dbb->debug & (DEBUG_PAGES | DEBUG_FIND_LEVEL))
@@ -654,8 +651,7 @@ Bdb* IndexPage::findLevel(Dbb * dbb, int32 indexId, Bdb *bdb, int level, IndexKe
 
 		if (dbb->debug & (DEBUG_PAGES | DEBUG_FIND_LEVEL))
 			page->printPage (bdb, false);
-		
-		page->parentPage = parentPageNumber;
+
 		}
 
 	return bdb;
@@ -770,13 +766,11 @@ void IndexPage::printPage(IndexPage * page, int32 pageNumber, bool inversion)
 	UCHAR	key [MAX_PHYSICAL_KEY_LENGTH];
 	int		length;
 
-	Log::debug ("Btree Page %d, level %d, length %d, prior %d, next %d, parent %d\n", 
+	Log::debug ("Btree Page %d, level %d, length %d, next %d\n", 
 			pageNumber,
 			page->level,
 			page->length,
-			page->priorPage,
-			page->nextPage,
-			page->parentPage);
+			page->nextPage);
 
 	Btn *end = (Btn*) ((UCHAR*) page + page->length);
 	IndexNode node (page);
@@ -818,13 +812,11 @@ void IndexPage::printPage(IndexPage *page, int32 pageNum, bool printDetail, bool
 	int32	pageNumber = pageNum;
 #endif	
 
-	Log::debug ("Page: %d  level: %d  length: %d  prior: %d  next: %d  parent: %d BEGIN\n", 
+	Log::debug ("Page: %d  level: %d  length: %d next: %d BEGIN\n", 
 			pageNumber,
 			page->level,
 			page->length,
-			page->priorPage,
-			page->nextPage,
-			page->parentPage);
+			page->nextPage);
 
 	Btn *end = (Btn*) ((UCHAR*) page + page->length);
 	IndexNode node (page);
@@ -851,13 +843,10 @@ void IndexPage::printPage(IndexPage *page, int32 pageNum, bool printDetail, bool
 		}
 
 //	if (printDetail)
-		Log::debug ("Page: %d  level: %d  length: %d  prior: %d  next: %d  parent: %d END\n", 
+		Log::debug ("Page: %d  level: %d  length: %d  next: %d  END\n", 
 				pageNumber,
 				page->level,
-				page->length,
-				page->priorPage,
-				page->nextPage,
-				page->parentPage);
+				page->length);
 
 	int length = (int)((UCHAR*) node.node - (UCHAR*) page);
 
@@ -907,13 +896,11 @@ void IndexPage::printNode(IndexPage *page, int32 pageNumber, Btn *node, bool inv
 		
 	{
 	//LogLock logLock;
-	Log::debug("Page: %d  level: %d  length: %d  prior: %d  next: %d  parent: %d\n", 
+	Log::debug("Page: %d  level: %d  length: %d  next: %d  parent: %d\n", 
 			pageNumber,
 			page->level,
 			page->length,
-			page->priorPage,
-			page->nextPage,
-			page->parentPage);
+			page->nextPage);
 		
 	printNode(i, page, pageNumber, tmp, inversion);
 	}
@@ -1024,12 +1011,6 @@ void IndexPage::validateNodes(Dbb *dbb, Validation *validation, Bitmap *children
 				}
 			else if (validation->isPageType (bdb, PAGE_btree, "IndexPage"))
 				{
-				IndexPage *indexPage = (IndexPage*) bdb->buffer;
-				
-				if (indexPage->parentPage == parentPageNumber)
-					indexPage->validate (dbb, validation, children, bdb->pageNumber);
-				else
-					validation->error ("lost index child page %d, index id %d has wrong parent", pageNumber, validation->indexId);
 				}
 				
 			bdb->release(REL_HISTORY);
@@ -1163,8 +1144,6 @@ Bdb* IndexPage::splitIndexPageEnd(Dbb *dbb, Bdb *bdb, TransId transId, IndexKey 
 		printPage (splitBdb, false);
 		}
 
-	logIndexPage(splitBdb, transId);
-
 	return splitBdb;
 }
 
@@ -1197,21 +1176,8 @@ Bdb* IndexPage::splitPage(Dbb *dbb, Bdb *bdb, TransId transId)
 
 	split->level = level;
 	split->version = version;
-	split->priorPage = bdb->pageNumber;
-	split->parentPage = parentPage;
 	split->length = OFFSET(IndexPage*, nodes);
-	
-	// Link page into right sibling
-
-	if ((split->nextPage = nextPage))
-		{
-		Bdb *nextBdb = dbb->fetchPage (split->nextPage, PAGE_btree, Exclusive);
-		BDB_HISTORY(bdb);
-		IndexPage *next = (IndexPage*) nextBdb->buffer;
-		nextBdb->mark(transId);
-		next->priorPage = splitBdb->pageNumber;
-		nextBdb->release(REL_HISTORY);
-		}
+	split->nextPage = nextPage;
 
 	nextPage = splitBdb->pageNumber;
 
@@ -1225,7 +1191,7 @@ Btn* IndexPage::findInsertionPoint(IndexKey *indexKey, int32 recordNumber, Index
 	return findInsertionPoint(level, indexKey, recordNumber, expandedKey, nodes, bucketEnd);
 }
 
-void IndexPage::logIndexPage(Bdb *bdb, TransId transId)
+void IndexPage::logIndexPage(Bdb *bdb, TransId transId, Index *index)
 {
 	Dbb *dbb = bdb->dbb;
 
@@ -1233,23 +1199,18 @@ void IndexPage::logIndexPage(Bdb *bdb, TransId transId)
 		return;
 
 	ASSERT(bdb->useCount > 0);
+	ASSERT(bdb->lockType == Exclusive);
+	ASSERT(bdb->isDirty);
 	IndexPage *indexPage = (IndexPage*) bdb->buffer;
-	
-	/**** Debugging only -- can deadlock
-	if (indexPage->parentPage)
-		{
-		Bdb *parentBdb = dbb->fetchPage(indexPage->parentPage, PAGE_btree, Shared);
-		BDB_HISTORY(bdb);
-		IndexPage *parentPage = (IndexPage*) parentBdb->buffer;
-		ASSERT(parentPage->level == indexPage->level + 1);
-		parentBdb->release();
-		}
-	***/
-	
-	dbb->serialLog->logControl->indexPage.append(dbb, transId, INDEX_VERSION_1, bdb->pageNumber, indexPage->level, 
-												 indexPage->parentPage, indexPage->priorPage, indexPage->nextPage,  
-												 indexPage->length - OFFSET (IndexPage*, superNodes), 
-												 (const UCHAR*) indexPage->superNodes);
+	dbb->serialLog->logControl->indexPage.append(
+				dbb, 
+				transId,
+				index? index->indexVersion : INDEX_CURRENT_VERSION,
+				bdb->pageNumber,
+				indexPage->level,
+				indexPage->nextPage,
+				indexPage->length - OFFSET (IndexPage*, superNodes),
+				(const UCHAR*) indexPage->superNodes);
 }
  
 Btn* IndexPage::findInsertionPoint(int level, IndexKey* indexKey, int32 recordNumber, IndexKey* expandedKey, Btn* from, Btn* bucketEnd)

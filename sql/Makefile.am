@@ -81,9 +81,11 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			ha_ndbcluster_connection.h ha_ndbcluster_connection.h \
 			ha_ndbcluster_lock_ext.h \
 			ha_partition.h rpl_constants.h \
+			debug_sync.h \
 			opt_range.h protocol.h rpl_tblmap.h rpl_utility.h \
 			rpl_reporting.h \
-			log.h sql_show.h rpl_rli.h rpl_mi.h \
+			log.h sql_show.h rpl_info.h \
+			rpl_rli.h rpl_rli_file.h rpl_mi.h rpl_mi_file.h \
 			sql_select.h structs.h table.h sql_udf.h hash_filo.h \
 			lex.h lex_symbol.h sql_acl.h sql_crypt.h  \
 			sql_repl.h slave.h rpl_filter.h rpl_injector.h \
@@ -100,7 +102,7 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			event_data_objects.h event_scheduler.h \
 			sql_partition.h partition_info.h partition_element.h \
 			probes.h sql_audit.h transaction.h \
-			contributors.h sql_servers.h ddl_blocker.h \
+			contributors.h sql_servers.h bml.h \
 			si_objects.h si_logs.h sql_plist.h mdl.h records.h \
 			sql_signal.h \
 			rpl_handler.h replication.h sql_prepare.h debug_sync.h
@@ -136,6 +138,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_udf.cc sql_analyse.cc sql_analyse.h sql_cache.cc \
 			slave.cc sql_repl.cc rpl_filter.cc rpl_tblmap.cc \
 			rpl_utility.cc rpl_injector.cc rpl_rli.cc rpl_mi.cc \
+			rpl_info.cc rpl_rli_file.cc rpl_mi_file.cc \
 			rpl_reporting.cc \
                         sql_union.cc sql_derived.cc \
 			sql_client.cc \
@@ -150,7 +153,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_plugin.cc sql_binlog.cc \
 			sql_builtin.cc sql_tablespace.cc partition_info.cc \
 			sql_servers.cc sql_audit.cc sha2.cc \
-			ddl_blocker.cc si_objects.cc si_logs.cc \
+			bml.cc si_objects.cc si_logs.cc \
 			event_parse_data.cc mdl.cc transaction.cc \
 			sql_signal.cc \
 			rpl_handler.cc

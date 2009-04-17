@@ -65,7 +65,7 @@ ADD_EXECUTABLE(mysqld
                sql_join_cache.cc sql_lex.cc sql_list.cc sql_load.cc sql_manager.cc
                sql_map.cc sql_parse.cc  sql_partition.cc sql_plugin.cc
                sql_prepare.cc sql_rename.cc 
-               debug_sync.cc
+               debug_sync.cc debug_sync.h
                sql_repl.cc sql_select.cc sql_show.cc sql_state.c sql_string.cc 
                sql_table.cc sql_test.cc sql_trigger.cc sql_udf.cc sql_union.cc
                sql_update.cc sql_view.cc strfunc.cc table.cc thr_malloc.cc 
@@ -74,11 +74,11 @@ ADD_EXECUTABLE(mysqld
                event_queue.cc event_db_repository.cc 
                sql_tablespace.cc events.cc ../sql-common/my_user.c 
                partition_info.cc rpl_utility.cc rpl_injector.cc sql_locale.cc
-               rpl_rli.cc rpl_mi.cc sql_servers.cc sql_audit.cc
+               rpl_info.cc rpl_rli.cc rpl_rli_file.cc rpl_mi.cc rpl_mi_file.cc
+               sql_servers.cc sql_audit.cc
                sql_connect.cc scheduler.cc transaction.cc
-               ddl_blocker.cc si_objects.cc si_logs.cc
-               sql_profile.cc event_parse_data.cc mdl.cc rpl_handler.cc
-               sql_signal.cc
+               bml.cc si_objects.cc si_logs.cc
+               sql_profile.cc event_parse_data.cc mdl.cc rpl_handler.cc sql_signal.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.h
                ${PROJECT_SOURCE_DIR}/include/mysqld_error.h

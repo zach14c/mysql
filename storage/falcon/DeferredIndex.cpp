@@ -698,6 +698,12 @@ void DeferredIndex::scanIndex(IndexKey *lowKey, IndexKey *highKey, int searchFla
 	Sync sync(&syncObject, "DeferredIndex::scanIndex");
 	sync.lock(Shared);
 	bool isPartial = (searchFlags & Partial) == Partial;
+
+	// If  detached from transaction all index data is available
+	// in the regular index - no reason to search this
+
+	if (!transaction)
+		return;
 	
 	// If the starting value is above our max value, don't bother
 	
@@ -753,7 +759,6 @@ void DeferredIndex::detachTransaction(void)
 {
 	Sync sync(&syncObject, "DeferredIndex::detachTransaction");
 	sync.lock(Exclusive);
-	transaction = NULL;
 
 	if (index)
 		{
@@ -761,12 +766,11 @@ void DeferredIndex::detachTransaction(void)
 		Index *myIndex = index;
 		sync.unlock();
 		myIndex->detachDeferredIndex(this);
+		sync.lock(Exclusive);
 		index = NULL;
 		}
-	else
-		sync.unlock();
 
-	//releaseRef();
+	transaction = NULL;
 }
 
 bool DeferredIndex::chill(Dbb *dbb)

@@ -89,7 +89,7 @@ int32 WalkIndex::getNextNode(void)
 			
 			if (recordNumber >= 0)
 				return recordNumber;
-			else if (recordNumber == END_LEVEL)
+			else if (recordNumber == END_LEVEL || recordNumber == END_BUCKET)
 				return -1;
 			}
 			
