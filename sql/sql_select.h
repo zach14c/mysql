@@ -225,13 +225,13 @@ typedef struct st_join_table
   Item          *cache_idx_cond;
   SQL_SELECT    *cache_select;
   JOIN		*join;
-  /* SemiJoinDuplicateElimination variables: */
   /*
     Embedding SJ-nest (may be not the direct parent), or NULL if none.
     This variable holds the result of table pullout.
   */
   TABLE_LIST    *emb_sj_nest;
-
+  
+  /* FirstMatch variables (final QEP) */
   struct st_join_table *first_sj_inner_tab;
   struct st_join_table *last_sj_inner_tab;
 
