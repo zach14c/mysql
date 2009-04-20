@@ -5,10 +5,8 @@ server_id=1
 
 [mysqld.2]
 server_id=2
-replicate-ignore-db=test_slave1
 
 [mysqld.3]
-log-slave-updates
 server_id=3
 
 [ENV]

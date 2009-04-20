@@ -76,7 +76,8 @@ SET (SQL_SOURCE
                event_queue.cc event_db_repository.cc 
                sql_tablespace.cc events.cc ../sql-common/my_user.c 
                partition_info.cc rpl_utility.cc rpl_injector.cc sql_locale.cc
-               rpl_rli.cc rpl_mi.cc sql_servers.cc sql_audit.cc
+               rpl_info.cc rpl_rli.cc rpl_rli_file.cc rpl_mi.cc rpl_mi_file.cc
+               sql_servers.cc sql_audit.cc
                sql_connect.cc scheduler.cc transaction.cc
                bml.cc si_objects.cc si_logs.cc
                sql_profile.cc event_parse_data.cc mdl.cc rpl_handler.cc

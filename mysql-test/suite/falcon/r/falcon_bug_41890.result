@@ -1,0 +1,42 @@
+*** Bug #41890 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1, t2;
+create table t1(a int);
+insert into t1 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t2 (a int, filler char(200), key(a)) engine=falcon;
+insert into t2 select A.a+10*B.a+100*C.a, 'booooo' from t1 A, t1 B, t1 C;
+explain select * from t2 where a in (0,1,2,3,4,5,6,7,8,9);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t2	range	a	a	5	NULL	1000	Using where; Using MRR
+flush status;
+select * from t2 where a in (0,1,2,3,4,5,6,7,8,9);
+a	filler
+0	booooo
+1	booooo
+2	booooo
+3	booooo
+4	booooo
+5	booooo
+6	booooo
+7	booooo
+8	booooo
+9	booooo
+show status like 'Handler%';
+Variable_name	Value
+Handler_commit	1
+Handler_delete	0
+Handler_discover	0
+Handler_mrr_init	0
+Handler_prepare	0
+Handler_read_first	0
+Handler_read_key	0
+Handler_read_next	11
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	0
+Handler_rollback	0
+Handler_savepoint	0
+Handler_savepoint_rollback	0
+Handler_update	0
+Handler_write	2
+DROP TABLE t1, t2;
