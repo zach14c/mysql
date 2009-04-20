@@ -55,7 +55,7 @@ int DataPage::updateRecord(Section *section, int lineNumber, Stream *stream, Tra
 		int32 overflowPageNumber;
 		memcpy (&overflowPageNumber, ptr, sizeof (int32));
 
-		if (overflowPageNumber && !dbb->serialLog->recovering)
+		if (overflowPageNumber)
 			deleteOverflowPages (dbb, overflowPageNumber, transId);
 		}
 
@@ -301,7 +301,7 @@ int DataPage::deleteLine (Dbb *dbb, int line, TransId transId)
 		int32 overflowPageNumber;
 		memcpy (&overflowPageNumber, ptr, sizeof (int32));
 
-		if (overflowPageNumber && !dbb->serialLog->recovering)
+		if (overflowPageNumber)
 			deleteOverflowPages (dbb, overflowPageNumber, transId);
 		}
 
@@ -341,6 +341,16 @@ void DataPage::validate(Dbb *dbb)
 
 void DataPage::deleteOverflowPages(Dbb * dbb, int32 overflowPageNumber, TransId transId)
 {
+	SerialLog *log = dbb->serialLog;
+
+	if (log->recovering)
+		{
+		if (!log->isOverflowPageValid(overflowPageNumber, dbb->tableSpaceId))
+			return;
+		log->setOverflowPageInvalid(overflowPageNumber, dbb->tableSpaceId);
+		}
+
+
 	while (overflowPageNumber)
 		{
 		Bdb *bdb = dbb->fetchPage (overflowPageNumber, PAGE_data_overflow, Exclusive);

@@ -89,7 +89,11 @@ void SRLOverflowPages::pass2(void)
 		if (log->tracePage == pageNumber)
 			print();
 		
-		log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse);
+		if (log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse))
+			{
+			log->redoFreePage(pageNumber, tableSpaceId);
+			log->setOverflowPageInvalid(pageNumber, tableSpaceId);
+			}
 		}
 }
 

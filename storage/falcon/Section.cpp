@@ -782,9 +782,16 @@ int Section::storeTail(Stream * stream, int maxRecord, int *pLength, TransId tra
 
 	*pLength = length;
 	
-	if (!dbb->serialLog->recovering && !dbb->noLog)
-		dbb->serialLog->logControl->overflowPages.append(dbb, &pageNumbers);
-	
+
+	SerialLog *log = dbb->serialLog;
+	if (log)
+		{
+		if (log->recovering)
+			log->setOverflowPageValid(overflowPageNumber, dbb->tableSpaceSectionId);
+		else if (!earlyWrite)
+			log->logControl->overflowPages.append(dbb, &pageNumbers);
+		}
+
 	return overflowPageNumber;
 }
 
