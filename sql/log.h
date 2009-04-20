@@ -813,4 +813,6 @@ enum enum_binlog_format {
 };
 extern TYPELIB binlog_format_typelib;
 
+uint purge_log_get_error_code(int res);
+
 #endif /* LOG_H */
