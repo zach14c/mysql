@@ -18,6 +18,7 @@
 #include "SRLOverflowPages.h"
 #include "Bitmap.h"
 #include "SerialLogControl.h"
+#include "SerialLogTransaction.h"
 #include "Dbb.h"
 
 SRLOverflowPages::SRLOverflowPages(void)
@@ -97,27 +98,34 @@ void SRLOverflowPages::pass2(void)
 		
 		if (log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse))
 			{
-			if (control->version < srlVersion20)
+			bool isPageValid = false;
+
+			if (earlyWrite)
 				{
-				// We do not really know if this page  is on disk 
-				// or not, because early writeFlag is not available
-				// Don't delete it during recovery, otherwise data
-				// may be lost.
-				log->setOverflowPageInvalid(pageNumber, tableSpaceId);
+				SerialLogTransaction *transaction = log->findTransaction(transactionId);
+
+				if(transaction && transaction->state == sltCommitted)
+					// Page was flushed at commit
+					isPageValid = true;
+				}
+
+			if (isPageValid)
+				{
+				log->setOverflowPageValid(pageNumber, tableSpaceId);
 				}
 			else
 				{
-				if (earlyWrite)
+				log->setOverflowPageInvalid(pageNumber, tableSpaceId);
+				// Normal overflow pages  are always recreated in recovery,
+				// and we will deleted them here. Also delete uncommitted blob 
+				// pages.
+
+				// However, with older serial logs earlyWrite flag was not available,
+				// and we cannot tell a normal page from a blob page.
+				// In this case, keep the page - it might be a part of a valid blob.
+				if (control->version >= srlVersion20)
 					{
-					// It is a blob, and page is flushed to disk
-					log->setOverflowPageValid(pageNumber, tableSpaceId);
-					}
-				else
-					{
-					// Overflow page will be recreated, delete it to prevent
-					// lost pages.
 					log->redoFreePage(pageNumber, tableSpaceId);
-					log->setOverflowPageInvalid(pageNumber, tableSpaceId);
 					}
 				}
 			}
