@@ -1,0 +1,40 @@
+--source include/have_falcon.inc
+
+#
+# Bug #41890: Falcon: New execution plans with MRR cause slowdown for group of queries
+#
+--echo *** Bug #41890 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1, t2;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+create table t1(a int);
+insert into t1 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+
+create table t2 (a int, filler char(200), key(a)) engine=falcon;
+insert into t2 select A.a+10*B.a+100*C.a, 'booooo' from t1 A, t1 B, t1 C;
+
+explain select * from t2 where a in (0,1,2,3,4,5,6,7,8,9);
+flush status;
+select * from t2 where a in (0,1,2,3,4,5,6,7,8,9);
+
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+show status like 'Handler%';
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1, t2;
