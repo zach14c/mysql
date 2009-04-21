@@ -24,7 +24,7 @@
 #pragma once
 #endif // _MSC_VER > 1000
 
-static const int RPG_HASH_SIZE			= 101;
+static const int RPG_HASH_SIZE			= 1999;
 
 #include "SyncObject.h"
 class RecoveryPage;

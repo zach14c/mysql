@@ -41,18 +41,18 @@ enum RecordEncoding {
 
 // Record states
 
-static const int recData	= 0;		// record pointer is valid or record is deleted
-static const int recDeleted	= 1;		// record has been deleted
-static const int recChilled	= 2;		// record data is temporarily stored in serial log
-static const int recOnDisk	= 3;		// record is on disk and must be read
-static const int recLock	= 4;		// this is a "record lock" and not a record
-static const int recNoChill = 5;		// record is in use and should not be chilled
-static const int recRollback = 6;		// record is being rolled back
-static const int recUnlocked = 7;		// record is being unlocked
+static const int recData      = 0;		// record pointer is valid or record is deleted
+static const int recDeleted   = 1;		// record has been deleted
+static const int recChilled   = 2;		// record data is temporarily stored in serial log
+static const int recOnDisk    = 3;		// record is on disk and must be read
+static const int recLock      = 4;		// this is a "record lock" and not a record
+static const int recNoChill   = 5;		// record is in use and should not be chilled
+static const int recRollback  = 6;		// record is being rolled back
+static const int recUnlocked  = 7;		// record is being unlocked
 static const int recInserting = 8;		// record is being physically inserted
-static const int recDeleting = 9;		// record is being physically deleted
-static const int recPruning	 = 10;		// record is being pruned
-static const int recEndChain = 11;		// end of chain for garbage collection
+static const int recDeleting  = 9;		// record is being physically deleted
+static const int recPruning   = 10;		// record is being pruned
+static const int recEndChain  = 11;		// end of chain for garbage collection
 static const int recQueuedForDelete = 12;		// end of chain for garbage collection
 
 
@@ -80,6 +80,7 @@ static const int recQueuedForDelete = 12;		// end of chain for garbage collectio
 		long		useCount;
 		short		delta;
 		short		line;
+		UCHAR		state;
 		char		file[RECORD_HISTORY_FILE_LEN];
 	};
 #else
@@ -118,7 +119,7 @@ public:
 	virtual bool		isNull(int fieldId);
 	virtual Record*		releaseNonRecursive(void);
 	virtual Record*		clearPriorVersion(void);
-	virtual void		setPriorVersion(Record* record);
+	virtual void		setPriorVersion(Record *oldPriorVersion, Record *newPriorVersion);
 	virtual Record*		getPriorVersion();
 	virtual Record*		getGCPriorVersion(void);
 	virtual	void		print(void);

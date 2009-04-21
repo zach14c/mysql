@@ -1,3 +1,24 @@
+/* Copyright (C) 2009 MySQL AB, 2009 Sun Microsystems, Inc.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; version 2 of the License.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
+
+// CycleManager: implementation of the CycleManager class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#include <stdio.h>
+#include <stdlib.h>
 #include "Engine.h"
 #include "CycleManager.h"
 #include "Sync.h"
@@ -24,13 +45,30 @@ CycleManager::CycleManager(Database *db)
 	valuePurgatory = NULL;
 	bufferPurgatory = NULL;
 
-	currentCycle = &cycle1;
-	cycle1.setName("CycleManager::cycle1");
-	cycle2.setName("CycleManager::cycle2");
+	cycle1 = new SyncObject* [syncArraySize];
+	cycle2 = new SyncObject* [syncArraySize];
+	currentCycle = cycle1;
+	for (int i = 0; i < syncArraySize; i++)
+		{
+		cycle1[i] = NULL;
+		cycle2[i] = NULL;
+		}
 }
 
 CycleManager::~CycleManager(void)
 {
+	for (int i = 0; i < syncArraySize; i++)
+		{
+		if (cycle1[i] != NULL)
+			delete cycle1[i];
+
+		if (cycle2[i] != NULL)
+			delete cycle2[i];
+		}
+
+	delete [] cycle1;
+	delete [] cycle2;
+
 }
 
 void CycleManager::start(void)
@@ -109,25 +147,32 @@ void CycleManager::cycleManager(void)
 		
 		// Swap cycle clocks to start next cycle
 		
-		SyncObject *priorCycle = currentCycle;
-		currentCycle = (currentCycle == &cycle1) ? &cycle2 : &cycle1;
+		SyncObject **priorCycle = currentCycle;
+		currentCycle = (currentCycle == cycle1) ? cycle2 : cycle1;
 	
-		// Wait for previous cycle to complete
+		// Wait for the previous cycle to complete by getting an exclusive 
+		// lock on each of the allocated syncObjects in that cycle.
 		
-		Sync sync(priorCycle, "CycleManager::cycleManager");
-		sync.lock(Exclusive);
-		sync.unlock();
+		for (int i = 0; i < syncArraySize; i++)
+			{
+			if (priorCycle[i] != NULL)
+				{
+				Sync sync(priorCycle[i], "CycleManager::cycleManager");
+				sync.lock(Exclusive);
+				sync.unlock();
+				}
+			}
 		
 		for (RecordVersion *recordVersion; (recordVersion = doomedRecordVersions);)
 			{
 			doomedRecordVersions = recordVersion->nextInTrans;
-			recordVersion->release();
+			recordVersion->release(REC_HISTORY);
 			}
 
 		for (RecordList *recordList; (recordList = doomedRecords);)
 			{
 			doomedRecords = recordList->next;
-			recordList->zombie->release();
+			recordList->zombie->release(REC_HISTORY);
 			delete recordList;
 			}
 
@@ -144,8 +189,26 @@ void CycleManager::cycleManager(void)
 			DELETE_RECORD (bufferList->zombie);
 			delete bufferList;
 			}
-
 		}
+}
+
+SyncObject *CycleManager::getSyncObject(void)
+{
+	int slot = rand() & syncArrayMask;
+	SyncObject* syncObject = currentCycle[slot];
+	if (syncObject == NULL)
+		{
+		syncObject = new SyncObject;
+		if (COMPARE_EXCHANGE_POINTER(&currentCycle[slot], NULL, syncObject))
+			syncObject->setName("CycleManager::cycle1");
+		else // another thread beat us to the slot.
+			{
+			delete syncObject;
+			syncObject = currentCycle[slot];
+			}
+		}
+
+	return syncObject;
 }
 
 void CycleManager::queueForDelete(Record* zombie)
