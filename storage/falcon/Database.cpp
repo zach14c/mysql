@@ -1640,6 +1640,9 @@ void Database::shutdown()
 	if (shuttingDown)
 		return;
 
+	// Wait for all gophers to finish.
+	waitForWriteComplete(NULL);
+
 	if (updateCardinality)
 		{
 		updateCardinality->close();
