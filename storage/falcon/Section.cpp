@@ -788,8 +788,8 @@ int Section::storeTail(Stream * stream, int maxRecord, int *pLength, TransId tra
 		{
 		if (log->recovering)
 			log->setOverflowPageValid(overflowPageNumber, dbb->tableSpaceSectionId);
-		else if (!earlyWrite)
-			log->logControl->overflowPages.append(dbb, &pageNumbers);
+		else
+			log->logControl->overflowPages.append(dbb, &pageNumbers, earlyWrite);
 		}
 
 	return overflowPageNumber;

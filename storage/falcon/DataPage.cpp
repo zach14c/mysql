@@ -343,16 +343,14 @@ void DataPage::deleteOverflowPages(Dbb * dbb, int32 overflowPageNumber, TransId 
 {
 	SerialLog *log = dbb->serialLog;
 
-	if (log->recovering)
-		{
-		if (!log->isOverflowPageValid(overflowPageNumber, dbb->tableSpaceId))
-			return;
-		log->setOverflowPageInvalid(overflowPageNumber, dbb->tableSpaceId);
-		}
-
-
 	while (overflowPageNumber)
 		{
+		if (log->recovering)
+			{
+			if (!log->isOverflowPageValid(overflowPageNumber, dbb->tableSpaceId))
+				return;
+			log->setOverflowPageInvalid(overflowPageNumber, dbb->tableSpaceId);
+			}
 		Bdb *bdb = dbb->fetchPage (overflowPageNumber, PAGE_data_overflow, Exclusive);
 		BDB_HISTORY(bdb);
 		DataOverflowPage *page = (DataOverflowPage*) bdb->buffer;

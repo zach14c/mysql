@@ -28,12 +28,13 @@ SRLOverflowPages::~SRLOverflowPages(void)
 {
 }
 
-void SRLOverflowPages::append(Dbb *dbb, Bitmap* pageNumbers)
+void SRLOverflowPages::append(Dbb *dbb, Bitmap* pageNumbers, bool earlyWriteFlag)
 {
 	for (int pageNumber = 0; pageNumber >= 0;)
 		{
 		START_RECORD(srlOverflowPages, "SRLOverflowPages::append");
 		putInt(dbb->tableSpaceId);
+		putInt(earlyWriteFlag);
 		UCHAR *lengthPtr = putFixedInt(0);
 		UCHAR *start = log->writePtr;
 		UCHAR *end = log->writeWarningTrack;
@@ -63,6 +64,11 @@ void SRLOverflowPages::read(void)
 	else
 		tableSpaceId = 0;
 	
+	if (control->version >=srlVersion20)
+		earlyWrite = getInt();
+	else
+		earlyWrite = 0;
+
 	dataLength = getInt();
 	data = getData(dataLength);
 }
@@ -91,8 +97,29 @@ void SRLOverflowPages::pass2(void)
 		
 		if (log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse))
 			{
-			log->redoFreePage(pageNumber, tableSpaceId);
-			log->setOverflowPageInvalid(pageNumber, tableSpaceId);
+			if (control->version < srlVersion20)
+				{
+				// We do not really know if this page  is on disk 
+				// or not, because early writeFlag is not available
+				// Don't delete it during recovery, otherwise data
+				// may be lost.
+				log->setOverflowPageInvalid(pageNumber, tableSpaceId);
+				}
+			else
+				{
+				if (earlyWrite)
+					{
+					// It is a blob, and page is flushed to disk
+					log->setOverflowPageValid(pageNumber, tableSpaceId);
+					}
+				else
+					{
+					// Overflow page will be recreated, delete it to prevent
+					// lost pages.
+					log->redoFreePage(pageNumber, tableSpaceId);
+					log->setOverflowPageInvalid(pageNumber, tableSpaceId);
+					}
+				}
 			}
 		}
 }
