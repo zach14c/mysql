@@ -266,10 +266,6 @@ bool subquery_types_allow_materialization(THD *thd,
 int do_sj_reset(SJ_TMP_TABLE *sj_tbl);
 TABLE *create_duplicate_weedout_tmp_table(THD *thd, uint uniq_tuple_length_arg,
                                           SJ_TMP_TABLE *sjtbl);
-inline bool optimizer_flag(THD *thd, uint flag)
-{ 
-  return (thd->variables.optimizer_switch & flag);
-}
 
 Item_equal *find_item_equal(COND_EQUAL *cond_equal, Field *field,
                             bool *inherited_fl);
@@ -607,7 +603,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         9. Parent select is not a confluent table-less select
         10. Neither parent nor child select have STRAIGHT_JOIN option.
     */
-    if (!optimizer_flag(thd, OPTIMIZER_SWITCH_NO_SEMIJOIN) &&
+    if (optimizer_flag(thd, OPTIMIZER_SWITCH_SEMIJOIN) &&
         in_subs &&                                                    // 1
         !select_lex->is_part_of_union() &&                            // 2
         !select_lex->group_list.elements && !order &&                 // 3
@@ -696,7 +692,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         perform the whole transformation or only that part of it which wraps
         Item_in_subselect in an Item_in_optimizer.
       */
-      if (!optimizer_flag(thd, OPTIMIZER_SWITCH_NO_MATERIALIZATION)  && 
+      if (optimizer_flag(thd, OPTIMIZER_SWITCH_MATERIALIZATION)  && 
           in_subs  &&                                                   // 1
           !select_lex->is_part_of_union() &&                            // 2
           select_lex->master_unit()->first_select()->leaf_tables &&     // 3
@@ -1909,7 +1905,16 @@ JOIN::optimize()
 	      (group_list && order) ||
 	      test(select_options & OPTION_BUFFER_RESULT)));
 
-  uint no_jbuf_after= make_join_orderinfo(this);
+  /*
+    If the hint FORCE INDEX FOR ORDER BY/GROUP BY is used for the table
+    whose columns are required to be returned in a sorted order, then
+    the proper value for no_jbuf_after should be yielded by a call to
+    the make_join_orderinfo function. 
+    Yet the current implementation of FORCE INDEX hints does not
+    allow us to do it in a clean manner.
+  */   
+  uint no_jbuf_after= 1 ? tables : make_join_orderinfo(this);
+
   ulonglong select_opts_for_readinfo= 
     (select_options & (SELECT_DESCRIBE | SELECT_NO_JOIN_CACHE)) |
     (select_lex->ftfunc_list->elements ?  SELECT_NO_JOIN_CACHE : 0);
@@ -3864,13 +3869,15 @@ int pull_out_semijoin_tables(JOIN *join)
         }
       }
 
-      /* Remove the sj-nest itself if we've removed everything from it*/
+      /* Remove the sj-nest itself if we've removed everything from it */
       if (!inner_tables)
       {
         List_iterator<TABLE_LIST> li(*upper_join_list);
         /* Find the sj_nest in the list. */
         while (sj_nest != li++);
         li.remove();
+        /* Also remove it from the list of SJ-nests: */
+        sj_list_it.remove();
       }
 
       if (arena)
@@ -4332,9 +4339,6 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables_arg, COND *conds,
     }
   }
 
-  if (pull_out_semijoin_tables(join))
-    DBUG_RETURN(TRUE);
-
   /* Calc how many (possible) matched records in each table */
 
   for (s=stat ; s < stat_end ; s++)
@@ -4417,6 +4421,9 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables_arg, COND *conds,
     }
   }
 
+  if (pull_out_semijoin_tables(join))
+    DBUG_RETURN(TRUE);
+
   join->join_tab=stat;
   join->map2table=stat_ref;
   join->all_tables= table_vector;
@@ -4487,10 +4494,13 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
   DBUG_ENTER("optimize_semijoin_nests");
   List_iterator<TABLE_LIST> sj_list_it(join->select_lex->sj_nests);
   TABLE_LIST *sj_nest;
-  if (!optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_MATERIALIZATION))
+  if (optimizer_flag(join->thd, OPTIMIZER_SWITCH_MATERIALIZATION))
   {
     while ((sj_nest= sj_list_it++))
     {
+      /* semi-join nests with only constant tables are not valid */
+      DBUG_ASSERT(sj_nest->sj_inner_tables & ~join->const_table_map);
+
       sj_nest->sj_mat_info= NULL;
       if (sj_nest->sj_inner_tables && /* not everything was pulled out */
           !sj_nest->sj_subq_pred->is_correlated && 
@@ -5868,7 +5878,7 @@ public:
         !(remaining_tables & 
           s->emb_sj_nest->nested_join->sj_corr_tables) &&               // (4)
         remaining_tables & s->emb_sj_nest->nested_join->sj_depends_on &&// (5)
-        !optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_LOOSE_SCAN))
+        optimizer_flag(join->thd, OPTIMIZER_SWITCH_LOOSE_SCAN))
     {
       /* This table is an LooseScan scan candidate */
       bound_sj_equalities= get_bound_sj_equalities(s->emb_sj_nest, 
@@ -9334,22 +9344,11 @@ static void push_index_cond(JOIN_TAB *tab, uint keyno, bool other_tbls_ok)
 
 static uint make_join_orderinfo(JOIN *join)
 {
-  uint i;
+  JOIN_TAB *tab;
   if (join->need_tmp)
     return join->tables;
-
-  for (i=join->const_tables ; i < join->tables ; i++)
-  {
-    JOIN_TAB *tab=join->join_tab+i;
-    TABLE *table=tab->table;
-    if ((table == join->sort_by_table && 
-         (!join->order || join->skip_sort_order)) ||
-        (join->sort_by_table == (TABLE *) 1 && i != join->const_tables))
-    {
-      break;
-    }
-  }
-  return i-1;
+  tab= join->get_sort_by_join_tab();
+  return tab ? tab-join->join_tab : join->tables;
 }
 
 /*
@@ -10257,6 +10256,31 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
     }
   }
   join->join_tab[join->tables-1].next_select=0; /* Set by do_select */
+
+  /* 
+    If a join buffer is used to join a table the ordering by an index
+    for the first non-constant table cannot be employed anymore.
+  */
+  for (i=join->const_tables ; i < join->tables ; i++)
+  {
+    JOIN_TAB *tab=join->join_tab+i;
+    if (tab->use_join_cache)
+    {
+      JOIN_TAB *sort_by_tab= join->get_sort_by_join_tab();
+      if (sort_by_tab && !join->need_tmp)
+      {
+        join->need_tmp= 1;
+        join->simple_order= join->simple_group= 0;
+        if (sort_by_tab->type == JT_NEXT)
+        {
+          sort_by_tab->type= JT_ALL;
+          sort_by_tab->read_first_record= join_init_read_record;
+        }
+      }
+      break;
+    }
+  } 
+
   DBUG_RETURN(FALSE);
 }
 
@@ -12865,7 +12889,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
         !(remaining_tables &                             // (3)
           (s->emb_sj_nest->nested_join->sj_corr_tables | // (3)
            s->emb_sj_nest->nested_join->sj_depends_on)) && // (3)
-        !optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_FIRSTMATCH))
+        optimizer_flag(join->thd, OPTIMIZER_SWITCH_FIRSTMATCH))
     {
       /* Start tracking potential FirstMatch range */
       pos->first_firstmatch_table= idx;
@@ -14172,6 +14196,7 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   table->in_use= thd;
   table->quick_keys.init();
   table->covering_keys.init();
+  table->merge_keys.init();
   table->keys_in_use_for_query.init();
 
   table->s= share;

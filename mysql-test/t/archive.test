@@ -1602,6 +1602,8 @@ FLUSH TABLE t1;
 SELECT * FROM t1 ORDER BY a;
 DROP TABLE t1;
 
+--echo End of 5.1 tests
+
 #
 # BUG#40677 - Archive tables joined on primary return no result
 #

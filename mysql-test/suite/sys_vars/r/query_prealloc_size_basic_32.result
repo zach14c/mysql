@@ -35,12 +35,6 @@ SET @@global.query_prealloc_size   = 8192;
 SELECT @@global.query_prealloc_size  ;
 @@global.query_prealloc_size
 8192
-SET @@global.query_prealloc_size   = 4294967295;
-Warnings:
-Warning	1292	Truncated incorrect query_prealloc_size value: '4294967295'
-SELECT @@global.query_prealloc_size  ;
-@@global.query_prealloc_size
-4294966272
 SET @@global.query_prealloc_size   = 655354;
 SELECT @@global.query_prealloc_size  ;
 @@global.query_prealloc_size
@@ -50,12 +44,6 @@ SET @@session.query_prealloc_size   = 8192;
 SELECT @@session.query_prealloc_size  ;
 @@session.query_prealloc_size
 8192
-SET @@session.query_prealloc_size   = 4294967295;
-Warnings:
-Warning	1292	Truncated incorrect query_prealloc_size value: '4294967295'
-SELECT @@session.query_prealloc_size  ;
-@@session.query_prealloc_size
-4294966272
 SET @@session.query_prealloc_size   = 655345;
 SELECT @@session.query_prealloc_size  ;
 @@session.query_prealloc_size

@@ -4840,7 +4840,7 @@ int MYSQL_BIN_LOG::purge_first_log(Relay_log_info* rli, bool included)
   /* Store where we are in the new file for the execution thread */
   rli->flush_info();
 
-  DBUG_EXECUTE_IF("crash_before_purge_logs", abort(););
+  DBUG_EXECUTE_IF("crash_before_purge_logs", DBUG_ABORT(););
 
   pthread_mutex_lock(&rli->log_space_lock);
   rli->relay_log.purge_logs(to_purge_if_included, included,
@@ -4994,7 +4994,7 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
     goto err;
   }
 
-  DBUG_EXECUTE_IF("crash_after_update_index", abort(););
+  DBUG_EXECUTE_IF("crash_after_update_index", DBUG_ABORT(););
 
   /* Switch purge_temp for read. */
   if ((error=reinit_io_cache(&purge_temp, READ_CACHE, 0, 0, 0)))

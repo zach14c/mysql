@@ -41,6 +41,29 @@
 #include <winbase.h>
 #endif
 
+/**
+   arguments separator
+
+   load_defaults() loads arguments from config file and put them
+   before the arguments from command line, this separator is used to
+   separate the arguments loaded from config file and arguments user
+   provided on command line.
+
+   Options with value loaded from config file are always in the form
+   '--option=value', while for command line options, the value can be
+   given as the next argument. Thus we used a separator so that
+   handle_options() can distinguish them.
+
+   Note: any other places that does not need to distinguish them
+   should skip the separator.
+
+   The content of arguments separator does not matter, one should only
+   check the pointer, use "----args-separator----" here to ease debug
+   if someone misused it.
+
+   See BUG#25192
+*/
+const char *args_separator= "----args-separator----";
 const char *my_defaults_file=0;
 const char *my_defaults_group_suffix=0;
 char *my_defaults_extra_file=0;
@@ -183,7 +206,7 @@ int my_search_option_files(const char *conf_file, int *argc, char ***argv,
     /* Handle --defaults-group-suffix= */
     uint i;
     const char **extra_groups;
-    const uint instance_len= strlen(my_defaults_group_suffix); 
+    const size_t instance_len= strlen(my_defaults_group_suffix); 
     struct handle_option_ctx *ctx= (struct handle_option_ctx*) func_ctx;
     char *ptr;
     TYPELIB *group= ctx->group;
@@ -195,12 +218,12 @@ int my_search_option_files(const char *conf_file, int *argc, char ***argv,
     
     for (i= 0; i < group->count; i++)
     {
-      uint len;
+      size_t len;
       extra_groups[i]= group->type_names[i]; /** copy group */
       
       len= strlen(extra_groups[i]);
-      if (!(ptr= alloc_root(ctx->alloc, len+instance_len+1)))
-        DBUG_RETURN(2);
+      if (!(ptr= alloc_root(ctx->alloc, (uint) (len+instance_len+1))))
+       DBUG_RETURN(2);
       
       extra_groups[i+group->count]= ptr;
       
@@ -454,10 +477,11 @@ int my_load_defaults(const char *conf_file, const char **groups,
       goto err;
     res= (char**) (ptr+sizeof(alloc));
     res[0]= **argv;				/* Copy program name */
+    /* set arguments separator */
+    res[1]= args_separator;
     for (i=2 ; i < (uint) *argc ; i++)
-      res[i-1]=argv[0][i];
-    res[i-1]=0;					/* End pointer */
-    (*argc)--;
+      res[i]=argv[0][i];
+    res[i]=0;					/* End pointer */
     *argv=res;
     *(MEM_ROOT*) ptr= alloc;			/* Save alloc root for free */
     if (default_directories)
@@ -487,7 +511,7 @@ int my_load_defaults(const char *conf_file, const char **groups,
     or a forced default file
   */
   if (!(ptr=(char*) alloc_root(&alloc,sizeof(alloc)+
-			       (args.elements + *argc +1) *sizeof(char*))))
+			       (args.elements + *argc + 1 + 1) *sizeof(char*))))
     goto err;
   res= (char**) (ptr+sizeof(alloc));
 
@@ -508,12 +532,16 @@ int my_load_defaults(const char *conf_file, const char **groups,
     --*argc; ++*argv;				/* skip argument */
   }
 
-  if (*argc)
-    memcpy((uchar*) (res+1+args.elements), (char*) ((*argv)+1),
-	   (*argc-1)*sizeof(char*));
-  res[args.elements+ *argc]=0;			/* last null */
+  /* set arguments separator for arguments from config file and
+     command line */
+  res[args.elements+1]= args_separator;
 
-  (*argc)+=args.elements;
+  if (*argc)
+    memcpy((uchar*) (res+1+args.elements+1), (char*) ((*argv)+1),
+	   (*argc-1)*sizeof(char*));
+  res[args.elements+ *argc+1]=0;                /* last null */
+
+  (*argc)+=args.elements+1;
   *argv= (char**) res;
   *(MEM_ROOT*) ptr= alloc;			/* Save alloc root for free */
   delete_dynamic(&args);
@@ -523,7 +551,8 @@ int my_load_defaults(const char *conf_file, const char **groups,
     printf("%s would have been started with the following arguments:\n",
 	   **argv);
     for (i=1 ; i < *argc ; i++)
-      printf("%s ", (*argv)[i]);
+      if ((*argv)[i] != args_separator) /* skip arguments separator */
+        printf("%s ", (*argv)[i]);
     puts("");
     exit(0);
   }
@@ -1007,7 +1036,7 @@ void print_defaults(const char *conf_file, const char **groups)
 static int add_directory(MEM_ROOT *alloc, const char *dir, const char **dirs)
 {
   char buf[FN_REFLEN];
-  uint len;
+  size_t len;
   char *p;
   my_bool err __attribute__((unused));
 
@@ -1041,14 +1070,14 @@ static size_t my_get_system_windows_directory(char *buffer, size_t size)
                                              "GetSystemWindowsDirectoryA");
 
   if (func_ptr)
-    return func_ptr(buffer, size);
+    return func_ptr(buffer, (uint) size);
 
   /*
     Windows NT 4.0 Terminal Server Edition:  
     To retrieve the shared Windows directory, call GetSystemDirectory and
     trim the "System32" element from the end of the returned path.
   */
-  count= GetSystemDirectory(buffer, size);
+  count= GetSystemDirectory(buffer, (uint) size);
   if (count > 8 && stricmp(buffer+(count-8), "\\System32") == 0)
   {
     count-= 8;
@@ -1127,7 +1156,7 @@ static const char **init_default_directories(MEM_ROOT *alloc)
   errors += add_directory(alloc, "/etc/mysql/", dirs);
 
 #if defined(DEFAULT_SYSCONFDIR)
-  if (DEFAULT_SYSCONFDIR != "")
+  if (DEFAULT_SYSCONFDIR[0])
     errors += add_directory(alloc, DEFAULT_SYSCONFDIR, dirs);
 #endif /* DEFAULT_SYSCONFDIR */
 

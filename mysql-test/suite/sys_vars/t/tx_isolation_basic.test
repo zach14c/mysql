@@ -116,11 +116,8 @@ SET @@global.tx_isolation = -1;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@global.tx_isolation = READUNCOMMITTED;
 
-
+--Error ER_WRONG_VALUE_FOR_VAR
 SET @@global.tx_isolation = 'REPEATABLE';
-SELECT @@global.tx_isolation;
---echo 'Bug# 34833: REPEATABLE is not documented as as valid tx_isolation level'
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@global.tx_isolation = OFF;
 
@@ -136,11 +133,8 @@ SET @@global.tx_isolation = 'NON-SERIALIZABLE';
 SET @@tx_isolation = -1;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@tx_isolation = READUNCOMMITTED;
-
+--Error ER_WRONG_VALUE_FOR_VAR
 SET @@tx_isolation = 'REPEATABLE';
-SELECT @@tx_isolation;
---echo 'Bug# 34833: REPEATABLE is not documented as as valid tx_isolation level'
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@tx_isolation = 'NONE';
 --Error ER_WRONG_VALUE_FOR_VAR

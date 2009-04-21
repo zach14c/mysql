@@ -159,7 +159,7 @@ void Inversion::addWord(int keyLength, UCHAR *key, TransId transId)
 		if (iteration > 0)
 			ASSERT (false);
 
-		/* Node didn't fit.  Split the page page and propogate the
+		/* Node didn't fit.  Split the page page and propagate the
 		   split upward.  Sooner or laster we'll go back and re-try
 		   the original insertion */
 
@@ -167,7 +167,7 @@ void Inversion::addWord(int keyLength, UCHAR *key, TransId transId)
 		Bdb *splitBdb = page->splitInversionPage (dbb, bdb, &splitKey, transId);
 
 		if (page->parentPage)
-			propogateSplit (1, &splitKey, splitBdb->pageNumber, transId);
+			propagateSplit (1, &splitKey, splitBdb->pageNumber, transId);
 		else
 			{
 			Bdb *parentBdb = Index2Page::createNewLevel (dbb, 1, INVERSION_VERSION_NUMBER, bdb->pageNumber, splitBdb->pageNumber,
@@ -214,7 +214,7 @@ void Inversion::updateInversionRoot(int32 pageNumber, TransId transId)
 	bdb->release(REL_HISTORY);
 }
 
-void Inversion::propogateSplit(int level, IndexKey *indexKey, int32 pageNumber, TransId transId)
+void Inversion::propagateSplit(int level, IndexKey *indexKey, int32 pageNumber, TransId transId)
 {
 	for (int iteration = 0;; ++iteration)
 		{
@@ -248,7 +248,7 @@ void Inversion::propogateSplit(int level, IndexKey *indexKey, int32 pageNumber, 
 			{
 			bdb->release(REL_HISTORY);
 			splitBdb->release(REL_HISTORY);
-			propogateSplit (level + 1, &splitKey, splitBdb->pageNumber, transId);
+			propagateSplit (level + 1, &splitKey, splitBdb->pageNumber, transId);
 			}
 		else
 			{

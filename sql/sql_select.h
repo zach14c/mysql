@@ -225,13 +225,13 @@ typedef struct st_join_table
   Item          *cache_idx_cond;
   SQL_SELECT    *cache_select;
   JOIN		*join;
-  /* SemiJoinDuplicateElimination variables: */
   /*
     Embedding SJ-nest (may be not the direct parent), or NULL if none.
     This variable holds the result of table pullout.
   */
   TABLE_LIST    *emb_sj_nest;
-
+  
+  /* FirstMatch variables (final QEP) */
   struct st_join_table *first_sj_inner_tab;
   struct st_join_table *last_sj_inner_tab;
 
@@ -653,6 +653,9 @@ protected:
 
   /* Add null complements for unmatched outer records from buffer */
   virtual enum_nested_loop_state join_null_complements(bool skip_last);
+
+  /* Restore the fields of the last record from the join buffer */
+  virtual void restore_last_record();
 
   /*Set match flag for a record in join buffer if it has not been set yet */
   bool set_match_flag_if_none(JOIN_TAB *first_inner, uchar *rec_ptr);
@@ -1726,6 +1729,15 @@ public:
     return (unit == &thd->lex->unit && (unit->fake_select_lex == 0 ||
                                         select_lex == unit->fake_select_lex));
   }
+  /* 
+    Return the table for which an index scan can be used to satisfy 
+    the sort order needed by the ORDER BY/GROUP BY clause 
+  */
+  JOIN_TAB *get_sort_by_join_tab()
+  {
+    return (need_tmp || !sort_by_table || skip_sort_order) ?
+              NULL : join_tab+const_tables;
+  }
 private:
   bool make_simple_join(JOIN *join, TABLE *tmp_table);
 };
@@ -1932,3 +1944,9 @@ int test_if_item_cache_changed(List<Cached_item> &list);
 void calc_used_field_length(THD *thd, JOIN_TAB *join_tab);
 int join_init_read_record(JOIN_TAB *tab);
 int do_sj_dups_weedout(THD *thd, SJ_TMP_TABLE *sjtbl); 
+
+inline bool optimizer_flag(THD *thd, uint flag)
+{ 
+  return (thd->variables.optimizer_switch & flag);
+}
+

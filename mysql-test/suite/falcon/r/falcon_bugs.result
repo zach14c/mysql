@@ -931,30 +931,6 @@ SELECT * FROM t1 WHERE GRADE= 151;
 EMPNUM	EMPNAME	GRADE	CITY
 E3	Bill	151	NULL
 DROP TABLE t1;
-*** Bug #192 ***
-SET @@storage_engine = Falcon;
-DROP PROCEDURE IF EXISTS falcon4.pf3;
-DROP DATABASE IF EXISTS falcon4;
-CREATE DATABASE falcon4//
-USE falcon4//
-CREATE TABLE tf3 (
-s1 int, 
-s2 varchar(200)
-)//
-CREATE PROCEDURE pf3 () 
-BEGIN 
-declare v int default 0; 
-while v < 2 
-do 
-alter table tf3 partition by range (s1) (partition p4 values less than maxvalue);
-alter table tf3 remove partitioning;
-set v = v + 1; 
-end while; 
-END//
-CALL falcon4.pf3()//
-DROP PROCEDURE falcon4.pf3;
-DROP DATABASE falcon4;
-USE test;
 *** Bug #234 ***
 SET @@storage_engine = Falcon;
 DROP TABLE IF EXISTS t315;

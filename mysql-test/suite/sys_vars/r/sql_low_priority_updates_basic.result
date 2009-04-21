@@ -66,10 +66,7 @@ ERROR 42000: Variable 'sql_low_priority_updates' can't be set to the value of 'T
 SET @@session.sql_low_priority_updates = ÕN;
 ERROR 42000: Variable 'sql_low_priority_updates' can't be set to the value of 'Ã•N'
 SET @@session.sql_low_priority_updates = OF;
-SELECT @@session.sql_low_priority_updates;
-@@session.sql_low_priority_updates
-0
-'Bug# 34828: OF is taken as OFF and a value of 0 is set.'
+ERROR 42000: Variable 'sql_low_priority_updates' can't be set to the value of 'OF'
 SET @@session.sql_low_priority_updates = ÓFF;
 ERROR 42000: Variable 'sql_low_priority_updates' can't be set to the value of 'Ã“FF'
 SET @@global.sql_low_priority_updates = -1;
@@ -85,10 +82,7 @@ ERROR 42000: Variable 'sql_low_priority_updates' can't be set to the value of 'T
 SET @@global.sql_low_priority_updates = ÕN;
 ERROR 42000: Variable 'sql_low_priority_updates' can't be set to the value of 'Ã•N'
 SET @@global.sql_low_priority_updates = OF;
-SELECT @@global.sql_low_priority_updates;
-@@global.sql_low_priority_updates
-0
-'Bug# 34828: OF is taken as OFF and a value of 0 is set.'
+ERROR 42000: Variable 'sql_low_priority_updates' can't be set to the value of 'OF'
 SET @@global.sql_low_priority_updates = ÓFF;
 ERROR 42000: Variable 'sql_low_priority_updates' can't be set to the value of 'Ã“FF'
 '#-------------------FN_DYNVARS_159_05----------------------------#'
