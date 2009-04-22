@@ -57,14 +57,18 @@ BACKUP DATABASE db TO 'db.bak';
 backup_id
 #
 DROP DATABASE db;
-Enabling event scheduler.
-SET GLOBAL event_scheduler=on;
 con1: clearing log table and starting RESTORE operation.
 con1: RESTORE will pause after restoring table data.
-SET DEBUG_SYNC = 'restore_table_data_before_end SIGNAL waiting WAIT_FOR continue';
+SET DEBUG_SYNC = 'after_backup_start_restore SIGNAL started WAIT_FOR continue';
+SET DEBUG_SYNC = 'restore_table_data_before_end SIGNAL waiting WAIT_FOR finish';
 DELETE FROM test.logt;
 RESTORE FROM 'db.bak';
+SET DEBUG_SYNC = 'now WAIT_FOR started';
+Enabling event scheduler.
+SET GLOBAL event_scheduler=on;
+Get BACKUP going.
 SELECT now() INTO @start;
+SET DEBUG_SYNC = 'now SIGNAL continue';
 con2: checking that there are no triggers and events at the end of RESTORE execution.
 SET DEBUG_SYNC = 'now WAIT_FOR waiting';
 SHOW TRIGGERS FROM db;
@@ -72,14 +76,14 @@ SHOW EVENTS IN db;
 con2: activating trigger in test database.
 INSERT INTO test.t1 VALUES (1);
 con2: ensuring that RESTORE takes at least 3 secs.
-SET DEBUG_SYNC = 'now SIGNAL continue';
+SET DEBUG_SYNC = 'now SIGNAL finish';
 con1: finishing RESTORE operation.
 backup_id
 #
 SET GLOBAL event_scheduler=off;
 con2: checking that RESTORE took more than 2 secs.
-SELECT timediff(now(),@start) > 2;
-timediff(now(),@start) > 2
+SELECT timediff(now(),@start) > 3;
+timediff(now(),@start) > 3
 1
 Checking that objects have been restored.
 USE db;
@@ -173,19 +177,19 @@ character_set_client	latin1
 collation_connection	latin1_swedish_ci
 Database Collation	latin1_swedish_ci
 Checking that no db event or trigger fired during RESTORE.
-SELECT * FROM test.logt WHERE db = 'db' AND timediff(ts,@start) < 2;
+SELECT * FROM test.logt WHERE db = 'db' AND timediff(ts,@start) < 3;
 ts	db	msg
 Checking that test event and trigger could fire.
 SELECT count(*) > 0 FROM test.logt 
 WHERE db = 'test'
 AND msg LIKE '%trigger fired%'
-AND timediff(ts,@start) < 2;
+AND timediff(ts,@start) < 3;
 count(*) > 0
 1
 SELECT count(*) > 0 FROM test.logt 
 WHERE db = 'test'
 AND msg LIKE '%event fired%'
-AND timediff(ts,@start) < 2;
+AND timediff(ts,@start) < 3;
 count(*) > 0
 1
 Cleaning up.

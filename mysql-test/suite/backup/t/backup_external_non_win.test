@@ -7,6 +7,7 @@
 
 --source include/not_embedded.inc
 --source include/have_innodb.inc
+--source include/have_falcon.inc
 --source include/not_windows.inc
 --source suite/backup/include/backup_ext.inc
 --source suite/backup/include/have_dbi.inc
@@ -21,6 +22,8 @@ let $MYSQLD_DATADIR= `select @@datadir`;
 --disable_warnings
 DROP DATABASE IF EXISTS db1;
 DROP DATABASE IF EXISTS db2;
+--error 0,ER_NO_SUCH_TABLESPACE
+DROP TABLESPACE ts Engine=Falcon;
 --enable_warnings
 
 --echo #
@@ -230,5 +233,5 @@ SHOW CREATE TABLE db1.t1;
 
 DROP DATABASE db1;
 DROP DATABASE db2;
-
+DROP TABLESPACE ts Engine=Falcon;
 
