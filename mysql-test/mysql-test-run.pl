@@ -1764,15 +1764,31 @@ sub environment_setup {
   # --------------------------------------------------------------------------
   # Add the path where mysqld will find ha_example.so
   # --------------------------------------------------------------------------
-  if ($mysql_version_id >= 50100) {
+  if ($mysql_version_id >= 50100 && !(IS_WINDOWS && $opt_embedded_server)) {
+    my $plugin_filename;
+    if (IS_WINDOWS)
+    {
+       $plugin_filename = "ha_example.dll"; 
+    }
+    else 
+    {
+       $plugin_filename = "ha_example.so";
+    }
     my $lib_example_plugin=
-      mtr_file_exists(vs_config_dirs('storage/example', 'ha_example.dll'),
-		      "$basedir/storage/example/.libs/ha_example.so",);
+      mtr_file_exists(vs_config_dirs('storage/example',$plugin_filename),
+		      "$basedir/storage/example/.libs/".$plugin_filename);
     $ENV{'EXAMPLE_PLUGIN'}=
       ($lib_example_plugin ? basename($lib_example_plugin) : "");
     $ENV{'EXAMPLE_PLUGIN_OPT'}= "--plugin-dir=".
       ($lib_example_plugin ? dirname($lib_example_plugin) : "");
 
+    $ENV{'HA_EXAMPLE_SO'}="'".$plugin_filename."'";
+    $ENV{'EXAMPLE_PLUGIN_LOAD'}="--plugin_load=;EXAMPLE=".$plugin_filename.";";
+  }
+  else
+  {
+    $ENV{'EXAMPLE_PLUGIN_OPT'}="";
+    $ENV{'EXAMPLE_PLUGIN_LOAD'}="";
   }
 
   # ----------------------------------------------------
@@ -4034,6 +4050,10 @@ sub mysqld_arguments ($$$) {
            $mysqld->option("log-slave-updates"))
     {
       ; # Dont add --skip-log-bin when mysqld have --log-slave-updates in config
+    }
+    elsif ($arg eq "")
+    {
+      ; # Dont add empty arguments
     }
     else
     {

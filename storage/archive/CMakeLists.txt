@@ -13,23 +13,6 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-#
-# NOTE: The use of my_multi_malloc() in ha_archive.cc excludes the
-# definition of SAFEMALLOC and SAFE_MUTEX here, as long as it is not
-# defined in the top-level CMakeList.txt. So do not define it here
-# explicitly, but inherit from the top-level file. See Bug#43090.
-#
-#SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-#SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/zlib
-                    ${CMAKE_SOURCE_DIR}/sql
-                    ${CMAKE_SOURCE_DIR}/regex
-                    ${CMAKE_SOURCE_DIR}/extra/yassl/include)
-
+INCLUDE("${PROJECT_SOURCE_DIR}/storage/mysql_storage_engine.cmake")
 SET(ARCHIVE_SOURCES  azio.c ha_archive.cc ha_archive.h)
-
-IF(NOT SOURCE_SUBLIBS)
-  ADD_LIBRARY(archive ${ARCHIVE_SOURCES})
-  ADD_DEPENDENCIES(archive GenError)
-ENDIF(NOT SOURCE_SUBLIBS)
+MYSQL_STORAGE_ENGINE(ARCHIVE)
