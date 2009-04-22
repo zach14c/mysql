@@ -166,6 +166,15 @@ extern TC_LOG_DUMMY tc_log_dummy;
 #define LOG_CLOSE_TO_BE_OPENED	2
 #define LOG_CLOSE_STOP_EVENT	4
 
+/* unique log filename */
+#define MAX_LOG_UNIQUE_FN_EXT 0xFFFFFFFF
+
+/* 
+   Number of warnings that will be printed to error log
+   before extension number is exhausted.
+*/
+#define LOG_WARN_UNIQUE_FN_EXT_LEFT 1000
+
 class Relay_log_info;
 
 typedef struct st_log_info
