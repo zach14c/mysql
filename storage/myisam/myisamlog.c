@@ -80,8 +80,18 @@ int main(int argc, char **argv)
     printf("Trying to %s MyISAM files according to log '%s'\n",
 	   (mi_exl.recover ? "recover" : "update"),mi_exl.log_filename);
 
+  /*
+    mi_examine_log() may work faster with an initialized key cache.
+    But it works also if the initialization fails.
+  */
+  (void) init_key_cache(dflt_key_cache, KEY_CACHE_BLOCK_SIZE,
+                        KEY_CACHE_SIZE, 0, 0);
+
   error= mi_examine_log(&mi_exl);
   DBUG_PRINT("myisamlog", ("error from mi_examine_log: %d", error));
+
+  /* Free resources that might be used by the key cache. */
+  end_key_cache(dflt_key_cache, 1);
 
   if (mi_exl.update && ! error)
     puts("Tables updated successfully");

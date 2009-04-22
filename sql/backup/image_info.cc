@@ -193,8 +193,6 @@ int Image_info::add_snapshot(Snapshot_info &snap)
   bzero(&info, sizeof(st_bstream_snapshot_info));
   info.type= enum_bstream_snapshot_type(snap.type());
   info.version= snap.version();
-  info.table_count= snap.table_count();
-  
   if (snap.type() == Snapshot_info::NATIVE_SNAPSHOT)
   {
     Native_snapshot &ns= static_cast<Native_snapshot&>(snap);
@@ -313,6 +311,10 @@ Image_info::add_table(Db &db, const ::String &table_name,
 
   if (!snap.m_num)
    return NULL;
+
+  // Record the table count for the stream header.
+  st_bstream_snapshot_info &info= snapshot[snap.m_num-1];
+  info.table_count= snap.table_count();
 
   t->snap_num= snap.m_num - 1;
   t->base.base.pos= pos;
