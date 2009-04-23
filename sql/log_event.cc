@@ -7405,7 +7405,7 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli)
                           (ulong) m_curr_row, (ulong) m_curr_row_end, (ulong) m_rows_end));
 
       if (!m_curr_row_end && !error)
-        unpack_current_row(rli, &m_cols);
+        error= unpack_current_row(rli, &m_cols);
   
       // at this moment m_curr_row_end should be set
       DBUG_ASSERT(error || m_curr_row_end != NULL); 
@@ -8398,15 +8398,16 @@ Rows_log_event::write_row(const Relay_log_info *const rli,
      values filled in and one flag to handle the case that the default
      values should be checked. Maybe these two flags can be combined.
   */
+  bool abort_on_warnings= (rli->info_thd->variables.sql_mode &
+                           (MODE_STRICT_TRANS_TABLES | MODE_STRICT_ALL_TABLES));
   if ((error= prepare_record(table, &m_cols, m_width,
                              table->file->ht->db_type != DB_TYPE_NDBCLUSTER,
-                             (rli->info_thd->variables.sql_mode &
-                              (MODE_STRICT_TRANS_TABLES |
-                               MODE_STRICT_ALL_TABLES)))))
+                             abort_on_warnings, m_curr_row == m_rows_buf)))
     DBUG_RETURN(error);
   
   /* unpack row into table->record[0] */
-  error= unpack_current_row(rli, &m_cols);
+  if ((error= unpack_current_row(rli, &m_cols, abort_on_warnings)))
+    DBUG_RETURN(error);
 
   // Temporary fix to find out why it fails [/Matz]
   memcpy(m_table->write_set->bitmap, m_cols.bitmap, (m_table->write_set->n_bits + 7) / 8);
@@ -9210,8 +9211,12 @@ Update_rows_log_event::do_exec_row(const Relay_log_info *const rli)
 
   store_record(m_table,record[1]);
 
+  bool abort_on_warnings= (rli->info_thd->variables.sql_mode &
+                           (MODE_STRICT_TRANS_TABLES | MODE_STRICT_ALL_TABLES));
   m_curr_row= m_curr_row_end;
-  error= unpack_current_row(rli, &m_cols_ai); // this also updates m_curr_row_end
+  /* this also updates m_curr_row_end */
+  if ((error= unpack_current_row(rli, &m_cols_ai, abort_on_warnings)))
+    return error;
 
   /*
     Now we have the right row to update.  The old row (the one we're
