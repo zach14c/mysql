@@ -7831,6 +7831,10 @@ bool mysql_checksum_table(THD *thd, TABLE_LIST *tables,
 	  {
             if (thd->killed)
             {
+              /* 
+                 we've been killed; let handler clean up, and remove the 
+                 partial current row from the recordset (embedded lib) 
+              */
               t->file->ha_rnd_end();
               thd->protocol->remove_last_row();
               goto err;
