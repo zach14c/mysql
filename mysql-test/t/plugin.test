@@ -78,3 +78,4 @@ set session sql_mode=@old_sql_mode;
 set session old=bla;
 
 UNINSTALL PLUGIN example;
+

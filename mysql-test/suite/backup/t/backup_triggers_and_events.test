@@ -8,7 +8,7 @@
 let $MYSQLD_BACKUPDIR= `select @@backupdir`;
 --disable_warnings
 --error 0,1
-remove_file $MYSQLD_BACKUPDIR/db.bak;
+--remove_file $MYSQLD_BACKUPDIR/db.bak
 --enable_warnings
 
 SET GLOBAL event_scheduler=off;
@@ -118,9 +118,6 @@ delimiter ;||
 BACKUP DATABASE db TO 'db.bak';
 DROP DATABASE db;
 
---echo Enabling event scheduler.
-SET GLOBAL event_scheduler=on;
-
 --connection con1
 
 --echo con1: clearing log table and starting RESTORE operation.
@@ -130,14 +127,23 @@ SET GLOBAL event_scheduler=on;
 # after restore drivers have finished their job but before they have been shoot
 # down.
 
-SET DEBUG_SYNC = 'restore_table_data_before_end SIGNAL waiting WAIT_FOR continue';
+SET DEBUG_SYNC = 'after_backup_start_restore SIGNAL started WAIT_FOR continue';
+SET DEBUG_SYNC = 'restore_table_data_before_end SIGNAL waiting WAIT_FOR finish';
 DELETE FROM test.logt;
 --send RESTORE FROM 'db.bak'
 
 --connection con2
 
+SET DEBUG_SYNC = 'now WAIT_FOR started';
+--echo Enabling event scheduler.
+SET GLOBAL event_scheduler=on;
+# Give it a second to start
+--sleep 1
+
+--echo Get BACKUP going.
 # Record the time when RESTORE has started.
 SELECT now() INTO @start;
+SET DEBUG_SYNC = 'now SIGNAL continue';
 
 --echo con2: checking that there are no triggers and events at the end of RESTORE execution.
 
@@ -155,8 +161,8 @@ INSERT INTO test.t1 VALUES (1);
 
 # This is so that db.ev event has chance to fire if it is not correctly handled
 # (e.g. enabled during table data restore).
---sleep 3
-SET DEBUG_SYNC = 'now SIGNAL continue';
+--sleep 4
+SET DEBUG_SYNC = 'now SIGNAL finish';
 
 --connection con1
 
@@ -169,7 +175,7 @@ SET GLOBAL event_scheduler=off;
 
 -- echo con2: checking that RESTORE took more than 2 secs.
 
-SELECT timediff(now(),@start) > 2;
+SELECT timediff(now(),@start) > 3;
 
 --echo Checking that objects have been restored.
 
@@ -186,26 +192,26 @@ SELECT count(*) FROM db.t1;
 
 # There should be no entries in the log table from the time when RESTORE
 # was running (but there could be entries inserted by event firing *after*
-# RESTORE has completed). We know that RESTORE took at least 3 sec and we 
-# take 2 sec window form the beginning of the operation. This is enough
+# RESTORE has completed). We know that RESTORE took at least 4 sec and we
+# take 3 sec window from the beginning of the operation. This is enough
 # to see db.ev in case it fired during RESTORE operation (this event is sheduled
 # to fire every second).
 
-SELECT * FROM test.logt WHERE db = 'db' AND timediff(ts,@start) < 2;
+SELECT * FROM test.logt WHERE db = 'db' AND timediff(ts,@start) < 3;
 
 --echo Checking that test event and trigger could fire.
 
-# Checking that the trigger has fired.
+# Checking that the test trigger has fired during RESTORE.
 SELECT count(*) > 0 FROM test.logt 
 WHERE db = 'test'
 AND msg LIKE '%trigger fired%'
-AND timediff(ts,@start) < 2;
+AND timediff(ts,@start) < 3;
 
-# Checking that the event has fired.
+# Checking that the test event has fired during RESTORE.
 SELECT count(*) > 0 FROM test.logt 
 WHERE db = 'test'
 AND msg LIKE '%event fired%'
-AND timediff(ts,@start) < 2;
+AND timediff(ts,@start) < 3;
 
 --echo Cleaning up.
 SET DEBUG_SYNC = 'RESET';
@@ -214,4 +220,5 @@ DROP TRIGGER test.trg;
 DROP TABLE test.logt;
 DROP TABLE test.t1;
 DROP DATABASE db;
-remove_file $MYSQLD_BACKUPDIR/db.bak;
+
+--remove_file $MYSQLD_BACKUPDIR/db.bak

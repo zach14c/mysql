@@ -172,15 +172,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= DROP DATABASE bml_test_db1
 # DDL4= CREATE TABLE t1(a int)
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "CREATE VIEW v1 AS SELECT * FROM t2%"
-     OR info LIKE "DROP FUNCTION f1%";
-state	info
-BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
-debug sync point: before_execute_sql_command	DROP FUNCTION f1
-debug sync point: before_execute_sql_command	CREATE VIEW v1 AS SELECT * FROM t2
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -218,11 +209,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= DROP DATABASE bml_test_db1
 # DDL4= CREATE TABLE t1(a int)
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Database (bml%)
@@ -263,12 +249,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= DROP DATABASE bml_test_db1
 # DDL4= CREATE TABLE t1(a int)
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "DROP DATABASE bml_test_db1%"
-     OR info LIKE "CREATE TABLE t1(a int)%";
-state	info
-BML: waiting until released	CREATE TABLE t1(a int)
-BML: waiting until released	DROP DATABASE bml_test_db1
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Database (bml%)
@@ -407,15 +387,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= DROP VIEW v1
 # DDL4= CREATE FUNCTION f1() RETURNS int RETURN 1
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "CREATE DATABASE bml_test_db1%"
-     OR info LIKE "DROP TABLE t1%";
-state	info
-BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
-debug sync point: before_execute_sql_command	DROP TABLE t1
-debug sync point: before_execute_sql_command	CREATE DATABASE bml_test_db1
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -453,11 +424,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= DROP VIEW v1
 # DDL4= CREATE FUNCTION f1() RETURNS int RETURN 1
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Database (bml%)
@@ -498,12 +464,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= DROP VIEW v1
 # DDL4= CREATE FUNCTION f1() RETURNS int RETURN 1
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "DROP VIEW v1%"
-     OR info LIKE "CREATE FUNCTION f1() RETURNS int RETURN 1%";
-state	info
-BML: waiting until released	CREATE FUNCTION f1() RETURNS int RETURN 1
-BML: waiting until released	DROP VIEW v1
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Database (bml%)
@@ -644,15 +604,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= DROP PROCEDURE p1
 # DDL4= CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1%"
-     OR info LIKE "DROP INDEX i1 ON t2%";
-state	info
-BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
-debug sync point: before_execute_sql_command	DROP INDEX i1 ON t2
-debug sync point: before_execute_sql_command	CREATE TRIGGER r1 AFTER UPDATE ON t2 FOR EACH ROW SET @foo=1
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -689,11 +640,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= DROP PROCEDURE p1
 # DDL4= CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Database (bml%)
@@ -733,12 +679,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= DROP PROCEDURE p1
 # DDL4= CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "DROP PROCEDURE p1%"
-     OR info LIKE "CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1%";
-state	info
-BML: waiting until released	CREATE EVENT e1 ON SCHEDULE EVERY 1 YEAR DISABLE DO SET @foo=1
-BML: waiting until released	DROP PROCEDURE p1
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Database (bml%)
@@ -874,15 +814,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= DROP TRIGGER r1
 # DDL4= CREATE INDEX i1 ON t2(b)
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "CREATE PROCEDURE p1() SET @foo=1%"
-     OR info LIKE "DROP EVENT e1%";
-state	info
-BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
-debug sync point: before_execute_sql_command	DROP EVENT e1
-debug sync point: before_execute_sql_command	CREATE PROCEDURE p1() SET @foo=1
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -919,11 +850,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= DROP TRIGGER r1
 # DDL4= CREATE INDEX i1 ON t2(b)
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Database (bml%)
@@ -963,12 +889,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= DROP TRIGGER r1
 # DDL4= CREATE INDEX i1 ON t2(b)
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "DROP TRIGGER r1%"
-     OR info LIKE "CREATE INDEX i1 ON t2(b)%";
-state	info
-BML: waiting until released	CREATE INDEX i1 ON t2(b)
-BML: waiting until released	DROP TRIGGER r1
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Database (bml%)
@@ -1147,15 +1067,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= ALTER VIEW v1 AS SELECT 1
 # DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "ALTER DATABASE bml_test_db1 CHARACTER SET = utf8%"
-     OR info LIKE "ALTER TABLE t1 ADD INDEX `i` (a)%";
-state	info
-BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
-debug sync point: before_execute_sql_command	ALTER TABLE t1 ADD INDEX `i` (a)
-debug sync point: before_execute_sql_command	ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -1195,11 +1106,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= ALTER VIEW v1 AS SELECT 1
 # DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Database	Create Database
@@ -1243,12 +1149,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= ALTER VIEW v1 AS SELECT 1
 # DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "ALTER VIEW v1 AS SELECT 1%"
-     OR info LIKE "ALTER FUNCTION f1 COMMENT 'testing alter'%";
-state	info
-BML: waiting until released	ALTER FUNCTION f1 COMMENT 'testing alter'
-BML: waiting until released	ALTER VIEW v1 AS SELECT 1
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Database	Create Database
@@ -1399,15 +1299,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= ALTER PROCEDURE p1 COMMENT 'testing alter'
 # DDL4= ALTER EVENT e1 RENAME TO e2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "ALTER VIEW v1 AS SELECT 1%"
-     OR info LIKE "ALTER FUNCTION f1 COMMENT 'testing alter'%";
-state	info
-BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
-debug sync point: before_execute_sql_command	ALTER FUNCTION f1 COMMENT 'testing alter'
-debug sync point: before_execute_sql_command	ALTER VIEW v1 AS SELECT 1
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -1447,11 +1338,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= ALTER PROCEDURE p1 COMMENT 'testing alter'
 # DDL4= ALTER EVENT e1 RENAME TO e2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Database	Create Database
@@ -1495,12 +1381,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= ALTER PROCEDURE p1 COMMENT 'testing alter'
 # DDL4= ALTER EVENT e1 RENAME TO e2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "ALTER PROCEDURE p1 COMMENT 'testing alter'%"
-     OR info LIKE "ALTER EVENT e1 RENAME TO e2%";
-state	info
-BML: waiting until released	ALTER EVENT e1 RENAME TO e2
-BML: waiting until released	ALTER PROCEDURE p1 COMMENT 'testing alter'
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Database	Create Database
@@ -1651,15 +1531,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
 # DDL4= ALTER TABLE t1 ADD INDEX `i` (a)
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "ALTER PROCEDURE p1 COMMENT 'testing alter'%"
-     OR info LIKE "ALTER EVENT e1 RENAME TO e2%";
-state	info
-BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
-debug sync point: before_execute_sql_command	ALTER EVENT e1 RENAME TO e2
-debug sync point: before_execute_sql_command	ALTER PROCEDURE p1 COMMENT 'testing alter'
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -1699,11 +1570,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
 # DDL4= ALTER TABLE t1 ADD INDEX `i` (a)
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Database	Create Database
@@ -1747,12 +1613,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
 # DDL4= ALTER TABLE t1 ADD INDEX `i` (a)
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "ALTER DATABASE bml_test_db1 CHARACTER SET = utf8%"
-     OR info LIKE "ALTER TABLE t1 ADD INDEX `i` (a)%";
-state	info
-BML: waiting until released	ALTER TABLE t1 ADD INDEX `i` (a)
-BML: waiting until released	ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Database	Create Database
@@ -1903,15 +1763,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= ALTER VIEW v1 AS SELECT 1
 # DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "ALTER DATABASE bml_test_db1 CHARACTER SET = utf8%"
-     OR info LIKE "ALTER TABLE t1 ADD INDEX `i` (a)%";
-state	info
-BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
-debug sync point: before_execute_sql_command	ALTER TABLE t1 ADD INDEX `i` (a)
-debug sync point: before_execute_sql_command	ALTER DATABASE bml_test_db1 CHARACTER SET = utf8
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -1951,11 +1802,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= ALTER VIEW v1 AS SELECT 1
 # DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Database	Create Database
@@ -1999,12 +1845,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= ALTER VIEW v1 AS SELECT 1
 # DDL4= ALTER FUNCTION f1 COMMENT 'testing alter'
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "ALTER VIEW v1 AS SELECT 1%"
-     OR info LIKE "ALTER FUNCTION f1 COMMENT 'testing alter'%";
-state	info
-BML: waiting until released	ALTER FUNCTION f1 COMMENT 'testing alter'
-BML: waiting until released	ALTER VIEW v1 AS SELECT 1
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Database	Create Database
@@ -2181,15 +2021,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= RENAME USER bml_u2 TO bml_u2_renamed
 # DDL4= DROP TABLESPACE bml_ts1 ENGINE=falcon
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "RENAME TABLE t1 TO t1_renamed%"
-     OR info LIKE "DROP USER bml_u1%";
-state	info
-BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
-debug sync point: before_execute_sql_command	DROP USER bml_u1
-debug sync point: before_execute_sql_command	RENAME TABLE t1 TO t1_renamed
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -2224,11 +2055,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= RENAME USER bml_u2 TO bml_u2_renamed
 # DDL4= DROP TABLESPACE bml_ts1 ENGINE=falcon
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -2265,12 +2091,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= RENAME USER bml_u2 TO bml_u2_renamed
 # DDL4= DROP TABLESPACE bml_ts1 ENGINE=falcon
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "RENAME USER bml_u2 TO bml_u2_renamed%"
-     OR info LIKE "DROP TABLESPACE bml_ts1 ENGINE=falcon%";
-state	info
-BML: waiting until released	DROP TABLESPACE bml_ts1 ENGINE=falcon
-BML: waiting until released	RENAME USER bml_u2 TO bml_u2_renamed
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -2395,15 +2215,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= RENAME TABLE t1_renamed TO t1
 # DDL4= GRANT ALL ON bml_test.* TO bml_u2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "RENAME USER bml_u2_renamed TO bml_u2%"
-     OR info LIKE "GRANT ALL ON bml_test.* TO bml_u3%";
-state	info
-BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
-debug sync point: before_execute_sql_command	GRANT ALL ON bml_test.* TO bml_u3
-debug sync point: before_execute_sql_command	RENAME USER bml_u2_renamed TO bml_u2
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -2436,11 +2247,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= RENAME TABLE t1_renamed TO t1
 # DDL4= GRANT ALL ON bml_test.* TO bml_u2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -2477,12 +2283,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= RENAME TABLE t1_renamed TO t1
 # DDL4= GRANT ALL ON bml_test.* TO bml_u2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "RENAME TABLE t1_renamed TO t1%"
-     OR info LIKE "GRANT ALL ON bml_test.* TO bml_u2%";
-state	info
-BML: waiting until released	GRANT ALL ON bml_test.* TO bml_u2
-BML: waiting until released	RENAME TABLE t1_renamed TO t1
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -2611,15 +2411,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= DROP USER bml_u2
 # DDL4= REVOKE ALL ON bml_test.* FROM bml_u3
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "DROP TABLESPACE bml_ts2 ENGINE=falcon%"
-     OR info LIKE "REVOKE ALL ON bml_test.* FROM bml_u2%";
-state	info
-BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
-debug sync point: before_execute_sql_command	REVOKE ALL ON bml_test.* FROM bml_u2
-debug sync point: before_execute_sql_command	DROP TABLESPACE bml_ts2 ENGINE=falcon
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -2654,11 +2445,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= DROP USER bml_u2
 # DDL4= REVOKE ALL ON bml_test.* FROM bml_u3
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -2694,12 +2480,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= DROP USER bml_u2
 # DDL4= REVOKE ALL ON bml_test.* FROM bml_u3
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "DROP USER bml_u2%"
-     OR info LIKE "REVOKE ALL ON bml_test.* FROM bml_u3%";
-state	info
-BML: waiting until released	REVOKE ALL ON bml_test.* FROM bml_u3
-BML: waiting until released	DROP USER bml_u2
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -2845,15 +2625,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= TRUNCATE TABLE t1
 # DDL4= TRUNCATE TABLE t2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "OPTIMIZE TABLE t1%"
-     OR info LIKE "REPAIR TABLE t2 USE_FRM%";
-state	info
-BML: waiting for all statements to leave	BACKUP DATABASE bml_test TO 'bml_test.bkp'
-debug sync point: before_execute_sql_command	REPAIR TABLE t2 USE_FRM
-debug sync point: before_execute_sql_command	OPTIMIZE TABLE t1
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -2892,11 +2663,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= TRUNCATE TABLE t1
 # DDL4= TRUNCATE TABLE t2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: before_backup_meta	BACKUP DATABASE bml_test TO 'bml_test.bkp'
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -2933,12 +2699,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= TRUNCATE TABLE t1
 # DDL4= TRUNCATE TABLE t2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "TRUNCATE TABLE t1%"
-     OR info LIKE "TRUNCATE TABLE t2%";
-state	info
-BML: waiting until released	TRUNCATE TABLE t2
-BML: waiting until released	TRUNCATE TABLE t1
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -3067,15 +2827,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 # DDL3= REPAIR TABLE t1
 # DDL4= OPTIMIZE TABLE t2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "TRUNCATE t1%"
-     OR info LIKE "TRUNCATE t2%";
-state	info
-BML: waiting for all statements to leave	RESTORE FROM 'bml_test.bkp' OVERWRITE
-debug sync point: before_execute_sql_command	TRUNCATE t2
-debug sync point: before_execute_sql_command	TRUNCATE t1
 # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 object	notes	error_num
@@ -3109,11 +2860,6 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 # DDL3= REPAIR TABLE t1
 # DDL4= OPTIMIZE TABLE t2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
-state	info
-debug sync point: start_do_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
 # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -3150,12 +2896,6 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 # DDL3= REPAIR TABLE t1
 # DDL4= OPTIMIZE TABLE t2
 #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "REPAIR TABLE t1%"
-     OR info LIKE "OPTIMIZE TABLE t2%";
-state	info
-BML: waiting until released	OPTIMIZE TABLE t2
-BML: waiting until released	REPAIR TABLE t1
 # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 Tables_in_bml_test
@@ -3237,13 +2977,6 @@ SET SESSION debug="+d,set_backup_id";
 BACKUP DATABASE bml_test TO 'bml_test.bkp';;
 # Waiting for BACKUP to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_started TIMEOUT 3';
-# Check the state of both statements.
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "CREATE USER%";
-state	info
-debug sync point: after_backup_start_backup	BACKUP DATABASE bml_test TO 'bml_test.bkp'
-debug sync point: before_execute_sql_command	CREATE USER bml_usr
 # Checking that CREATE USER has not executed yet.
 SELECT User, Password FROM mysql.user WHERE User like 'bml%';
 User	Password
@@ -3299,13 +3032,6 @@ SET SESSION debug="+d,set_backup_id";
 RESTORE FROM 'bml_test.bkp' OVERWRITE;;
 # Waiting for RESTORE to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_started TIMEOUT 3';
-# Check the state of both statements.
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "RESTORE FROM%"
-     OR info LIKE "DROP SERVER%";
-state	info
-debug sync point: after_backup_start_restore	RESTORE FROM 'bml_test.bkp' OVERWRITE
-debug sync point: before_execute_sql_command	DROP SERVER bml_srv
 # Checking that DROP SERVER has not executed yet.
 SELECT Server_name FROM mysql.servers WHERE Server_name like 'bml%';
 Server_name

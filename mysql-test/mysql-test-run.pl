@@ -5195,7 +5195,7 @@ sub list_options ($) {
   my $hash= shift;
 
   for (keys %$hash) {
-    s/(=.*|!)$//;
+    s/(=.*|[+!])$//;
     s/\|/\n--/g;
     print "--$_\n";
   }

@@ -1,0 +1,37 @@
+###########################################################################
+# Purpose: To test backup using default driver with error injection
+###############################################################################
+--source include/have_debug.inc
+--source include/have_falcon.inc
+--source include/not_embedded.inc
+
+--let $BACKUPDIR= `SELECT @@backupdir`
+
+--disable_warnings
+DROP DATABASE IF EXISTS mysql_db1;
+--error 0, 1
+--remove_file $BACKUPDIR/mysqltest.bak
+--enable_warnings
+
+--echo #
+--echo # Bug#41722 - Restore crashes with backup of Falcon tables
+--echo #
+CREATE DATABASE mysql_db1;
+CREATE TABLE mysql_db1.t1 (c1 TEXT) ENGINE=Falcon;
+INSERT INTO mysql_db1.t1 VALUES('fdafdsfdsfdsfdsfdsfd');
+#
+--replace_column 1 #
+BACKUP DATABASE mysql_db1 TO 'mysqltest.bak';
+#
+DROP DATABASE mysql_db1;
+#
+--echo #
+--echo # Inject error Restore__send_data_write_error
+--echo #
+SET debug='d,Restore__send_data_write_error';
+--error ER_BACKUP_SEND_DATA
+RESTORE FROM 'mysqltest.bak';
+#
+SET debug= '';
+DROP DATABASE mysql_db1;
+--remove_file $BACKUPDIR/mysqltest.bak
