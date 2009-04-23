@@ -1837,10 +1837,10 @@ String *Item_func_encrypt::val_str(String *str)
     String *salt_str=args[1]->val_str(&tmp_value);
     if ((null_value= (args[1]->null_value || salt_str->length() < 2)))
       return 0;
-    salt_ptr= salt_str->c_ptr();
+    salt_ptr= salt_str->c_ptr_safe();
   }
   pthread_mutex_lock(&LOCK_crypt);
-  char *tmp= crypt(res->c_ptr(),salt_ptr);
+  char *tmp= crypt(res->c_ptr_safe(),salt_ptr);
   if (!tmp)
   {
     pthread_mutex_unlock(&LOCK_crypt);
@@ -1886,7 +1886,7 @@ String *Item_func_encode::val_str(String *str)
 
   null_value=0;
   res=copy_if_not_alloced(str,res,res->length());
-  SQL_CRYPT sql_crypt(password->ptr());
+  SQL_CRYPT sql_crypt(password->ptr(), password->length());
   sql_crypt.init();
   sql_crypt.encode((char*) res->ptr(),res->length());
   res->set_charset(&my_charset_bin);
@@ -1915,7 +1915,7 @@ String *Item_func_decode::val_str(String *str)
 
   null_value=0;
   res=copy_if_not_alloced(str,res,res->length());
-  SQL_CRYPT sql_crypt(password->ptr());
+  SQL_CRYPT sql_crypt(password->ptr(), password->length());
   sql_crypt.init();
   sql_crypt.decode((char*) res->ptr(),res->length());
   return res;
