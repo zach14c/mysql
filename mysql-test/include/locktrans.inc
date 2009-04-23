@@ -629,7 +629,18 @@ UNLOCK TABLES;
     UNLOCK TABLES;
         --echo # connection conn2.
         connection conn2;
-        --echo # Now the READ lock is taken.
+        --echo # Now the READ lock is taken (or timed out).
+        #
+        # On some machines the read lock timed out due to high system load.
+        # The goal of this test is to prove that a pending WRITE lock
+        # takes precedence over a pending READ lock. If the test arrives
+        # here, the proof is achieved, even if the read lock timed out.
+        # If the READ lock would take precedence, it would be granted
+        # immediately. Since conn1's read lock is unlocked only, the
+        # WRITE lock request would time out on conn2's READ lock.
+        # Hence it is safe to ignore a timeout on conn2's READ lock here.
+        #
+        --error 0, ER_LOCK_WAIT_TIMEOUT
         reap;
         --echo # Select from the table.
         SELECT * FROM t1;
@@ -684,7 +695,18 @@ UNLOCK TABLES;
     UNLOCK TABLES;
         --echo # connection conn2.
         connection conn2;
-        --echo # Now the READ lock is taken.
+        --echo # Now the READ lock is taken (or timed out).
+        #
+        # On some machines the read lock timed out due to high system load.
+        # The goal of this test is to prove that a pending WRITE lock
+        # takes precedence over a pending READ lock. If the test arrives
+        # here, the proof is achieved, even if the read lock timed out.
+        # If the READ lock would take precedence, it would be granted
+        # immediately. Since conn1's read lock is unlocked only, the
+        # WRITE lock request would time out on conn2's READ lock.
+        # Hence it is safe to ignore a timeout on conn2's READ lock here.
+        #
+        --error 0, ER_LOCK_WAIT_TIMEOUT
         reap;
         --echo # Select from the table.
         SELECT * FROM t1;

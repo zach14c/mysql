@@ -244,16 +244,34 @@ read_catalog(Image_info &info, Input_stream &s)
 /**
   Read the metadata.
 
+  @param[in]  thd   Connection thread handle. 
   @param[in]  info  The image info.
   @param[in]  s     The input stream.
 
   @retval  ERROR if stream error, OK if no errors.
+
+  FIXME: the thd parameter for read_meta_data() is here only because the
+  temporary code within the function needs it. It should be removed once the
+  issue is fixed (see BUG#41294).
 */
 inline
 result_t
-read_meta_data(Image_info &info, Input_stream &s)
+read_meta_data(THD *thd, Image_info &info, Input_stream &s)
 {
   int ret= bstream_rd_meta_data(&s, static_cast<st_bstream_image_header*>(&info));
+
+  /* 
+    FIXME: the following code is here because object services doesn't clean the
+    statement execution context properly, which leads to assertion failure.
+    It should be fixed inside object services implementation and then the
+    following line should be removed (see BUG#41294).
+   */
+  DBUG_ASSERT(thd);
+  close_thread_tables(thd);                   // Never errors
+  if (ret != BSTREAM_ERROR)
+    thd->clear_error();                       // Never errors  
+  /* end of temporary code */
+
   DBUG_EXECUTE_IF("restore_read_meta_data", ret= BSTREAM_ERROR;);
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }

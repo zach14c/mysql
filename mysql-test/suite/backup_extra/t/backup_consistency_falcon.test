@@ -1,0 +1,5 @@
+--source include/have_falcon.inc
+
+let $engine=falcon;
+
+--source suite/backup_extra/t/backup_consistency.inc

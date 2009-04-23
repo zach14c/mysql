@@ -1,0 +1,15 @@
+SELECT @@global.example_enum_var = 'e2';
+ERROR HY000: Unknown system variable 'example_enum_var'
+INSTALL PLUGIN example SONAME 'ha_example.so';
+SELECT @@global.example_enum_var = 'e2';
+@@global.example_enum_var = 'e2'
+0
+#
+# Bug#44137: Transactional DDL locking broke dynamic plugins
+#
+# Try to restart the server - plugin should be loaded after restart
+#
+SELECT @@global.example_enum_var = 'e2';
+@@global.example_enum_var = 'e2'
+0
+UNINSTALL PLUGIN example;
