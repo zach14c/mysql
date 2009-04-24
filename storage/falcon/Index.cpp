@@ -19,6 +19,7 @@
 
 #include <memory.h>
 #include <stdio.h>
+#include <string.h>
 #include "Engine.h"
 #include "Index.h"
 #include "PreparedStatement.h"
@@ -41,7 +42,6 @@
 #include "Bitmap.h"
 #include "Dbb.h"
 #include "IndexRootPage.h"
-#include "Index2RootPage.h"
 #include "PStatement.h"
 #include "RSet.h"
 #include "WalkIndex.h"
@@ -87,6 +87,7 @@ void Index::init(Table *tbl, const char *indexName, int indexType, int count)
 {
 	table = tbl;
 	database = table->database;
+	maxKeyLength = database->getMaxKeyLength();
 	dbb = table->dbb;
 	name = indexName;
 	type = indexType & IndexTypeMask;
@@ -296,7 +297,7 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey,
 
 	indexKey->keyLength = 0;
 
-	if (!value)
+	if (!value || (value->getType() == Null && indexVersion >= INDEX_VERSION_2))
 		return;
 
 	switch (field->type)
@@ -309,7 +310,7 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey,
 
 			if (field->collation)
 				{
-				field->collation->makeKey(value, indexKey, partialLength, database->getMaxKeyLength(), highKey);
+				field->collation->makeKey(value, indexKey, partialLength, maxKeyLength, highKey);
 				}
 			else
 				{
@@ -340,6 +341,7 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey,
 					indexKey->key[klen++] = 0x20;
 					}
 
+				indexKey->keyLength = (int) (q - key);
 				}
 			}
 			break;
@@ -356,6 +358,25 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey,
 		default:
 			indexKey->appendNumber(value->getDouble());
 		}
+
+	if (indexVersion < INDEX_VERSION_2)
+		return;
+
+	// Prepend 0x00 to empty keys, and keys starting with 0x00
+	// This is done to distinguish Null from empty keys, and to
+	// preserve the original sorting sequence
+	if (indexKey->keyLength == 0)
+		{
+		indexKey->key[0] = 0;
+		indexKey->keyLength++;
+		}
+	else if (indexKey->key[0] == 0)
+		{
+		size_t moveLen = MIN(indexKey->keyLength, MAX_PHYSICAL_KEY_LENGTH - 1);
+		memmove (indexKey->key + 1, indexKey->key, moveLen);
+		indexKey->key[0] = 0;
+		indexKey->keyLength = (uint)moveLen + 1;
+		}
 }
 
 void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
@@ -363,31 +384,88 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 	if (damaged)
 		damageCheck();
 
-// This causes a different keylength than other makeKey()s 
-// when the key is null.  This section is not needed.
-//	if (!count)
-//		{
-//		indexKey->keyLength = 0;
-//		
-//		return;
-//		}
+	if (indexVersion >= INDEX_VERSION_2)
+		makeMultiSegmentKey(count, values, indexKey, highKey);
+	else
+		makeMultiSegmentKeyV1(count,values, indexKey, highKey);
+}
+
+
+
+void Index::makeMultiSegmentKey(int count, Value **values, IndexKey *indexKey, bool highKey)
+{
+	uint p = 0;
+	int n;
+	UCHAR *key = indexKey->key;
 
 	if (numberFields == 1)
 		{
 		makeKey(fields[0], values[0], 0, indexKey, highKey);
-		
 		return;
 		}
-
-	uint p = 0;
-	int n;
-	UCHAR *key = indexKey->key;
 
 	for (n = 0; (n < count) && values[n]; ++n)
 		{
 		Field *field = fields[n];
 
-		
+		IndexKey tempKey(this);
+		makeKey(field, values[n], n, &tempKey, false);
+		int length = tempKey.keyLength;
+		UCHAR *t = tempKey.key;
+
+		for (int i=0; i< length; i++)
+			{
+			UCHAR c = t[i];
+
+			// Convert 0 to 0x0100, 1 to 0x0101
+			// other bytes remain unchanged.
+
+			if (c <= 1)
+				{
+				key[p++] = 1;
+				checkIndexKeyOverflow(p);
+				}
+
+			key[p++] = c;
+			checkIndexKeyOverflow(p);
+			}
+
+		// Add field separator
+		key[p++] = 0;
+		checkIndexKeyOverflow(p);
+		}
+
+	// Remove trailing nulls
+	while (p > 0 && key[p-1] == 0)
+		p--;
+
+	checkIndexKeyOverflow(p, maxIndexKeyRunLength(maxKeyLength));
+
+	indexKey->keyLength = p;
+}
+
+
+
+void Index::makeMultiSegmentKeyV1(int count, Value **values, IndexKey *indexKey, bool highKey)
+{
+	uint p = 0;
+	int n;
+	UCHAR *key = indexKey->key;
+
+	if (numberFields == 1)
+		{
+		makeKey(fields[0], values[0], 0, indexKey, highKey );
+		return;
+		}
+
+	bool ODSVersion23OrOlder = 
+		(COMBINED_VERSION(database->dbb->odsVersion, database->dbb->odsMinorVersion) <=
+		COMBINED_VERSION(2,3));
+
+	for (n = 0; (n < count) && values[n]; ++n)
+		{
+		Field *field = fields[n];
+
 		IndexKey tempKey(this);
 		makeKey(field, values[n], n, &tempKey, false);
 		int length = tempKey.keyLength;
@@ -401,9 +479,8 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 		if(n < numberFields - 1)
 			segmentLength = ROUNDUP(segmentLength , RUN);
 	
-		if (p + segmentLength > maxIndexKeyRunLength(database->getMaxKeyLength()))
-			throw SQLError (INDEX_OVERFLOW, "maximum index key length exceeded");
-			
+		checkIndexKeyOverflow(p + segmentLength, maxIndexKeyRunLength(maxKeyLength));
+
 		for (int i = 0; i < length; ++i)
 			{
 			if (p % RUN == 0)
@@ -414,22 +491,18 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey, bool highKey)
 
 		if (n < numberFields - 1)
 			{
-			char padByte = PAD_BYTE(field);
+			char padByte;
+
+			if (ODSVersion23OrOlder)
+				//PAD_BYTE is incorrect in these versions
+				//(has type of the next field)
+				padByte = PAD_BYTE(fields[n+1]);
+			else
+				padByte = PAD_BYTE(field);
 
 			while (p % RUN != 0)
 				key[p++] = padByte;
 			}
-		}
-
-	if (n && n < numberFields)
-		{
-		// We're constructing partial search key, with only some
-		// first fields given. Append segment byte for the next
-		// segment. This will make key larger and will hopefully
-		// reduce the number of false positives in search (saves
-		// work in postprocessing).
-		if (p < (uint)database->getMaxKeyLength())
-			key[p++] = SEGMENT_BYTE(n, numberFields);
 		}
 
 	indexKey->keyLength = p;
@@ -500,20 +573,8 @@ Bitmap* Index::scanIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, T
 	if (rootPage == 0)
 		getRootPage();
 		
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_0:
-			Index2RootPage::scanIndex (dbb, indexId, rootPage, lowKey, highKey, searchFlags, NO_TRANSACTION, bitmap);
-			break;
-		
-		case INDEX_VERSION_1:
-			IndexRootPage::scanIndex (dbb, indexId, rootPage, lowKey, highKey, searchFlags, NO_TRANSACTION, bitmap);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
-	
+	IndexRootPage::scanIndex (dbb, indexId, rootPage, lowKey, highKey, searchFlags, NO_TRANSACTION, bitmap);
+
 	if (transaction)
 		transaction->scanIndexCount++;
 		
@@ -534,16 +595,8 @@ IndexWalker* Index::positionIndex(IndexKey* lowKey, IndexKey* highKey, int searc
 	
 	if (rootPage == 0)
 		getRootPage();
-		
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_1:
-			IndexRootPage::positionIndex(dbb, indexId, rootPage, walkIndex);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
+	
+	IndexRootPage::positionIndex(dbb, indexId, rootPage, walkIndex);
 		
 	if (transaction && deferredIndexes.first)
 		{
@@ -618,12 +671,9 @@ void Index::update(Record * oldRecord, Record * record, Transaction *transaction
 	// Get key value
 				
 	IndexKey key(this);
-	makeKey (record, &key);
+	makeKey(record, &key);
 
 	// If there is a duplicate in the old version chain, don't bother with another
-
-	Sync syncPrior(record->format->table->getSyncPrior(record), "Index::update");
-	syncPrior.lock(Shared);
 
 	if (duplicateKey (&key, oldRecord))
 		return;
@@ -689,14 +739,7 @@ void Index::garbageCollect(Record * leaving, Record * staying, Transaction *tran
 				
 				if (!hit && !quiet)
 					{
-					/***
-					Log::log("Index deletion failed for record %d.%d of %s.%s.%s\n", 
-							 record->recordNumber, n, table->schemaName, table->name, (const char*) name);
-					***/
-					//int prevDebug = dbb->debug
-					//dbb->debug = DEBUG_PAGES | DEBUG_KEYS;
 					dbb->deleteIndexEntry(indexId, indexVersion, &key, record->recordNumber, TRANSACTION_ID(transaction));
-					//dbb->debug = prevDebug ;
 					}
 				}
 			}
@@ -783,14 +826,14 @@ void Index::rebuildIndex(Transaction *transaction)
 		damageCheck();
 
 	int oldId = indexId;
-	indexId = dbb->createIndex(TRANSACTION_ID(transaction), indexVersion);
+	indexId =dbb->createIndex(TRANSACTION_ID(transaction),INDEX_CURRENT_VERSION);
 
 	getRootPage();
 
 	PreparedStatement *statement = database->prepareStatement (
 		"update system.indexes set indexId=? where indexName=? and schema=? and tableName=?");
 	int n = 1;
-	statement->setInt (n++, INDEX_COMPOSITE (indexId, indexVersion));
+	statement->setInt (n++, INDEX_COMPOSITE (indexId, INDEX_CURRENT_VERSION));
 	statement->setString (n++, name);
 	statement->setString (n++, table->schemaName);
 	statement->setString (n++, table->name);
@@ -863,8 +906,8 @@ int Index::getPartialLength(int segment)
 
 void Index::setPartialLength(int segment, uint partialLength)
 {
-	if (partialLength > (uint) database->getMaxKeyLength())
-		partialLength = database->getMaxKeyLength();
+	if (partialLength > (uint) maxKeyLength)
+		partialLength = maxKeyLength;
 
 	if (!partialLengths)
 		{
@@ -927,7 +970,7 @@ void Index::checkMaxKeyLength(void)
 	Field *fld;
 	int sumKeyLen = 0;
 	int len;
-	int maxKeyLen = database->getMaxKeyLength() * RUN / (RUN - 1);
+	int maxKeyLen = maxKeyLength * RUN / (RUN - 1);
 
 	// All but the last field will be padded to the nearest RUN length
 	

@@ -119,7 +119,8 @@ enum StorageError {
 	StorageErrorTableSpaceNotExist	= -109,
 	StorageErrorDeviceFull			= -110,
 	StorageErrorTableSpaceDataFileExist	= -111,
-	StorageErrorIOErrorSerialLog	= -112
+	StorageErrorIOErrorSerialLog	= -112,
+	StorageErrorInternalError		= -113
 	};
 	
 static const int StoreErrorIndexShift	= 10;

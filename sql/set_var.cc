@@ -491,6 +491,8 @@ static sys_var_thd_ulong        sys_optimizer_prune_level(&vars, "optimizer_prun
                                                   &SV::optimizer_prune_level);
 static sys_var_thd_ulong        sys_optimizer_search_depth(&vars, "optimizer_search_depth",
                                                    &SV::optimizer_search_depth);
+static sys_var_thd_optimizer_switch   sys_optimizer_switch(&vars, "optimizer_switch",
+                                     &SV::optimizer_switch);
 
 const char *optimizer_use_mrr_names[] = {"auto", "force", "disable", NullS};
 TYPELIB optimizer_use_mrr_typelib= {
@@ -632,8 +634,6 @@ static sys_var_thd_ulong	sys_sort_buffer(&vars, "sort_buffer_size",
 */
 static sys_var_thd_sql_mode    sys_sql_mode(&vars, "sql_mode",
                                             &SV::sql_mode);
-static sys_var_thd_optimizer_switch   sys_optimizer_switch(&vars, "optimizer_switch",
-                                     &SV::optimizer_switch);
 #if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
 extern char *opt_ssl_ca, *opt_ssl_capath, *opt_ssl_cert, *opt_ssl_cipher,
             *opt_ssl_key;
@@ -1410,7 +1410,7 @@ static void fix_max_binlog_size(THD *thd, enum_var_type type)
   mysql_bin_log.set_max_size(max_binlog_size);
 #ifdef HAVE_REPLICATION
   if (!max_relay_log_size)
-    active_mi->rli.relay_log.set_max_size(max_binlog_size);
+    active_mi->rli->relay_log.set_max_size(max_binlog_size);
 #endif
   DBUG_VOID_RETURN;
 }
@@ -1421,7 +1421,7 @@ static void fix_max_relay_log_size(THD *thd, enum_var_type type)
   DBUG_PRINT("info",("max_binlog_size=%lu max_relay_log_size=%lu",
                      max_binlog_size, max_relay_log_size));
 #ifdef HAVE_REPLICATION
-  active_mi->rli.relay_log.set_max_size(max_relay_log_size ?
+  active_mi->rli->relay_log.set_max_size(max_relay_log_size ?
                                         max_relay_log_size: max_binlog_size);
 #endif
   DBUG_VOID_RETURN;
@@ -3949,7 +3949,6 @@ void set_var_free()
   @param str	   Name of system variable to find
   @param length    Length of variable.  zero means that we should use strlen()
                    on the variable
-  @param no_error  Refuse to emit an error, even if one occurred.
 
   @retval
     pointer	pointer to variable definitions
@@ -3957,7 +3956,7 @@ void set_var_free()
     0		Unknown variable (error message is given)
 */
 
-sys_var *intern_find_sys_var(const char *str, uint length, bool no_error)
+sys_var *intern_find_sys_var(const char *str, uint length)
 {
   sys_var *var;
 
@@ -3967,9 +3966,6 @@ sys_var *intern_find_sys_var(const char *str, uint length, bool no_error)
   */
   var= (sys_var*) my_hash_search(&system_variable_hash,
 			      (uchar*) str, length ? length : strlen(str));
-  if (!(var || no_error))
-    my_error(ER_UNKNOWN_SYSTEM_VARIABLE, MYF(0), (char*) str);
-
   return var;
 }
 
@@ -4482,17 +4478,17 @@ symbolic_mode_representation(THD *thd, ulonglong val, LEX_STRING *rep)
 {
   char buff[STRING_BUFFER_USUAL_SIZE*8];
   String tmp(buff, sizeof(buff), &my_charset_latin1);
-
+  int i;
+  ulonglong bit;
   tmp.length(0);
-
-  for (uint i= 0; val; val>>= 1, i++)
+ 
+  for (i= 0, bit=1; bit != OPTIMIZER_SWITCH_LAST; i++, bit= bit << 1)
   {
-    if (val & 1)
-    {
-      tmp.append(optimizer_switch_typelib.type_names[i],
-                 optimizer_switch_typelib.type_lengths[i]);
-      tmp.append(',');
-    }
+    tmp.append(optimizer_switch_typelib.type_names[i],
+               optimizer_switch_typelib.type_lengths[i]);
+    tmp.append('=');
+    tmp.append((val & bit)? "on":"off");
+    tmp.append(',');
   }
 
   if (tmp.length())
@@ -4517,10 +4513,52 @@ uchar *sys_var_thd_optimizer_switch::value_ptr(THD *thd, enum_var_type type,
 }
 
 
+/*
+  Check (and actually parse) string representation of @@optimizer_switch.
+*/
+
+bool sys_var_thd_optimizer_switch::check(THD *thd, set_var *var)
+{
+  bool not_used;
+  char buff[STRING_BUFFER_USUAL_SIZE], *error= 0;
+  uint error_len= 0;
+  String str(buff, sizeof(buff), system_charset_info), *res;
+
+  if (!(res= var->value->val_str(&str)))
+  {
+    strmov(buff, "NULL");
+    goto err;
+  }
+  
+  if (res->length() == 0)
+  {
+    buff[0]= 0;
+    goto err;
+  }
+
+  var->save_result.ulong_value= 
+    (ulong)find_set_from_flags(&optimizer_switch_typelib, 
+                               optimizer_switch_typelib.count, 
+                               thd->variables.optimizer_switch,
+                               global_system_variables.optimizer_switch,
+                               res->c_ptr_safe(), res->length(), NULL,
+                               &error, &error_len, &not_used);
+  if (error_len)
+  {
+    strmake(buff, error, min(sizeof(buff) - 1, error_len));
+    goto err;
+  }
+  return FALSE;
+err:
+  my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), name, buff);
+  return TRUE;
+}
+
+
 void sys_var_thd_optimizer_switch::set_default(THD *thd, enum_var_type type)
 {
   if (type == OPT_GLOBAL)
-    global_system_variables.*offset= 0;
+    global_system_variables.*offset= OPTIMIZER_SWITCH_DEFAULT;
   else
     thd->variables.*offset= global_system_variables.*offset;
 }

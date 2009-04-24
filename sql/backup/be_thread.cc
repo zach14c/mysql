@@ -238,6 +238,7 @@ end2:
   Constructor for Locking_thread_st structure.
 */
 Locking_thread_st::Locking_thread_st()
+ :m_thread_started(FALSE)
 {
   /*
     Initialize the thread mutex and cond variable.
@@ -257,13 +258,15 @@ Locking_thread_st::Locking_thread_st()
 Locking_thread_st::~Locking_thread_st()
 {
   /*
-    If the locking thread is not finished, we need to wait until
-    it is finished so that we can destroy the mutexes safely knowing
-    the locking thread won't access them.
+    If the locking thread has been started we need to kill it. We also need to 
+    wait until it dies before destroying the mutexes so that the locking thread 
+    won't access them any more.
   */
-  kill_locking_thread();
-  wait_until_locking_thread_dies();
-
+  if (m_thread_started)
+  {
+    kill_locking_thread();
+    wait_until_locking_thread_dies();
+  }
   /*
     Destroy the thread mutexes and cond variables.
   */
@@ -290,6 +293,7 @@ result_t Locking_thread_st::start_locking_thread(const char *tname)
   if (pthread_create(&th, &connection_attrib,
                      backup_thread_for_locking, this))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
+  m_thread_started= TRUE;
   DBUG_RETURN(backup::OK);
 }
 
@@ -303,6 +307,11 @@ result_t Locking_thread_st::start_locking_thread(const char *tname)
 void Locking_thread_st::kill_locking_thread()
 {
   DBUG_ENTER("Locking_thread_st::kill_locking_thread");
+
+  // Nothing to do if the locking thread has not been started.
+  if (!m_thread_started)
+    DBUG_VOID_RETURN;
+
   pthread_mutex_lock(&THR_LOCK_caller);
   if (lock_state == LOCK_ERROR)
     THD_SET_PROC_INFO(m_thd, "error in the locking thread");
@@ -334,6 +343,10 @@ void Locking_thread_st::kill_locking_thread()
 */
 void Locking_thread_st::wait_until_locking_thread_dies()
 {
+  // Nothing to do if the locking thread has not been started.
+  if (!m_thread_started)
+    return;
+
   pthread_mutex_lock(&THR_LOCK_caller);
   if (lock_state != LOCK_DONE)
   {
@@ -347,4 +360,6 @@ void Locking_thread_st::wait_until_locking_thread_dies()
   }
   else
     pthread_mutex_unlock(&THR_LOCK_caller);
+
+  m_thread_started= FALSE;
 }

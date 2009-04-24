@@ -1753,7 +1753,8 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
   field_list.push_back(field=new Item_empty_string("db",NAME_CHAR_LEN));
   field->maybe_null=1;
   field_list.push_back(new Item_empty_string("Command",16));
-  field_list.push_back(new Item_return_int("Time",7, MYSQL_TYPE_LONG));
+  field_list.push_back(field= new Item_return_int("Time",7, MYSQL_TYPE_LONG));
+  field->unsigned_flag= 0;
   field_list.push_back(field=new Item_empty_string("State",30));
   field->maybe_null=1;
   field_list.push_back(field=new Item_empty_string("Info",max_query_length));
@@ -1834,7 +1835,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
     else
       protocol->store(command_name[thd_info->command].str, system_charset_info);
     if (thd_info->start_time)
-      protocol->store((uint32) (now - thd_info->start_time));
+      protocol->store_long ((longlong) (now - thd_info->start_time));
     else
       protocol->store_null();
     protocol->store(thd_info->state_info, system_charset_info);
@@ -1910,8 +1911,8 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
         table->field[4]->store(command_name[tmp->command].str,
                                command_name[tmp->command].length, cs);
       /* MYSQL_TIME */
-      table->field[5]->store((uint32)(tmp->start_time ?
-                                      now - tmp->start_time : 0), TRUE);
+      table->field[5]->store((longlong)(tmp->start_time ?
+                                      now - tmp->start_time : 0), FALSE);
       /* STATE */
       if ((val= thread_state_info(tmp)))
       {
@@ -7010,7 +7011,7 @@ ST_FIELD_INFO processlist_fields_info[]=
    SKIP_OPEN_TABLE},
   {"DB", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, "Db", SKIP_OPEN_TABLE},
   {"COMMAND", 16, MYSQL_TYPE_STRING, 0, 0, "Command", SKIP_OPEN_TABLE},
-  {"TIME", 7, MYSQL_TYPE_LONGLONG, 0, 0, "Time", SKIP_OPEN_TABLE},
+  {"TIME", 7, MYSQL_TYPE_LONG, 0, 0, "Time", SKIP_OPEN_TABLE},
   {"STATE", 64, MYSQL_TYPE_STRING, 0, 1, "State", SKIP_OPEN_TABLE},
   {"INFO", PROCESS_LIST_INFO_WIDTH, MYSQL_TYPE_STRING, 0, 1, "Info",
    SKIP_OPEN_TABLE},
@@ -7310,10 +7311,10 @@ int finalize_schema_table(st_plugin_int *plugin)
   ST_SCHEMA_TABLE *schema_table= (ST_SCHEMA_TABLE *)plugin->data;
   DBUG_ENTER("finalize_schema_table");
 
-  if (schema_table && plugin->plugin->deinit)
+  if (schema_table)
   {
     DBUG_PRINT("info", ("Deinitializing plugin: '%s'", plugin->name.str));
-    if (plugin->plugin->deinit(NULL))
+    if (plugin->plugin->deinit && plugin->plugin->deinit(NULL))
     {
       DBUG_PRINT("warning", ("Plugin '%s' deinit function returned error.",
                              plugin->name.str));

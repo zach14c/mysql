@@ -5,10 +5,6 @@
 # because these just mean that your tables are already up to date.
 # This script is safe to run even if your tables are already up to date!
 
-# On unix, you should use the mysql_fix_privilege_tables script to execute
-# this sql script.
-# On windows you should do 'mysql --force mysql < mysql_fix_privilege_tables.sql'
-
 set sql_mode='';
 set storage_engine=MyISAM;
 
@@ -259,9 +255,9 @@ SET GLOBAL slow_query_log = @old_log_state;
 #
 
 ALTER TABLE plugin
-  MODIFY name char(64) COLLATE utf8_bin NOT NULL DEFAULT '',
-  MODIFY dl char(128) COLLATE utf8_bin NOT NULL DEFAULT '',
-  CONVERT TO CHARACTER SET utf8 COLLATE utf8_bin;
+  MODIFY name varchar(64) COLLATE utf8_general_ci NOT NULL DEFAULT '',
+  MODIFY dl varchar(128) COLLATE utf8_general_ci NOT NULL DEFAULT '',
+  CONVERT TO CHARACTER SET utf8 COLLATE utf8_general_ci;
 
 #
 # Detect whether we had Create_view_priv
@@ -611,3 +607,4 @@ UPDATE user SET Create_tablespace_priv = Super_priv WHERE @hadCreateTablespacePr
 flush privileges;
 
 ALTER TABLE backup_history ADD COLUMN backup_file_path VARCHAR (512) NOT NULL DEFAULT '' COMMENT 'The full path to the backup image file' AFTER backup_file;
+

@@ -131,11 +131,8 @@ SET @@global.low_priority_updates = test;
 SET @@session.low_priority_updates = ONN;
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.low_priority_updates = ONF;
-
+--error ER_WRONG_VALUE_FOR_VAR
 SET @@session.low_priority_updates = OF;
-SELECT @@session.low_priority_updates;
---echo 'Bug# 34828: OF is also working as OFF and no error is coming';
-
 --Error ER_WRONG_VALUE_FOR_VAR
 SET @@session.low_priority_updates = 'OFN';
 --Error ER_WRONG_VALUE_FOR_VAR

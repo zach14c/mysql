@@ -96,9 +96,9 @@ extern query_id_t global_query_id;
 inline query_id_t next_query_id() { return global_query_id++; }
 
 /* useful constants */
-extern const key_map key_map_empty;
-extern key_map key_map_full;          /* Should be threaded as const */
-extern const char *primary_key_name;
+extern MYSQL_PLUGIN_IMPORT const key_map key_map_empty;
+extern MYSQL_PLUGIN_IMPORT key_map key_map_full;          /* Should be threaded as const */
+extern MYSQL_PLUGIN_IMPORT const char *primary_key_name;
 
 #include "mysql_com.h"
 #include <violite.h>
@@ -153,8 +153,10 @@ bool net_request_file(NET* net, const char* fname);
                         (Old), #VerHi "." #VerLo, (New));                   \
   } while(0)
 
-extern CHARSET_INFO *system_charset_info, *files_charset_info ;
-extern CHARSET_INFO *national_charset_info, *table_alias_charset;
+extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *system_charset_info;
+extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *files_charset_info ;
+extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *national_charset_info;
+extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *table_alias_charset;
 
 /**
   Character set of the buildin error messages loaded from errmsg.sys.
@@ -564,12 +566,27 @@ enum open_table_mode
 #define MODE_NO_ENGINE_SUBSTITUTION     (MODE_HIGH_NOT_PRECEDENCE*2)
 #define MODE_PAD_CHAR_TO_FULL_LENGTH    (ULL(1) << 31)
 
+/* @@optimizer_switch flags. These must be in sync with optimizer_switch_typelib */
+#define OPTIMIZER_SWITCH_FIRSTMATCH 1
+#define OPTIMIZER_SWITCH_INDEX_MERGE 2
+#define OPTIMIZER_SWITCH_INDEX_MERGE_UNION 4
+#define OPTIMIZER_SWITCH_INDEX_MERGE_SORT_UNION 8
+#define OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT 16
+#define OPTIMIZER_SWITCH_LOOSE_SCAN 32
+#define OPTIMIZER_SWITCH_MATERIALIZATION 64
+#define OPTIMIZER_SWITCH_SEMIJOIN 128
+#define OPTIMIZER_SWITCH_LAST 256
 
-/* @@optimizer_switch flags */
-#define OPTIMIZER_SWITCH_NO_MATERIALIZATION 1
-#define OPTIMIZER_SWITCH_NO_SEMIJOIN 2
-#define OPTIMIZER_SWITCH_NO_LOOSE_SCAN 4
-#define OPTIMIZER_SWITCH_NO_FIRSTMATCH 8
+/* The following must be kept in sync with optimizer_switch_str in mysqld.cc */
+#define OPTIMIZER_SWITCH_DEFAULT (OPTIMIZER_SWITCH_FIRSTMATCH | \
+                                  OPTIMIZER_SWITCH_INDEX_MERGE | \
+                                  OPTIMIZER_SWITCH_INDEX_MERGE_UNION | \
+                                  OPTIMIZER_SWITCH_INDEX_MERGE_SORT_UNION | \
+                                  OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT | \
+                                  OPTIMIZER_SWITCH_LOOSE_SCAN | \
+                                  OPTIMIZER_SWITCH_MATERIALIZATION | \
+                                  OPTIMIZER_SWITCH_SEMIJOIN)
+
 
 /*
   Replication uses 8 bytes to store SQL_MODE in the binary log. The day you
@@ -696,7 +713,7 @@ typedef struct st_sql_list {
 } SQL_LIST;
 
 
-extern pthread_key(THD*, THR_THD);
+extern MYSQL_PLUGIN_IMPORT pthread_key(THD*, THR_THD);
 inline THD *_current_thd(void)
 {
   return my_pthread_getspecific_ptr(THD*,THR_THD);
@@ -1855,6 +1872,10 @@ extern enum_field_types agg_field_type(Item **items, uint nitems);
 /* strfunc.cc */
 ulonglong find_set(TYPELIB *lib, const char *x, uint length, CHARSET_INFO *cs,
 		   char **err_pos, uint *err_len, bool *set_warning);
+ulonglong find_set_from_flags(TYPELIB *lib, uint default_name,
+                              ulonglong cur_set, ulonglong default_set,
+                              const char *str, uint length, CHARSET_INFO *cs,
+                              char **err_pos, uint *err_len, bool *set_warning);
 uint find_type(const TYPELIB *lib, const char *find, uint length,
                bool part_match);
 uint find_type2(const TYPELIB *lib, const char *find, uint length,
@@ -1889,8 +1910,12 @@ extern time_t server_start_time, flush_status_time;
 #endif /* MYSQL_SERVER */
 #if defined MYSQL_SERVER || defined INNODB_COMPATIBILITY_HOOKS
 extern uint mysql_data_home_len;
-extern char *mysql_data_home,server_version[SERVER_VERSION_LENGTH],
-            mysql_real_data_home[], mysql_unpacked_real_data_home[];
+
+extern MYSQL_PLUGIN_IMPORT char  *mysql_data_home;
+extern char server_version[SERVER_VERSION_LENGTH];
+extern MYSQL_PLUGIN_IMPORT char mysql_real_data_home[];
+extern char mysql_unpacked_real_data_home[];
+
 extern CHARSET_INFO *character_set_filesystem;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
@@ -1900,8 +1925,11 @@ extern int mysql_unpacked_real_data_home_len;
 #define mysql_tmpdir (my_tmpdir(&mysql_tmpdir_list))
 extern MY_TMPDIR mysql_tmpdir_list;
 extern const LEX_STRING command_name[];
-extern const char *first_keyword, *my_localhost, *delayed_user, *binary_keyword;
-extern const char **errmesg;			/* Error messages */
+
+extern const char *first_keyword, *delayed_user, *binary_keyword;
+extern MYSQL_PLUGIN_IMPORT const char  *my_localhost;
+extern MYSQL_PLUGIN_IMPORT const char **errmesg;			/* Error messages */
+
 extern const char *myisam_recover_options_str;
 extern const char *in_left_expr_name, *in_additional_cond, *in_having_cond;
 extern const char * const TRG_EXT;
@@ -1915,8 +1943,8 @@ extern Le_creator le_creator;
 extern char language[FN_REFLEN];
 #endif /* MYSQL_SERVER */
 #if defined MYSQL_SERVER || defined INNODB_COMPATIBILITY_HOOKS
-extern char reg_ext[FN_EXTLEN];
-extern uint reg_ext_length;
+extern MYSQL_PLUGIN_IMPORT char reg_ext[FN_EXTLEN];
+extern MYSQL_PLUGIN_IMPORT uint reg_ext_length;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
 extern char glob_hostname[FN_REFLEN], mysql_home[FN_REFLEN];
@@ -1938,7 +1966,8 @@ extern ulong slave_open_temp_tables;
 extern ulong query_cache_size, query_cache_min_res_unit;
 extern ulong slow_launch_threads, slow_launch_time;
 extern ulong table_cache_size, table_def_size;
-extern ulong max_connections,max_connect_errors, connect_timeout;
+extern MYSQL_PLUGIN_IMPORT ulong max_connections;
+extern ulong max_connect_errors, connect_timeout;
 extern my_bool slave_allow_batching;
 extern my_bool allow_slave_start;
 extern LEX_CSTRING reason_slave_blocked;
@@ -1970,7 +1999,7 @@ extern uint protocol_version, mysqld_port, dropping_tables;
 extern uint delay_key_write_options;
 #endif /* MYSQL_SERVER */
 #if defined MYSQL_SERVER || defined INNODB_COMPATIBILITY_HOOKS
-extern uint lower_case_table_names;
+extern MYSQL_PLUGIN_IMPORT uint lower_case_table_names;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
 extern bool opt_endinfo, using_udf_functions;
@@ -1978,7 +2007,7 @@ extern my_bool locked_in_memory;
 extern bool opt_using_transactions;
 #endif /* MYSQL_SERVER */
 #if defined MYSQL_SERVER || defined INNODB_COMPATIBILITY_HOOKS
-extern bool mysqld_embedded;
+extern MYSQL_PLUGIN_IMPORT bool mysqld_embedded;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
 extern bool opt_large_files, server_id_supplied;
@@ -2024,7 +2053,7 @@ extern char *opt_backup_history_logname, *opt_backup_progress_logname,
 extern const char *og_output_str;
 extern const char *log_backup_output_str;
 
-extern MYSQL_BIN_LOG mysql_bin_log;
+extern MYSQL_PLUGIN_IMPORT MYSQL_BIN_LOG mysql_bin_log;
 extern LOGGER logger;
 extern TABLE_LIST general_log, slow_log, 
        backup_history_log, backup_progress_log;
@@ -2033,13 +2062,14 @@ extern int bootstrap_error;
 extern FILE *stderror_file;
 extern pthread_key(MEM_ROOT**,THR_MALLOC);
 extern pthread_mutex_t LOCK_mysql_create_db, LOCK_open, LOCK_lock_db,
-       LOCK_thread_count,LOCK_mapped_file,LOCK_user_locks, LOCK_status,
+       LOCK_mapped_file,LOCK_user_locks, LOCK_status,
        LOCK_error_log, LOCK_delayed_insert, LOCK_uuid_short,
        LOCK_delayed_status, LOCK_delayed_create, LOCK_crypt, LOCK_timezone,
        LOCK_slave_list, LOCK_active_mi, LOCK_manager, LOCK_global_read_lock,
        LOCK_global_system_variables, LOCK_user_conn, LOCK_slave_start,
        LOCK_prepared_stmt_count,
        LOCK_connection_count;
+extern MYSQL_PLUGIN_IMPORT pthread_mutex_t LOCK_thread_count;
 #ifdef HAVE_OPENSSL
 extern pthread_mutex_t LOCK_des_key_file;
 #endif
@@ -2059,7 +2089,7 @@ extern const String my_null_string;
 extern SHOW_VAR status_vars[];
 #endif /* MYSQL_SERVER */
 #if defined MYSQL_SERVER || defined INNODB_COMPATIBILITY_HOOKS
-extern struct system_variables global_system_variables;
+extern MYSQL_PLUGIN_IMPORT struct system_variables global_system_variables;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
 extern struct system_variables max_system_variables;

@@ -31,7 +31,7 @@
 #include "Bitmap.h"
 #include "Stream.h"
 #include "Sync.h"
-#include "Index2RootPage.h"
+#include "IndexRootPage.h"
 #include "IndexPage.h"
 #include "IndexNode.h"
 #include "BDB.h"
@@ -84,12 +84,12 @@ RepositoryVolume::~RepositoryVolume()
 	delete dbb;
 }
 
-void RepositoryVolume::storeBlob(BlobReference *blob, Transaction *transaction)
+void RepositoryVolume::storeBlob(BlobReference *blob, TransactionState *transaction)
 {
 	storeBlob (blob->blobId, blob->getStream(), transaction);
 }
 
-void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, Transaction *transaction)
+void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, TransactionState *transaction)
 {
 	Sync sync (&syncObject, "RepositoryVolume::storeBlob");
 	sync.lock (Shared);
@@ -106,15 +106,11 @@ void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, Transaction *tran
 
 	lastAccess = database->timestamp;
 	IndexKey indexKey;
-	//int keyLength = 
 	makeKey(blobId, &indexKey);
 	int recordNumber = getRecordNumber(&indexKey);
 
 	if (recordNumber == 0)
-		{
-		//throw SQLError (DELETED_BLOB, "blobId previously deleted from repository file \"%s\"\n", (const char*) fileName);
-		dbb->deleteIndexEntry (VOLUME_INDEX_ID, VOLUME_INDEX_VERSION, &indexKey, 0, transaction->transactionId);
-		}
+		IndexRootPage::deleteIndexEntry (dbb, VOLUME_INDEX_ID, &indexKey, INDEX_CURRENT_VERSION, transaction->transactionId);
 
 	if (recordNumber > 0)
 		{
@@ -128,9 +124,8 @@ void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, Transaction *tran
 		}
 
 	int recordId = dbb->insertStub (section, transaction);
-	//dbb->logRecord (VOLUME_SECTION_ID, recordId, stream, transaction);
-	dbb->updateRecord(section, recordId, stream, transaction, true);
-	dbb->addIndexEntry (VOLUME_INDEX_ID, VOLUME_INDEX_VERSION, &indexKey, recordId + 1, transaction->transactionId);
+	dbb->updateRecord (section, recordId, stream, transaction, true);
+	IndexRootPage::addIndexEntry (dbb, VOLUME_INDEX_ID, &indexKey, recordId + 1, transaction->transactionId);
 }
 
 void RepositoryVolume::open()
@@ -164,9 +159,6 @@ void RepositoryVolume::open()
 	try
 		{
 		dbb->readHeader(&header);
-		
-		if (header.pageSize < 1024)
-			dbb->skewHeader(&header);
 
 		if (header.fileType != HdrRepositoryFile)
 			throw SQLError(RUNTIME_ERROR, "repository file \"%s\" has wrong page type (expeced %d, got %d)\n", 
@@ -239,7 +231,7 @@ void RepositoryVolume::create()
 	Sync syncDDL(&database->syncSysDDL, "RepositoryVolume::create");
 	Transaction *transaction = database->getSystemTransaction();
 	syncDDL.lock(Exclusive);
-	dbb->createIndex(transaction->transactionId, VOLUME_INDEX_VERSION);
+	IndexRootPage::createIndex(dbb, transaction->transactionId);
 	dbb->createSection(transaction->transactionId);
 	syncDDL.unlock();
 	database->commitSystemTransaction();
@@ -347,11 +339,11 @@ int RepositoryVolume::getRecordNumber(int64 blobId)
 int RepositoryVolume::getRecordNumber(IndexKey *indexKey)
 {
 	if (!rootPage)
-		rootPage = Index2RootPage::getIndexRoot(dbb, VOLUME_INDEX_ID);
+		rootPage = IndexRootPage::getIndexRoot(dbb, VOLUME_INDEX_ID);
 
 	Bitmap bitmap;
 	//dbb->scanIndex (VOLUME_INDEX_ID, VOLUME_INDEX_VERSION, indexKey, indexKey, false, bitmap);
-	Index2RootPage::scanIndex(dbb, VOLUME_INDEX_ID, rootPage, indexKey, indexKey, false, NO_TRANSACTION, &bitmap);
+	IndexRootPage::scanIndex(dbb, VOLUME_INDEX_ID, rootPage, indexKey, indexKey, false, NO_TRANSACTION, &bitmap);
 	int recordNumber = bitmap.nextSet (0);
 
 	return recordNumber;
@@ -423,8 +415,8 @@ void RepositoryVolume::deleteBlob(int64 blobId, Transaction *transaction)
 
 	IndexKey indexKey;
 	makeKey (blobId, &indexKey);
-	dbb->addIndexEntry (VOLUME_INDEX_ID, VOLUME_INDEX_VERSION, &indexKey, 0, transaction->transactionId);
-	dbb->deleteIndexEntry (VOLUME_INDEX_ID, VOLUME_INDEX_VERSION, &indexKey, recordNumber + 1, transaction->transactionId);
+	IndexRootPage::addIndexEntry (dbb,VOLUME_INDEX_ID, &indexKey, 0, transaction->transactionId);
+	IndexRootPage::deleteIndexEntry (dbb, VOLUME_INDEX_ID, &indexKey, recordNumber + 1, transaction->transactionId);
 }
 
 JString RepositoryVolume::getName()
@@ -490,7 +482,7 @@ void RepositoryVolume::synchronize(Transaction *transaction)
 		{
 		IndexKey indexKey;
 		indexKey.keyLength = 0;
-		bdb = Index2RootPage::findLeaf (dbb, VOLUME_INDEX_ID, 0, &indexKey, Shared, transaction->transactionId);
+		bdb = IndexRootPage::findLeaf (dbb, VOLUME_INDEX_ID, 0, &indexKey, Shared, transaction->transactionId);
 
 		for (;;)
 			{
@@ -564,7 +556,8 @@ void RepositoryVolume::synchronize(int64 id, Stream *stream, Transaction *transa
 	if (recordNumber < 0)
 		{
 		sync.unlock();
-		storeBlob (id, stream, transaction);
+		storeBlob (id, stream, transaction->transactionState);
+		
 		return;
 		}
 

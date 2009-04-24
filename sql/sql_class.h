@@ -54,7 +54,7 @@ enum enum_filetype { FILETYPE_CSV, FILETYPE_XML };
 
 extern char internal_table_name[2];
 extern char empty_c_string[1];
-extern const char **errmesg;
+extern MYSQL_PLUGIN_IMPORT const char **errmesg;
 
 #define TC_LOG_PAGE_SIZE   8192
 #define TC_LOG_MIN_SIZE    (3*TC_LOG_PAGE_SIZE)
@@ -867,6 +867,7 @@ public:
   void
   restore_security_context(THD *thd, Security_context *backup);
 #endif
+  bool user_matches(Security_context *);
 };
 
 

@@ -1456,13 +1456,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   close_thread_tables(thd);
 
   if (!thd->is_error() && !thd->killed_errno())
-  {
-    mysql_audit_general(thd,MYSQL_AUDIT_GENERAL_RESULT,0,my_time(0),
-                        0,0,0,0,
-                        thd->query,thd->query_length,
-                        thd->variables.character_set_client,
-                        thd->warning_info->current_row_for_warning());
-  }
+    mysql_audit_general(thd, MYSQL_AUDIT_GENERAL_RESULT, 0, 0);
 
   log_slow_statement(thd);
 
@@ -4229,9 +4223,32 @@ end_with_restore_list:
 
     res= (sp_result= lex->sphead->create(thd));
     switch (sp_result) {
-    case SP_OK:
+    case SP_OK: {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
       /* only add privileges if really neccessary */
+
+      Security_context security_context;
+      bool restore_backup_context= false;
+      Security_context *backup= NULL;
+      LEX_USER *definer= thd->lex->definer;
+      /*
+        Check if the definer exists on slave, 
+        then use definer privilege to insert routine privileges to mysql.procs_priv.
+
+        For current user of SQL thread has GLOBAL_ACL privilege, 
+        which doesn't any check routine privileges, 
+        so no routine privilege record  will insert into mysql.procs_priv.
+      */
+      if (thd->slave_thread && is_acl_user(definer->host.str, definer->user.str))
+      {
+        security_context.change_security_context(thd, 
+                                                 &thd->lex->definer->user,
+                                                 &thd->lex->definer->host,
+                                                 &thd->lex->sphead->m_db,
+                                                 &backup);
+        restore_backup_context= true;
+      }
+
       if (sp_automatic_privileges && !opt_noacl &&
           check_routine_access(thd, DEFAULT_CREATE_PROC_ACLS,
                                lex->sphead->m_db.str, name,
@@ -4243,8 +4260,19 @@ end_with_restore_list:
                        ER_PROC_AUTO_GRANT_FAIL,
                        ER(ER_PROC_AUTO_GRANT_FAIL));
       }
+
+      /*
+        Restore current user with GLOBAL_ACL privilege of SQL thread
+      */ 
+      if (restore_backup_context)
+      {
+        DBUG_ASSERT(thd->slave_thread == 1);
+        thd->security_ctx->restore_security_context(thd, backup);
+      }
+
 #endif
     break;
+    }
     case SP_WRITE_ROW_FAILED:
       my_error(ER_SP_ALREADY_EXISTS, MYF(0), SP_TYPE_STRING(lex), name);
     break;
@@ -5485,7 +5513,7 @@ bool check_global_access(THD *thd, ulong want_access)
   char command[128];
   if ((thd->security_ctx->master_access & want_access))
     return 0;
-  get_privilege_desc(command, sizeof(command), want_access);
+  get_privilege_desc(command, sizeof(command), want_access, TRUE);
   my_error(ER_SPECIFIC_ACCESS_DENIED_ERROR, MYF(0), command);
   return 1;
 #else
@@ -6973,8 +7001,26 @@ uint kill_one_thread(THD *thd, ulong id, bool only_kill_query)
   pthread_mutex_unlock(&LOCK_thread_count);
   if (tmp)
   {
+
+    /*
+      If we're SUPER, we can KILL anything, including system-threads.
+      No further checks.
+
+      KILLer: thd->security_ctx->user could in theory be NULL while
+      we're still in "unauthenticated" state. This is a theoretical
+      case (the code suggests this could happen, so we play it safe).
+
+      KILLee: tmp->security_ctx->user will be NULL for system threads.
+      We need to check so Jane Random User doesn't crash the server
+      when trying to kill a) system threads or b) unauthenticated users'
+      threads (Bug#43748).
+
+      If user of both killer and killee are non-NULL, proceed with
+      slayage if both are string-equal.
+    */
+
     if ((thd->security_ctx->master_access & SUPER_ACL) ||
-	!strcmp(thd->security_ctx->user, tmp->security_ctx->user))
+        thd->security_ctx->user_matches(tmp->security_ctx))
     {
       tmp->awake(only_kill_query ? THD::KILL_QUERY : THD::KILL_CONNECTION);
       error=0;

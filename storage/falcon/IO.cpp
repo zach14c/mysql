@@ -101,6 +101,7 @@ static  int getLinuxVersion();
 
 extern uint		falcon_direct_io;
 extern char		falcon_checksums;
+extern char		falcon_use_sectorcache;
 
 static const int TRACE_SYNC_START	= -1;
 static const int TRACE_SYNC_END		= -2;
@@ -296,8 +297,7 @@ void IO::readPage(Bdb * bdb)
 			}
 		else
 			{
-			throw SQLError(IO_ERROR,
-				"pread on file %s from  page %d (offset %lld) returned %d bytes"
+			FATAL("pread on file %s from  page %d (offset %lld) returned %d bytes"
 				" instead of %d (possible read behind EOF)",
 				(const char*) fileName, bdb->pageNumber, (int64)offset, length, pageSize);
 			}
@@ -363,8 +363,20 @@ void IO::writePages(int32 pageNumber, int length, const UCHAR* data, int type)
 
 	Page *page = (Page *)data;
 
-	for (int i = 0;i < length/pageSize; i++ ,page = (Page *)((UCHAR *)page + pageSize))
+	for (int i = 0;i < length/pageSize; i++,  page = (Page *)((UCHAR *)page + pageSize))
 		{
+		// Do basic page validation before writing to disk, so we don't write garbage.
+		// Note that with check is skipped for "sector cache"  because unallocated pages
+		// can be written.
+
+		if(!falcon_use_sectorcache && 
+			(page->pageNumber != pageNumber + i || page->pageType <= 0  || page->pageType >= PAGE_max))
+			{
+			FATAL("IO::writePages(): corrupted page %d (pageNumber = %d, pageType = %d)",
+			pageNumber + i, page->pageNumber, (int)page->pageType);
+			}
+
+
 		if (falcon_checksums)
 			page->checksum = computeChecksum(page, pageSize);
  		else
@@ -601,7 +613,14 @@ int IO::pread(int64 offset, int length, UCHAR* buffer)
 	overlapped.OffsetHigh = pos.HighPart;
 
 	if (!ReadFile(hFile, buffer, length, (DWORD *) &ret, &overlapped))
-		ret = -1;
+		{
+		// Handle ERROR_HANDLE_EOF (read behind end of file) as non-error
+		// for compatibility with Posix pread implementation.
+		if(GetLastError() == ERROR_HANDLE_EOF)
+			ret = 0;  // 0 bytes read
+		else
+			ret = -1;
+		}
 #else
 	Sync sync (&syncObject, "IO::pread");
 	sync.lock (Exclusive);

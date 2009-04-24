@@ -76,14 +76,7 @@ void SRLBlobUpdate::pass1(void)
 
 void SRLBlobUpdate::pass2(void)
 {
-	if (transactionId == 11847)
-		print();
 
-	/***
-	if (log->tracePage == locatorPage || (dataPage && log->tracePage == dataPage))
-		print();
-	***/
-	
 	bool ret1 = log->bumpPageIncarnation(locatorPage, tableSpaceId, objInUse);
 	bool ret2 = log->bumpPageIncarnation(dataPage, tableSpaceId, objInUse);
 	

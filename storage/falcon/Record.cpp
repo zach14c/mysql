@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -39,6 +39,7 @@
 #include "Serialize.h"
 #include "MemMgr.h"
 #include "Thread.h"
+#include "Sync.h"
 #undef new
 
 #ifdef _DEBUG
@@ -71,9 +72,7 @@ Record::Record(Table *table, int32 recordNum, Stream *stream)
 	const short *p = (short*) stream->segments->address;
 	size = getSize();
 	generation = table->database->currentGeneration;
-#ifdef CHECK_RECORD_ACTIVITY
-	active = false;
-#endif
+	SET_THIS_RECORD_ACTIVE(false);
 
 	if (*p > 0)
 		{
@@ -98,6 +97,12 @@ Record::Record(Table *table, int32 recordNum, Stream *stream)
 		data.record = NULL;
 		setEncodedRecord(stream, false);
 		}
+
+#ifdef COLLECT_RECORD_HISTORY
+	syncHistory.setName("Record::syncHistory");
+	historyCount = 0;
+	memset(history, 0, sizeof(history));
+#endif
 }
 
 // This constructor is called from the constructor for RecordVersion
@@ -106,19 +111,22 @@ Record::Record(Table * tbl, Format *fmt)
 {
 	ASSERT (tbl);
 	useCount = 1;
-	
+
 	if ( !(format = fmt) )
 		format = tbl->getCurrentFormat();
-		
+
 	size = sizeof (RecordVersion);
 	encoding = noEncoding;
 	state = recData;
 	generation = format->table->database->currentGeneration;
-	
-#ifdef CHECK_RECORD_ACTIVITY
-	active = false;
+	SET_THIS_RECORD_ACTIVE(false);
+
+#ifdef COLLECT_RECORD_HISTORY
+	syncHistory.setName("Record::syncHistory");
+	historyCount = 0;
+	memset(history, 0, sizeof(history));
 #endif
-	
+
 	/*
 		Do not allocate a data.record buffer here since every time a 
 		Recordversion is created, the record buffer is allocated in setEncodedRecord()
@@ -142,11 +150,14 @@ Record::Record(Database *database, Serialize* stream)
 	int len = stream->getDataLength();
 	highWater = 0;
 	generation = database->currentGeneration;
-	
-#ifdef CHECK_RECORD_ACTIVITY
-	active = true;
+	SET_THIS_RECORD_ACTIVE(true);
+
+#ifdef COLLECT_RECORD_HISTORY
+	syncHistory.setName("Record::syncHistory");
+	historyCount = 0;
+	memset(history, 0, sizeof(history));
 #endif
-	
+
 	if (len)
 		{
 		encoding = shortVector;
@@ -165,11 +176,11 @@ Record::~Record()
 #ifdef CHECK_RECORD_ACTIVITY
 	ASSERT(!active);
 #endif
-	
-	deleteData();
+
+	deleteData(true);
 }
 
-void Record::setValue(Transaction * transaction, int id, Value * value, bool cloneFlag, bool copyFlag)
+void Record::setValue(TransactionState * transaction, int id, Value * value, bool cloneFlag, bool copyFlag)
 {
 	ASSERT (id < format->maxId);
 
@@ -197,7 +208,7 @@ void Record::setValue(Transaction * transaction, int id, Value * value, bool clo
 
 	if (value->isNull ((Type) ff->type))
 		{
-		data.record [NULL_BYTE (ff)] &= ~NULL_BIT (ff);
+		data.record[NULL_BYTE (ff)] &= ~NULL_BIT (ff);
 		memset(ptr, 0, ff->length);
 		
 		return;
@@ -216,7 +227,7 @@ void Record::setValue(Transaction * transaction, int id, Value * value, bool clo
 			break;
 
 		case Varchar:
-			*(short*) ptr = value->getString (ff->length - 2, ptr + 2);
+			*(short*) ptr = value->getString(ff->length - 2, ptr + 2);
 			break;
 
 		case Short:
@@ -237,7 +248,7 @@ void Record::setValue(Transaction * transaction, int id, Value * value, bool clo
 
 		case Asciiblob:
 		case Binaryblob:
-			*(int32*) ptr = format->table->getBlobId (value, *(int32*) ptr, cloneFlag, transaction);
+			*(int32*) ptr = format->table->getBlobId(value, *(int32*) ptr, cloneFlag, transaction);
 			break;
 
 		case Date:
@@ -308,11 +319,6 @@ int Record::getFormatVersion()
 }
 
 Record* Record::fetchVersion(Transaction * transaction)
-{
-	return this;
-}
-
-Record* Record::fetchVersionRecursive(Transaction * transaction)
 {
 	return this;
 }
@@ -486,23 +492,12 @@ bool Record::isVersion()
 	return false;
 }
 
-bool Record::retire(RecordScavenge *recordScavenge)
+void Record::retire(void)
 {
-	if (generation <= recordScavenge->scavengeGeneration)
-		{
-		recordScavenge->spaceRetired += getMemUsage();
-		++recordScavenge->recordsRetired;
-#ifdef CHECK_RECORD_ACTIVITY
-		active = false;
-#endif
-		release();
-		return true;
-		}
+	SET_THIS_RECORD_ACTIVE(false);
+	RECORD_HISTORY(this);
 
-	++recordScavenge->recordsRemaining;
-	recordScavenge->spaceRemaining += getMemUsage();
-
-	return false;
+	release();
 }
 
 void Record::scavenge(TransId targetTransactionId, int oldestActiveSavePointId)
@@ -520,7 +515,14 @@ void Record::setSuperceded(bool flag)
 
 }
 
+/***
 Transaction* Record::getTransaction()
+{
+	return NULL;
+}
+***/
+
+TransactionState* Record::getTransactionState() const
 {
 	return NULL;
 }
@@ -848,7 +850,7 @@ void Record::poke()
 
 Record* Record::releaseNonRecursive(void)
 {
-	release();
+	release(REC_HISTORY);
 	
 	return NULL;
 }
@@ -858,9 +860,9 @@ Record* Record::clearPriorVersion(void)
 	return NULL;
 }
 
-void Record::setPriorVersion(Record* record)
+void Record::setPriorVersion(Record *oldPriorVersion, Record *newPriorVersion)
 {
-	ASSERT(false);
+	FATAL("setPriorVersion should only be called for RecordVersions\n");
 }
 
 int Record::thaw(void)
@@ -894,18 +896,31 @@ int Record::setRecordData(const UCHAR * dataIn, int dataLength)
 
 void Record::deleteData(void)
 {
+	deleteData(false);
+}
+
+void Record::deleteData(bool now)
+{
 	if (data.record)
 		{
 		switch (encoding)
 			{
 			case valueVector:
-				delete [] (Value*) data.record;
+				if (now)
+					delete [] (Value*) data.record;
+				else
+					format->table->queueForDelete((Value**) data.record);
 				break;
 
 			default:
-				DELETE_RECORD (data.record);
+				if (now)
+					{
+					DELETE_RECORD (data.record);
+					}
+				else
+					format->table->queueForDelete((char *) data.record);
 			}
-		
+
 		data.record = NULL;
 		}
 }
@@ -1005,13 +1020,91 @@ int Record::getMemUsage(void)
 	return objectSize + getDataMemUsage();
 }
 
-
-SyncObject* Record::getSyncPrior(void)
-{
-	return format->table->getSyncPrior(this);
-}
-
 SyncObject* Record::getSyncThaw(void)
 {
 	return format->table->getSyncThaw(this);
+}
+
+#ifdef COLLECT_RECORD_HISTORY
+void Record::addRef(const char *file, int line)
+{
+	addHistory(+1, file, line);
+	addRef();
+}
+
+void Record::release(const char *file, int line)
+{
+	addHistory(-1, file, line);
+	release();
+}
+
+void Record::addHistory(int delta, const char *file, int line)
+{
+	Sync sync (&syncHistory, "Record::addHistory");
+	sync.lock (Exclusive);
+	unsigned int historyOffset = historyCount % MAX_RECORD_HISTORY;
+
+	#ifdef _WIN32
+	history[historyOffset].threadId = (unsigned long) GetCurrentThreadId();
+	#endif
+	#ifdef _PTHREADS
+	history[historyOffset].threadId = (unsigned long) pthread_self();
+	#endif
+
+	history[historyOffset].counter = historyCount;
+	history[historyOffset].useCount = useCount;
+	history[historyOffset].delta  = delta;
+	history[historyOffset].state = state;
+	strncpy(history[historyOffset].file, file, RECORD_HISTORY_FILE_LEN - 1);
+	history[historyOffset].line = line;
+
+	historyCount++;
+}
+
+void Record::ShowHistory(void)
+{
+	int historicState;
+	int historyOffset = (historyCount - 1) % MAX_RECORD_HISTORY;
+	Log::log("RecordNumber=%d  state=%d  historyCount=%d  historyOffset=%d\n",
+		recordNumber, state, historyCount, historyOffset);
+
+	for (int a = historyOffset; a >= 0; a--)
+		{
+		if (history[a].threadId == 0)
+			break;
+		historicState = (int) history[a].state;
+		Log::log("%d ThreadId=%d state=%d useCount=%d+(%d)=%d  File=%s Line=%d\n",
+			history[a].counter, 
+			history[a].threadId, 
+			historicState, 
+			history[a].useCount, 
+			history[a].delta, 
+			history[a].useCount + history[a].delta, 
+			history[a].file, 
+			history[a].line);
+		}
+
+	for (int a = MAX_RECORD_HISTORY -1; a > historyOffset; a--)
+		{
+		if (history[a].threadId == 0)
+			break;
+		historicState = (int) history[a].state;
+		Log::log("%d ThreadId=%d state=%d useCount=%d+(%d)=%d  File=%s Line=%d\n",
+			history[a].counter, 
+			history[a].threadId, 
+			historicState,
+			history[a].useCount, 
+			history[a].delta, 
+			history[a].useCount + history[a].delta, 
+			history[a].file, 
+			history[a].line);
+		}
+}
+#endif
+
+void Record::queueForDelete(void)
+{
+	ASSERT(state != recQueuedForDelete);
+	state = recQueuedForDelete;
+	format->table->queueForDelete(this);
 }

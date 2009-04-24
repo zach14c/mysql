@@ -44,6 +44,7 @@
 #include "TableSpaceManager.h"
 #include "TableSpace.h"
 #include "Gopher.h"
+#include "ErrorInjector.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -95,6 +96,7 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	bufferSpace = NULL;
 	recoveryPages = NULL;
 	recoveryIndexes = NULL;
+	recoveryOverflowPages = NULL;
 	recoverySections = NULL;
 	recoveryPhase = 0;
 	tracePage = TRACE_PAGE;
@@ -135,6 +137,7 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	wantToSerializeGophers = 0;
 	serializeGophers = 0;
 	startRecordVirtualOffset = 0;
+	logRotations = 0;
 	
 	for (uint n = 0; n < falcon_gopher_threads; ++n)
 		{
@@ -151,6 +154,7 @@ SerialLog::~SerialLog()
 	delete logControl;
 	delete recoveryIndexes;
 	delete recoverySections;
+	delete recoveryOverflowPages;
 	SerialLogWindow *window;
 
 	while ( (window = firstWindow) )
@@ -241,6 +245,7 @@ static void openTableSpaces(Database *database)
 		manager;
 
 }
+
 void SerialLog::recover()
 {
 	Log::log("Recovering database %s ...\n", (const char*) defaultDbb->fileName);
@@ -273,6 +278,10 @@ void SerialLog::recover()
 		}
 
 	// Pick a window to start the search for the last block
+	// If there are two files, we want to find the last block 
+	// in the second file.  Given the way the windows were
+	// allocated, the fl2 window is linked in before the file1
+	// window.  If they're in the other order swap them around.
 
 	SerialLogWindow *recoveryWindow = NULL;
 	SerialLogWindow *otherWindow = NULL;
@@ -309,35 +318,63 @@ void SerialLog::recover()
 		return;
 		}
 
-	// Look through windows looking for the very last block
+	// recoveryWindow is the first window in the second file.
+	// Look through windows looking for the very last block,
+	// starting by remember the first block in the recoverWindow
+	// as recoveryBlock and it's number as recoveryBlockNumber.
+	// These are used only to determine whether recovery is all
+	// from one file, or whether it needes to start in the earlier
+	// file.
 
 	SerialLogBlock *recoveryBlock = recoveryWindow->firstBlock();
 	recoveryBlockNumber = recoveryBlock->blockNumber;
 	SerialLogBlock *lastBlock = findLastBlock(recoveryWindow);
-	Log::log("\nFirst recovery block is " I64FORMAT "\n", 
+
+	// The last block's "readBlock" number is the first block where we
+	// actually perform recovery - it the first block that has something
+	// to do with a transaction that's not write complete.
+
+	// Debugging hint.  If there are unidentified objects in recovery -
+	// unwritten pages or something, try starting recovery at the first
+	// block in the first file - if and only if the two are contigous.
+
+	uint64 readBlockNumber = lastBlock->readBlockNumber;
+	
+	if (readBlockNumber == 0)
+		readBlockNumber = lastBlock->blockNumber;
+
+	Log::log("\nFirst block in the serial log is " I64FORMAT "\n", 
 			(otherWindow) ? otherWindow->firstBlock()->blockNumber : recoveryBlockNumber);
-	Log::log("Last recovery block is " I64FORMAT "\n", lastBlock->blockNumber);
+	Log::log("Last block in the serial log is " I64FORMAT "\n", lastBlock->blockNumber);
+	Log::log("First block used in recovery is " I64FORMAT "\n", readBlockNumber);
+
+	// the nextBlockNumber is the first block number to use after
+	// recovery starts
+
+	nextBlockNumber = lastBlock->blockNumber + 1;
+
+	// If we're using both files, they'd better be contiguous.  Check and
+	// when done, release any window allocated in the process. A side
+	// effect of the check is that it sets up the first window's last
+	// block number - that's used later.
 
 	if (otherWindow)
 		{
 		SerialLogBlock *block = findLastBlock(otherWindow);
 
 		if (block && block->blockNumber != (recoveryBlockNumber - 1))
-			throw SQLError(LOG_ERROR, "corrupted serial log");
+			if (readBlockNumber < recoveryBlock->blockNumber)
+				throw SQLError(LOG_ERROR, "corrupted serial log");
 		
 		SerialLogWindow *window = findWindowGivenBlock(block->blockNumber);
 		window->deactivateWindow();
 		}
 
-	// Find read block
-
-	uint64 readBlockNumber = lastBlock->readBlockNumber;
-	
-	if (readBlockNumber == 0)
-		readBlockNumber = lastBlock->blockNumber;
-		
-	Log::log("Recovery read block is " I64FORMAT "\n", readBlockNumber);
-	nextBlockNumber = lastBlock->blockNumber + 1;
+	// OK.  Everything looks good.  Release the window we used
+	// probing the log files, open a window on the first block
+	// we're going to use for recovery.  That should work, but
+	// if it doesn't, complain.
+    
 	lastWindow->deactivateWindow();
 	SerialLogWindow *window = findWindowGivenBlock(readBlockNumber);
 	
@@ -352,12 +389,20 @@ void SerialLog::recover()
 	writeBlock = NULL;
 	control.setWindow(window, block, 0);
 	SerialLogRecord *record;
+
+	// OK, we're good to go.  Start recovering.
+
 	pass1 = true;
 	recoveryPages = new RecoveryObjects(this);
 	recoverySections = new RecoveryObjects(this);
 	recoveryIndexes = new RecoveryObjects(this);
-	recoveryPhase = 1;	// Take Inventory (serialLogTransactions, recoveryObject states, last checkpoint)
+	recoveryOverflowPages = new RecoveryObjects(this);
+	recoveryPhase = 1;	
 	
+	// Phase 1 - read from the start to end of the part of the
+	// log that's involved in recovery.  Take Inventory of serialLogTransactions, 
+	// recoveryObject states, last checkpoint)
+
 	Log::log("Recovery phase 1...\n");
 
 	unsigned long int recordCount = 0;
@@ -366,8 +411,8 @@ void SerialLog::recover()
 		{
 		if (++recordCount % RECORD_MAX == 0)
 			Log::log("Processed: %8ld\n", recordCount);
-			
 		record->pass1();
+		ERROR_INJECTOR_EVENT(InjectorRecoveryPhase1,record->type);
 		}
 
 	Log::log("Processed: %8ld\n", recordCount);
@@ -395,6 +440,7 @@ void SerialLog::recover()
 			
 		if (!isTableSpaceDropped(record->tableSpaceId) || record->type == srlDropTableSpace)
 			record->pass2();
+		ERROR_INJECTOR_EVENT(InjectorRecoveryPhase2,record->type);
 		}
 
 	Log::log("Processed: %8ld\n", recordCount);
@@ -424,6 +470,7 @@ void SerialLog::recover()
 			
 		if (!isTableSpaceDropped(record->tableSpaceId))
 			record->redo();
+		ERROR_INJECTOR_EVENT(InjectorRecoveryPhase3,record->type);
 		}
 		
 	Log::log("Processed: %8ld\n", recordCount);
@@ -461,9 +508,12 @@ void SerialLog::recover()
 	delete recoveryPages;
 	delete recoverySections;
 	delete recoveryIndexes;
+	delete recoveryOverflowPages;
 	recoveryPages = NULL;
 	recoveryIndexes = NULL;
 	recoverySections = NULL;
+	recoveryOverflowPages = NULL;
+
 	droppedTablespaces.clear();
 	
 	for (window = firstWindow; window; window = window->next)
@@ -674,12 +724,17 @@ void SerialLog::createNewWindow(void)
 		{
 		// Logfile switch, truncate file if required
 
+		logRotations++;
+
 		if (Log::isActive(LogInfo))
 			Log::log(LogInfo, "%d: Switching log files (%d used)\n", 
 					database->deltaTime, file->highWater);
 
-		if((uint64)file->size() > falcon_serial_log_file_size)
+		if ((uint64)file->size() > falcon_serial_log_file_size)
+			{
 			file->truncate((int64)falcon_serial_log_file_size);
+			ERROR_INJECTOR_EVENT(InjectorSerialLogTruncate,logRotations);
+			}
 		}
 
 	writeWindow->deactivateWindow();
@@ -717,7 +772,9 @@ void SerialLog::shutdown()
 
 void SerialLog::close()
 {
-
+	if (Log::isActive(LogInfo))
+		Log::log(LogInfo, "Serial log shutdown after changing logs %d times\n", 
+				logRotations);
 }
 
 void SerialLog::putData(uint32 length, const UCHAR *data)
@@ -1120,6 +1177,29 @@ bool SerialLog::isSectionActive(int sectionId, int tableSpaceId)
 		return true;
 		
 	return recoverySections->isObjectActive(sectionId, tableSpaceId);
+}
+
+bool SerialLog::isOverflowPageValid(int pageNumber, int tableSpaceId)
+{
+	// If page was not touched by recovery, assume it is valid
+	if (!recoveryPages->findRecoveryObject(pageNumber, tableSpaceId))
+		return true;
+
+	// Otherwise, if page was not created during recovery itself, 
+	// or was deleted in course of recovery, it is invalid
+	if (!recoveryOverflowPages->findRecoveryObject(pageNumber, tableSpaceId))
+		return false;
+	return recoveryOverflowPages->isObjectActive(pageNumber, tableSpaceId);
+}
+
+void SerialLog::setOverflowPageValid(int pageNumber, int tableSpaceId)
+{
+	recoveryOverflowPages->setActive(pageNumber, tableSpaceId);
+}
+
+void SerialLog::setOverflowPageInvalid(int pageNumber, int tableSpaceId)
+{
+	recoveryOverflowPages->setInactive(pageNumber, tableSpaceId);
 }
 
 uint32 SerialLog::appendLog(IO *shadow, int lastPage)

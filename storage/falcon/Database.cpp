@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -72,6 +72,7 @@
 #include "InfoTable.h"
 #include "MemoryManager.h"
 #include "MemMgr.h"
+#include "MemControl.h"
 #include "RecordScavenge.h"
 #include "RecordSection.h"
 #include "LogStream.h"
@@ -81,6 +82,8 @@
 #include "Sequence.h"
 #include "BackLog.h"
 #include "Bitmap.h"
+#include "CycleManager.h"
+#include "CycleLock.h"
 
 #ifdef _WIN32
 #define PATH_MAX			_MAX_PATH
@@ -117,6 +120,7 @@ static const char THIS_FILE[]=__FILE__;
 
 #define STATEMENT_RETIREMENT_AGE	60
 #define RECORD_RETIREMENT_AGE		60
+#define MAX_LOW_MEMORY				10
 
 extern uint falcon_debug_trace;
 
@@ -463,6 +467,7 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent) :
 	sessionManager = NULL;
 	filterSetManager = NULL;
 	tableSpaceManager = NULL;
+	cycleManager = NULL;
 	timestamp = time (NULL);
 	tickerThread = NULL;
 	cardinalityThread = NULL;
@@ -484,8 +489,10 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent) :
 	scavengeCycle = 0;
 	serialLogBlockSize = configuration->serialLogBlockSize;
 	longSync = false;
-	recordDataPool = MemMgrGetFixedPool(MemMgrPoolRecordData);
-	//recordObjectPool = MemMgrGetFixedPool(MemMgrPoolRecordObject);
+	recordMemoryControl = MemMgrGetControl(MemMgrControlRecord);
+	recordPool = MemMgrGetFixedPool(MemMgrRecord);
+	recordVersionPool = MemMgrGetFixedPool(MemMgrRecordVersion);
+	recordDataPool = MemMgrGetFixedPool(MemMgrRecordData);
 	syncObject.setName("Database::syncObject");
 	syncTables.setName("Database::syncTables");
 	syncStatements.setName("Database::syncStatements");
@@ -497,9 +504,9 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent) :
 	IO::deleteFile(BACKLOG_FILE);
 }
 
-
 void Database::start()
 {
+	cycleManager = new CycleManager(this);
 	symbolManager = new SymbolManager;
 
 #ifdef LICENSE
@@ -544,6 +551,7 @@ void Database::start()
 	internalScheduler->addEvent(serialLog);
 	pageWriter->start();
 	cache->setPageWriter(pageWriter);
+	cycleManager->start();
 }
 
 Database::~Database()
@@ -627,6 +635,7 @@ Database::~Database()
 	delete serialLog;
 	delete pageWriter;
 	delete tableSpaceManager;
+	delete cycleManager;
 	delete cache;
 	delete roleModel;
 	delete symbolManager;
@@ -739,29 +748,24 @@ void Database::openDatabase(const char * filename)
 		
 	if (serialLog)
 		{
-		if (COMBINED_VERSION(dbb->odsVersion, dbb->odsMinorVersion) >= VERSION_SERIAL_LOG)
-			{
-			if (dbb->logLength)
-				serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
-			serialLog->open(dbb->logRoot, false);
+		ASSERT (COMBINED_VERSION(dbb->odsVersion, dbb->odsMinorVersion) >= VERSION_SERIAL_LOG);
 
-			try 
-				{
-				serialLog->recover();
-				}
-			catch(SQLError &e)
-				{
-				throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
-				}
-			tableSpaceManager->postRecovery();
-			serialLog->start();
-			}
-		else
+		if (dbb->logLength)
+			serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
+				
+		serialLog->open(dbb->logRoot, false);
+
+		try 
 			{
-			dbb->enableSerialLog();
-			serialLog->open(dbb->logRoot, true);
-			serialLog->start();
+			serialLog->recover();
 			}
+		catch(SQLError &e)
+			{
+			throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
+			}
+				
+		tableSpaceManager->postRecovery();
+		serialLog->start();
 		}
 
 	sequence = dbb->sequence;
@@ -784,7 +788,8 @@ void Database::openDatabase(const char * filename)
 
 	Sync syncDDL(&syncSysDDL, "Database::openDatabase");
 	syncDDL.lock(Shared);
-	
+	checkODSVersion23();
+
 	PreparedStatement *statement = prepareStatement ("select tableid from tables");
 	ResultSet *resultSet = statement->executeQuery();
 
@@ -834,6 +839,43 @@ void Database::openDatabase(const char * filename)
 
 	if (configuration->schedulerEnabled)
 		scheduler->start();
+}
+
+
+// Check if ODS version 2.3 is really 2.3 and not 2.4
+//
+// Background:
+// There was a subtle change from 2.3 to 2.4 in the way multisegment indexes are built.
+// And there are databases that 2.3 in header page, but with 2.4 indexes.
+// This function will fix minor version the header page and Dbb in such case
+//
+// For the check, we use a query that is known to return empty  resultSet if 
+// and only if ODS is <= 2.3 and engine > 2.3.
+void Database::checkODSVersion23()
+{
+	if (dbb->odsVersion == ODS_VERSION2 && dbb->odsMinorVersion == ODS_MINOR_VERSION3)
+		{
+
+		// For the next query, force index code to use 2.4 algorithm for multisegments
+		dbb->odsMinorVersion = ODS_MINOR_VERSION4;
+
+		const char checkVersion24Query[] = 
+			"select privilegeMask from system.privileges where holderType=3 and "
+			"holderSchema='' and holderName='MYSQL' and  objectType=0 and "
+			"objectSchema='FALCON' and objectName='TABLES'";
+		PreparedStatement *statement = prepareStatement(checkVersion24Query);
+		ResultSet *resultSet = statement->executeQuery();
+
+		if (resultSet->next())
+			// Got non-empty result -> have ODS 2.4
+			dbb->setODSMinorVersion(ODS_MINOR_VERSION4);
+		else
+			// Got empty result -> have ODS 2.3
+			dbb->odsMinorVersion = ODS_MINOR_VERSION3;
+
+		resultSet->close();
+		statement->close();
+		}
 }
 
 #ifndef STORAGE_ENGINE
@@ -1598,6 +1640,9 @@ void Database::shutdown()
 	if (shuttingDown)
 		return;
 
+	// Wait for all gophers to finish.
+	waitForWriteComplete(NULL);
+
 	if (updateCardinality)
 		{
 		updateCardinality->close();
@@ -1608,7 +1653,7 @@ void Database::shutdown()
 	
 	if (systemConnection && 
 		systemConnection->transaction && 
-		systemConnection->transaction->state == Active)
+		systemConnection->transaction->getState() == Active)
 		systemConnection->commit();
 		
 	if (repositoryManager)
@@ -1633,6 +1678,9 @@ void Database::shutdown()
 	serialLog->shutdown();
 	cache->shutdown();
 
+	if (cycleManager)
+		cycleManager->shutdown();
+		
 	if (threads)
 		{
 		threads->shutdownAll();
@@ -1750,25 +1798,9 @@ void Database::scavenge(bool forced)
 	
 	scavengeForced = 0;
 
-	// Start by scavenging compiled statements.  If they're moldy and not in use,
-	// off with their heads!
+	// Start by scavenging compiled statements.
 
-	Sync syncStmt(&syncStatements, "Database::scavenge");
-	syncStmt.lock (Exclusive);
-	
-	time_t threshold = timestamp - STATEMENT_RETIREMENT_AGE;
-	lastScavenge = timestamp;
-
-	for (CompiledStatement *statement, **ptr = &compiledStatements; (statement = *ptr);)
-		if (statement->useCount > 1 || statement->lastUse > threshold)
-			ptr = &statement->next;
-		else
-			{
-			*ptr = statement->next;
-			statement->release();
-			}
-	
-	syncStmt.unlock();
+	scavengeCompiledStatements();
 
 	// purgeTransactions will release records that are  attached to old 
 	// transactions, thus freeing up old invisible records to be pruned 
@@ -1799,16 +1831,34 @@ void Database::scavenge(bool forced)
 	if (serialLog)
 		{
 		serialLog->reportStatistics();
-		if (!serialLog->recovering)
+		
+		if (tableSpaceManager && !serialLog->recovering)
 			tableSpaceManager->reportStatistics();
 		}	
 		
 	dbb->reportStatistics();
-
 	repositoryManager->reportStatistics();
 	
 	if (backLog)
 		backLog->reportStatistics();
+}
+
+void Database::scavengeCompiledStatements(void)
+{
+	Sync syncStmt(&syncStatements, "Database::scavenge");
+	syncStmt.lock (Exclusive);
+	
+	time_t threshold = timestamp - STATEMENT_RETIREMENT_AGE;
+	lastScavenge = timestamp;
+
+	for (CompiledStatement *statement, **ptr = &compiledStatements; (statement = *ptr);)
+		if (statement->useCount > 1 || statement->lastUse > threshold)
+			ptr = &statement->next;
+		else
+			{
+			*ptr = statement->next;
+			statement->release();
+			}
 }
 
 void Database::scavengeRecords(bool forced)
@@ -1824,7 +1874,7 @@ void Database::scavengeRecords(bool forced)
 	// Take inventory of the record cache and prune invisible record versions
 
 	pruneRecords(&recordScavenge);
-	recordScavenge.prunedActiveMemory = recordDataPool->activeMemory;
+	recordScavenge.prunedActiveMemory = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 	recordScavenge.pruneStop = deltaTime;
 	syncScavenger.unlock();  // take a breath!
 
@@ -1832,15 +1882,24 @@ void Database::scavengeRecords(bool forced)
 
 	syncScavenger.lock(Exclusive);
 	retireRecords(&recordScavenge);
-	recordScavenge.retiredActiveMemory = recordDataPool->activeMemory;
+	recordScavenge.retiredActiveMemory = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 	recordScavenge.retireStop = deltaTime;
 
+	// Backlogging disabled: Bug#43504 "Falcon DBT2 crash in Table::rollbackRecord()"
+
+#if 0 
 	// Enable backlogging if memory is low
 
 	if (recordScavenge.retiredActiveMemory > recordScavengeFloor)
-		setLowMemory();
+		if (!lowMemory)
+			setLowMemory(recordScavenge.retiredActiveMemory - recordScavengeFloor);
 	else
-		clearLowMemory();
+		{
+		if (lowMemoryCount)
+			if (--lowMemoryCount == 0)
+				clearLowMemory();
+		}
+#endif	
 
 	recordScavenge.print();
 	// Log::log(analyze(analyzeRecordLeafs));
@@ -1857,7 +1916,7 @@ void Database::scavengeRecords(bool forced)
 	Sync syncMem(&syncMemory, "Database::checkRecordScavenge");
 	syncMem.lock(Exclusive);
 
-	lastActiveMemoryChecked = lastGenerationMemory = recordDataPool->activeMemory;
+	lastActiveMemoryChecked = lastGenerationMemory = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 }
 
 // Take inventory of the record cache and prune invisible record versions
@@ -1870,7 +1929,7 @@ void Database::pruneRecords(RecordScavenge *recordScavenge)
 
 	Sync syncTbl(&syncTables, "Database::pruneRecords(tables)");
 	syncTbl.lock(Shared);
-
+	
 	for (Table *table = tableList; table; table = table->next)
 		{
 		try
@@ -1890,7 +1949,7 @@ void Database::retireRecords(RecordScavenge *recordScavenge)
 	// Scavenge if we passed the upper limit or if a forced scavenge
 	// was requested.
 
-	if (recordDataPool->activeMemory < recordScavengeThreshold
+	if (recordMemoryControl->getCurrentMemory(MemMgrRecordData) < recordScavengeThreshold
 		&& !recordScavenge->forced)
 		return;
 
@@ -1900,7 +1959,7 @@ void Database::retireRecords(RecordScavenge *recordScavenge)
 	Sync syncTbl(&syncTables, "Database::retireRecords(2)");
 	syncTbl.lock(Shared);
 
-	uint64 spaceToRetire = recordDataPool->activeMemory - recordScavengeFloor;
+	uint64 spaceToRetire = recordMemoryControl->getCurrentMemory(MemMgrRecordData) - recordScavengeFloor;
 	recordScavenge->computeThreshold(spaceToRetire);
 
 	for (Table *table = tableList; table; table = table->next)
@@ -1954,7 +2013,7 @@ void Database::scavengerThreadMain(void)
 		{
 		scavenge((scavengeForced > 0));
 		
-		if (recordDataPool->activeMemory < recordScavengeThreshold)
+		if (recordMemoryControl->getCurrentMemory(MemMgrRecordData) < recordScavengeThreshold)
 			{
 			INTERLOCKED_INCREMENT(scavengerThreadSleeping);
 			thread->sleep();
@@ -2452,6 +2511,12 @@ void Database::cardinalityThreadMain(void)
 
 	thread->sleep(1000);
 
+	// Wait for recovery to finish.
+
+	while (   (!thread->shutdownInProgress) 
+	       && ((!serialLog) || (serialLog->recovering)))
+		thread->sleep(1000);
+
 	while (!thread->shutdownInProgress)
 		{
 		updateCardinalities();
@@ -2609,32 +2674,32 @@ void Database::checkRecordScavenge(void)
 		syncMem.lock(Exclusive);
 
 		if (   !scavengerThreadSignaled 
-			&& (recordDataPool->activeMemory > lastActiveMemoryChecked))
+			&& (recordMemoryControl->getCurrentMemory(MemMgrRecordData) > lastActiveMemoryChecked))
 			{
 			// Start a new age generation regularly.  Note that since activeMemory
 			// can go down due to a recent scavenge, it is possible for
-			// lastGenerationMemory to be > recordDataPool->activeMemory
+			// lastGenerationMemory to be > recordMemoryControl->getCurrentMemory()
 
-			if (  (int64) (recordDataPool->activeMemory - lastGenerationMemory)
+			if (  (int64) (recordMemoryControl->getCurrentMemory(MemMgrRecordData) - lastGenerationMemory)
 			    > (int64) recordScavengeMaxGroupSize)
 				{
 				// Let the scavenger run to prune records.  
 				// It will also retire records if recordScavengeThreshold has been reached.
 
 				INTERLOCKED_INCREMENT (currentGeneration);
-				lastGenerationMemory = recordDataPool->activeMemory;
+				lastGenerationMemory = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 
 				INTERLOCKED_INCREMENT(scavengerThreadSignaled);
 				scavengerThreadWakeup();
 				}
 
-			else if (recordDataPool->activeMemory >= recordScavengeThreshold)
+			else if (recordMemoryControl->getCurrentMemory(MemMgrRecordData) >= recordScavengeThreshold)
 				{
 				INTERLOCKED_INCREMENT(scavengerThreadSignaled);
 				scavengerThreadWakeup();
 				}
 
-			lastActiveMemoryChecked = recordDataPool->activeMemory;
+			lastActiveMemoryChecked = recordMemoryControl->getCurrentMemory(MemMgrRecordData);
 			}
 		}
 }
@@ -2755,7 +2820,7 @@ void Database::flushWait(void)
 	cache->flushWait();
 	}
 
-void Database::setLowMemory(void)
+void Database::setLowMemory(uint64 spaceNeeded)
 {
 	if (!backLog)
 		{	
@@ -2767,9 +2832,12 @@ void Database::setLowMemory(void)
 		}
 
 	lowMemory = true;
+	lowMemoryCount = MAX_LOW_MEMORY;
+//	this->transactionManager->setLowMemory(spaceNeeded);
 }
 
 void Database::clearLowMemory(void)
 {
+//	this->transactionManager->clearLowMemory();
 	lowMemory = false;
 }

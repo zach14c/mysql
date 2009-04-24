@@ -181,7 +181,7 @@ void do_one_test()
 void do_tests()
 {
   DBUG_ENTER("do_tests");
-  plan(14);
+  plan(12);
   compile_time_assert(THREADS >= 4);
 
   DBUG_PRINT("wt", ("================= initialization ==================="));
@@ -257,15 +257,20 @@ void do_tests()
 #define test_kill_strategy(X)                   \
   diag("kill strategy: " #X);                   \
   DBUG_EXECUTE("reset_file",                    \
-               { rewind(DBUG_FILE); ftruncate(fileno(DBUG_FILE), 0); }); \
+               { rewind(DBUG_FILE); my_chsize(fileno(DBUG_FILE), 0, 0, MYF(0)); }); \
   DBUG_PRINT("info", ("kill strategy: " #X));   \
   kill_strategy=X;                              \
   do_one_test();
 
   test_kill_strategy(LATEST);
   test_kill_strategy(RANDOM);
-  test_kill_strategy(YOUNGEST);
-  test_kill_strategy(LOCKS);
+  /*
+    these two take looong time on sol10-amd64-a
+    the server doesn't use this code now, so we disable these tests
+
+    test_kill_strategy(YOUNGEST);
+    test_kill_strategy(LOCKS);
+  */
 
   DBUG_PRINT("wt", ("================= cleanup ==================="));
   for (cnt=0; cnt < THREADS; cnt++)

@@ -27,6 +27,7 @@
 #include "Record.h"
 
 class Transaction;
+class TransactionState;
 class SyncObject;
 
 class RecordVersion : public Record  
@@ -36,30 +37,32 @@ public:
 	RecordVersion(Database* database, Serialize *stream);
 
 	virtual bool		isSuperceded();
-	virtual Transaction* getTransaction();
+	//virtual Transaction* getTransaction();
+	virtual TransactionState* getTransactionState() const;
 	virtual TransId		getTransactionId();
 	virtual int			getSavePointId();
 	virtual void		setSuperceded (bool flag);
 	virtual Record*		getPriorVersion();
 	virtual Record*		getGCPriorVersion(void);
-	virtual bool		retire(RecordScavenge *recordScavenge);
-	virtual void		scavengeSavepoint(TransId targetTransactionId, int oldestActiveSavePoint);
+	virtual void		retire(void);
+	virtual void		scavengeSavepoint(Transaction* targetTransaction, int oldestActiveSavePoint);
 	virtual bool		isVersion();
 	virtual void		rollback(Transaction *transaction);
 	virtual Record*		fetchVersion (Transaction * trans);
-	virtual Record*		fetchVersionRecursive (Transaction *transaction);
 	virtual Record*		releaseNonRecursive();
 	virtual Record*		clearPriorVersion(void);
-	virtual void		setPriorVersion (Record *oldVersion);
+	virtual void		setPriorVersion(Record *oldPriorVersion, Record *newPriorVersion);
 	virtual void		setVirtualOffset(uint64 offset);
 	virtual uint64		getVirtualOffset();
 	virtual int			thaw(void);
 	virtual void		print(void);
 	virtual int			getSize(void);
 	virtual void		serialize(Serialize* stream);
+	virtual Transaction* findTransaction(void);
 
 	void				commit();
 	bool				committedBefore(TransId);
+	void				setTransactionState(TransactionState* newTransState);
 
 protected:
 	virtual ~RecordVersion();
@@ -67,12 +70,15 @@ protected:
 
 public:
 	uint64			virtualOffset;		// byte offset into serial log window
-	Transaction		*transaction;
+	//Transaction		*transaction;
 	RecordVersion	*nextInTrans;
 	RecordVersion	*prevInTrans;
-	TransId			transactionId;
+	//TransId			transactionId;
 	int				savePointId;
 	bool			superceded;
+
+//private:
+	TransactionState *transactionState;
 };
 
 #endif // !defined(AFX_RECORDVERSION_H__84FD1965_A97F_11D2_AB5C_0000C01D2301__INCLUDED_)

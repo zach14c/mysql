@@ -12,15 +12,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+INCLUDE("${PROJECT_SOURCE_DIR}/storage/mysql_storage_engine.cmake")
 INCLUDE("${PROJECT_SOURCE_DIR}/win/mysql_manifest.cmake")
 
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/zlib
-                    ${CMAKE_SOURCE_DIR}/sql
-                    ${CMAKE_SOURCE_DIR}/regex
-                    ${CMAKE_SOURCE_DIR}/extra/yassl/include)
-
-SET(MYISAM_SOURCES  ft_boolean_search.c ft_nlq_search.c ft_parser.c ft_static.c
-                                ha_myisam.cc ft_myisam.c
+SET(MYISAM_SOURCES  ft_boolean_search.c ft_nlq_search.c ft_parser.c ft_static.c ft_stem.c
+                                ha_myisam.cc
+				ft_myisam.c 
 				ft_stopwords.c ft_update.c mi_cache.c mi_changed.c mi_check.c
 				mi_checksum.c mi_close.c mi_create.c mi_dbug.c mi_delete.c 
 				mi_delete_all.c mi_delete_table.c mi_dynrec.c mi_extra.c mi_info.c
@@ -32,11 +29,9 @@ SET(MYISAM_SOURCES  ft_boolean_search.c ft_nlq_search.c ft_parser.c ft_static.c
 				rt_split.c sort.c sp_key.c mi_extrafunc.h myisamdef.h
 				rt_index.h mi_rkey.c mi_examine_log.c myisam_backup_engine.cc)
 
+MYSQL_STORAGE_ENGINE(MYISAM)
+
 IF(NOT SOURCE_SUBLIBS)
-
-  ADD_LIBRARY(myisam ${MYISAM_SOURCES})
-  ADD_DEPENDENCIES(myisam GenError)
-
   ADD_EXECUTABLE(myisam_ftdump myisam_ftdump.c)
   TARGET_LINK_LIBRARIES(myisam_ftdump myisam mysys dbug strings zlib)
 

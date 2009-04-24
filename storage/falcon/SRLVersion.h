@@ -45,7 +45,9 @@ static const int srlVersion15		= 15;	// Added tablespace parameters to SRLCreate
 static const int srlVersion16		= 16;	// Added SRLInventoryPage January 26, 2009
 static const int srlVersion17		= 17;	// Log root page number in SRLCreateIndex
 static const int srlVersion18		= 18;	// Log tablespace list in SRLTableSpaces
-static const int srlCurrentVersion	= srlVersion18;
+static const int srlVersion19		= 19;	// Remove parent and prior pointers from SRLIndexPage
+static const int srlVersion20		= 20;	// Add earlyWrite to SRLOverflowPages
+static const int srlCurrentVersion	= srlVersion20;
 
 class SRLVersion : public SerialLogRecord  
 {

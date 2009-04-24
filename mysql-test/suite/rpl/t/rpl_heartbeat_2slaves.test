@@ -21,6 +21,9 @@ eval CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_PORT=$MASTER_MYPORT, MASTE
 --connect(slave1,127.0.0.1,root,,test,$SLAVE_MYPORT1,)
 --connection slave1
 --echo [on slave1]
+--disable_warnings
+STOP SLAVE;
+--enable_warnings
 RESET SLAVE;
 --replace_result $MASTER_MYPORT MASTER_PORT $binlog_file MASTER_BINLOG
 eval CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_PORT=$MASTER_MYPORT, MASTER_USER='root', MASTER_HEARTBEAT_PERIOD=1, MASTER_LOG_FILE='$binlog_file';
@@ -52,60 +55,72 @@ let $result= query_get_value(SELECT ($slave_rcvd_heartbeats DIV $slave1_rcvd_hea
 --echo Slave has received more heartbeats than Slave1 (1 means 'yes'): $result
 --echo
 
-# First slave doesn't receive data from master because it masked by --replicate-ignore-db.
-# Second slave receives data. Check that the 1st can receive heartbeat.
---echo *** Master->heartbeat->Slave   Master->data->Slave1: ***
+
+# Create topology A->B->C and check that C receives heartbeat while B gets data
+# Slave1 (B) started w/o --log-slave-updates because B should not send data from A to C
+--echo *** Master->data->Slave1->heartbeat->Slave: ***
+--connection slave1
+--echo [on slave1]
+RESET MASTER;
+let $binlog_file= query_get_value(SHOW MASTER STATUS, File, 1);
+--connection slave
+--echo [on slave]
+--source include/stop_slave.inc
+RESET SLAVE;
+--replace_result $SLAVE_MYPORT1 SLAVE1_PORT $binlog_file SLAVE1_BINLOG
+eval CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_PORT=$SLAVE_MYPORT1, MASTER_USER='root', MASTER_HEARTBEAT_PERIOD=0.2, MASTER_LOG_FILE='$binlog_file';
+--source include/start_slave.inc
+# Check heartbeat for new replication channel slave1->slave
+let $status_var= slave_received_heartbeats;
+let $status_var_value= query_get_value(SHOW STATUS LIKE 'slave_received_heartbeats', Value, 1);
+let $status_var_comparsion= >;
+--source include/wait_for_status_var.inc
+--echo Slave has received heartbeat event
 --connection master
 --echo [on master]
-CREATE DATABASE test_slave1;
-USE test_slave1;
 CREATE TABLE t1 (a INT PRIMARY KEY, b VARCHAR(10), c LONGTEXT);
 INSERT INTO t1 VALUES (1, 'on master', '');
---sync_slave_with_master
---echo [on slave]
-SHOW DATABASES LIKE 'test_slave1';
+--save_master_pos
+SHOW TABLES;
 --connection slave1
---sync_with_master
+--sync_with_master 0
 --echo [on slave1]
-SHOW DATABASES LIKE 'test_slave1';
---source include/stop_slave.inc
+SHOW TABLES;
+let $slave_pos_before= query_get_value(SHOW SLAVE STATUS, Read_Master_Log_Pos, 1);
+--save_master_pos
+--connection slave
+--sync_with_master 0
+--echo [on slave]
+SHOW TABLES;
 --connection master
 --echo [on master]
---echo creating 1000 updates in binlog
-# Generate events for binlog on master
-let $i= 1000;
+--echo creating updates on master and send to slave1 during 5 second
+# Generate events on master and send to slave1 during 5 second
+let $i= 1;
 let $j= 1;
+let $k= 1;
 --disable_query_log
 while ($i) {
-  eval SET @c_text=REPEAT('1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890', 1000+$j);
+  eval SET @c_text=REPEAT('1234567890', $j);
   eval UPDATE t1 SET a=$j, c=@c_text;
-  dec $i;
+  --connection slave1
+  let $slave_pos= query_get_value(SHOW SLAVE STATUS, Read_Master_Log_Pos, 1);  
+  if (`SELECT ($k*($slave_pos - $slave_pos_before)) > 0`) {
+    --connection slave
+    let $slave_rcvd_heartbeats_before= query_get_value(SHOW STATUS LIKE 'slave_received_heartbeats', Value, 1);    
+    let $k= 0;
+    let $time_before = `SELECT NOW()`;
+  }
+  if (`SELECT ((1-$k)*TIMESTAMPDIFF(SECOND,'$time_before',NOW())) > 5`) {
+    --connection slave
+    let $slave_rcvd_heartbeats_after= query_get_value(SHOW STATUS LIKE 'slave_received_heartbeats', Value, 1);    
+    let $i= 0;
+  }
+  --connection master
   inc $j;
+  sleep 0.1;
 }
 --enable_query_log
-save_master_pos;
-let $binlog_pos= query_get_value(SHOW MASTER STATUS, Position, 1);
---connection slave1
---echo [on slave1]
-START SLAVE;
-let $slave_param= Read_Master_Log_Pos;
-let $slave_param_value= query_get_value(SHOW SLAVE STATUS, Read_Master_Log_Pos, 1);
-let $slave_param_comparison= >;
---source include/wait_for_slave_param.inc
---connection slave
-let $slave_rcvd_heartbeats_before= query_get_value(SHOW STATUS LIKE 'slave_received_heartbeats', Value, 1);
---connection slave1
-let $slave_param= Read_Master_Log_Pos;
-let $slave_param_value= $binlog_pos;
-let $slave_param_comparison= =;
---source include/wait_for_slave_param.inc
---connection slave
-let $slave_rcvd_heartbeats_after= query_get_value(SHOW STATUS LIKE 'slave_received_heartbeats', Value, 1);
---connection slave1
---sync_with_master
---echo [on slave1]
-USE test_slave1;
-SELECT a FROM t1;
 --connection slave
 --echo [on slave]
 let $result= query_get_value(SELECT ($slave_rcvd_heartbeats_after - $slave_rcvd_heartbeats_before) > 0 AS Result, Result, 1);
@@ -117,10 +132,10 @@ let $result= query_get_value(SELECT ($slave_rcvd_heartbeats_after - $slave_rcvd_
 #
 --echo *** Clean up ***
 --connection master
-DROP DATABASE test_slave1;
---sync_slave_with_master
+DROP TABLE t1;
+--save_master_pos
 --connection slave1
---sync_with_master
+--sync_with_master 0
 --echo
 
 # End of 6.0 test

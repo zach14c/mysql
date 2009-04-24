@@ -33,7 +33,6 @@ Image version:       1
 Creation time: #
 Server version: #
 Server byte order: #
-Image options: #
 Server charset:      'utf8'
 Backup image chrset: 'utf8'
 Snapshot count:      2
@@ -42,12 +41,12 @@ Snapshots:
 
   Snapshot 0 type    native from 'MyISAM'  version 1.0
   Snapshot 0 version 1
-  Snapshot 0 tables  1
+  Snapshot 0 tables  2
   Snapshot 0 table   'mysqltest1'.'t1'
   Snapshot 0 table   'mysqltest1'.'t2'
   Snapshot 1 type    logical from consistent snapshot
   Snapshot 1 version 1
-  Snapshot 1 tables  1
+  Snapshot 1 tables  2
   Snapshot 1 table   'mysqltest2'.'t1'
   Snapshot 1 table   'mysqltest2'.'t2'
 

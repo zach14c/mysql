@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright © 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -50,6 +50,7 @@
 #include "Dbb.h"
 #include "CmdGen.h"
 #include "IndexWalker.h"
+#include "CycleLock.h"
 //#include "SyncTest.h"
 
 #define ACCOUNT				"mysql"
@@ -263,6 +264,8 @@ Table* StorageDatabase::findTable(const char* tableName, const char *schemaName)
 
 int StorageDatabase::insert(Connection* connection, Table* table, Stream* stream)
 {
+	CycleLock cycleLock(connection->database);
+
 	return table->insert(connection->getTransaction(), stream);
 }
 
@@ -274,14 +277,18 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 	Transaction *transaction = connection->getTransaction();
 	Record *candidate = NULL;
 	Record *record = NULL;
+	CycleLock cycleLock(connection->database);
 	
 	try
 		{
 		for (;;)
 			{
 			candidate = table->fetchNext(recordNumber);
+			
 			if (!candidate)
 				return StorageErrorRecordNotFound;
+				
+			RECORD_HISTORY(candidate);
 
 			record = (lockForUpdate)
 			               ? table->fetchForUpdate(transaction, candidate, false)
@@ -290,19 +297,21 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 			if (!record)
 				{
 				if (!lockForUpdate)
-					candidate->release();
+					candidate->release(REC_HISTORY);
 					
 				recordNumber = candidate->recordNumber + 1;
+				
 				continue;
 				}
 			
 			if (!lockForUpdate && candidate != record)
 				{
-				record->addRef();
-				candidate->release();
+				record->addRef(REC_HISTORY);
+				candidate->release(REC_HISTORY);
 				}
 			
 			recordNumber = record->recordNumber;
+			RECORD_HISTORY(record);
 			storageTable->setRecord(record, lockForUpdate);
 			
 			return recordNumber;
@@ -311,10 +320,10 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 	catch (SQLException& exception)
 		{
 		if (record && record != candidate)
-			record->release();
+			record->release(REC_HISTORY);
 
 		if (candidate && !lockForUpdate)
-			candidate->release();
+			candidate->release(REC_HISTORY);
 			
 		int sqlcode = storageConnection->setErrorText(&exception);
 		
@@ -322,12 +331,16 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 			{
 			case UPDATE_CONFLICT:
 				return StorageErrorUpdateConflict;
+				
 			case OUT_OF_MEMORY_ERROR:
 				return StorageErrorOutOfMemory;
+				
 			case OUT_OF_RECORD_MEMORY_ERROR:
 				return StorageErrorOutOfRecordMemory;
+				
 			case DEADLOCK:
 				return StorageErrorDeadlock;
+				
 			case LOCK_TIMEOUT:
 				return StorageErrorLockTimeout;
 			}
@@ -342,6 +355,7 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 	Connection *connection = storageConnection->connection;
 	Transaction *transaction = connection->getTransaction();
 	Record *candidate = NULL;;
+	CycleLock cycleLock(table->database);
 	
 	try
 		{
@@ -349,6 +363,8 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 		
 		if (!candidate)
 			return StorageErrorRecordNotFound;
+			
+		RECORD_HISTORY(candidate);
 
 		Record *record = (lockForUpdate)
 		               ? table->fetchForUpdate(transaction, candidate, false)
@@ -357,17 +373,18 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 		if (!record)
 			{
 			if (!lockForUpdate)
-				candidate->release();
+				candidate->release(REC_HISTORY);
 			
 			return StorageErrorRecordNotFound;
 			}
 		
 		if (!lockForUpdate && record != candidate)
 			{
-			record->addRef();
-			candidate->release();
+			record->addRef(REC_HISTORY);
+			candidate->release(REC_HISTORY);
 			}
-		
+
+		RECORD_HISTORY(record);
 		storageTable->setRecord(record, lockForUpdate);
 				
 		return 0;
@@ -375,7 +392,7 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 	catch (SQLException& exception)
 		{
 		if (candidate && !lockForUpdate)
-			candidate->release();
+			candidate->release(REC_HISTORY);
 			
 		int sqlcode = storageConnection->setErrorText(&exception);
 		
@@ -408,6 +425,7 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 	Table *table = storageTable->share->table;
 	Transaction *transaction = connection->getTransaction();
 	Record *candidate = NULL;
+	CycleLock cycleLock(connection->database);
 	
 	try
 		{
@@ -421,6 +439,7 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 				return StorageErrorRecordNotFound;
 	
 			candidate = table->fetch(recordNumber);
+			RECORD_HISTORY(candidate);
 			++recordNumber;
 			
 			if (candidate)
@@ -435,24 +454,25 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 
 					if (!lockForUpdate && candidate != record)
 						{
-						record->addRef();
-						candidate->release();
+						record->addRef(REC_HISTORY);
+						candidate->release(REC_HISTORY);
 						}
-					
+
+					RECORD_HISTORY(record);
 					storageTable->setRecord(record, lockForUpdate);
-					
+
 					return recordNumber;
 					}
 				
 				if (!lockForUpdate)
-					candidate->release();
+					candidate->release(REC_HISTORY);
 				}
 			}
 		}
 	catch (SQLException& exception)
 		{
 		if (candidate && !lockForUpdate)
-			candidate->release();
+			candidate->release(REC_HISTORY);
 
 		storageConnection->setErrorText(&exception);
 		int errorCode = exception.getSqlcode();
@@ -482,14 +502,47 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 
 int StorageDatabase::nextIndexed(StorageTable* storageTable, IndexWalker* indexWalker, bool lockForUpdate)
 {
-	Record *record = indexWalker->getNext(lockForUpdate);
+	CycleLock cycleLock(storageTable->share->table->database);
 
-	if (!record)
-		return StorageErrorRecordNotFound;
+	try
+		{
+		Record *record = indexWalker->getNext(lockForUpdate);
+
+		if (!record)
+			return StorageErrorRecordNotFound;
+
+		RECORD_HISTORY(record);
+		storageTable->setRecord(record, lockForUpdate);
+		return record->recordNumber;
+		}
+	catch (SQLException& exception)
+		{
+		StorageConnection *storageConnection = storageTable->storageConnection;
+		storageConnection->setErrorText(&exception);
+		int errorCode = exception.getSqlcode();
 		
-	storageTable->setRecord(record, lockForUpdate);
-	
-	return record->recordNumber;
+		switch (errorCode)
+			{
+			case UPDATE_CONFLICT:
+				return StorageErrorUpdateConflict;
+
+			case OUT_OF_MEMORY_ERROR:
+				return StorageErrorOutOfMemory;
+
+			case OUT_OF_RECORD_MEMORY_ERROR:
+				return StorageErrorOutOfRecordMemory;
+
+			case DEADLOCK:
+				return StorageErrorDeadlock;
+
+			case LOCK_TIMEOUT:
+				return StorageErrorLockTimeout;
+				
+			default:
+				ASSERT(false);
+			}
+
+		}
 }
 
 int StorageDatabase::savepointSet(Connection* connection)
@@ -501,6 +554,8 @@ int StorageDatabase::savepointSet(Connection* connection)
 
 int StorageDatabase::savepointRollback(Connection* connection, int savePoint)
 {
+	CycleLock cycleLock(connection->database);
+
 	Transaction *transaction = connection->getTransaction();
 	transaction->rollbackSavepoint(savePoint);
 	
@@ -509,6 +564,8 @@ int StorageDatabase::savepointRollback(Connection* connection, int savePoint)
 
 int StorageDatabase::savepointRelease(Connection* connection, int savePoint)
 {
+	CycleLock cycleLock(connection->database);
+
 	Transaction *transaction = connection->getTransaction();
 	transaction->releaseSavepoint(savePoint);
 	
@@ -604,6 +661,7 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 	Connection *connection = storageConnection->connection;
 	Transaction *transaction = connection->transaction;
 	Record *candidate = NULL, *record = NULL;
+	CycleLock cycleLock(connection->database);
 	
 	try
 		{
@@ -611,22 +669,24 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 		
 		if (!candidate)
 			return StorageErrorRecordNotFound;
-		
+			
+		RECORD_HISTORY(candidate);
+
 		if (candidate->state == recLock)
 			record = candidate->getPriorVersion();
-		else if (candidate->getTransaction() == transaction)
+		else if (candidate->getTransactionState() == transaction->transactionState)
 			record = candidate;
 		else
 			record = candidate->fetchVersion(transaction);
 
 		if (record != candidate)
 			{
-			record->addRef();
-			candidate->release();
+			record->addRef(REC_HISTORY);
+			candidate->release(REC_HISTORY);
 			}
 		
 		table->deleteRecord(transaction, record);
-		record->release();
+		record->release(REC_HISTORY);
 		
 		return 0;
 		}
@@ -636,9 +696,9 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 		int sqlCode = exception.getSqlcode();
 
 		if (record)
-			record->release();
+			record->release(REC_HISTORY);
 		else if (candidate)
-			candidate->release();
+			candidate->release(REC_HISTORY);
 
 		switch (sqlCode)
 			{
@@ -671,6 +731,7 @@ int StorageDatabase::deleteRow(StorageConnection *storageConnection, Table* tabl
 int StorageDatabase::updateRow(StorageConnection* storageConnection, Table* table, Record *oldRecord, Stream* stream)
 {
 	Connection *connection = storageConnection->connection;
+	CycleLock cycleLock(connection->database);
 	table->update (connection->getTransaction(), oldRecord, stream);
 	
 	return 0;
@@ -821,7 +882,12 @@ int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int 
 			if (nullFlag)
 				{
 				values[segmentNumber]->setNull();
-				break;
+				if (index->indexVersion < INDEX_VERSION_2)
+					{
+					// Older index version do not handle NULLs correctly -it is not the smallest value.
+					// Thus, we cannot use values past NULL and need to break here.
+					break;
+					}
 				}
 
 			p += len;
@@ -971,6 +1037,36 @@ int StorageDatabase::getSegmentValue(StorageSegment* segment, const UCHAR* ptr, 
 			break;
 
 		case KEY_FORMAT_ULONGLONG:
+			{
+			uint64 temp = (uint64)
+				((uint64)(((uint32) ((UCHAR) ptr[0])) +
+					(((uint32) ((UCHAR) ptr[1])) << 8) +
+					(((uint32) ((UCHAR) ptr[2])) << 16) +
+					(((uint32) ((UCHAR) ptr[3])) << 24)) +
+				(((uint64)(((uint32) ((UCHAR) ptr[4])) +
+					(((uint32) ((UCHAR) ptr[5])) << 8) +
+					(((uint32) ((UCHAR) ptr[6])) << 16) +
+					(((uint32) ((UCHAR) ptr[7])) << 24)))
+				<< 32));
+
+			// If the MSB is set, we have to set the
+			// value as a BigInt, if it is not set, we 
+			// can use int64
+
+			if (temp & 0x8000000000000000ULL)
+				{
+				BigInt bigInt;
+				bigInt.set(temp);
+				value->setValue(&bigInt);
+				}
+			else
+				{
+				value->setValue((int64)temp);
+				}
+
+			}
+			break;
+
 		case KEY_FORMAT_LONGLONG:
 			{
 			int64 temp = (int64)

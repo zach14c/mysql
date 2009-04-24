@@ -59,6 +59,7 @@ class Database;
 class Dbb;
 class Index;
 class Transaction;
+class TransactionState;
 class Value;
 CLASS(Field);
 class Format;
@@ -95,7 +96,7 @@ public:
 	void		getIndirectBlob (int recordId, BlobReference *blob);
 	BinaryBlob* getBinaryBlob (int recordId);
 	AsciiBlob*	getAsciiBlob (int recordId);
-	int32		getIndirectId (BlobReference *reference, Transaction *transaction);
+	int32		getIndirectId (BlobReference *reference, TransactionState *transaction);
 	void		refreshFields();
 	void		insertView(Transaction *transaction, int count, Field **fieldVector, Value **values);
 	void		bind (Table *table);
@@ -169,7 +170,7 @@ public:
 	bool		isCreated();
 	void		reIndexInversion(Transaction *transaction);
 	void		makeSearchable (Field *field, Transaction *transaction);
-	int32		getBlobId (Value *value, int32 oldId, bool cloneFlag, Transaction *transaction);
+	int32		getBlobId (Value *value, int32 oldId, bool cloneFlag, TransactionState *transaction);
 	void		addFormat (Format *format);
 	void		rollbackRecord (RecordVersion *recordVersion, Transaction *transaction);
 	Record*		fetch (int32 recordNumber);
@@ -203,7 +204,7 @@ public:
 	bool		validateUpdate(int32 recordNumber, TransId transactionId);
 	Record*		treeFetch(int32 recordNumber);
 	
-	int32			backlogRecord(RecordVersion* record);
+	bool			backlogRecord(RecordVersion* record, Bitmap* backlogBitmap);
 	Record*			backlogFetch(int32 recordNumber);
 	void			deleteRecordBacklog(int32 recordNumber);
 	
@@ -213,6 +214,9 @@ public:
 	Record*			fetchForUpdate(Transaction* transaction, Record* record, bool usingIndex);
 	void			unlockRecord(int recordNumber, int verbMark);
 	void			unlockRecord(RecordVersion* record, int verbMark);
+	void			queueForDelete(Record* record);
+	void			queueForDelete(Value** record);
+	void			queueForDelete(char* record);
 
 	void			insert (Transaction *transaction, int count, Field **fields, Value **values);
 	uint			insert (Transaction *transaction, Stream *stream);
@@ -227,8 +231,6 @@ public:
 	void			deleteRecord (int recordNumber);
 	void			deleteRecord (RecordVersion *record, Transaction *transaction);
 	
-	SyncObject*		getSyncPrior(Record* record);
-	SyncObject*		getSyncPrior(int recordNumber);
 	SyncObject*		getSyncThaw(Record* record);
 	SyncObject*		getSyncThaw(int recordNumber);
 
@@ -236,7 +238,6 @@ public:
 	SyncObject		syncObject;
 	SyncObject		syncTriggers;
 	SyncObject		syncAlter;				// prevent concurrent Alter statements.
-	SyncObject		syncPriorVersions[SYNC_VERSIONS_SIZE];
 	SyncObject		syncThaw[SYNC_THAW_SIZE];
 	Table			*collision;				// Hash collision in database
 	Table			*idCollision;			// mod(id) collision in database
@@ -272,7 +273,7 @@ public:
 	bool			markedForDelete;
 	bool			alterIsActive;
 	bool			deleting;					// dropping or truncating.
-	int32			highWater;
+	int32			recordBitmapHighWater;
 	int32			ageGroup;
 	uint32			debugThawedRecords;
 	uint64			debugThawedBytes;

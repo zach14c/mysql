@@ -441,6 +441,7 @@ sub run_test_server ($$$) {
   my $completed= [];
   my %running;
   my $result;
+  my $exe_mysqld= find_mysqld($basedir) || ""; # Used as hint to CoreDump
 
   my $suite_timeout_proc= My::SafeProcess->timer(suite_timeout());
 
@@ -512,7 +513,7 @@ sub run_test_server ($$$) {
 			   mtr_report(" - found '$core_name'",
 				      "($num_saved_cores/$opt_max_save_core)");
 
-			   My::CoreDump->show($core_file);
+			   My::CoreDump->show($core_file, $exe_mysqld);
 
 			   if ($num_saved_cores >= $opt_max_save_core) {
 			     mtr_report(" - deleting it, already saved",
@@ -1602,24 +1603,6 @@ sub client_debug_arg($$) {
 }
 
 
-sub mysql_fix_arguments () {
-
-  return "" if ( IS_WINDOWS );
-
-  my $exe=
-    mtr_script_exists("$basedir/scripts/mysql_fix_privilege_tables",
-		      "$path_client_bindir/mysql_fix_privilege_tables");
-  my $args;
-  mtr_init_args(\$args);
-  mtr_add_arg($args, "--defaults-file=%s", $path_config_file);
-
-  mtr_add_arg($args, "--basedir=%s", $basedir);
-  mtr_add_arg($args, "--bindir=%s", $path_client_bindir);
-  mtr_add_arg($args, "--verbose");
-  return mtr_args2str($exe, @$args);
-}
-
-
 sub client_arguments ($) {
   my $client_name= shift;
   my $client_exe= mtr_exe_exists("$path_client_bindir/$client_name");
@@ -1781,15 +1764,31 @@ sub environment_setup {
   # --------------------------------------------------------------------------
   # Add the path where mysqld will find ha_example.so
   # --------------------------------------------------------------------------
-  if ($mysql_version_id >= 50100) {
+  if ($mysql_version_id >= 50100 && !(IS_WINDOWS && $opt_embedded_server)) {
+    my $plugin_filename;
+    if (IS_WINDOWS)
+    {
+       $plugin_filename = "ha_example.dll"; 
+    }
+    else 
+    {
+       $plugin_filename = "ha_example.so";
+    }
     my $lib_example_plugin=
-      mtr_file_exists(vs_config_dirs('storage/example', 'ha_example.dll'),
-		      "$basedir/storage/example/.libs/ha_example.so",);
+      mtr_file_exists(vs_config_dirs('storage/example',$plugin_filename),
+		      "$basedir/storage/example/.libs/".$plugin_filename);
     $ENV{'EXAMPLE_PLUGIN'}=
       ($lib_example_plugin ? basename($lib_example_plugin) : "");
     $ENV{'EXAMPLE_PLUGIN_OPT'}= "--plugin-dir=".
       ($lib_example_plugin ? dirname($lib_example_plugin) : "");
 
+    $ENV{'HA_EXAMPLE_SO'}="'".$plugin_filename."'";
+    $ENV{'EXAMPLE_PLUGIN_LOAD'}="--plugin_load=;EXAMPLE=".$plugin_filename.";";
+  }
+  else
+  {
+    $ENV{'EXAMPLE_PLUGIN_OPT'}="";
+    $ENV{'EXAMPLE_PLUGIN_LOAD'}="";
   }
 
   # ----------------------------------------------------
@@ -1912,7 +1911,6 @@ sub environment_setup {
   $ENV{'MYSQL_UPGRADE'}=            client_arguments("mysql_upgrade");
   $ENV{'MYSQLADMIN'}=               native_path($exe_mysqladmin);
   $ENV{'MYSQL_CLIENT_TEST'}=        mysql_client_test_arguments();
-  $ENV{'MYSQL_FIX_SYSTEM_TABLES'}=  mysql_fix_arguments();
   $ENV{'EXE_MYSQL'}=                $exe_mysql;
 
   # ----------------------------------------------------
@@ -2478,14 +2476,6 @@ sub create_config_file_for_extern {
 # binlog reads from [client] and [mysqlbinlog]
 [mysqlbinlog]
 character-sets-dir= $path_charsetsdir
-
-# mysql_fix_privilege_tables.sh don't read from [client]
-[mysql_fix_privilege_tables]
-socket            = $opts{'socket'}
-port              = $opts{'port'}
-user              = $opts{'user'}
-password          = $opts{'password'}
-
 
 EOF
 ;
@@ -4061,6 +4051,10 @@ sub mysqld_arguments ($$$) {
     {
       ; # Dont add --skip-log-bin when mysqld have --log-slave-updates in config
     }
+    elsif ($arg eq "")
+    {
+      ; # Dont add empty arguments
+    }
     else
     {
       mtr_add_arg($args, "%s", $arg);
@@ -4831,13 +4825,9 @@ sub gdb_arguments {
   else
   {
     # write init file for mysqld
-    mtr_tofile($gdb_init_file,
-	       "set args $str\n" .
-	       "break mysql_parse\n" .
-	       "commands 1\n" .
-	       "disable 1\n" .
-	       "end\n" .
-	       "run");
+    mtr_tofile($gdb_init_file, <<EOGDB );
+set args $str
+EOGDB
   }
 
   if ( $opt_manual_gdb )
@@ -5205,7 +5195,7 @@ sub list_options ($) {
   my $hash= shift;
 
   for (keys %$hash) {
-    s/(=.*|!)$//;
+    s/(=.*|[+!])$//;
     s/\|/\n--/g;
     print "--$_\n";
   }

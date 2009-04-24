@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (c) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include "Bitmap.h"
 #include "Index.h"
 #include "IndexWalker.h"
+#include "SQLError.h"
 #include "SQLException.h"
 #include "Record.h"
 #include "Table.h"
@@ -29,6 +30,7 @@
 #include "Value.h"
 #include "SQLException.h"
 #include "MySQLCollation.h"
+#include "Log.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -52,6 +54,7 @@ StorageTable::StorageTable(StorageConnection *connection, StorageTableShare *tab
 	record = NULL;
 	recordLocked = false;
 	indexesLocked = false;
+	historyIndex = 0;
 }
 
 StorageTable::~StorageTable(void)
@@ -157,6 +160,22 @@ int StorageTable::next(int recordNumber, bool lockForUpdate)
 
 	int ret = storageDatabase->nextRow(this, recordNumber, lockForUpdate);
 
+#ifdef TRACK_RECORDS
+	if (ret >= 0)
+		{
+		if (historyIndex >= recordHistorySize)
+			Log::debug("history overflow\n");
+		else
+			{
+			RecordHistory *history = recordHistory + historyIndex++;
+			history->record = record;
+			history->recordNumber = record->recordNumber;
+			history->transaction = record->getTransaction();
+			history->transactionId = record->getTransactionId();
+			}
+		}
+#endif
+			
 	return ret;
 }
 
@@ -357,8 +376,9 @@ const char* StorageTable::getName(void)
 void StorageTable::setRecord(Record* newRecord, bool locked)
 {
 	if (record)
-		record->release();
-	
+		record->release(REC_HISTORY);
+
+	RECORD_HISTORY(newRecord);
 	record = newRecord;
 	recordLocked = locked;
 	format = record->format;
@@ -374,7 +394,7 @@ void StorageTable::clearRecord(void)
 {
 	if (record)
 		{
-		record->release();
+		record->release(REC_HISTORY);
 		record = NULL;
 		}
 }
@@ -450,6 +470,9 @@ int StorageTable::compareKey(const unsigned char* key, int keyLength)
 			Value keyValue;
 			int len = storageDatabase->getSegmentValue(segment, p, &keyValue, index->fields[segmentNumber]);
 			Field *field = index->fields[segmentNumber];
+			
+			if (!record->hasRecord())
+				throw SQLError(INTERNAL_ERROR, "invalid record, state = %d", record->state);
 
 			if (nullFlag)
 				{
@@ -523,6 +546,7 @@ int StorageTable::compareKey(const unsigned char* key, int keyLength)
 		}
 	catch (SQLException& exception)
 		{
+		ASSERT(exception.getSqlcode() != INTERNAL_ERROR);
 		return translateError(&exception, StorageErrorDupKey);
 		}
 }
@@ -575,6 +599,9 @@ int StorageTable::translateError(SQLException *exception, int defaultStorageErro
 			case IO_ERROR_SERIALLOG:
 				errorCode = StorageErrorIOErrorSerialLog;
 				break;
+				
+			case INTERNAL_ERROR:
+				errorCode = StorageErrorInternalError;
 
 			default:
 				errorCode = defaultStorageError;
@@ -659,4 +686,5 @@ void StorageTable::clearStatement(void)
 	clearAlter();
 	delete indexWalker;
 	indexWalker = NULL;
+	historyIndex = 0;
 }

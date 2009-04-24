@@ -16,33 +16,37 @@ DROP TABLE IF EXISTS t1;
 --enable_warnings
 
 # ----------------------------------------------------- #
-# --- Test 1 - optimize with records                --- #
+# --- Test 1 - OPTIMIZE with records                --- #
 # ----------------------------------------------------- #
---echo ------- Test 1 - optimize with records  -------
+--echo ------- Test 1 - OPTIMIZE with records  -------
 CREATE TABLE  t1 (
-   `id` BIGINT NOT NULL  AUTO_INCREMENT PRIMARY KEY,
-   `field1` CHAR(50) NOT NULL)
+   id BIGINT NOT NULL  AUTO_INCREMENT PRIMARY KEY,
+   field1 CHAR(50) NOT NULL)
    PARTITION BY Hash (id) PARTITIONS 4;
 
-INSERT INTO t1 (`id`, `field1`) VALUES('3','value3');
-INSERT INTO t1 (`id`, `field1`) VALUES('5','value5');
-INSERT INTO t1 (`id`, `field1`) VALUES('7','value7');
+INSERT INTO t1 (id, field1) VALUES('3','value3');
+INSERT INTO t1 (id, field1) VALUES('5','value5');
+INSERT INTO t1 (id, field1) VALUES('7','value7');
 
-ALTER TABLE t1 OPTIMIZE PARTITION `p1`;
+ALTER TABLE t1 OPTIMIZE PARTITION p1;
 SELECT count(*) FROM t1;
 
 # ----------------------------------------------------- #
-# --- Test 2 - optimize without records             --- #
+# --- Test 2 - OPTIMIZE without records             --- #
 # ----------------------------------------------------- #
---echo ------- Test 2 - optimize without records ------
+--echo ------- Test 2 - OPTIMIZE without records ------
 DROP TABLE t1;
 CREATE TABLE  t1 (
-   `id` BIGINT NOT NULL  AUTO_INCREMENT PRIMARY KEY,
-   `field1` CHAR(50) NOT NULL)
+   id BIGINT NOT NULL  AUTO_INCREMENT PRIMARY KEY,
+   field1 CHAR(50) NOT NULL)
    PARTITION BY Hash (id) PARTITIONS 4;
 
-ALTER TABLE t1 OPTIMIZE PARTITION `p1`;
+ALTER TABLE t1 OPTIMIZE PARTITION p1;
 
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
 
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #

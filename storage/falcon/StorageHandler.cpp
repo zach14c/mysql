@@ -143,12 +143,6 @@ StorageHandler::StorageHandler(int lockSize)
 
 StorageHandler::~StorageHandler(void)
 {
-	for (int n = 0; n < databaseHashSize; ++n)
-		for (StorageDatabase *storageDatabase; (storageDatabase = storageDatabases[n]);)
-			{
-			storageDatabases[n] = storageDatabase->collision;
-			delete storageDatabase;
-			}
 
 	for (int n = 0; n < tableHashSize; ++n)
 		for (StorageTableShare *table; (table = tables[n]);)
@@ -156,6 +150,14 @@ StorageHandler::~StorageHandler(void)
 			tables[n] = table->collision;
 			delete table;
 			}
+
+	for (int n = 0; n < databaseHashSize; ++n)
+		for (StorageDatabase *storageDatabase; (storageDatabase = storageDatabases[n]);)
+			{
+			storageDatabases[n] = storageDatabase->collision;
+			delete storageDatabase;
+			}
+
 }
 
 void StorageHandler::startNfsServer(void)
@@ -1033,6 +1035,11 @@ void StorageHandler::createDatabase(void)
 		statement->executeUpdate(*ddl);
 	statement->close();
 	dictionaryConnection->commit();
+
+	Database *database = dictionaryConnection->database;
+	database->waitForWriteComplete(NULL);
+	database->flush((int64)0);
+
 	inCreateDatabase = false;
 }
 

@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 #include "Configuration.h"
 #include "RecordVersion.h"
 #include "Transaction.h"
+#include "TransactionState.h"
 #include "TransactionManager.h"
 #include "Table.h"
 #include "Connection.h"
@@ -42,24 +43,34 @@ static const char THIS_FILE[]=__FILE__;
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *trans, Record *oldVersion) :
+RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *transaction, Record *oldVersion) :
 	Record (tbl, format)
 {
 	virtualOffset = 0;
-	transaction   = trans;
-	transactionId = transaction->transactionId;
+	
+	//transaction   = trans;
+	//transactionState    = trans->transactionState;
+	//transactionState->addRef();
+
+	transactionState = NULL;
+	setTransactionState(transaction->transactionState);
+	
+	//transactionId = transaction->transactionId;
 	savePointId   = transaction->curSavePointId;
 	superceded    = false;
 
+	// Add a use count on the transaction state to ensure it lives 
+	// as long as the record version object
+
 	if ((priorVersion = oldVersion))
 		{
-		priorVersion->addRef();
+		priorVersion->addRef(REC_HISTORY);
 		recordNumber = oldVersion->recordNumber;
 
 		if (priorVersion->state == recChilled)
 			priorVersion->thaw();
 		
-		if (trans == priorVersion->getTransaction())
+		if (transactionState == priorVersion->getTransactionState())
 			oldVersion->setSuperceded (true);
 		}
 	else
@@ -68,11 +79,15 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *trans, Rec
 
 RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(database, stream)
 {
+	// Reconstitute a record version and recursively restore all
+	// prior versions from 'stream'
+
 	virtualOffset = stream->getInt64();
-	transactionId = stream->getInt();
+	TransId transactionId = stream->getInt();
 	int priorType = stream->getInt();
 	superceded = false;
-
+	transactionState = NULL;
+	
 	if (priorType == 0)
 		priorVersion = new Record(database, stream);
 	else if (priorType == 1)
@@ -85,22 +100,44 @@ RecordVersion::RecordVersion(Database* database, Serialize *stream) : Record(dat
 	else
 		priorVersion = NULL;
 	
-	if ( (transaction = database->transactionManager->findTransaction(transactionId)) )
+	Transaction *transaction = database->transactionManager->findTransaction(transactionId);
+	
+	if (transaction)
+		{
+		setTransactionState(transaction->transactionState);
+		transaction->release();
+		/***
 		if (!transaction->writePending)
 			transaction = NULL;
+		***/
+		}
+	else
+		{
+		// Creates a transaction state object for storing the transaction id
+
+		transactionState = new TransactionState();
+		transactionState->transactionId = transactionId;
+		transactionState->state = Committed;
+		}
 }
 
 RecordVersion::~RecordVersion()
 {
 	state = recDeleting;
-	Record *prior = priorVersion;
-	priorVersion = NULL;
+	Record* prior = priorVersion;
+	if (!COMPARE_EXCHANGE_POINTER(&priorVersion, prior, NULL))
+		FATAL("~RecordVersion; Unexpected contents in priorVersion\n");
 
 	// Avoid recursion here. May crash from too many levels
 	// if the same record is updated too often and quickly.
 	
 	while (prior)
 		prior = prior->releaseNonRecursive();
+
+	// Release the use count on the transaction state object
+
+	if (transactionState)
+		transactionState->release();
 }
 
 // Release the priorRecord reference without doing it recursively.
@@ -113,42 +150,33 @@ Record* RecordVersion::releaseNonRecursive()
 	if (useCount == 1)
 		{
 		prior = priorVersion;
-		priorVersion = NULL;
+		if (!COMPARE_EXCHANGE_POINTER(&priorVersion, prior, NULL))
+			FATAL("RecordVersion::releaseNonRecursive; Unexpected contents in priorVersion\n");
 		}
 
-	release();
+	release(REC_HISTORY);
 
 	return prior;
 }
 
 Record* RecordVersion::fetchVersion(Transaction * trans)
 {
-	Sync syncPrior(format->table->getSyncPrior(this), "RecordVersion::fetchVersion");
-	if (priorVersion)
-		syncPrior.lock(Shared);
-
-	return fetchVersionRecursive(trans);
-}
-
-Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
-{
 	// Unless the record is at least as old as the transaction, it's not for us
 
-	Transaction *recTransaction = transaction;
+	TransactionState* recTransState = transactionState;
 
 	if (state != recLock)
 		{
 		if (IS_READ_COMMITTED(trans->isolationLevel))
 			{
-			int state = (recTransaction) ? recTransaction->state : 0;
+			int state = (recTransState) ? recTransState->state : 0;
 			
-			if (!transaction || state == Committed || recTransaction == trans)
+			if (state == Committed || recTransState == trans->transactionState)
 				return (getRecordData()) ? this : NULL;
 			}
-		// else IS_REPEATABLE_READ(trans->isolationLevel)
-		else if (transactionId <= trans->transactionId)
+		else if (recTransState->transactionId <= trans->transactionId)
 			{
-			if (trans->visible(recTransaction, transactionId, FOR_READING))
+			if (trans->visible(recTransState, FOR_READING))
 				return (getRecordData()) ? this : NULL;
 			}
 		}
@@ -156,7 +184,7 @@ Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
 	if (!priorVersion)
 		return NULL;
 		
-	return priorVersion->fetchVersionRecursive(trans);
+	return priorVersion->fetchVersion(trans);
 }
 
 void RecordVersion::rollback(Transaction *transaction)
@@ -177,80 +205,66 @@ bool RecordVersion::isVersion()
 
 void RecordVersion::commit()
 {
-	transaction = NULL;
+	//transaction = NULL;
 }
 
 // Return true if this record has been committed before a certain transactionId
 
 bool RecordVersion::committedBefore(TransId transId)
 {
+	/***
 	// The transaction pointer in this record can disapear at any time due to 
 	// another call to Transaction::commitRecords().  So read it locally
 
 	Transaction *transactionPtr = transaction;
+	
 	if (transactionPtr)
 		return transactionPtr->committedBefore(transId);
 
 	// If the transaction Pointer is null, then this record is committed.
 	// All we have is the starting point for these transactions.
+	
 	return (transactionId < transId);
+	***/
+	
+	return transactionState->committedBefore(transId);
 }
 
+// This is called with an exclusive lock on the recordLeaf
 
-bool RecordVersion::retire(RecordScavenge *recordScavenge)
+void RecordVersion::retire(void)
 {
-	bool neededByAnyActiveTrans = true;
-	if (  !transaction 
-		|| transaction->committedBefore(recordScavenge->oldestActiveTransaction))
-		neededByAnyActiveTrans = false;
+	SET_THIS_RECORD_ACTIVE(false);
+	RECORD_HISTORY(this);
 
-	if (   generation <= recordScavenge->scavengeGeneration
-		&& useCount == 1
-		&& !priorVersion
-		&& !neededByAnyActiveTrans)
-		{
-		recordScavenge->recordsRetired++;
-		recordScavenge->spaceRetired += getMemUsage();
-#ifdef CHECK_RECORD_ACTIVITY
-		active = false;
-#endif
-		if (state == recDeleted)
-			expungeRecord();  // Allow this record number to be reused
+	if (state == recDeleted)
+		expungeRecord();  // Allow this record number to be reused
 
-		release();
-		return true;
-		}
-
-	return false;
+	release();
 }
 
 // Scavenge record versions replaced within a savepoint.
+// this record is staying and any prior records at 
+// the same savepoint are leaving
 
-void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestActiveSavePointId)
+void RecordVersion::scavengeSavepoint(Transaction* targetTransaction, int oldestActiveSavePointId)
 {
 	if (!priorVersion)
 		return;
 
-	Sync syncPrior(getSyncPrior(), "RecordVersion::scavengeSavepoint");
-	syncPrior.lock(Shared);
-	
 	Record *rec = priorVersion;
 	Record *ptr = NULL;
 
 	// Remove prior record versions assigned to the savepoint being released
 	
-	for (; (   rec && rec->getTransactionId() == targetTransactionId 
+	for (; (   rec && rec->getTransactionId() == targetTransaction->transactionId
 		    && rec->getSavePointId() >= oldestActiveSavePointId);
 		  rec = rec->getPriorVersion())
 		{
 		ptr = rec;
-#ifdef CHECK_RECORD_ACTIVITY
-		rec->active = false;
-#endif
-		Transaction *trans = rec->getTransaction();
+		SET_RECORD_ACTIVE(rec, false);
 
-		if (trans)
-			trans->removeRecord((RecordVersion*) rec);
+		targetTransaction->removeRecord((RecordVersion*) rec);
 		}
 
 	// If we didn't find anyone, there's nothing to do
@@ -263,15 +277,14 @@ void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestAct
 	// next staying version.  
 
 	Record *prior = priorVersion;
-	prior->addRef();
+	prior->addRef(REC_HISTORY);
 
-	syncPrior.unlock();
-	syncPrior.lock(Exclusive);
+	// Set this record's priorVersion to point past the leaving record(s)
 
-	setPriorVersion(rec);
+	setPriorVersion(prior, rec);
 	ptr->state = recEndChain;
-	format->table->garbageCollect(prior, this, transaction, false);
-	prior->release();
+	format->table->garbageCollect(prior, this, targetTransaction, false);
+	prior->queueForDelete();
 }
 
 Record* RecordVersion::getPriorVersion()
@@ -289,9 +302,16 @@ void RecordVersion::setSuperceded(bool flag)
 	superceded = flag;
 }
 
+/***
 Transaction* RecordVersion::getTransaction()
 {
 	return transaction;
+}
+***/
+
+TransactionState* RecordVersion::getTransactionState() const
+{
+	return transactionState;
 }
 
 bool RecordVersion::isSuperceded()
@@ -300,38 +320,36 @@ bool RecordVersion::isSuperceded()
 }
 
 // Set the priorVersion to NULL and return its pointer.
-// The caller is responsivble for releasing the associated useCount.
+// The caller is responsible for releasing the associated useCount.
 
 Record* RecordVersion::clearPriorVersion(void)
 {
-	Sync syncPrior(getSyncPrior(), "RecordVersion::clearPriorVersion");
-	syncPrior.lock(Exclusive);
-
 	Record * prior = priorVersion;
-	
+
 	if (prior && prior->useCount == 1)
 		{
-		priorVersion = NULL;
-		return prior;
+		if (COMPARE_EXCHANGE_POINTER(&priorVersion, prior, NULL))
+			return prior;
 		}
-	
+
 	return NULL;
 }
 
-void RecordVersion::setPriorVersion(Record *oldVersion)
+void RecordVersion::setPriorVersion(Record *oldPriorVersion, Record *newPriorVersion)
 {
-	if (oldVersion)
-		oldVersion->addRef();
+	if (newPriorVersion)
+		newPriorVersion->addRef(REC_HISTORY);
 
-	if (priorVersion)
-		priorVersion->release();
+	if (!COMPARE_EXCHANGE_POINTER(&priorVersion, oldPriorVersion, newPriorVersion))
+		FATAL("RecordVersion::setPriorVersion; Unexpected contents in priorVersion\n");
 
-	priorVersion = oldVersion;
+	if (oldPriorVersion)
+		oldPriorVersion->release(REC_HISTORY);
 }
 
 TransId RecordVersion::getTransactionId()
 {
-	return transactionId;
+	return transactionState->transactionId;
 }
 
 int RecordVersion::getSavePointId()
@@ -355,7 +373,6 @@ int RecordVersion::thaw()
 	syncThaw.lock(Exclusive);
 
 	int bytesRestored = 0;
-	Transaction *trans = transaction;
 	
 	// Nothing to do if the record is no longer chilled
 	
@@ -366,13 +383,17 @@ int RecordVersion::thaw()
 	// true, then the record data can be restored from the serial log. If writePending
 	// is false, then the record data has been written to the data pages.
 	
-	if (trans && trans->writePending)
+	Transaction *trans = findTransaction();
+
+	if (trans)
 		{
-		trans->addRef();
-		bytesRestored = trans->thaw(this);
-		
-		if (bytesRestored == 0)
-			trans->thaw(this);
+		if (trans->writePending)
+			{
+			bytesRestored = trans->thaw(this);
+			
+			if (bytesRestored == 0)
+				trans->thaw(this);
+			}
 
 		trans->release();
 		}
@@ -431,7 +452,7 @@ char* RecordVersion::getRecordData()
 void RecordVersion::print(void)
 {
 	Log::debug("  %p\tId %d, enc %d, state %d, tid %d, use %d, grp %d, prior %p\n",
-			this, recordNumber, encoding, state, transactionId, useCount,
+			this, recordNumber, encoding, state, transactionState->transactionId, useCount,
 			generation, priorVersion);
 	
 	if (priorVersion)
@@ -447,7 +468,9 @@ void RecordVersion::serialize(Serialize* stream)
 {
 	Record::serialize(stream);
 	stream->putInt64(virtualOffset);
-	stream->putInt(transactionId);
+	stream->putInt(transactionState->transactionId);
+	
+	// Recursively serialize the prior version chain
 	
 	if (priorVersion)
 		{
@@ -458,3 +481,16 @@ void RecordVersion::serialize(Serialize* stream)
 		stream->putInt(2);
 }
 
+void RecordVersion::setTransactionState(TransactionState* newTransState)
+{
+	if (transactionState)
+		transactionState->release();
+	
+	transactionState = newTransState;
+	transactionState->addRef();
+}
+
+Transaction* RecordVersion::findTransaction(void)
+{
+	return format->table->database->transactionManager->findTransaction(transactionState->transactionId);
+}

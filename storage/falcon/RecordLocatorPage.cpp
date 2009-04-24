@@ -63,6 +63,7 @@ void RecordLocatorPage::deleteLine(int line, int spaceAvailable)
 		}
 
 	if (spaceAvailable == 0 && pageNumber)
+
 		for (int n = 0; n < maxLine; ++n)
 			//ASSERT (elements [n].page != pageNumber);
 			if (elements [n].page == pageNumber)
@@ -70,6 +71,7 @@ void RecordLocatorPage::deleteLine(int line, int spaceAvailable)
 				elements [n].page = 0;
 				elements [n].line = 0;
 				}
+		
 }
 
 bool RecordLocatorPage::validate(Dbb *dbb, Validation *validation, int sectionId, int sequence, Bitmap *dataPages)
@@ -219,7 +221,7 @@ void RecordLocatorPage::linkSpaceSlot(int from, int to)
 			}
 }
 
-void RecordLocatorPage::validateSpaceSlots(void)
+void RecordLocatorPage::validateSpaceSlots()
 {
 	int nextSpaceSlot = 0;
 	RecordIndex *element = elements;
@@ -248,6 +250,20 @@ void RecordLocatorPage::validateSpaceSlots(void)
 			}
 		else if (empty == 0)
 			empty = n;
+
+		}
+}
+
+void RecordLocatorPage::validateSpaceSlots(short linesPerPage)
+{
+	validateSpaceSlots();
+
+	RecordIndex *element = elements + maxLine;
+
+	for (int n = maxLine; n < linesPerPage; n++, element++)
+		{
+		ASSERT (!element->page);
+		ASSERT (!element->line);
 		}
 }
 
@@ -368,6 +384,7 @@ void RecordLocatorPage::setIndexSlot(int slot, int32 pageNumber, int line, int a
 
 void RecordLocatorPage::insertSpaceSlot(int slot, int availableSpace)
 {
+	ASSERT(elements[slot].page != 0);
 	int priorSlot;
 	int nextSlot;
 	
@@ -432,6 +449,7 @@ void RecordLocatorPage::deleteDataPages(Dbb* dbb, TransId transId)
 	for (int slot; (slot = nextSpaceSlot(-1)) >= 0;)
 		{
 		int pageNumber = elements[slot].page;
+		unlinkSpaceSlot(slot);
 		expungeDataPage(pageNumber);
 		Bdb *bdb = dbb->fetchPage(pageNumber, PAGE_data, Exclusive);
 		BDB_HISTORY(bdb);

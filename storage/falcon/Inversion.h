@@ -50,7 +50,7 @@ public:
 	void summary();
 	void deleteInversion (TransId transId);
 	Bdb* findInversion (IndexKey *indexKey, LockType lockType);
-	void propogateSplit (int level, IndexKey *indexKey, int32 pageNumber, TransId transId);
+	void propagateSplit (int level, IndexKey *indexKey, int32 pageNumber, TransId transId);
 	void updateInversionRoot (int32 pageNumber, TransId transId);
 	Bdb* findRoot (LockType lockType);
 	void addWord (int keyLength, UCHAR *key, TransId transId);
