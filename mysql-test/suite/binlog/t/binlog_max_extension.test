@@ -43,7 +43,7 @@ perl;
 
 my $index_file= $ENV{'DATADIR'} . "/master-bin.index";
 my $bin_file= $ENV{'DATADIR'} . "/master-bin.000001";
-my $bin_long_file= $ENV{'DATADIR'} . "/master-bin.4294967294";
+my $bin_long_file= $ENV{'DATADIR'} . "/master-bin.2147483646";
 
 print("INDEX: $index_file\n");
 print("BINLOG: $bin_file\n");
@@ -53,9 +53,9 @@ use File::Copy;
 copy($bin_file, $bin_long_file) or die "File cannot be copied.";
 
 open (F, ">>$index_file");
-print F "./master-bin.4294967294\n";
+print F "./master-bin.2147483646\n";
 close F;
-print("WROTE into index file last entry: ./master-bin.4294967294\n");
+print("WROTE into index file last entry: ./master-bin.2147483646\n");
 
 EOF
 
