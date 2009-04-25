@@ -1174,7 +1174,7 @@ bool ha_partition::check_and_repair(THD *thd)
  
 
 /**
-  @breif Check if the table can be automatically repaired
+  Check if the table can be automatically repaired
 
   @retval TRUE  Can be auto repaired
   @retval FALSE Cannot be auto repaired
@@ -1193,7 +1193,7 @@ bool ha_partition::auto_repair() const
 
 
 /**
-  @breif Check if the table is crashed
+  Check if the table is crashed
 
   @retval TRUE  Crashed
   @retval FALSE Not crashed
