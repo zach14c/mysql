@@ -1,4 +1,11 @@
 #include <stdlib.h>
+#include <mysql/services.h>
+#include <mysql/service_my_snprintf.h>
+#include <stdarg.h>
+extern struct my_snprintf_service_st {
+  size_t (*my_snprintf_type)(char*, size_t, const char*, ...);
+  size_t (*my_vsnprintf_type)(char *, size_t, const char*, va_list);
+} *my_snprintf_service;
 typedef struct st_mysql MYSQL;
 struct st_mysql_lex_string
 {

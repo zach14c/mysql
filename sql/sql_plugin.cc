@@ -96,7 +96,24 @@ static int cur_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   MYSQL_REPLICATION_INTERFACE_VERSION
 };
 
-static bool initialized= 0;
+/* support for Services */
+
+struct st_service_ref {
+  const char *name;
+  uint version;
+  void *service;
+};
+
+#include <service_versions.h>
+static struct my_snprintf_service_st my_snprintf_handler = {
+  my_snprintf,
+  my_vsnprintf
+};
+
+static struct st_service_ref list_of_services[]=
+{
+  { "my_snprintf_service", VERSION_my_snprintf, &my_snprintf_handler }
+};
 
 /*
   A mutex LOCK_plugin must be acquired before accessing the
@@ -109,6 +126,8 @@ static DYNAMIC_ARRAY plugin_array;
 static HASH plugin_hash[MYSQL_MAX_PLUGIN_TYPE_NUM];
 static bool reap_needed= false;
 static int plugin_array_version=0;
+
+static bool initialized= 0;
 
 /*
   write-lock on LOCK_system_variables_hash is required before modifying
@@ -358,7 +377,7 @@ static st_plugin_dl *plugin_dl_add(const LEX_STRING *dl, int report)
 {
 #ifdef HAVE_DLOPEN
   char dlpath[FN_REFLEN];
-  uint plugin_dir_len, dummy_errors, dlpathlen;
+  uint plugin_dir_len, dummy_errors, dlpathlen, i;
   struct st_plugin_dl *tmp, plugin_dl;
   void *sym;
   DBUG_ENTER("plugin_dl_add");
@@ -418,6 +437,24 @@ static st_plugin_dl *plugin_dl_add(const LEX_STRING *dl, int report)
                  "plugin interface version mismatch");
     DBUG_RETURN(0);
   }
+  for (i= 0; i < array_elements(list_of_services); i++)
+  {
+    if ((sym= dlsym(plugin_dl.handle, list_of_services[i].name)))
+    {
+      uint ver= (uint)*(void**)sym;
+      if (ver > list_of_services[i].version ||
+        (ver >> 8) < (list_of_services[i].version >> 8))
+      {
+        char buf[MYSQL_ERRMSG_SIZE];
+        my_snprintf(buf, sizeof(buf),
+                    "service '%s' interface version mismatch",
+                    list_of_services[i].name);
+        report_error(report, ER_CANT_OPEN_LIBRARY, dlpath, 0, buf);
+        DBUG_RETURN(0);
+      }
+      *(void**)sym= list_of_services[i].service;
+    }
+  }
   /* Find plugin declarations */
   if (!(sym= dlsym(plugin_dl.handle, plugin_declarations_sym)))
   {
@@ -428,7 +465,6 @@ static st_plugin_dl *plugin_dl_add(const LEX_STRING *dl, int report)
 
   if (plugin_dl.version != MYSQL_PLUGIN_INTERFACE_VERSION)
   {
-    int i;
     uint sizeof_st_plugin;
     struct st_mysql_plugin *old, *cur;
     char *ptr= (char *)sym;

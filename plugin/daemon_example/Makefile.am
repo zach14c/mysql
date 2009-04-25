@@ -26,7 +26,7 @@ AM_CPPFLAGS =		-I$(top_srcdir)/include \
 
 EXTRA_LTLIBRARIES =	libdaemon_example.la
 pkgplugin_LTLIBRARIES =	@plugin_daemon_example_shared_target@
-libdaemon_example_la_LDFLAGS =	-module -rpath $(pkgplugindir)
+libdaemon_example_la_LDFLAGS =	-module -rpath $(pkgplugindir) -L$(top_builddir)/libservices -lmysqlservices
 libdaemon_example_la_CPPFLAGS=	$(AM_CPPFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 libdaemon_example_la_SOURCES =	daemon_example.cc
 

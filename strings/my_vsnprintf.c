@@ -21,28 +21,8 @@
 /*
   Limited snprintf() implementations
 
-  SYNOPSIS
-    my_vsnprintf()
-    to		Store result here
-    n		Store up to n-1 characters, followed by an end 0
-    fmt		printf format
-    ap		Arguments
-
-  IMPLEMENTATION:
-    Supports following formats:
-    %#[l][l]d
-    %#[l][l]u
-    %#[l][l]x
-    %p
-    %zd
-    %zx
-    %f
-    %g
-    %#.#b 	Local format; note first # is ignored and second is REQUIRED
-    %#.#s	Note first # is ignored
-    
-  RETURN
-    length of result string
+  exported to plugins as a service, see the detailed documentation
+  around my_snprintf_service_st
 */
 
 size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap)
