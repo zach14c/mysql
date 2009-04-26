@@ -57,6 +57,7 @@ public:
    int report_error(const char *format, ...);
    int write_message(log_level::value level, const char *msg, ...);
    int log_error(int error_code, ...);
+   int log_error(log_level::value level, int error_code, ...);
 
    void report_start(time_t);
    void report_completed(time_t);
@@ -69,6 +70,7 @@ public:
    void report_backup_file(char * path);
    void report_stats_pre(const Image_info&);
    void report_stats_post(const Image_info&);
+   bool report_killed();
 
    /// Return the Backup_id of the current operation
    ulonglong get_op_id() const 
@@ -97,6 +99,8 @@ private:
 
   bool m_push_errors;        ///< Should errors be pushed on warning stack?
   bool m_error_reported;     ///< Has any error been reported?
+  /// Flag preventing double reporting of process interruption.
+  bool m_kill_reported;
 
   Backup_log *backup_log;    ///< Backup log interface class.
 };
@@ -104,7 +108,7 @@ private:
 inline
 Logger::Logger(THD *thd) 
    :m_type(BACKUP), m_state(CREATED), m_thd(thd), m_push_errors(TRUE), 
-    m_error_reported(FALSE), backup_log(0)
+    m_error_reported(FALSE), m_kill_reported(FALSE), backup_log(0)
 {}
 
 inline
@@ -126,10 +130,18 @@ int Logger::write_message(log_level::value level, const char *msg, ...)
   return res;
 }
 
-/// Reports error with log_level::ERROR.
+/** 
+  Reports error with log_level::ERROR.
+
+  Before reporting error, this method checks for interruption. In case there 
+  was one, the interruption is reported instead.
+*/
 inline
 int Logger::report_error(int error_code, ...)
 {
+  if (report_killed())
+    return ER_QUERY_INTERRUPTED;
+
   va_list args;
 
   va_start(args, error_code);
@@ -152,10 +164,21 @@ int Logger::report_error(log_level::value level, int error_code, ...)
   return res;
 }
 
-/// Reports error with given description.
+/** 
+  Reports given message with log_level::ERROR.
+
+  This method can be used for reporting errors which are not registered in 
+  errmsg.txt.
+
+  Before reporting the message, this method checks for interruption. In case 
+  there was one, the interruption is reported instead.
+*/
 inline
 int Logger::report_error(const char *format, ...)
 {
+  if (report_killed())
+    return ER_QUERY_INTERRUPTED;
+
   va_list args;
 
   va_start(args, format);
@@ -165,15 +188,42 @@ int Logger::report_error(const char *format, ...)
   return res;
 }
 
-/// Reports error without pushing it on server's error stack.
+/** 
+  Reports error with log_level::ERROR without pushing it on error stack. 
+
+  Before reporting the error, this method checks for interruption. In case 
+  there was one, the interruption is reported instead.
+*/
 inline
 int Logger::log_error(int error_code, ...)
 {
+  if (report_killed())
+    return ER_QUERY_INTERRUPTED;
+
   va_list args;
   bool    saved= push_errors(FALSE);
   
   va_start(args, error_code);
   int res= v_report_error(log_level::ERROR, error_code, args);
+  va_end(args);
+
+  push_errors(saved);
+
+  return res;
+}
+
+/** 
+  Reports error on the given log_level, without pushing it on server's 
+  error stack.
+*/
+inline
+int Logger::log_error(log_level::value level, int error_code, ...)
+{
+  va_list args;
+  bool    saved= push_errors(FALSE);
+
+  va_start(args, error_code);
+  int res= v_report_error(level, error_code, args);
   va_end(args);
 
   push_errors(saved);

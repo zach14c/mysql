@@ -25,13 +25,13 @@ class SRLOverflowPages : public SerialLogRecord
 public:
 	SRLOverflowPages(void);
 	~SRLOverflowPages(void);
-	void			append(Dbb *dbb, Bitmap* pageNumbers);
+	void			append(Dbb *dbb, Bitmap* pageNumbers, bool earlyWriteFlag);
 	virtual void	read(void);
 	virtual void	pass1(void);
 	virtual void	pass2(void);
 	virtual void	redo(void);
 	virtual void	print(void);
-	
+	int				earlyWrite;
 	int				dataLength;
 	const UCHAR*	data;
 };

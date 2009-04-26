@@ -1,0 +1,5 @@
+--source include/have_innodb.inc
+
+let $engine=innodb;
+
+--source suite/backup_extra/t/backup_consistency.inc

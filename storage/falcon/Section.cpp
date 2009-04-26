@@ -52,7 +52,6 @@ static int stopSection = 40;
 
 static const int MAX_LEVELS			= 4;
 
-
 //#define VALIDATE_SPACE_SLOTS(page,maxLine)		page->validateSpaceSlots(maxLine);
 
 #ifndef VALIDATE_SPACE_SLOTS
@@ -783,9 +782,16 @@ int Section::storeTail(Stream * stream, int maxRecord, int *pLength, TransId tra
 
 	*pLength = length;
 	
-	if (!dbb->serialLog->recovering && !dbb->noLog)
-		dbb->serialLog->logControl->overflowPages.append(dbb, &pageNumbers);
-	
+
+	SerialLog *log = dbb->serialLog;
+	if (log)
+		{
+		if (log->recovering)
+			log->setOverflowPageValid(overflowPageNumber, dbb->tableSpaceSectionId);
+		else
+			log->logControl->overflowPages.append(dbb, &pageNumbers, earlyWrite);
+		}
+
 	return overflowPageNumber;
 }
 

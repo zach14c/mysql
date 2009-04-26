@@ -177,6 +177,8 @@ bool TransactionManager::hasUncommittedRecords(Table* table, Transaction* transa
 
 // Wait until all committed records for a table are purged by gophers
 // (their transaction become write complete)
+// If table is NULL pointer, the functions wait for all transactions to
+// become write complete
 void TransactionManager::waitForWriteComplete(Table* table)
 {
 	for(;;)
@@ -189,11 +191,18 @@ void TransactionManager::waitForWriteComplete(Table* table)
 		for (Transaction *trans = committedTransactions.first; trans; 
 			 trans = trans->next)
 			{
-				if (trans->hasRecords(table)&& trans->writePending)
-				{
-				again = true;
-				break;
-				}
+				if (table)
+					{
+					if (trans->hasRecords(table)&& trans->writePending)
+						again = true;
+					}
+				else
+					{
+					if(trans->writePending)
+						again = true;
+					}
+				if (again)
+					break;
 			}
 
 		if(!again)

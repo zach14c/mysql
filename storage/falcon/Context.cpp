@@ -227,7 +227,7 @@ void Context::close()
 {
 	if (record)
 		{
-		record->release();
+		record->release(REC_HISTORY);
 		record = NULL;
 		}
 }

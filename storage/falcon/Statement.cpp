@@ -2332,8 +2332,6 @@ void Statement::dropIndex(Syntax *syntax)
 
 	Transaction *sysTransaction = database->getSystemTransaction();
 	table->dropIndex(name, sysTransaction);
-//	database->commitSystemTransaction();
-
 	Index::deleteIndex (database, schema, name);
 	database->commitSystemTransaction();
 }
