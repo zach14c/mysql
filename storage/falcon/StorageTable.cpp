@@ -377,7 +377,8 @@ void StorageTable::setRecord(Record* newRecord, bool locked)
 {
 	if (record)
 		record->release(REC_HISTORY);
-	
+
+	RECORD_HISTORY(newRecord);
 	record = newRecord;
 	recordLocked = locked;
 	format = record->format;

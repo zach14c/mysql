@@ -3426,19 +3426,19 @@ Snapshots:
 
   Snapshot 0 type    native from 'MyISAM'  version 1.0
   Snapshot 0 version 1
-  Snapshot 0 tables  1
+  Snapshot 0 tables  3
   Snapshot 0 table   'mysqltest1'.'t1'
   Snapshot 0 table   'mysqltest2'.'t3'
   Snapshot 0 table   'mysqltest3'.'t2'
   Snapshot 1 type    logical from consistent snapshot
   Snapshot 1 version 1
-  Snapshot 1 tables  1
+  Snapshot 1 tables  3
   Snapshot 1 table   'mysqltest1'.'t2'
   Snapshot 1 table   'mysqltest2'.'t1'
   Snapshot 1 table   'mysqltest3'.'t3'
   Snapshot 2 type    logical from locked tables
   Snapshot 2 version 1
-  Snapshot 2 tables  1
+  Snapshot 2 tables  3
   Snapshot 2 table   'mysqltest1'.'t3'
   Snapshot 2 table   'mysqltest2'.'t2'
   Snapshot 2 table   'mysqltest3'.'t1'
@@ -3462,19 +3462,19 @@ Snapshots:
 
   Snapshot 0 type    native from 'MyISAM'  version 1.0
   Snapshot 0 version 1
-  Snapshot 0 tables  1
+  Snapshot 0 tables  3
   Snapshot 0 table   'mysqltest1'.'t1'
   Snapshot 0 table   'mysqltest2'.'t3'
   Snapshot 0 table   'mysqltest3'.'t2'
   Snapshot 1 type    logical from consistent snapshot
   Snapshot 1 version 1
-  Snapshot 1 tables  1
+  Snapshot 1 tables  3
   Snapshot 1 table   'mysqltest1'.'t2'
   Snapshot 1 table   'mysqltest2'.'t1'
   Snapshot 1 table   'mysqltest3'.'t3'
   Snapshot 2 type    logical from locked tables
   Snapshot 2 version 1
-  Snapshot 2 tables  1
+  Snapshot 2 tables  3
   Snapshot 2 table   'mysqltest1'.'t3'
   Snapshot 2 table   'mysqltest2'.'t2'
   Snapshot 2 table   'mysqltest3'.'t1'
@@ -3710,19 +3710,19 @@ Snapshots:
 
   Snapshot 0 type    native from 'MyISAM'  version 1.0
   Snapshot 0 version 1
-  Snapshot 0 tables  1
+  Snapshot 0 tables  3
   Snapshot 0 table   'mysqltest1'.'t1'
   Snapshot 0 table   'mysqltest2'.'t3'
   Snapshot 0 table   'mysqltest3'.'t2'
   Snapshot 1 type    logical from consistent snapshot
   Snapshot 1 version 1
-  Snapshot 1 tables  1
+  Snapshot 1 tables  3
   Snapshot 1 table   'mysqltest1'.'t2'
   Snapshot 1 table   'mysqltest2'.'t1'
   Snapshot 1 table   'mysqltest3'.'t3'
   Snapshot 2 type    logical from locked tables
   Snapshot 2 version 1
-  Snapshot 2 tables  1
+  Snapshot 2 tables  3
   Snapshot 2 table   'mysqltest1'.'t3'
   Snapshot 2 table   'mysqltest2'.'t2'
   Snapshot 2 table   'mysqltest3'.'t1'
@@ -3945,19 +3945,19 @@ Snapshots:
 
   Snapshot 0 type    native from 'MyISAM'  version 1.0
   Snapshot 0 version 1
-  Snapshot 0 tables  1
+  Snapshot 0 tables  3
   Snapshot 0 table   'mysqltest1'.'t1'
   Snapshot 0 table   'mysqltest2'.'t3'
   Snapshot 0 table   'mysqltest3'.'t2'
   Snapshot 1 type    logical from consistent snapshot
   Snapshot 1 version 1
-  Snapshot 1 tables  1
+  Snapshot 1 tables  3
   Snapshot 1 table   'mysqltest1'.'t2'
   Snapshot 1 table   'mysqltest2'.'t1'
   Snapshot 1 table   'mysqltest3'.'t3'
   Snapshot 2 type    logical from locked tables
   Snapshot 2 version 1
-  Snapshot 2 tables  1
+  Snapshot 2 tables  3
   Snapshot 2 table   'mysqltest1'.'t3'
   Snapshot 2 table   'mysqltest2'.'t2'
   Snapshot 2 table   'mysqltest3'.'t1'
@@ -4340,19 +4340,19 @@ Snapshots:
 
   Snapshot 0 type    native from 'MyISAM'  version 1.0
   Snapshot 0 version 1
-  Snapshot 0 tables  1
+  Snapshot 0 tables  3
   Snapshot 0 table   'mysqltest1'.'t1'
   Snapshot 0 table   'mysqltest2'.'t3'
   Snapshot 0 table   'mysqltest3'.'t2'
   Snapshot 1 type    logical from consistent snapshot
   Snapshot 1 version 1
-  Snapshot 1 tables  1
+  Snapshot 1 tables  3
   Snapshot 1 table   'mysqltest1'.'t2'
   Snapshot 1 table   'mysqltest2'.'t1'
   Snapshot 1 table   'mysqltest3'.'t3'
   Snapshot 2 type    logical from locked tables
   Snapshot 2 version 1
-  Snapshot 2 tables  1
+  Snapshot 2 tables  3
   Snapshot 2 table   'mysqltest1'.'t3'
   Snapshot 2 table   'mysqltest2'.'t2'
   Snapshot 2 table   'mysqltest3'.'t1'
@@ -5334,12 +5334,12 @@ Snapshots:
 
   Snapshot 0 type    native from 'MyISAM'  version 1.0
   Snapshot 0 version 1
-  Snapshot 0 tables  1
+  Snapshot 0 tables  2
   Snapshot 0 table   'mysqltest1'.'t1'
   Snapshot 0 table   'mysqltest1'.'t2'
   Snapshot 1 type    logical from consistent snapshot
   Snapshot 1 version 1
-  Snapshot 1 tables  1
+  Snapshot 1 tables  2
   Snapshot 1 table   'mysqltest2'.'t1'
   Snapshot 1 table   'mysqltest2'.'t2'
 

@@ -18,6 +18,7 @@
 #include "SRLOverflowPages.h"
 #include "Bitmap.h"
 #include "SerialLogControl.h"
+#include "SerialLogTransaction.h"
 #include "Dbb.h"
 
 SRLOverflowPages::SRLOverflowPages(void)
@@ -28,12 +29,13 @@ SRLOverflowPages::~SRLOverflowPages(void)
 {
 }
 
-void SRLOverflowPages::append(Dbb *dbb, Bitmap* pageNumbers)
+void SRLOverflowPages::append(Dbb *dbb, Bitmap* pageNumbers, bool earlyWriteFlag)
 {
 	for (int pageNumber = 0; pageNumber >= 0;)
 		{
 		START_RECORD(srlOverflowPages, "SRLOverflowPages::append");
 		putInt(dbb->tableSpaceId);
+		putInt(earlyWriteFlag);
 		UCHAR *lengthPtr = putFixedInt(0);
 		UCHAR *start = log->writePtr;
 		UCHAR *end = log->writeWarningTrack;
@@ -63,6 +65,11 @@ void SRLOverflowPages::read(void)
 	else
 		tableSpaceId = 0;
 	
+	if (control->version >=srlVersion20)
+		earlyWrite = getInt();
+	else
+		earlyWrite = 0;
+
 	dataLength = getInt();
 	data = getData(dataLength);
 }
@@ -89,7 +96,39 @@ void SRLOverflowPages::pass2(void)
 		if (log->tracePage == pageNumber)
 			print();
 		
-		log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse);
+		if (log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse))
+			{
+			bool isPageValid = false;
+
+			if (earlyWrite)
+				{
+				SerialLogTransaction *transaction = log->findTransaction(transactionId);
+
+				if(transaction && transaction->state == sltCommitted)
+					// Page was flushed at commit
+					isPageValid = true;
+				}
+
+			if (isPageValid)
+				{
+				log->setOverflowPageValid(pageNumber, tableSpaceId);
+				}
+			else
+				{
+				log->setOverflowPageInvalid(pageNumber, tableSpaceId);
+				// Normal overflow pages  are always recreated in recovery,
+				// and we will deleted them here. Also delete uncommitted blob 
+				// pages.
+
+				// However, with older serial logs earlyWrite flag was not available,
+				// and we cannot tell a normal page from a blob page.
+				// In this case, keep the page - it might be a part of a valid blob.
+				if (control->version >= srlVersion20)
+					{
+					log->redoFreePage(pageNumber, tableSpaceId);
+					}
+				}
+			}
 		}
 }
 

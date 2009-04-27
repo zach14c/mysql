@@ -1098,14 +1098,17 @@ uint JOIN_CACHE::write_record_data(uchar * link, bool *is_full)
   /* Add the offsets of the fields that are referenced from other caches */ 
   if (referenced_fields)
   {
+    uint cnt= 0;
     for (copy= field_descr+flag_fields; copy < copy_end ; copy++)
     {
       if (copy->referenced_field_no)
       {
-        store_fld_offset(cp, copy->offset);
-        cp+= size_of_fld_ofs;
+        store_fld_offset(cp+size_of_fld_ofs*(copy->referenced_field_no-1),
+                         copy->offset);
+        cnt++;
       }
     }
+    cp+= size_of_fld_ofs*cnt;
   }
 
   if (rec_len_ptr)
@@ -1540,6 +1543,30 @@ bool JOIN_CACHE::skip_record_if_match()
 }      
 
 
+/* 
+  Restore the fields of the last record from the join buffer
+ 
+  SYNOPSIS
+    restore_last_record()
+
+  DESCRIPTION
+    This function restore the values of the fields of the last record put
+    into join buffer in record buffers. The values most probably have been
+    overwritten by the field values from other records when they were read
+    from the join buffer into the record buffer in order to check pushdown
+    predicates.
+
+  RETURN
+    none
+*/
+
+void JOIN_CACHE::restore_last_record()
+{
+  if (records)
+    get_record_by_pos(last_rec_pos);
+}
+
+
 /*
   Join records from the join buffer with records from the next join table    
 
@@ -1613,6 +1640,9 @@ enum_nested_loop_state JOIN_CACHE::join_records(bool skip_last)
   }
   if (join_tab->first_unmatched)
   {
+    if (is_key_access())
+      restore_last_record();
+
     /* 
       Generate all null complementing extensions for the records from
       join buffer that don't have any matching rows from the inner tables.
@@ -1654,7 +1684,9 @@ enum_nested_loop_state JOIN_CACHE::join_records(bool skip_last)
     */
     get_record();		               
   }
+
 finish:
+  restore_last_record();
   reset(TRUE);
   return rc;
 }
@@ -2046,16 +2078,6 @@ enum_nested_loop_state JOIN_CACHE::join_null_complements(bool skip_last)
   }
 
 finish:
-  if (is_first_inner)
-  {
-    /* 
-      Restore the values of the fields of the last record put into join buffer.
-      The value of the fields of the last record in the buffer must be restored
-      since at the null complementing pass fields of the records with matches
-      are skipped and their fields are not read into the record buffers at all. 
-    */
-    get_record_by_pos(last_rec_pos);
-  }
   return rc;
 }
 
@@ -2363,15 +2385,6 @@ JOIN_CACHE_BKA::end_join_matching_records(enum_nested_loop_state rc)
 {
   for (JOIN_TAB *tab=join->join_tab; tab != join_tab ; tab++)
     tab->table->status= tab->status;
-  /* 
-    Restore the values of the fields of the last record put into join buffer.
-    These value most probably has been overwritten by the field values
-    from other records when they were read from the join buffer into the
-    record buffer in order to check pushdown predicates.
-    TODO. Investigate whether the restoration of the fields of the last
-    table whose rows are to be stored in the join buffer is really needed.
-  */ 
-  get_record_by_pos(last_rec_pos);
   return rc;  
 }
 

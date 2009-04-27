@@ -55,7 +55,7 @@ RecordLeaf::~RecordLeaf()
 				rec->active = false;
 #endif
 				
-			records[n]->release();
+			records[n]->release(REC_HISTORY);
 			}
 }
 
@@ -140,14 +140,17 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 
 			if (oldestVisible)
 				{
+				// Detach the older records from the oldest visible.
+
 				Record *prior = oldestVisible->clearPriorVersion();
 
 				for (Record *prune = prior; prune; prune = prune->getPriorVersion())
 					{
 					if (prune->useCount != 1)
 						{
+						// Give up, re-attach and do not prune this chain this time.
+						oldestVisible->setPriorVersion(NULL, prior);
 						prior = NULL;
-						
 						break;
 						}
 						
@@ -159,7 +162,6 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 					{
 					SET_RECORD_ACTIVE(prior, false);
 					table->garbageCollect(prior, record, NULL, false);
-					//prior->release(REC_HISTORY);
 					prior->queueForDelete();
 					}
 				}

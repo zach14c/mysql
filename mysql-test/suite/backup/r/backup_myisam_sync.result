@@ -36,6 +36,15 @@ LENGTH(c1)
 CHECKSUM TABLE t1;
 Table	Checksum
 mysqltest.t1	1728069308
+
+# Verify that the MyISAM Key Cache is enabled.
+# See Bug#44068 (RESTORE can disable the MyISAM Key Cache).
+SELECT SUM(VARIABLE_VALUE) > 0 AS key_cache_is_enabled
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS WHERE
+VARIABLE_NAME LIKE 'Key_blocks_%used';
+key_cache_is_enabled
+1
+
 Signal BACKUP to finish
 SET DEBUG_SYNC= 'now SIGNAL bup_finish';
 
@@ -58,6 +67,14 @@ mysqltest.t1	check	status	OK
 
 connection default: cleanup
 SET DEBUG_SYNC= 'RESET';
+
+# Verify that the MyISAM Key Cache is still enabled.
+# See Bug#44068 (RESTORE can disable the MyISAM Key Cache).
+SELECT SUM(VARIABLE_VALUE) > 0 AS key_cache_is_enabled
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS WHERE
+VARIABLE_NAME LIKE 'Key_blocks_%used';
+key_cache_is_enabled
+1
 
 # final cleanup
 USE test;
