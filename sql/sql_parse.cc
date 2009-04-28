@@ -2152,8 +2152,15 @@ mysql_execute_command(THD *thd)
       res= check_access(thd,
                         privileges_requested,
                         any_db, 0, 0, 0, 0);
-    if (!res)
-      res= execute_sqlcom_select(thd, all_tables);
+
+    if (res)
+      break;
+
+    if (!thd->locked_tables_mode && lex->protect_against_global_read_lock &&
+        !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
+      break;
+
+    res= execute_sqlcom_select(thd, all_tables);
     break;
   }
   case SQLCOM_PREPARE:
@@ -3110,6 +3117,9 @@ end_with_restore_list:
     DBUG_ASSERT(first_table == all_tables && first_table != 0);
     if (update_precheck(thd, all_tables))
       break;
+    if (!thd->locked_tables_mode &&
+        !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
+      goto error;
     DBUG_ASSERT(select_lex->offset_limit == 0);
     unit->set_limit(select_lex);
     MYSQL_UPDATE_START(thd->query);
@@ -3136,6 +3146,15 @@ end_with_restore_list:
     }
     else
       res= 0;
+
+    /*
+      Protection might have already been risen if its a fall through
+      from the SQLCOM_UPDATE case above.
+    */
+    if (!thd->locked_tables_mode &&
+        lex->sql_command == SQLCOM_UPDATE_MULTI &&
+        !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
+      goto error;
 
     res= mysql_multi_update_prepare(thd);
 
@@ -3333,7 +3352,8 @@ end_with_restore_list:
                  ER(ER_LOCK_OR_ACTIVE_TRANSACTION), MYF(0));
       goto error;
     }
-
+    if (!(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
+      goto error;
     res= mysql_truncate(thd, first_table, 0);
 
     break;
@@ -3504,6 +3524,10 @@ end_with_restore_list:
     if (check_one_table_access(thd, privilege, all_tables))
       goto error;
 
+    if (!thd->locked_tables_mode &&
+        !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
+      goto error;
+
     res= mysql_load(thd, lex->exchange, first_table, lex->field_list,
                     lex->update_list, lex->value_list, lex->duplicates,
                     lex->ignore, (bool) lex->local_file);
@@ -3615,6 +3639,9 @@ end_with_restore_list:
       goto error;
     /* release transactional metadata locks. */
     thd->mdl_context.release_all_locks();
+    if (lex->protect_against_global_read_lock &&
+        !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
+      goto error;
 
     alloc_mdl_requests(all_tables, thd->locked_tables_list.locked_tables_root());
 
@@ -7953,3 +7980,37 @@ bool parse_sql(THD *thd,
 /**
   @} (end of group Runtime_Environment)
 */
+
+
+
+/**
+  Check and merge "CHARACTER SET cs [ COLLATE cl ]" clause
+
+  @param cs character set pointer.
+  @param cl collation pointer.
+
+  Check if collation "cl" is applicable to character set "cs".
+
+  If "cl" is NULL (e.g. when COLLATE clause is not specified),
+  then simply "cs" is returned.
+  
+  @return Error status.
+    @retval NULL, if "cl" is not applicable to "cs".
+    @retval pointer to merged CHARSET_INFO on success.
+*/
+
+
+CHARSET_INFO*
+merge_charset_and_collation(CHARSET_INFO *cs, CHARSET_INFO *cl)
+{
+  if (cl)
+  {
+    if (!my_charset_same(cs, cl))
+    {
+      my_error(ER_COLLATION_CHARSET_MISMATCH, MYF(0), cl->name, cs->csname);
+      return NULL;
+    }
+    return cl;
+  }
+  return cs;
+}

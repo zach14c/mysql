@@ -784,14 +784,46 @@ Item *Item::safe_charset_converter(CHARSET_INFO *tocs)
   We cannot use generic Item::safe_charset_converter(), because
   the latter returns a non-fixed Item, so val_str() crashes afterwards.
   Override Item_num method, to return a fixed item.
+
+  If Item_num's length is not divisible to mbmaxlen,
+  then value is left padded with zero bytes 0x00.
 */
 Item *Item_num::safe_charset_converter(CHARSET_INFO *tocs)
 {
+  const size_t max_mbminlen= 4;
   Item_string *conv;
-  char buf[64];
-  String *s, tmp(buf, sizeof(buf), &my_charset_bin);
-  s= val_str(&tmp);
-  if ((conv= new Item_string(s->ptr(), s->length(), s->charset())))
+  char buf[64 + max_mbminlen];
+  String tmp(buf + max_mbminlen, sizeof(buf) - max_mbminlen, &my_charset_bin);
+  String *s= val_str(&tmp);
+  uint32 nzeros= tocs->mbminlen - (s->length() % tocs->mbminlen);
+  
+  if (nzeros) 
+  {
+    /*
+      Need to left-pad some 0x00 bytes to return correct length.
+      Make sure that we reserved enough space for the leading 0x00 bytes,
+      then clear the leading bytes:
+      Note, int4store() should be a little bit faster than memset(buf,4).
+    */
+    DBUG_ASSERT(tocs->mbminlen <= max_mbminlen);
+    int4store(buf, 0);
+    
+    /*
+      Make sure val_str returns pointer to "buf",
+      (otherwise padding won't work).
+      That should be always true, according to
+      Item_num::val_str() implementation.
+    */
+    DBUG_ASSERT(s->ptr() == ((const char*) &buf) + 4);
+  }
+  
+  
+  /*
+    TODO for 6.1: remove this trick with zeros
+    when WL#2649 "Number-to-string conversions" is done.
+  */
+  if ((conv= new Item_string(s->ptr() - nzeros,
+                             s->length() + nzeros, s->charset())))
   {
     conv->str_value.copy();
     conv->str_value.mark_as_const();

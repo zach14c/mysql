@@ -25,15 +25,25 @@ if [ -z "$gmake" ]; then
   exit 2
 fi
 
-# Default to gcc for CC and CXX
+# Default to gcc/g++ for CC and CXX
 if test -z "$CXX" ; then
   export CXX
-  CXX=gcc
+  CXX=g++
   # Set some required compile options
   if test -z "$CXXFLAGS" ; then
     export CXXFLAGS
     CXXFLAGS="-felide-constructors -fno-exceptions -fno-rtti"
   fi
+else
+  case "$CXX" in
+    # MySQL 6.0 requires full C++ support; for a long time it's been common to
+    # compile MySQL with CXX=gcc, to avoid depending on the C++ runtime.  As a
+    # temporary workaround to handle scripts which still try this, we convert
+    # gcc to g++ here.  This should be removed before 6.0 is GA.
+    */gcc|gcc)
+      CXX=`echo "$CXX" | sed -e 's,gcc$,g++,'`
+      ;;
+  esac
 fi
 
 if test -z "$CC" ; then
