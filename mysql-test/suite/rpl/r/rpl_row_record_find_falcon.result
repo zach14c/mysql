@@ -1,0 +1,828 @@
+stop slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+reset master;
+reset slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+start slave;
+#################################################################
+# CASE 2: Falcon - master, Falcon - slave
+#################################################################
+DROP TABLE IF EXISTS t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Primary Key with holes (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c3)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c3)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Unique key with holes (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c3)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c3)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite key with holes (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c3)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c3)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Primary Key (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c2)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c2)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Primary key (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Unique key (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c2)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c2)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Unique key (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite key (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c2)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c2)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+******* TEST: One key (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+******* TEST: No keys (Falcon -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+#################################################################
+# CASE 3: Falcon - master, MyISAM - slave
+#################################################################
+DROP TABLE IF EXISTS t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Primary Key with holes (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c3)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c3)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Unique key with holes (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c3)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c3)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite key with holes (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c3)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c3)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Primary Key (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c2)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c2)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Primary key (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Unique key (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c2)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c2)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Unique key (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite key (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c2)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c2)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+******* TEST: One key (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+******* TEST: No keys (Falcon -> MyISAM)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1)) engine= Falcon;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1)) engine= MyISAM;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+#################################################################
+# CASE 4: MyISAM - master, Falcon - slave
+#################################################################
+DROP TABLE IF EXISTS t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Primary Key with holes (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c3)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c3)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Unique key with holes (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c3)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c3)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite key with holes (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c3)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c3)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Primary Key (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c2)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1,c2)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Primary key (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), primary key(c1)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite Unique key (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c2)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1,c2)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Unique key (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), unique key(c1)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+****** TEST: One Composite key (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c2)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1,c2)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+******* TEST: One key (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1), key(c1)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;
+SET SQL_LOG_BIN=0;
+******* TEST: No keys (MyISAM -> Falcon)
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1)) engine= MyISAM;;
+CREATE TABLE t (c1 int, c2 char(1), c3 char(1), c4 char(1)) engine= Falcon;;
+SET SQL_LOG_BIN=1;
+INSERT INTO t VALUES (1, '1', '1', '1' );
+INSERT INTO t VALUES (4, '4', '4', '4' );
+INSERT INTO t VALUES (7, '7', '7', '7' );
+INSERT INTO t VALUES (9, '9', '9', NULL );
+INSERT INTO t VALUES (2, '1', '2', '2' );
+INSERT INTO t VALUES (3, '1', '3', '2' );
+UPDATE t SET c4 = '7';
+UPDATE t SET c4 = '5' WHERE c1 = 1;
+UPDATE t SET c2 = '5' WHERE c1 = 1;
+UPDATE t SET c1 = '5' WHERE c1 = 1;
+UPDATE t SET c4 = '8' WHERE c2 = '4';
+UPDATE t SET c1 = '8' WHERE c2 = '4';
+UPDATE t SET c2 = '8' WHERE c2 = '4';
+UPDATE t SET c3 = '0' WHERE c4 = NULL;
+UPDATE t SET c2 = '0' WHERE c4 = '0';
+UPDATE t SET c2 = '2' WHERE c4 = '2';
+Comparing tables master:test.t and slave:test.t
+DELETE FROM t WHERE c1 = 7;
+DELETE FROM t WHERE c1 = 8;
+DELETE FROM t;
+Comparing tables master:test.t and slave:test.t
+DROP TABLE t;

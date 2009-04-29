@@ -8633,7 +8633,7 @@ void Write_rows_log_event::print(FILE *file, PRINT_EVENT_INFO* print_event_info)
 
   Returns TRUE if different.
 */
-static bool record_compare(TABLE *table)
+static bool record_compare(TABLE *table, const MY_BITMAP *cols_in_readset)
 {
   /*
     Need to set the X bit and the filler bits in both records since
@@ -8665,14 +8665,23 @@ static bool record_compare(TABLE *table)
     }
   }
 
-  if (table->s->blob_fields + table->s->varchar_fields == 0)
+  /* 
+     We can compare the record straight away if:
+      i) there are no blob and varchar fields
+     ii) all columns were read or the slave SE provides partial reads
+  */
+  if ((table->s->blob_fields + table->s->varchar_fields == 0) &&
+      (bitmap_is_set_all(cols_in_readset) || 
+      (table->file->ha_table_flags() & HA_PARTIAL_COLUMN_READ)))
   {
     result= cmp_record(table,record[1]);
     goto record_compare_exit;
   }
 
-  /* Compare null bits */
-  if (memcmp(table->null_flags,
+  /* Compare null bits only if all fields were read or slave SE has partial reads */
+  if ((bitmap_is_set_all(cols_in_readset) || 
+       (table->file->ha_table_flags() & HA_PARTIAL_COLUMN_READ)) && 
+      memcmp(table->null_flags,
 	     table->null_flags+table->s->rec_buff_length,
 	     table->s->null_bytes))
   {
@@ -8683,10 +8692,14 @@ static bool record_compare(TABLE *table)
   /* Compare updated fields */
   for (Field **ptr=table->field ; *ptr ; ptr++)
   {
-    if ((*ptr)->cmp_binary_offset(table->s->rec_buff_length))
-    {
-      result= TRUE;
-      goto record_compare_exit;
+    /* compare field if it is set */
+    if (bitmap_is_set(cols_in_readset, (*ptr)->field_index))
+    { 
+      if ((*ptr)->cmp_binary_offset(table->s->rec_buff_length))
+      {
+        result= TRUE;
+        goto record_compare_exit;
+      }
     }
   }
 
@@ -8897,7 +8910,7 @@ int Rows_log_event::find_row(const Relay_log_info *rli)
      */ 
     DBUG_PRINT("info",("non-unique index, scanning it to find matching record")); 
 
-    while (record_compare(table))
+    while (record_compare(table, &m_cols))
     {
       /*
         We need to set the null bytes to ensure that the filler bit
@@ -8978,7 +8991,7 @@ int Rows_log_event::find_row(const Relay_log_info *rli)
         goto err;
       }
     }
-    while (restart_count < 2 && record_compare(table));
+    while (restart_count < 2 && record_compare(table, &m_cols));
     
     /* 
       Note: above record_compare will take into accout all record fields 
