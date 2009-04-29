@@ -699,6 +699,34 @@ int get_user_var_str(const char *name,
                      char *value, unsigned long len,
                      unsigned int precision, int *null_value);
 
+/**
+   Set thread entering a condition
+
+   This function should be called before putting a thread to wait for
+   a condition. @a mutex should be held before calling this
+   function. After being waken up, @f thd_exit_cond should be called.
+
+   @param thd      The thread entering the condition, NULL means current thread
+   @param cond     The condition the thread is going to wait for
+   @param mutex    The mutex associated with the condition, this must be
+                   held before call this function
+   @param msg      The new process message for the thread
+*/
+const char* thd_enter_cond(MYSQL_THD thd, pthread_cond_t *cond,
+                           pthread_mutex_t *mutex, const char *msg);
+
+/**
+   Set thread leaving a condition
+
+   This function should be called after a thread being waken up for a
+   condition.
+
+   @param thd      The thread entering the condition, NULL means current thread
+   @param old_msg  The process message, ususally this should be the old process
+                   message before calling @f thd_enter_cond
+*/
+void thd_exit_cond(MYSQL_THD thd, const char *old_msg);
+
   
 #ifdef __cplusplus
 }
