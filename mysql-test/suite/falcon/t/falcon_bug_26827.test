@@ -1,11 +1,17 @@
 --source include/have_falcon.inc
 --source include/have_partition.inc
 
-SET @@storage_engine = Falcon;
 #
 # Bug #26827: Falcon: column is null after update of a different column
 #
 --echo *** Bug #26827 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
@@ -18,10 +24,20 @@ PARTITION BY list(a) (
 
 INSERT INTO t1 VALUES (1, 1);
 CREATE INDEX i1 ON t1 (a);
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
 UPDATE t1 SET a = 2 WHERE a = 1;
 
 SELECT * FROM t1;
 
-# Final cleanup.
-DROP TABLE t1;
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
 
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

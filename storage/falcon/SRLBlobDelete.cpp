@@ -64,10 +64,12 @@ void SRLBlobDelete::pass2(void)
 	
 	if (ret1)
 		{
+		SerialLogTransaction *transaction = log->findTransaction(transactionId);
 		Dbb *dbb = log->getDbb(tableSpaceId);
 		
 		if (control->isPostFlush())
-			Section::redoBlobDelete(dbb, locatorPage, locatorLine, dataPage, dataLine, ret2);
+			Section::redoBlobDelete(dbb, locatorPage, locatorLine, dataPage, dataLine, 
+			ret2 && transaction && transaction->state == sltCommitted);
 		}
 }
 

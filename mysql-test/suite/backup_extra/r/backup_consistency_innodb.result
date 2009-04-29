@@ -1,0 +1,2 @@
+# Executing RQG test. See rqg.out in the temp dir for output.
+CREATE DATABASE test;

@@ -269,12 +269,14 @@ int Stream::open()
 bool Stream::close()
 {
   bool ret= TRUE;
+
   if (m_fd >= 0)
   {
     if (my_close(m_fd, MYF(0)))
     {
       ret= FALSE;
     }
+    DBUG_EXECUTE_IF("backup_stream_close_error", ret= FALSE;);
     m_fd= -1;
   }
   return ret;

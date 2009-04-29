@@ -20,7 +20,6 @@
 #include "DeferredIndex.h"
 #include "Index.h"
 #include "IndexRootPage.h"
-#include "Index2RootPage.h"
 #include "IndexKey.h"
 #include "DeferredIndexWalker.h"
 #include "Transaction.h"
@@ -206,27 +205,8 @@ void SRLUpdateIndex::execute(void)
 	ptr = data;
 	end = ptr + dataLength;
 	Dbb *dbb = log->getDbb(tableSpaceId);
-	
-	switch (indexVersion)
-		{
-		case INDEX_VERSION_0:
-			Index2RootPage::indexMerge(dbb, indexId, this, NO_TRANSACTION);
-			break;
-		
-		case INDEX_VERSION_1:
-			IndexRootPage::indexMerge(dbb, indexId, this, NO_TRANSACTION);
-			break;
-		
-		default:
-			ASSERT(false);
-		}
-		
-	/***
-	IndexKey indexKey;
-	
-	for (int recordNumber; (recordNumber = nextKey(&indexKey)) != -1;)
-		log->dbb->addIndexEntry(indexId, &indexKey, recordNumber, NO_TRANSACTION);
-	***/
+
+	IndexRootPage::indexMerge(dbb, indexId, this, NO_TRANSACTION);
 }
 
 int SRLUpdateIndex::nextKey(IndexKey *indexKey)

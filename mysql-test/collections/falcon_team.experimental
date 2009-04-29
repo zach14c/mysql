@@ -1,0 +1,33 @@
+#
+# The falcon_team test suite is intended for unstable or otherwise
+# intermittently failing Falcon-related tests.
+# Stable Falcon tests are located in the falcon test suite.
+#
+# All tests in the falcon_team test suite should be associated with 
+# a bug report describing the test failure or issue related to the test.
+# These bugs should be pritoritized and fixed.
+#
+# Also, all the tests in the falcon_team suite should be marked as 
+# "experimental" which is what this file is for (see README.experimental 
+# for details). This is because we want to mark failures separately from 
+# other failures when running multiple test suites in "Pushbuild 2" 
+# (MySQL in-house integration testing).
+#
+# Note that a separate bug report is usually needed - it is
+# NOT sufficient to list the ID of the bug which fix a test is 
+# supposed to verify.
+#
+# Format:
+#  Full test case name    # BugId - BugDescription or other useful info
+#
+# Example:
+#  falcon_team.falcon_deadlock                # Bug#43554 - Intermittent lock-wait-timeout in falcon_deadlock test
+#
+# Do not use TAB characters for whitespace.
+# Keep the list sorted by test name.
+#
+
+falcon_team.falcon_bug_34174                # Bug#41521 - falcon_bug_34174 fails with lock wait timeout, sometimes
+falcon_team.falcon_bug_34351_B              # Bug#42140 - falcon_bug_34351_B fails; sometimes
+falcon_team.falcon_bug_34351_C              # Bug#39890 - Falcon Error: page 0/1 wrong page type, expected 7 got 1
+falcon_team.falcon_deadlock                 # Bug#43554 - Intermittent lock-wait-timeout in falcon_deadlock test

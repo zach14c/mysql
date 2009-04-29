@@ -1,5 +1,5 @@
-SET @@storage_engine = Falcon;
 *** Bug #26828 ***
+SET @@storage_engine = 'Falcon';
 DROP SCHEMA IF EXISTS db1;
 SELECT @@GLOBAL.falcon_consistent_read INTO @previous_falcon_consistent_read;
 SET GLOBAL falcon_consistent_read = off;
@@ -10,7 +10,7 @@ PARTITION BY list(a) (
 PARTITION p1 VALUES IN (1)
 );
 # Establish connection conn1 (user = root)
-SET storage_engine = Falcon;
+SET @@storage_engine = 'Falcon';
 USE db1;
 # Switch to connection default
 INSERT INTO t1 VALUES (1)//
@@ -28,6 +28,9 @@ END//
 CALL p1();
 # Switch to connection conn1
 CALL p1();
+SELECT count(*) FROM t1;
+count(*)
+1
 # Switch to connection default
 SET GLOBAL falcon_consistent_read = @previous_falcon_consistent_read;
 DROP TABLE t1;

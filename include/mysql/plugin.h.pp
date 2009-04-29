@@ -49,6 +49,7 @@ struct st_mysql_plugin
   void * __reserved1;
 };
 #include "plugin_ftparser.h"
+#include "plugin.h"
 enum enum_ftparser_mode
 {
   MYSQL_FTPARSER_SIMPLE_MODE= 0,
@@ -151,3 +152,6 @@ int get_user_var_real(const char *name,
 int get_user_var_str(const char *name,
                      char *value, unsigned long len,
                      unsigned int precision, int *null_value);
+const char* thd_enter_cond(void* thd, pthread_cond_t *cond,
+                           pthread_mutex_t *mutex, const char *msg);
+void thd_exit_cond(void* thd, const char *old_msg);

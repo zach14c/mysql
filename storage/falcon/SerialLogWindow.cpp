@@ -119,7 +119,6 @@ void SerialLogWindow::write(SerialLogBlock *block)
 	uint32 length = ROUNDUP(block->length, sectorSize);
 	int64 offset = origin + ((UCHAR*) block - buffer);
 	ASSERT(length <= bufferLength);
-	
 	try
 		{
 		file->write(offset, length, block);

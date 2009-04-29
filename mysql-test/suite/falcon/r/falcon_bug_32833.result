@@ -3,7 +3,7 @@ SET @@storage_engine = 'Falcon';
 DROP TABLE IF EXISTS t1;
 DROP PROCEDURE IF EXISTS p1;
 # Create table
-CREATE TABLE t1 (int_column INT, char_column CHAR(5) CHARACTER SET UTF32) 
+CREATE TABLE t1 (int_column INT, char_column CHAR(5) CHARACTER SET UTF32)
 PARTITION BY KEY(char_column);
 # Create and call procedure for populating table
 SET @@autocommit=0;
@@ -36,6 +36,5 @@ CREATE INDEX i ON t1 (char_column);
 SELECT count(*) FROM t1;
 count(*)
 2802
-# Final cleanup
 DROP TABLE t1;
 DROP PROCEDURE p1;

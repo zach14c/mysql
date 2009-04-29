@@ -7,11 +7,11 @@
 CycleLock::CycleLock(Database *database)
 {
 	cycleManager = database->cycleManager;
-	syncObject = cycleManager->currentCycle;
+	syncObject = cycleManager->getSyncObject();
 	thread = Thread::getThread("CycleLock::CycleLock");
 
 	// If there already is a cycle manager, let him worry about all this
-		
+
 	if ( (chain = thread->cycleLock) )
 		locked = false;
 	else
@@ -61,7 +61,7 @@ void CycleLock::lockCycle(void)
 		chain->lockCycle();
 	else
 		{
-		syncObject = cycleManager->currentCycle;
+		syncObject = cycleManager->getSyncObject();
 		syncObject->lock(NULL, Shared);
 		locked = true;
 		}

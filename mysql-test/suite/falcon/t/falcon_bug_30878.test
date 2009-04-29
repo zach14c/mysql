@@ -1,5 +1,6 @@
 --source include/have_falcon.inc
 --source include/have_partition.inc
+
 #
 # Bug #30878: Partitioning: Crash when alter an auto_increment table to partitioned
 #

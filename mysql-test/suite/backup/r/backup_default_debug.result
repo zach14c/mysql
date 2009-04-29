@@ -1,0 +1,19 @@
+DROP DATABASE IF EXISTS mysql_db1;
+#
+# Bug#41722 - Restore crashes with backup of Falcon tables
+#
+CREATE DATABASE mysql_db1;
+CREATE TABLE mysql_db1.t1 (c1 TEXT) ENGINE=Falcon;
+INSERT INTO mysql_db1.t1 VALUES('fdafdsfdsfdsfdsfdsfd');
+BACKUP DATABASE mysql_db1 TO 'mysqltest.bak';
+backup_id
+#
+DROP DATABASE mysql_db1;
+#
+# Inject error Restore__send_data_write_error
+#
+SET debug='d,Restore__send_data_write_error';
+RESTORE FROM 'mysqltest.bak';
+ERROR HY000: Error when sending data (for table #1) to Snapshot restore driver
+SET debug= '';
+DROP DATABASE mysql_db1;

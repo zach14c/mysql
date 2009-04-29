@@ -1,0 +1,377 @@
+#
+# Interoperability testing of mysql backup feature with mysql external
+# applications. The external programs that will be included in the tests are:
+#
+# 1. myisampack
+# 2. myisamchk
+# 3. mysql_covert_table_format
+# 4. myisam_ftdump
+# 
+# Note: mysql_convert_table_utility is not supported by windows. Therefore, it 
+# is covered in backup_external_non_win.test
+#
+--source include/not_embedded.inc
+
+let $MYSQLD_BACKUPDIR = `select @@backupdir`;
+let $MYSQLD_DATADIR= `select @@datadir`;
+
+--echo # Drop databases if they are already existing
+--echo #
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+--enable_warnings
+
+--echo #
+--echo # Create databases and tables
+--echo #
+
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+
+CREATE TABLE db1.t1(
+ id INT,
+ name VARCHAR(30),
+ INDEX idx(name(10))
+);
+
+CREATE TABLE db2.t1(
+ id INT UNSIGNED NOT NULL,
+ details TEXT,
+ methods VARCHAR(40),
+ FULLTEXT(details, methods)
+);
+
+CREATE TABLE db2.t2(
+ a CHAR(100) UNIQUE,
+ b TEXT,
+ FULLTEXT(b)
+);
+
+CREATE TABLE db2.t3(
+ a INT AUTO_INCREMENT PRIMARY KEY,
+ b CHAR(20) NOT NULL,
+ c CHAR(20) NOT NULL,
+ INDEX(b, c)
+);
+
+INSERT INTO db1.t1 VALUES 
+(1,'test1'),(2,'test2'),
+(3,'test3'),(4,'test4');
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+
+SELECT COUNT(*) FROM db1.t1;
+SELECT * FROM db1.t1 LIMIT 4;
+
+INSERT INTO db2.t1 VALUES
+(1, 'Testing backup solution','automated testing'),
+(2, 'Testing replication feature', 'manual testing'),
+(3, 'Testing clustering basics', 'semi-automated testing'),
+(4, 'Interoperability testing of features', 'automated testing'),
+(5, 'Performance testing','semi-automated testing');
+
+SELECT COUNT(*) FROM db2.t1;
+SELECT * FROM db2.t1;
+
+INSERT INTO db2.t3(b,c) VALUES
+('abcd1','efgh1'),('efgh1','pqrs1'),('pqrs1','abcd1'),
+('xwyz1','klmn1'),('klmn1','opdh1'),('opdh1','xwyz1');
+
+INSERT INTO db2.t2 VALUES
+(100,'Testing mysql external programs'),(200, 'Testing myisampack utility'),
+(300, 'Testing myisamchk utility'),(400, 'Testing mysql_setpermission utility'),
+(500, 'Testing myisam_ftdump utility'),
+(600, 'Testing mysql_convert_table utility');
+
+--echo
+--echo # Check the indexes in tables
+--echo
+ 
+--query_vertical SHOW INDEX FROM db1.t1;
+--query_vertical SHOW INDEX FROM db2.t1;
+--query_vertical SHOW INDEX FROM db2.t2;
+--query_vertical SHOW INDEX FROM db2.t3;
+
+--echo
+--echo # Test 1: Use myisampack to compress the tables followed by myisamchk to 
+--echo #         rebuild the indexes.
+
+# This test is intended to verify the consequence of myisamchk and
+# myisampack on backup and restore operation.
+
+# Myisampack -s option is used for 'silent mode'
+# Myisamchk uses -s for silent mode, r for recovery and q for quick repair of
+# datafiles
+
+--exec $MYISAMPACK -s $MYSQLD_DATADIR/db1/t1.MYI
+--exec $MYISAMCHK -srq $MYSQLD_DATADIR/db1/t1.MYI
+
+# Check the indexes in the table db1.t1
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db1.t1;
+FLUSH TABLES;
+
+# Execute backup operation
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'db1.bak';
+
+DROP DATABASE db1;
+
+# Perform restore
+--replace_column 1 #
+RESTORE FROM 'db1.bak';
+
+# Check data contents and indexes in table
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db1.t1;
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+SELECT * FROM db1.t1 LIMIT 4;
+
+--echo
+--echo # Use myisampack utility again after restore. Verify that utilities
+--echo # are not affected and functions properly after backup and restore 
+--echo # operation.
+
+--exec $MYISAMCHK -s --unpack $MYSQLD_DATADIR/db1/t1.MYI
+--exec $MYISAMPACK -s $MYSQLD_DATADIR/db1/t1.MYI
+--exec $MYISAMCHK -srq $MYSQLD_DATADIR/db1/t1.MYI
+
+# Check the indexes in the table db1.t1
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db1.t1;
+
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+SELECT * FROM db1.t1 LIMIT 4;
+ 
+--echo
+--echo # Use myisampack -b option to make backup of table datafile
+
+--exec $MYISAMCHK -s --unpack $MYSQLD_DATADIR/db1/t1.MYI
+--exec $MYISAMPACK -s -b $MYSQLD_DATADIR/db1/t1.MYI
+--exec $MYISAMCHK -srq $MYSQLD_DATADIR/db1/t1.MYI
+
+# Execute backup operation
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'db1b.bak';
+
+# Perform restore
+--replace_column 1 #
+--error ER_BACKUP_CANT_RESTORE_DB
+RESTORE FROM 'db1b.bak' OVERWRITE;
+
+SHOW TABLES FROM db1;
+# No tables will be seen in db1. This is because of Bug#42572. Once this bug is
+# fixed, restore should pass and tables should be present in db1.
+
+# Remove the .OLD file from database directory
+--exec rm $MYSQLD_DATADIR/db1/t1.OLD
+
+--echo # Perform restore again to get the tables from db1 back
+--replace_column 1 #
+RESTORE FROM 'db1.bak' OVERWRITE;
+
+--echo # Check data contents and indexes in table
+SHOW TABLES FROM db1;
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db1.t1;
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+SELECT * FROM db1.t1 LIMIT 4;
+--remove_file $MYSQLD_BACKUPDIR/db1.bak
+--remove_file $MYSQLD_BACKUPDIR/db1b.bak
+
+--echo
+--echo # Test 2: Use repair and general options of myisamchk followed by
+--echo #         backup and restore.
+
+# This test is intended to verify the consequence of using different options
+# of myisamchk utility followed by backup and restore operation. Ensure that 
+# data contents didn't get altered after restore (data contents should remain 
+# the same as they were before backup)
+
+# Lock the tables 
+FLUSH TABLES;
+LOCK TABLE db1.t1 READ;
+CHECKSUM TABLE db1.t1;
+
+LOCK TABLE db2.t3 READ;
+CHECKSUM TABLE db2.t3;
+
+--echo # Use myisamchk repair options
+# The repair options --correct-checksum corrects the checksum information in
+# table. sort_recover sorts the keys. --medium-check option helps to recover
+# possible rows from data files. --quick helps in acheiving faster repair.
+
+--exec $MYISAMCHK -s --correct-checksum --sort-recover --medium-check --quick $MYSQLD_DATADIR/db1/t1.MYI
+--exec $MYISAMCHK -s --correct-checksum --sort-recover --medium-check --quick $MYSQLD_DATADIR/db2/t3.MYI
+UNLOCK TABLES;
+
+# Execute backup operation
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+# Perform restore
+--replace_column 1 #
+RESTORE FROM 'db12.bak';
+
+# Verify checksums, data contents and indexes in tables
+CHECKSUM TABLE db1.t1;
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+SELECT * FROM db1.t1 LIMIT 4;
+CHECKSUM TABLE db2.t3;
+SELECT COUNT(*) FROM db2.t3;
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db1.t1;
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db2.t3;
+--remove_file $MYSQLD_BACKUPDIR/db12.bak
+
+--echo
+--echo # Use myisamchk options again after restore. Verify that these utilities
+--echo # are not affected and functions properly after backup and restore 
+--echo # operation.
+
+--exec $MYISAMCHK -s --correct-checksum --sort-recover --medium-check --quick $MYSQLD_DATADIR/db1/t1.MYI
+--exec $MYISAMCHK -s --correct-checksum --sort-recover --medium-check --quick $MYSQLD_DATADIR/db2/t3.MYI
+
+--echo # Verify checksums and data contents.
+CHECKSUM TABLE db1.t1;
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+SELECT * FROM db1.t1 LIMIT 4;
+CHECKSUM TABLE db2.t3;
+SELECT COUNT(*) FROM db2.t3;
+
+--echo # Use myisamchk general option(auto_increment)
+SELECT * FROM db2.t3;
+FLUSH TABLES;
+
+--echo # Executing myisamchk auto increment option to begin with number=200
+--exec $MYISAMCHK -s --set-auto-increment=200 $MYSQLD_DATADIR/db2/t3
+
+INSERT INTO db2.t3(b,c) VALUES('iklm1','ujmn1');
+SELECT * FROM db2.t3 ORDER BY a;
+
+# Execute backup operation
+--replace_column 1 #
+BACKUP DATABASE db2 TO 'db2.bak';
+
+DROP DATABASE db2;
+
+# Perform restore
+--replace_column 1 #
+RESTORE FROM 'db2.bak';
+
+# Verify the table contents in db2
+SELECT * FROM db2.t3 ORDER BY a;
+INSERT INTO db2.t3(b,c) VALUES('hgfd1','iklm1');
+SELECT * FROM db2.t3 ORDER BY a;
+--remove_file $MYSQLD_BACKUPDIR/db2.bak
+
+--echo
+--echo # Use myisamchk auto increment option again after restore. Verify that
+--echo # this option functions properly after backup and restore operation
+
+FLUSH TABLES;
+--exec $MYISAMCHK -s --set-auto-increment=300 $MYSQLD_DATADIR/db2/t3
+
+--echo
+--echo # Insert some contents in table db2.t3 and verify that auto increment 
+--echo # numbering starts from 300 for new values inserted in table.
+INSERT INTO db2.t3(b,c) VALUES('ptyu1','irtc1');
+SELECT * FROM db2.t3 ORDER BY a;
+
+--echo
+--echo # Use myisamchk general options, --sort-index and --analyze 
+# --sort-index option sorts the index tree blocks in high-low order and
+# --analyze option analyzes the distribution of key values.
+
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db1.t1;
+FLUSH TABLES;
+--exec $MYISAMCHK -s --sort-index --analyze $MYSQLD_DATADIR/db1/t1.MYI
+--exec $MYISAMCHK -s --sort-index --analyze $MYSQLD_DATADIR/db2/t3.MYI
+
+# Execute backup operation
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+# Perform restore
+--replace_column 1 #
+RESTORE FROM 'db12.bak';
+
+# Check table contents and indexes in db1 and db2
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+SELECT * FROM db1.t1 LIMIT 4;
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db1.t1;
+SELECT COUNT(*) FROM db2.t3;
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db2.t3;
+--remove_file $MYSQLD_BACKUPDIR/db12.bak
+
+--echo
+--echo # Use myisamchk general options again after restore. Verify that these 
+--echo # options functions properly after backup and restore operation
+
+FLUSH TABLES;
+--exec $MYISAMCHK -s --sort-index --analyze $MYSQLD_DATADIR/db1/t1.MYI
+--exec $MYISAMCHK -s --sort-index --analyze $MYSQLD_DATADIR/db2/t3.MYI
+
+# Check table contents and indexes in db1
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+SELECT * FROM db1.t1 LIMIT 4;
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db1.t1;
+SELECT COUNT(*) FROM db2.t3;
+--replace_column 6 # 8 # 9 # 12 # 13 #
+--query_vertical SHOW INDEX FROM db2.t3;
+
+--echo
+--echo # Test 3: Interoperability of backup and restore with myisam_ftdump
+--echo #
+
+--echo # Execute myisam_ftdump to display full text indexes in tables db2.t1 
+--echo # and db2.t2
+
+--exec $MYISAM_FTDUMP $MYSQLD_DATADIR/db2/t1 0
+--exec $MYISAM_FTDUMP $MYSQLD_DATADIR/db2/t2 1
+
+# Execute backup operation
+--replace_column 1 #
+BACKUP DATABASE db2 TO 'db2.bak';
+
+DROP DATABASE db2;
+
+# Perform restore
+--replace_column 1 #
+RESTORE FROM 'db2.bak';
+
+# Check data contents in tables db2.t1 and db2.t2
+SELECT * FROM db2.t1 LIMIT 5;
+SELECT * FROM db2.t2;
+
+--echo
+--echo # Execute myisam_ftdump in tables of database db2 after restore 
+--echo # Verify that fulltext indexes are same as it was before backup
+
+--exec $MYISAM_FTDUMP $MYSQLD_DATADIR/db2/t1 0
+--exec $MYISAM_FTDUMP $MYSQLD_DATADIR/db2/t2 1
+
+--remove_file $MYSQLD_BACKUPDIR/db2.bak
+
+# Test clean-up section
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+

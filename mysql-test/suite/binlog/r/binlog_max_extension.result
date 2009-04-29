@@ -1,0 +1,12 @@
+RESET MASTER;
+**** Stop master server ****
+INDEX: MYSQLTEST_VARDIR/mysqld.1/data//master-bin.index
+BINLOG: MYSQLTEST_VARDIR/mysqld.1/data//master-bin.000001
+RENAMED BINLOG: MYSQLTEST_VARDIR/mysqld.1/data//master-bin.2147483646
+WROTE into index file last entry: ./master-bin.2147483646
+**** ReStart master server ****
+FLUSH LOGS;
+Warnings:
+Warning	1098	Can't generate a unique log-filename master-bin.(1-999)
+
+RESET MASTER;

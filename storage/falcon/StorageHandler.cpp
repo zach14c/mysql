@@ -1035,6 +1035,11 @@ void StorageHandler::createDatabase(void)
 		statement->executeUpdate(*ddl);
 	statement->close();
 	dictionaryConnection->commit();
+
+	Database *database = dictionaryConnection->database;
+	database->waitForWriteComplete(NULL);
+	database->flush((int64)0);
+
 	inCreateDatabase = false;
 }
 
