@@ -145,6 +145,9 @@ void mi_examine_log_param_init(MI_EXAMINE_LOG_PARAM *mi_exl)
   them.
   Is used both by the standalone program myisamlog and by the restore
   code of the MyISAM online backup driver.
+  An initialized key cache may accelerate this function. The MySQL server
+  has a key cache initialized anyway. For other programs it is recommended
+  to set up a key cache before calling this function.
 
   @param  mi_exl           Parameters of the applying
 
@@ -208,8 +211,6 @@ int mi_examine_log(MI_EXAMINE_LOG_PARAM *mi_exl)
   bzero(mi_exl->com_count,sizeof(mi_exl->com_count));
   init_tree(&tree,0,0,sizeof(file_info),(qsort_cmp2) file_info_compare,1,
 	    (tree_element_free) file_info_free, NULL);
-  (void) init_key_cache(dflt_key_cache,KEY_CACHE_BLOCK_SIZE,KEY_CACHE_SIZE,
-                        0, 0);
 
   /*
     Initialize members of file_info that are used for pointing to
@@ -778,7 +779,6 @@ int mi_examine_log(MI_EXAMINE_LOG_PARAM *mi_exl)
   }
   DBUG_PRINT("myisamlog", ("end loop access_time: %lu  cmd_cnt: %lu",
                            access_time, mi_exl->number_of_commands));
-  end_key_cache(dflt_key_cache,1);
   delete_tree(&tree);
   (void) end_io_cache(&cache);
   (void) my_close(log_file,MYF(0));
@@ -803,7 +803,6 @@ int mi_examine_log(MI_EXAMINE_LOG_PARAM *mi_exl)
   fflush(stderr);
  end:
   DBUG_PRINT("myisamlog", ("end label"));
-  end_key_cache(dflt_key_cache, 1);
   delete_tree(&tree);
   (void) end_io_cache(&cache);
   (void) my_close(log_file,MYF(0));

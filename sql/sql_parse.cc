@@ -1456,13 +1456,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   close_thread_tables(thd);
 
   if (!thd->is_error() && !thd->killed_errno())
-  {
-    mysql_audit_general(thd,MYSQL_AUDIT_GENERAL_RESULT,0,my_time(0),
-                        0,0,0,0,
-                        thd->query,thd->query_length,
-                        thd->variables.character_set_client,
-                        thd->warning_info->current_row_for_warning());
-  }
+    mysql_audit_general(thd, MYSQL_AUDIT_GENERAL_RESULT, 0, 0);
 
   log_slow_statement(thd);
 
@@ -5546,7 +5540,7 @@ bool check_global_access(THD *thd, ulong want_access)
   char command[128];
   if ((thd->security_ctx->master_access & want_access))
     return 0;
-  get_privilege_desc(command, sizeof(command), want_access);
+  get_privilege_desc(command, sizeof(command), want_access, TRUE);
   my_error(ER_SPECIFIC_ACCESS_DENIED_ERROR, MYF(0), command);
   return 1;
 #else

@@ -82,9 +82,6 @@ void TableSpace::open()
 		{
 		dbb->readHeader(&header);
 
-		if (header.pageSize < 1024)
-			dbb->skewHeader(&header);
-
 		switch (type)
 			{
 			case TABLESPACE_TYPE_TABLESPACE:

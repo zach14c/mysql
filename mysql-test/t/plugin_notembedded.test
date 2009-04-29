@@ -1,0 +1,21 @@
+--source include/have_example_plugin.inc
+--source include/not_embedded.inc
+
+--error 1193
+SELECT @@global.example_enum_var = 'e2';
+
+INSTALL PLUGIN example SONAME 'ha_example.so';
+
+SELECT @@global.example_enum_var = 'e2';
+
+--echo #
+--echo # Bug#44137: Transactional DDL locking broke dynamic plugins
+--echo #
+--echo # Try to restart the server - plugin should be loaded after restart
+--echo #
+
+--source include/restart_mysqld.inc
+SELECT @@global.example_enum_var = 'e2';
+
+UNINSTALL PLUGIN example;
+

@@ -13,13 +13,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/sql
-                    ${CMAKE_SOURCE_DIR}/regex
-                    ${CMAKE_SOURCE_DIR}/extra/yassl/include)
-
+INCLUDE("${PROJECT_SOURCE_DIR}/storage/mysql_storage_engine.cmake")
 SET(BLACKHOLE_SOURCES  ha_blackhole.cc ha_blackhole.h)
 
-IF(NOT SOURCE_SUBLIBS)
-  ADD_LIBRARY(blackhole ${BLACKHOLE_SOURCES})
-  ADD_DEPENDENCIES(blackhole GenError)
-ENDIF(NOT SOURCE_SUBLIBS)
+MYSQL_STORAGE_ENGINE(BLACKHOLE)

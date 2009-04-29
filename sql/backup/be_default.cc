@@ -845,7 +845,11 @@ result_t Restore::send_data(Buffer &buf)
     }
     if (write_row)
     {
+      /* Error injection. */
+      DBUG_EXECUTE_IF("Restore__send_data_write_error",
+                      last_write_res= -1; goto write_skip;);
       last_write_res = hdl->ha_write_row(cur_table->record[0]);
+      IF_DBUG(write_skip:); /* Label for error injection. */
       DBUG_PRINT("backup_default_write", ("%d", last_write_res));
 
       /*

@@ -19,9 +19,9 @@
 #ifdef HAVE_REPLICATION
 
 #include "rpl_rli.h"
-#include "rpl_reporting.h"
 #include "my_sys.h"
 
+#define DEFAULT_CONNECT_RETRY 60
 
 /*****************************************************************************
 
@@ -33,12 +33,12 @@
     - current master log offset
     - misc control variables
 
-  Master_info is initialized once from the master.info file if such
+  Master_info is initialized once from the master.info repository if such
   exists. Otherwise, data members corresponding to master.info fields
   are initialized with defaults specified by master-* options. The
-  initialization is done through init_master_info() call.
+  initialization is done through init_info() call.
 
-  The format of master.info file:
+  Logically, the format of master.info repository is presented as follows:
 
   log_name
   log_pos
@@ -48,19 +48,19 @@
   master_port
   master_connect_retry
 
-  To write out the contents of master.info file to disk ( needed every
-  time we read and queue data from the master ), a call to
-  flush_master_info() is required.
+  To write out the contents of master.info to disk a call to flush_info() 
+  is required. Currently, it is needed every time we read and queue data 
+  from the master.
 
-  To clean up, call end_master_info()
+  To clean up, call end_info()
 
 *****************************************************************************/
 
-class Master_info : public Slave_reporting_capability
+class Master_info : public Rpl_info
 {
  public:
-  Master_info(bool is_slave_recovery);
-  ~Master_info();
+  Master_info();
+  virtual ~Master_info();
   bool shall_ignore_server_id(ulong s_id);
 
   /* the variables below are needed because we can change masters on the fly */
@@ -74,28 +74,16 @@ class Master_info : public Slave_reporting_capability
   my_bool ssl_verify_server_cert;
 
   my_off_t master_log_pos;
-  File fd; // we keep the file open, so we need to remember the file pointer
-  IO_CACHE file;
 
-  pthread_mutex_t data_lock,run_lock;
-  pthread_cond_t data_cond,start_cond,stop_cond;
-  THD *io_thd;
   MYSQL* mysql;
   uint32 file_id;				/* for 3.23 load data infile */
-  Relay_log_info rli;
+  Relay_log_info *rli;
   uint port;
   uint connect_retry;
   float heartbeat_period;         // interface with CHANGE MASTER or master.info
   ulonglong received_heartbeats;  // counter of received heartbeat events
   DYNAMIC_ARRAY ignore_server_ids;
-#ifndef DBUG_OFF
-  int events_till_disconnect;
-#endif
-  bool inited;
   ulong master_id;
-  volatile bool abort_slave;
-  volatile uint slave_running;
-  volatile ulong slave_run_id;
   /*
      The difference in seconds between the clock of the master and the clock of
      the slave (second - first). It must be signed as it may be <0 or >0.
@@ -107,21 +95,22 @@ class Master_info : public Slave_reporting_capability
   */
   long clock_diff_with_master;
 
-  /*
-   * Keeps track of the number of events before fsyncing.
-   * The option --sync-master-info determines how many
-   * events should happen before fsyncing.
-   */
-  uint sync_counter;
+  int init_info(bool abort_if_no_info);
+  void inject_relay_log_info(Relay_log_info *info);
+
+private:
+  virtual int do_check()= 0;
+  virtual int do_init_info()= 0;
+  virtual void do_end_info()= 0;
+  virtual int do_flush_info()= 0;
+  virtual int do_reset_info()= 0;
+
+  Master_info& operator=(const Master_info& info);
+  Master_info(const Master_info& info);
 };
 
 void init_master_log_pos(Master_info* mi);
-int init_master_info(Master_info* mi, const char* master_info_fname,
-		     const char* slave_info_fname,
-		     bool abort_if_no_master_info_file,
-		     int thread_mask);
-void end_master_info(Master_info* mi);
-int flush_master_info(Master_info* mi, bool flush_relay_log_cache);
+
 int server_id_cmp(ulong *id1, ulong *id2);
 
 #endif /* HAVE_REPLICATION */

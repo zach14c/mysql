@@ -59,6 +59,14 @@ while ($1)
 SELECT LENGTH(c1) FROM t1;
 CHECKSUM TABLE t1;
 
+--echo
+--echo # Verify that the MyISAM Key Cache is enabled.
+--echo # See Bug#44068 (RESTORE can disable the MyISAM Key Cache).
+SELECT SUM(VARIABLE_VALUE) > 0 AS key_cache_is_enabled
+  FROM INFORMATION_SCHEMA.GLOBAL_STATUS WHERE
+  VARIABLE_NAME LIKE 'Key_blocks_%used';
+--echo
+
 --echo Signal BACKUP to finish
 SET DEBUG_SYNC= 'now SIGNAL bup_finish';
 
@@ -84,10 +92,17 @@ connection default;
 remove_file $MYSQLD_BACKUPDIR/bup_myisam_sync.bak;
 SET DEBUG_SYNC= 'RESET';
 
+--echo
+--echo # Verify that the MyISAM Key Cache is still enabled.
+--echo # See Bug#44068 (RESTORE can disable the MyISAM Key Cache).
+SELECT SUM(VARIABLE_VALUE) > 0 AS key_cache_is_enabled
+  FROM INFORMATION_SCHEMA.GLOBAL_STATUS WHERE
+  VARIABLE_NAME LIKE 'Key_blocks_%used';
+--echo
+
 #
 # Cleanup from this test case
 #
---echo
 --echo # final cleanup
 USE test;
 DROP DATABASE mysqltest;

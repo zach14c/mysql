@@ -175,7 +175,7 @@ bool Index2RootPage::addIndexEntry(Dbb * dbb, int32 indexId, IndexKey *key, int3
 			return true;
 			}
 
-		/* Node didn't fit.  Split the page and propogate the
+		/* Node didn't fit.  Split the page and propagate the
 		   split upward.  Sooner or laster we'll go back and re-try
 		   the original insertion */
 
@@ -529,7 +529,7 @@ bool Index2RootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId
 		return false;
 		}
 
-	// We need to propogate the split upward.  Start over from the top
+	// We need to propagate the split upward.  Start over from the top
 	// to find the insertion point.  Try to insert.  If successful, be happy
 
 	int level = splitPage->level + 1;
@@ -753,7 +753,7 @@ void Index2RootPage::redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPage,
 	indexPage->length = length + (int32) OFFSET (Index2Page*, nodes);
 	memcpy(indexPage->nodes, data, length);
 	
-	// If we have a parent page, propogate the first node upward
+	// If we have a parent page, propagate the first node upward
 
 	if (parentPage)
 		{

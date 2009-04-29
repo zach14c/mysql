@@ -24,7 +24,6 @@
 #include "SerialLogTransaction.h"
 #include "Dbb.h"
 #include "IndexRootPage.h"
-#include "Index2RootPage.h"
 #include "Index.h"
 
 //////////////////////////////////////////////////////////////////////
@@ -96,33 +95,18 @@ void SRLIndexPage::pass1()
 
 void SRLIndexPage::pass2()
 {
-	if (log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse))
-		{
-		if (log->tracePage == pageNumber)
+	if (log->tracePage == pageNumber)
 			print();
 
+	if (log->bumpPageIncarnation(pageNumber, tableSpaceId, objInUse))
+		{
 		if (control->isPostFlush())
-			switch (indexVersion)
-				{
-				case INDEX_VERSION_0:
-					Index2RootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, 0,  level, 0,  next, length, data);
-					break;
-				
-				case INDEX_VERSION_1:
-					{
-					bool haveSuperNodes = (control->version >=srlVersion14);
-					IndexRootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, level, next, length, data,
-						haveSuperNodes);
-					}
-					break;
-				
-				default:
-					ASSERT(false);
-				}
+			{
+			bool haveSuperNodes = (control->version >=srlVersion14);
+			IndexRootPage::redoIndexPage(log->getDbb(tableSpaceId), pageNumber, level, next, length, data,
+				haveSuperNodes);
+			}
 		}
-	else 
-		if (log->tracePage == pageNumber)
-			print();
 }
 
 void SRLIndexPage::print()
