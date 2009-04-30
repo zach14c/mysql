@@ -3,7 +3,7 @@ typedef struct st_mysql MYSQL;
 struct st_mysql_lex_string
 {
   char *str;
-  unsigned int length;
+  size_t length;
 };
 typedef struct st_mysql_lex_string MYSQL_LEX_STRING;
 struct st_mysql_xid {

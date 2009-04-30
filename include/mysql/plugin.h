@@ -44,7 +44,7 @@ class Item;
 struct st_mysql_lex_string
 {
   char *str;
-  unsigned int length;
+  size_t length;
 };
 #endif /* _m_string_h */
 typedef struct st_mysql_lex_string MYSQL_LEX_STRING;
