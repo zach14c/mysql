@@ -94,6 +94,7 @@ public:
 	uint32			appendLog (IO *shadow, int lastPage);
 	bool			isSectionActive(int sectionId, int tableSpaceId);
 	bool			isIndexActive(int indexId, int tableSpaceId);
+
 	SerialLogBlock* findLastBlock (SerialLogWindow *window);
 	void			initializeWriteBlock (SerialLogBlock *block);
 	void			checkpoint(bool force);
@@ -127,6 +128,9 @@ public:
 	void			setSectionInactive(int id, int tableSpaceId);
 	void			setIndexActive(int id, int tableSpaceId);
 	void			setIndexInactive(int id, int tableSpaceId);
+	void			setOverflowPageValid(int pageNumber, int tableSpaceId);
+	void			setOverflowPageInvalid(int pageNumber, int tableSpaceId);
+	bool			isOverflowPageValid(int pageNumber, int tableSpaceId);
 	void			setTableSpaceDropped(int tableSpaceId);
 	bool			isTableSpaceDropped(int tableSpaceId);
 	void			updateSectionUseVector(uint sectionId, int tableSpaceId, int delta);
@@ -173,6 +177,7 @@ public:
 	RecoveryObjects		*recoveryPages;
 	RecoveryObjects		*recoverySections;
 	RecoveryObjects		*recoveryIndexes;
+	RecoveryObjects		*recoveryOverflowPages;
 	Bitmap				droppedTablespaces;
 	Dbb					*defaultDbb;
 	Gopher				*gophers;

@@ -96,6 +96,7 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	bufferSpace = NULL;
 	recoveryPages = NULL;
 	recoveryIndexes = NULL;
+	recoveryOverflowPages = NULL;
 	recoverySections = NULL;
 	recoveryPhase = 0;
 	tracePage = TRACE_PAGE;
@@ -153,6 +154,7 @@ SerialLog::~SerialLog()
 	delete logControl;
 	delete recoveryIndexes;
 	delete recoverySections;
+	delete recoveryOverflowPages;
 	SerialLogWindow *window;
 
 	while ( (window = firstWindow) )
@@ -394,6 +396,7 @@ void SerialLog::recover()
 	recoveryPages = new RecoveryObjects(this);
 	recoverySections = new RecoveryObjects(this);
 	recoveryIndexes = new RecoveryObjects(this);
+	recoveryOverflowPages = new RecoveryObjects(this);
 	recoveryPhase = 1;	
 	
 	// Phase 1 - read from the start to end of the part of the
@@ -505,9 +508,12 @@ void SerialLog::recover()
 	delete recoveryPages;
 	delete recoverySections;
 	delete recoveryIndexes;
+	delete recoveryOverflowPages;
 	recoveryPages = NULL;
 	recoveryIndexes = NULL;
 	recoverySections = NULL;
+	recoveryOverflowPages = NULL;
+
 	droppedTablespaces.clear();
 	
 	for (window = firstWindow; window; window = window->next)
@@ -1171,6 +1177,29 @@ bool SerialLog::isSectionActive(int sectionId, int tableSpaceId)
 		return true;
 		
 	return recoverySections->isObjectActive(sectionId, tableSpaceId);
+}
+
+bool SerialLog::isOverflowPageValid(int pageNumber, int tableSpaceId)
+{
+	// If page was not touched by recovery, assume it is valid
+	if (!recoveryPages->findRecoveryObject(pageNumber, tableSpaceId))
+		return true;
+
+	// Otherwise, if page was not created during recovery itself, 
+	// or was deleted in course of recovery, it is invalid
+	if (!recoveryOverflowPages->findRecoveryObject(pageNumber, tableSpaceId))
+		return false;
+	return recoveryOverflowPages->isObjectActive(pageNumber, tableSpaceId);
+}
+
+void SerialLog::setOverflowPageValid(int pageNumber, int tableSpaceId)
+{
+	recoveryOverflowPages->setActive(pageNumber, tableSpaceId);
+}
+
+void SerialLog::setOverflowPageInvalid(int pageNumber, int tableSpaceId)
+{
+	recoveryOverflowPages->setInactive(pageNumber, tableSpaceId);
 }
 
 uint32 SerialLog::appendLog(IO *shadow, int lastPage)

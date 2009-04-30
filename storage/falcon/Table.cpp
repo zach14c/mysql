@@ -1042,7 +1042,7 @@ Record* Table::backlogFetch(int32 recordNumber)
 					RECORD_HISTORY(record);
 					return record;
 					}
-				record->release();
+				record->release(REC_HISTORY);
 				}
 
 			if ((record = fetch(recordNumber)))
@@ -1414,8 +1414,9 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 		
 		if (record)
 			{
-			if (record->getPriorVersion())
-				record->getPriorVersion()->setSuperceded(false);
+			Record *prior = record->getPriorVersion();
+			if (prior)
+				prior->setSuperceded(false);
 								
 			if (record->state == recLock)
 				record->deleteData();
@@ -3144,7 +3145,8 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	RecordVersion *record = NULL;
 	bool updated = false;
 	
-	if (candidate->state == recLock && candidate->getTransactionState() == transaction->transactionState)
+	if (   candidate->state == recLock 
+	    && candidate->getTransactionState() == transaction->transactionState)
 		{
 		if (candidate->getSavePointId() == transaction->curSavePointId)
 			{
