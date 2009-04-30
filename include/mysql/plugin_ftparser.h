@@ -15,6 +15,7 @@
 
 #ifndef _my_plugin_ftparser_h
 #define _my_plugin_ftparser_h
+#include "plugin.h"
 
 /*************************************************************************
   API for Full-text parser plugin. (MYSQL_FTPARSER_PLUGIN)

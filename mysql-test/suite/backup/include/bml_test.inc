@@ -183,11 +183,17 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_waiting TIMEOUT 15';
 --echo # DDL3= $DDL3
 --echo # DDL4= $DDL4
 --echo #
-eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-  WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%"
-     OR info LIKE "$DDL1%"
-     OR info LIKE "$DDL2%";
+#
+# SELECTs from I_S.PROCESSLIST commented out because such selects are unstable
+# in the current server (v6.0 as of Mar 2009). See bug#37990, bug#41346, 
+# bug#43357. When I_S quality is improved, the following lines could be 
+# re-enabled increasing sensitivity of this test to potential problems.
+#
+#eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+#  WHERE info LIKE "BACKUP DATABASE%"
+#     OR info LIKE "RESTORE FROM%"
+#     OR info LIKE "$DDL1%"
+#     OR info LIKE "$DDL2%";
 --echo # Checking that BACKUP is blocked by DDLs.
 SELECT object, notes, error_num FROM mysql.backup_progress WHERE backup_id=500;
 --echo # Checking that DDL1 and DDL2 have not executed.
@@ -219,9 +225,15 @@ SET DEBUG_SYNC= 'now SIGNAL continue_bup WAIT_FOR bup_running TIMEOUT 15';
 --echo # DDL3= $DDL3
 --echo # DDL4= $DDL4
 --echo #
-SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-  WHERE info LIKE "BACKUP DATABASE%"
-     OR info LIKE "RESTORE FROM%";
+#
+# SELECTs from I_S.PROCESSLIST commented out because such selects are unstable
+# in the current server (v6.0 as of Mar 2009). See bug#37990, bug#41346, 
+# bug#43357. When I_S quality is improved, the following lines could be 
+# re-enabled increasing sensitivity of this test to potential problems.
+#
+#SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+#  WHERE info LIKE "BACKUP DATABASE%"
+#     OR info LIKE "RESTORE FROM%";
 --echo # Checking that DDL1 and DDL2 have executed.
 CALL test.check_results();
 --echo ==================
@@ -261,9 +273,15 @@ SET DEBUG_SYNC= 'now WAIT_FOR ddl4_blocked TIMEOUT 15';
 --echo # DDL3= $DDL3
 --echo # DDL4= $DDL4
 --echo #
-eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-  WHERE info LIKE "$DDL3%"
-     OR info LIKE "$DDL4%";
+#
+# SELECTs from I_S.PROCESSLIST commented out because such selects are unstable
+# in the current server (v6.0 as of Mar 2009). See bug#37990, bug#41346, 
+# bug#43357. When I_S quality is improved, the following lines could be 
+# re-enabled increasing sensitivity of this test to potential problems.
+#
+#eval SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
+#  WHERE info LIKE "$DDL3%"
+#     OR info LIKE "$DDL4%";
 --echo # Checking that DDL3 and DDL4 have not executed.
 CALL test.check_results();
 --echo ==================

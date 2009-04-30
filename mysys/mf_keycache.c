@@ -765,6 +765,13 @@ void end_key_cache(KEY_CACHE *keycache, my_bool cleanup)
                         (ulong) keycache->global_cache_r_requests,
                         (ulong) keycache->global_cache_read));
 
+  /*
+    Reset these values to be able to detect a disabled key cache.
+    See Bug#44068 (RESTORE can disable the MyISAM Key Cache).
+  */
+  keycache->blocks_used= 0;
+  keycache->blocks_unused= 0;
+
   if (cleanup)
   {
     pthread_mutex_destroy(&keycache->cache_lock);
@@ -2608,7 +2615,10 @@ uchar *key_cache_read(KEY_CACHE *keycache,
       /* Cache could be disabled in a later iteration. */
       
       if (!keycache->can_be_used)
-	goto no_key_cache;
+      {
+        KEYCACHE_DBUG_PRINT("key_cache_read", ("keycache cannot be used"));
+        goto no_key_cache;
+      }
       /* Start reading at the beginning of the cache block. */
       filepos-= offset;
       /* Do not read beyond the end of the cache block. */
@@ -2728,6 +2738,7 @@ uchar *key_cache_read(KEY_CACHE *keycache,
     } while ((length-= read_length));
     goto end;
   }
+  KEYCACHE_DBUG_PRINT("key_cache_read", ("keycache not initialized"));
 
 no_key_cache:
   /* Key cache is not used */
@@ -2748,6 +2759,7 @@ end:
     dec_counter_for_resize_op(keycache);
     keycache_pthread_mutex_unlock(&keycache->cache_lock);
   }
+  DBUG_PRINT("exit", ("error: %d", error ));
   DBUG_RETURN(error ? (uchar*) 0 : start);
 }
 

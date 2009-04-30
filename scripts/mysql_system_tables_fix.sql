@@ -255,9 +255,9 @@ SET GLOBAL slow_query_log = @old_log_state;
 #
 
 ALTER TABLE plugin
-  MODIFY name char(64) COLLATE utf8_bin NOT NULL DEFAULT '',
-  MODIFY dl char(128) COLLATE utf8_bin NOT NULL DEFAULT '',
-  CONVERT TO CHARACTER SET utf8 COLLATE utf8_bin;
+  MODIFY name varchar(64) COLLATE utf8_general_ci NOT NULL DEFAULT '',
+  MODIFY dl varchar(128) COLLATE utf8_general_ci NOT NULL DEFAULT '',
+  CONVERT TO CHARACTER SET utf8 COLLATE utf8_general_ci;
 
 #
 # Detect whether we had Create_view_priv
@@ -607,3 +607,4 @@ UPDATE user SET Create_tablespace_priv = Super_priv WHERE @hadCreateTablespacePr
 flush privileges;
 
 ALTER TABLE backup_history ADD COLUMN backup_file_path VARCHAR (512) NOT NULL DEFAULT '' COMMENT 'The full path to the backup image file' AFTER backup_file;
+

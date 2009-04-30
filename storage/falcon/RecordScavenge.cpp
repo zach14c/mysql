@@ -79,18 +79,21 @@ bool RecordScavenge::canBeRetired(Record* record)
 
 	if (record->generation <= scavengeGeneration)
 		{
-		// Record objects are read from pages
+		// Record objects that are old enough can always be retired
 
 		if (!record->isVersion())
 			return true;
 
+		RecordVersion * recVer = (RecordVersion *) record;
+		TransactionState * transState = recVer->transactionState;
+
 		// This record version may be retired if it is
 		// currently not pointed to by a transaction.
 
-		RecordVersion * recVer = (RecordVersion *) record;
-		
-		//if (!recVer->transaction)
-		if (!recVer->transactionState->hasTransactionReference)
+		if (   recVer->useCount == 1
+			&& !recVer->getPriorVersion()
+			&& transState->committedBefore(oldestActiveTransaction)
+			&& (!transState->hasTransactionReference))
 			return true;
 		}
 
@@ -111,9 +114,6 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 {
 	uint64 chainLength = 0;
 	Record *oldestVisibleRec = NULL;
-
-	//Sync syncPrior(record->getSyncPrior(), "RecordScavenge::inventoryRecord");
-	//syncPrior.lock(Shared);
 
 	for (Record *rec = record; rec; rec = rec->getPriorVersion())
 		{

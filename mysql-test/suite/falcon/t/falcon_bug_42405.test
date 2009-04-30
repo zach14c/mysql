@@ -1,0 +1,46 @@
+--source include/have_falcon.inc
+
+#
+# Bug #42405: Missing/Wrong rows on Falcon's ORDER BY ..LIMIT with range access on pk/index
+#
+--echo *** Bug #42405 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t2;
+--enable_warnings
+
+CREATE TABLE t2(c1 TINYINT UNSIGNED NOT NULL, 
+c2 TINYINT NULL, 
+c3 SMALLINT, 
+c4 MEDIUMINT, 
+c5 INT,
+c6 INTEGER,
+c7 BIGINT,
+PRIMARY KEY(c1,c6));
+
+INSERT INTO t2 VALUES
+(101,102,103,104,105,106,107),
+(108,109,110,111,112,113,114),
+(115,116,117,118,119,120,121),
+(122,123,124,125,126,127,128);
+
+
+SELECT * FROM t2 WHERE c1 <> 108 ORDER BY c1,c6 LIMIT 2;
+
+SELECT * FROM t2 WHERE c1 <> 115 ORDER BY c1,c6 LIMIT 2;
+
+SELECT * FROM t2 WHERE c1 IN (101,115) ORDER BY c1,c6 LIMIT 2;
+
+SELECT * FROM t2 WHERE c1 IN (101, 115, 122) ORDER BY c1,c6 LIMIT 5;
+
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t2;

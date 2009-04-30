@@ -1905,7 +1905,16 @@ JOIN::optimize()
 	      (group_list && order) ||
 	      test(select_options & OPTION_BUFFER_RESULT)));
 
-  uint no_jbuf_after= make_join_orderinfo(this);
+  /*
+    If the hint FORCE INDEX FOR ORDER BY/GROUP BY is used for the table
+    whose columns are required to be returned in a sorted order, then
+    the proper value for no_jbuf_after should be yielded by a call to
+    the make_join_orderinfo function. 
+    Yet the current implementation of FORCE INDEX hints does not
+    allow us to do it in a clean manner.
+  */   
+  uint no_jbuf_after= 1 ? tables : make_join_orderinfo(this);
+
   ulonglong select_opts_for_readinfo= 
     (select_options & (SELECT_DESCRIBE | SELECT_NO_JOIN_CACHE)) |
     (select_lex->ftfunc_list->elements ?  SELECT_NO_JOIN_CACHE : 0);
@@ -3860,13 +3869,15 @@ int pull_out_semijoin_tables(JOIN *join)
         }
       }
 
-      /* Remove the sj-nest itself if we've removed everything from it*/
+      /* Remove the sj-nest itself if we've removed everything from it */
       if (!inner_tables)
       {
         List_iterator<TABLE_LIST> li(*upper_join_list);
         /* Find the sj_nest in the list. */
         while (sj_nest != li++);
         li.remove();
+        /* Also remove it from the list of SJ-nests: */
+        sj_list_it.remove();
       }
 
       if (arena)
@@ -4328,9 +4339,6 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables_arg, COND *conds,
     }
   }
 
-  if (pull_out_semijoin_tables(join))
-    DBUG_RETURN(TRUE);
-
   /* Calc how many (possible) matched records in each table */
 
   for (s=stat ; s < stat_end ; s++)
@@ -4413,6 +4421,9 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables_arg, COND *conds,
     }
   }
 
+  if (pull_out_semijoin_tables(join))
+    DBUG_RETURN(TRUE);
+
   join->join_tab=stat;
   join->map2table=stat_ref;
   join->all_tables= table_vector;
@@ -4487,6 +4498,9 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
   {
     while ((sj_nest= sj_list_it++))
     {
+      /* semi-join nests with only constant tables are not valid */
+      DBUG_ASSERT(sj_nest->sj_inner_tables & ~join->const_table_map);
+
       sj_nest->sj_mat_info= NULL;
       if (sj_nest->sj_inner_tables && /* not everything was pulled out */
           !sj_nest->sj_subq_pred->is_correlated && 
@@ -9342,22 +9356,11 @@ static void push_index_cond(JOIN_TAB *tab, uint keyno, bool other_tbls_ok)
 
 static uint make_join_orderinfo(JOIN *join)
 {
-  uint i;
+  JOIN_TAB *tab;
   if (join->need_tmp)
     return join->tables;
-
-  for (i=join->const_tables ; i < join->tables ; i++)
-  {
-    JOIN_TAB *tab=join->join_tab+i;
-    TABLE *table=tab->table;
-    if ((table == join->sort_by_table && 
-         (!join->order || join->skip_sort_order)) ||
-        (join->sort_by_table == (TABLE *) 1 && i != join->const_tables))
-    {
-      break;
-    }
-  }
-  return i-1;
+  tab= join->get_sort_by_join_tab();
+  return tab ? tab-join->join_tab : join->tables;
 }
 
 /*
@@ -10265,6 +10268,31 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
     }
   }
   join->join_tab[join->tables-1].next_select=0; /* Set by do_select */
+
+  /* 
+    If a join buffer is used to join a table the ordering by an index
+    for the first non-constant table cannot be employed anymore.
+  */
+  for (i=join->const_tables ; i < join->tables ; i++)
+  {
+    JOIN_TAB *tab=join->join_tab+i;
+    if (tab->use_join_cache)
+    {
+      JOIN_TAB *sort_by_tab= join->get_sort_by_join_tab();
+      if (sort_by_tab && !join->need_tmp)
+      {
+        join->need_tmp= 1;
+        join->simple_order= join->simple_group= 0;
+        if (sort_by_tab->type == JT_NEXT)
+        {
+          sort_by_tab->type= JT_ALL;
+          sort_by_tab->read_first_record= join_init_read_record;
+        }
+      }
+      break;
+    }
+  } 
+
   DBUG_RETURN(FALSE);
 }
 

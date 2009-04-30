@@ -495,7 +495,7 @@ public:
    and the buffer can be re-used for further transfers. If method returns
    PROCESSING, it means that the request was accepted but is not
    completed yet. The buffer will not be used for other purposes until a further
-   call to @c get_data() with the same buffer as argument returns OK.
+   call to @c send_data() with the same buffer as argument returns OK.
 
    @param  buf   (in) buffer filled with backup data. Fields @c size,
                  @c table_num and @c last are set
@@ -517,6 +517,11 @@ public:
 
    @retval ERROR An error has happened. The request is cancelled and the buffer
                  can be used for other transfers.
+
+   @note
+   Reporting ERROR means that restore process has been interrupted and can not 
+   be continued. The driver is assumed to be in error state and backup kernel 
+   will not call any of its methods except for @c free().
 
    @see @c Buffer class.
   */

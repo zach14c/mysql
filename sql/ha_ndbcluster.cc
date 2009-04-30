@@ -4496,17 +4496,17 @@ static int ndbcluster_update_apply_status(THD *thd, int do_update)
   // log_name
   char tmp_buf[FN_REFLEN];
   ndb_pack_varchar(ndbtab->getColumn(2u), tmp_buf,
-                   active_mi->rli.group_master_log_name,
-                   strlen(active_mi->rli.group_master_log_name));
+                   active_mi->rli->group_master_log_name,
+                   strlen(active_mi->rli->group_master_log_name));
   r|= op->setValue(2u, tmp_buf);
   DBUG_ASSERT(r == 0);
   // start_pos
-  r|= op->setValue(3u, (Uint64)active_mi->rli.group_master_log_pos);
+  r|= op->setValue(3u, (Uint64)active_mi->rli->group_master_log_pos);
   DBUG_ASSERT(r == 0);
   // end_pos
-  r|= op->setValue(4u, (Uint64)active_mi->rli.group_master_log_pos + 
-                   ((Uint64)active_mi->rli.future_event_relay_log_pos -
-                    (Uint64)active_mi->rli.group_relay_log_pos));
+  r|= op->setValue(4u, (Uint64)active_mi->rli->group_master_log_pos + 
+                   ((Uint64)active_mi->rli->future_event_relay_log_pos -
+                    (Uint64)active_mi->rli->group_relay_log_pos));
   DBUG_ASSERT(r == 0);
   return 0;
 }
@@ -7684,7 +7684,6 @@ static int connect_callback()
 }
 
 extern int ndb_dictionary_is_mysqld;
-extern pthread_mutex_t LOCK_plugin;
 
 static int ndbcluster_init(void *p)
 {
@@ -7692,13 +7691,6 @@ static int ndbcluster_init(void *p)
 
   if (ndbcluster_inited)
     DBUG_RETURN(FALSE);
-
-  /*
-    Below we create new THD's. They'll need LOCK_plugin, but it's taken now by
-    plugin initialization code. Release it to avoid deadlocks.  It's safe, as
-    there're no threads that may concurrently access plugin control structures.
-  */
-  pthread_mutex_unlock(&LOCK_plugin);
 
   pthread_mutex_init(&ndbcluster_mutex,MY_MUTEX_INIT_FAST);
   pthread_mutex_init(&LOCK_ndb_util_thread, MY_MUTEX_INIT_FAST);
@@ -7783,8 +7775,6 @@ static int ndbcluster_init(void *p)
     goto ndbcluster_init_error;
   }
 
-  pthread_mutex_lock(&LOCK_plugin);
-
   ndbcluster_inited= 1;
   DBUG_RETURN(FALSE);
 
@@ -7792,8 +7782,6 @@ ndbcluster_init_error:
   /* disconnect from cluster and free connection resources */
   ndbcluster_disconnect();
   ndbcluster_hton->state= SHOW_OPTION_DISABLED;               // If we couldn't use handler
-
-  pthread_mutex_lock(&LOCK_plugin);
 
   DBUG_RETURN(TRUE);
 }

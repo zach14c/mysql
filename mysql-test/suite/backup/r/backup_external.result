@@ -1,0 +1,703 @@
+# Drop databases if they are already existing
+#
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+#
+# Create databases and tables
+#
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE TABLE db1.t1(
+id INT,
+name VARCHAR(30),
+INDEX idx(name(10))
+);
+CREATE TABLE db2.t1(
+id INT UNSIGNED NOT NULL,
+details TEXT,
+methods VARCHAR(40),
+FULLTEXT(details, methods)
+);
+CREATE TABLE db2.t2(
+a CHAR(100) UNIQUE,
+b TEXT,
+FULLTEXT(b)
+);
+CREATE TABLE db2.t3(
+a INT AUTO_INCREMENT PRIMARY KEY,
+b CHAR(20) NOT NULL,
+c CHAR(20) NOT NULL,
+INDEX(b, c)
+);
+INSERT INTO db1.t1 VALUES 
+(1,'test1'),(2,'test2'),
+(3,'test3'),(4,'test4');
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+INSERT INTO db1.t1 SELECT * FROM db1.t1;
+SELECT COUNT(*) FROM db1.t1;
+COUNT(*)
+128
+SELECT * FROM db1.t1 LIMIT 4;
+id	name
+1	test1
+2	test2
+3	test3
+4	test4
+INSERT INTO db2.t1 VALUES
+(1, 'Testing backup solution','automated testing'),
+(2, 'Testing replication feature', 'manual testing'),
+(3, 'Testing clustering basics', 'semi-automated testing'),
+(4, 'Interoperability testing of features', 'automated testing'),
+(5, 'Performance testing','semi-automated testing');
+SELECT COUNT(*) FROM db2.t1;
+COUNT(*)
+5
+SELECT * FROM db2.t1;
+id	details	methods
+1	Testing backup solution	automated testing
+2	Testing replication feature	manual testing
+3	Testing clustering basics	semi-automated testing
+4	Interoperability testing of features	automated testing
+5	Performance testing	semi-automated testing
+INSERT INTO db2.t3(b,c) VALUES
+('abcd1','efgh1'),('efgh1','pqrs1'),('pqrs1','abcd1'),
+('xwyz1','klmn1'),('klmn1','opdh1'),('opdh1','xwyz1');
+INSERT INTO db2.t2 VALUES
+(100,'Testing mysql external programs'),(200, 'Testing myisampack utility'),
+(300, 'Testing myisamchk utility'),(400, 'Testing mysql_setpermission utility'),
+(500, 'Testing myisam_ftdump utility'),
+(600, 'Testing mysql_convert_table utility');
+
+# Check the indexes in tables
+
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	A
+Cardinality	NULL
+Sub_part	10
+Packed	NULL
+Null	YES
+Index_type	BTREE
+Comment	
+Index_Comment	
+SHOW INDEX FROM db2.t1;;
+Table	t1
+Non_unique	1
+Key_name	details
+Seq_in_index	1
+Column_name	details
+Collation	NULL
+Cardinality	NULL
+Sub_part	NULL
+Packed	NULL
+Null	YES
+Index_type	FULLTEXT
+Comment	
+Index_Comment	
+Table	t1
+Non_unique	1
+Key_name	details
+Seq_in_index	2
+Column_name	methods
+Collation	NULL
+Cardinality	NULL
+Sub_part	NULL
+Packed	NULL
+Null	YES
+Index_type	FULLTEXT
+Comment	
+Index_Comment	
+SHOW INDEX FROM db2.t2;;
+Table	t2
+Non_unique	0
+Key_name	a
+Seq_in_index	1
+Column_name	a
+Collation	A
+Cardinality	NULL
+Sub_part	NULL
+Packed	NULL
+Null	YES
+Index_type	BTREE
+Comment	
+Index_Comment	
+Table	t2
+Non_unique	1
+Key_name	b
+Seq_in_index	1
+Column_name	b
+Collation	NULL
+Cardinality	NULL
+Sub_part	NULL
+Packed	NULL
+Null	YES
+Index_type	FULLTEXT
+Comment	
+Index_Comment	
+SHOW INDEX FROM db2.t3;;
+Table	t3
+Non_unique	0
+Key_name	PRIMARY
+Seq_in_index	1
+Column_name	a
+Collation	A
+Cardinality	6
+Sub_part	NULL
+Packed	NULL
+Null	
+Index_type	BTREE
+Comment	
+Index_Comment	
+Table	t3
+Non_unique	1
+Key_name	b
+Seq_in_index	1
+Column_name	b
+Collation	A
+Cardinality	NULL
+Sub_part	NULL
+Packed	NULL
+Null	
+Index_type	BTREE
+Comment	
+Index_Comment	
+Table	t3
+Non_unique	1
+Key_name	b
+Seq_in_index	2
+Column_name	c
+Collation	A
+Cardinality	NULL
+Sub_part	NULL
+Packed	NULL
+Null	
+Index_type	BTREE
+Comment	
+Index_Comment	
+
+# Test 1: Use myisampack to compress the tables followed by myisamchk to 
+#         rebuild the indexes.
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	YES
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+FLUSH TABLES;
+BACKUP DATABASE db1 TO 'db1.bak';
+backup_id
+#
+DROP DATABASE db1;
+RESTORE FROM 'db1.bak';
+backup_id
+#
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	YES
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+COUNT(*)
+128
+SELECT * FROM db1.t1 LIMIT 4;
+id	name
+1	test1
+2	test2
+3	test3
+4	test4
+
+# Use myisampack utility again after restore. Verify that utilities
+# are not affected and functions properly after backup and restore 
+# operation.
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	YES
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+COUNT(*)
+128
+SELECT * FROM db1.t1 LIMIT 4;
+id	name
+1	test1
+2	test2
+3	test3
+4	test4
+
+# Use myisampack -b option to make backup of table datafile
+BACKUP DATABASE db1 TO 'db1b.bak';
+backup_id
+#
+RESTORE FROM 'db1b.bak' OVERWRITE;
+ERROR HY000: Could not restore database `db1`
+SHOW TABLES FROM db1;
+Tables_in_db1
+# Perform restore again to get the tables from db1 back
+RESTORE FROM 'db1.bak' OVERWRITE;
+backup_id
+#
+# Check data contents and indexes in table
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	YES
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+COUNT(*)
+128
+SELECT * FROM db1.t1 LIMIT 4;
+id	name
+1	test1
+2	test2
+3	test3
+4	test4
+
+# Test 2: Use repair and general options of myisamchk followed by
+#         backup and restore.
+FLUSH TABLES;
+LOCK TABLE db1.t1 READ;
+CHECKSUM TABLE db1.t1;
+Table	Checksum
+db1.t1	261218912
+LOCK TABLE db2.t3 READ;
+CHECKSUM TABLE db2.t3;
+Table	Checksum
+db2.t3	42617894
+# Use myisamchk repair options
+UNLOCK TABLES;
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+backup_id
+#
+DROP DATABASE db1;
+DROP DATABASE db2;
+RESTORE FROM 'db12.bak';
+backup_id
+#
+CHECKSUM TABLE db1.t1;
+Table	Checksum
+db1.t1	261218912
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+COUNT(*)
+128
+SELECT * FROM db1.t1 LIMIT 4;
+id	name
+1	test1
+2	test2
+3	test3
+4	test4
+CHECKSUM TABLE db2.t3;
+Table	Checksum
+db2.t3	42617894
+SELECT COUNT(*) FROM db2.t3;
+COUNT(*)
+6
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	YES
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+SHOW INDEX FROM db2.t3;;
+Table	t3
+Non_unique	0
+Key_name	PRIMARY
+Seq_in_index	1
+Column_name	a
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+Table	t3
+Non_unique	1
+Key_name	b
+Seq_in_index	1
+Column_name	b
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+Table	t3
+Non_unique	1
+Key_name	b
+Seq_in_index	2
+Column_name	c
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+
+# Use myisamchk options again after restore. Verify that these utilities
+# are not affected and functions properly after backup and restore 
+# operation.
+# Verify checksums and data contents.
+CHECKSUM TABLE db1.t1;
+Table	Checksum
+db1.t1	261218912
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+COUNT(*)
+128
+SELECT * FROM db1.t1 LIMIT 4;
+id	name
+1	test1
+2	test2
+3	test3
+4	test4
+CHECKSUM TABLE db2.t3;
+Table	Checksum
+db2.t3	42617894
+SELECT COUNT(*) FROM db2.t3;
+COUNT(*)
+6
+# Use myisamchk general option(auto_increment)
+SELECT * FROM db2.t3;
+a	b	c
+1	abcd1	efgh1
+2	efgh1	pqrs1
+3	pqrs1	abcd1
+4	xwyz1	klmn1
+5	klmn1	opdh1
+6	opdh1	xwyz1
+FLUSH TABLES;
+# Executing myisamchk auto increment option to begin with number=200
+INSERT INTO db2.t3(b,c) VALUES('iklm1','ujmn1');
+SELECT * FROM db2.t3 ORDER BY a;
+a	b	c
+1	abcd1	efgh1
+2	efgh1	pqrs1
+3	pqrs1	abcd1
+4	xwyz1	klmn1
+5	klmn1	opdh1
+6	opdh1	xwyz1
+201	iklm1	ujmn1
+BACKUP DATABASE db2 TO 'db2.bak';
+backup_id
+#
+DROP DATABASE db2;
+RESTORE FROM 'db2.bak';
+backup_id
+#
+SELECT * FROM db2.t3 ORDER BY a;
+a	b	c
+1	abcd1	efgh1
+2	efgh1	pqrs1
+3	pqrs1	abcd1
+4	xwyz1	klmn1
+5	klmn1	opdh1
+6	opdh1	xwyz1
+201	iklm1	ujmn1
+INSERT INTO db2.t3(b,c) VALUES('hgfd1','iklm1');
+SELECT * FROM db2.t3 ORDER BY a;
+a	b	c
+1	abcd1	efgh1
+2	efgh1	pqrs1
+3	pqrs1	abcd1
+4	xwyz1	klmn1
+5	klmn1	opdh1
+6	opdh1	xwyz1
+201	iklm1	ujmn1
+202	hgfd1	iklm1
+
+# Use myisamchk auto increment option again after restore. Verify that
+# this option functions properly after backup and restore operation
+FLUSH TABLES;
+
+# Insert some contents in table db2.t3 and verify that auto increment 
+# numbering starts from 300 for new values inserted in table.
+INSERT INTO db2.t3(b,c) VALUES('ptyu1','irtc1');
+SELECT * FROM db2.t3 ORDER BY a;
+a	b	c
+1	abcd1	efgh1
+2	efgh1	pqrs1
+3	pqrs1	abcd1
+4	xwyz1	klmn1
+5	klmn1	opdh1
+6	opdh1	xwyz1
+201	iklm1	ujmn1
+202	hgfd1	iklm1
+301	ptyu1	irtc1
+
+# Use myisamchk general options, --sort-index and --analyze 
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	YES
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+FLUSH TABLES;
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+backup_id
+#
+DROP DATABASE db1;
+DROP DATABASE db2;
+RESTORE FROM 'db12.bak';
+backup_id
+#
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+COUNT(*)
+128
+SELECT * FROM db1.t1 LIMIT 4;
+id	name
+1	test1
+2	test2
+3	test3
+4	test4
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	YES
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+SELECT COUNT(*) FROM db2.t3;
+COUNT(*)
+9
+SHOW INDEX FROM db2.t3;;
+Table	t3
+Non_unique	0
+Key_name	PRIMARY
+Seq_in_index	1
+Column_name	a
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+Table	t3
+Non_unique	1
+Key_name	b
+Seq_in_index	1
+Column_name	b
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+Table	t3
+Non_unique	1
+Key_name	b
+Seq_in_index	2
+Column_name	c
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+
+# Use myisamchk general options again after restore. Verify that these 
+# options functions properly after backup and restore operation
+FLUSH TABLES;
+SELECT COUNT(*) FROM db1.t1 WHERE id < 5;
+COUNT(*)
+128
+SELECT * FROM db1.t1 LIMIT 4;
+id	name
+1	test1
+2	test2
+3	test3
+4	test4
+SHOW INDEX FROM db1.t1;;
+Table	t1
+Non_unique	1
+Key_name	idx
+Seq_in_index	1
+Column_name	name
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	YES
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+SELECT COUNT(*) FROM db2.t3;
+COUNT(*)
+9
+SHOW INDEX FROM db2.t3;;
+Table	t3
+Non_unique	0
+Key_name	PRIMARY
+Seq_in_index	1
+Column_name	a
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+Table	t3
+Non_unique	1
+Key_name	b
+Seq_in_index	1
+Column_name	b
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+Table	t3
+Non_unique	1
+Key_name	b
+Seq_in_index	2
+Column_name	c
+Collation	#
+Cardinality	NULL
+Sub_part	#
+Packed	#
+Null	
+Index_type	BTREE
+Comment	#
+Index_Comment	#
+
+# Test 3: Interoperability of backup and restore with myisam_ftdump
+#
+# Execute myisam_ftdump to display full text indexes in tables db2.t1 
+# and db2.t2
+Total rows: 5
+Total words: 21
+Unique words: 13
+Longest word: 16 chars (interoperability)
+Median length: 7
+Average global weight: 0.990932
+Most common word: 5 times, weight: 0.000000 (testing)
+Total rows: 6
+Total words: 19
+Unique words: 10
+Longest word: 19 chars (mysql_convert_table)
+Median length: 7
+Average global weight: 1.126607
+Most common word: 6 times, weight: 0.000000 (testing)
+BACKUP DATABASE db2 TO 'db2.bak';
+backup_id
+#
+DROP DATABASE db2;
+RESTORE FROM 'db2.bak';
+backup_id
+#
+SELECT * FROM db2.t1 LIMIT 5;
+id	details	methods
+1	Testing backup solution	automated testing
+2	Testing replication feature	manual testing
+3	Testing clustering basics	semi-automated testing
+4	Interoperability testing of features	automated testing
+5	Performance testing	semi-automated testing
+SELECT * FROM db2.t2;
+a	b
+100	Testing mysql external programs
+200	Testing myisampack utility
+300	Testing myisamchk utility
+400	Testing mysql_setpermission utility
+500	Testing myisam_ftdump utility
+600	Testing mysql_convert_table utility
+
+# Execute myisam_ftdump in tables of database db2 after restore 
+# Verify that fulltext indexes are same as it was before backup
+Total rows: 5
+Total words: 21
+Unique words: 13
+Longest word: 16 chars (interoperability)
+Median length: 7
+Average global weight: 0.990932
+Most common word: 5 times, weight: 0.000000 (testing)
+Total rows: 6
+Total words: 19
+Unique words: 10
+Longest word: 19 chars (mysql_convert_table)
+Median length: 7
+Average global weight: 1.126607
+Most common word: 6 times, weight: 0.000000 (testing)
+DROP DATABASE db1;
+DROP DATABASE db2;

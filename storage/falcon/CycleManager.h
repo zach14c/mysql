@@ -7,13 +7,29 @@ class Thread;
 class Database;
 class Record;
 class RecordVersion;
+class Value;
+
+static const int syncArraySize = 64;
+static const int syncArrayMask = 63;
 
 class CycleManager
 {
 	struct RecordList
 		{
-		Record		*record;
+		Record		*zombie;
 		RecordList	*next;
+		};
+
+	struct ValueList
+		{
+		Value		**zombie;
+		ValueList	*next;
+		};
+
+	struct BufferList
+		{
+		char		*zombie;
+		BufferList	*next;
 		};
 		
 public:
@@ -23,15 +39,20 @@ public:
 	void		start(void);
 	void		shutdown(void);
 	void		cycleManager(void);
-	void		queueForDelete(Record* record);
+	SyncObject *getSyncObject(void);
+	void		queueForDelete(Record* zombie);
+	void		queueForDelete(Value** zombie);
+	void		queueForDelete(char* zombie);
 
 	static void cycleManager(void *arg);
 	
-	SyncObject		cycle1;
-	SyncObject		cycle2;
-	SyncObject		*currentCycle;
-	RecordVersion	*recordVersions;
-	RecordList		*records;
+	SyncObject		**cycle1;
+	SyncObject		**cycle2;
+	SyncObject		**currentCycle;
+	RecordVersion	*recordVersionPurgatory;
+	RecordList		*recordPurgatory;
+	ValueList		*valuePurgatory;
+	BufferList		*bufferPurgatory;
 	Thread			*thread;
 	Database		*database;
 };

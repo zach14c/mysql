@@ -111,10 +111,10 @@ Record::Record(Table * tbl, Format *fmt)
 {
 	ASSERT (tbl);
 	useCount = 1;
-	
+
 	if ( !(format = fmt) )
 		format = tbl->getCurrentFormat();
-		
+
 	size = sizeof (RecordVersion);
 	encoding = noEncoding;
 	state = recData;
@@ -176,8 +176,8 @@ Record::~Record()
 #ifdef CHECK_RECORD_ACTIVITY
 	ASSERT(!active);
 #endif
-	
-	deleteData();
+
+	deleteData(true);
 }
 
 void Record::setValue(TransactionState * transaction, int id, Value * value, bool cloneFlag, bool copyFlag)
@@ -319,11 +319,6 @@ int Record::getFormatVersion()
 }
 
 Record* Record::fetchVersion(Transaction * transaction)
-{
-	return this;
-}
-
-Record* Record::fetchVersionRecursive(Transaction * transaction)
 {
 	return this;
 }
@@ -497,23 +492,12 @@ bool Record::isVersion()
 	return false;
 }
 
-bool Record::retire(RecordScavenge *recordScavenge)
+void Record::retire(void)
 {
-	if (generation <= recordScavenge->scavengeGeneration)
-		{
-		recordScavenge->spaceRetired += getMemUsage();
-		++recordScavenge->recordsRetired;
-		SET_THIS_RECORD_ACTIVE(false);
-		RECORD_HISTORY(this);
+	SET_THIS_RECORD_ACTIVE(false);
+	RECORD_HISTORY(this);
 
-		release();
-		return true;
-		}
-
-	++recordScavenge->recordsRemaining;
-	recordScavenge->spaceRemaining += getMemUsage();
-
-	return false;
+	release();
 }
 
 void Record::scavenge(TransId targetTransactionId, int oldestActiveSavePointId)
@@ -866,7 +850,7 @@ void Record::poke()
 
 Record* Record::releaseNonRecursive(void)
 {
-	release();
+	release(REC_HISTORY);
 	
 	return NULL;
 }
@@ -876,9 +860,9 @@ Record* Record::clearPriorVersion(void)
 	return NULL;
 }
 
-void Record::setPriorVersion(Record* record)
+void Record::setPriorVersion(Record *oldPriorVersion, Record *newPriorVersion)
 {
-	ASSERT(false);
+	FATAL("setPriorVersion should only be called for RecordVersions\n");
 }
 
 int Record::thaw(void)
@@ -912,18 +896,31 @@ int Record::setRecordData(const UCHAR * dataIn, int dataLength)
 
 void Record::deleteData(void)
 {
+	deleteData(false);
+}
+
+void Record::deleteData(bool now)
+{
 	if (data.record)
 		{
 		switch (encoding)
 			{
 			case valueVector:
-				delete [] (Value*) data.record;
+				if (now)
+					delete [] (Value*) data.record;
+				else
+					format->table->queueForDelete((Value**) data.record);
 				break;
 
 			default:
-				DELETE_RECORD (data.record);
+				if (now)
+					{
+					DELETE_RECORD (data.record);
+					}
+				else
+					format->table->queueForDelete((char *) data.record);
 			}
-		
+
 		data.record = NULL;
 		}
 }
@@ -1023,13 +1020,6 @@ int Record::getMemUsage(void)
 	return objectSize + getDataMemUsage();
 }
 
-/***
-SyncObject* Record::getSyncPrior(void)
-{
-	return format->table->getSyncPrior(this);
-}
-***/
-
 SyncObject* Record::getSyncThaw(void)
 {
 	return format->table->getSyncThaw(this);
@@ -1064,6 +1054,7 @@ void Record::addHistory(int delta, const char *file, int line)
 	history[historyOffset].counter = historyCount;
 	history[historyOffset].useCount = useCount;
 	history[historyOffset].delta  = delta;
+	history[historyOffset].state = state;
 	strncpy(history[historyOffset].file, file, RECORD_HISTORY_FILE_LEN - 1);
 	history[historyOffset].line = line;
 
@@ -1072,6 +1063,7 @@ void Record::addHistory(int delta, const char *file, int line)
 
 void Record::ShowHistory(void)
 {
+	int historicState;
 	int historyOffset = (historyCount - 1) % MAX_RECORD_HISTORY;
 	Log::log("RecordNumber=%d  state=%d  historyCount=%d  historyOffset=%d\n",
 		recordNumber, state, historyCount, historyOffset);
@@ -1080,9 +1072,11 @@ void Record::ShowHistory(void)
 		{
 		if (history[a].threadId == 0)
 			break;
-		Log::log("%d ThreadId=%d  useCount=%d+(%d)=%d  File=%s Line=%d\n",
+		historicState = (int) history[a].state;
+		Log::log("%d ThreadId=%d state=%d useCount=%d+(%d)=%d  File=%s Line=%d\n",
 			history[a].counter, 
 			history[a].threadId, 
+			historicState, 
 			history[a].useCount, 
 			history[a].delta, 
 			history[a].useCount + history[a].delta, 
@@ -1094,9 +1088,11 @@ void Record::ShowHistory(void)
 		{
 		if (history[a].threadId == 0)
 			break;
-		Log::log("%d ThreadId=%d  useCount=%d+(%d)=%d  File=%s Line=%d\n",
+		historicState = (int) history[a].state;
+		Log::log("%d ThreadId=%d state=%d useCount=%d+(%d)=%d  File=%s Line=%d\n",
 			history[a].counter, 
 			history[a].threadId, 
+			historicState,
 			history[a].useCount, 
 			history[a].delta, 
 			history[a].useCount + history[a].delta, 

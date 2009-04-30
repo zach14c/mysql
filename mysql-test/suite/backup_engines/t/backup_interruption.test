@@ -1,0 +1,263 @@
+#
+# This test checks that BACKUP/TESTORE commands behave correctly when
+# interrupted. The test strategy is as follows:
+#
+# 1. Start BACKUP or RESTORE statement and use a synchronization point
+#    to stop it in the middle of execution.
+# 2. In another connection, wait for the statement to reach the synchronization
+#    point, and then KILL it.
+# 3. Signal the stopped BACKUP/RESTORE statement so that it resumes execution
+#    after being killed.
+# 4. Check the error response from the statement, contents of the error stack
+#    and backup logs.
+# 
+# Above 4 steps are performed inside backup_restore_interrupt.inc "subroutine"
+# which is executed from this script for various synchronization points inside
+# BACKUP and RESTORE commands.
+#
+# Note: Because of BUG#39924, an interruption is not traced within 
+# backup_progress log and backup_history log entry for an interrupted statement
+# is not written. When the bug is fixed, the output of this test will change 
+# and the result file should be updated after careful inspection.
+#
+--source include/not_embedded.inc
+--source suite/backup_engines/include/backup_engine.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
+
+call mtr.add_suppression("Operation aborted");
+
+#
+# Setup
+#
+
+let $bdir=`SELECT @@backupdir`;
+
+--disable_warnings
+DROP DATABASE IF EXISTS bup_intr;
+--error 0,1
+--remove_file $bdir/bup_intr.bkp
+--enable_warnings
+
+CREATE DATABASE bup_intr;
+USE bup_intr;
+
+CREATE TABLE t1(a int);
+INSERT INTO  t1 VALUES (1),(2),(3);
+
+# connection required by backup_restore_interrupt.inc
+--connect (killer,localhost,root,,)
+
+#
+# Test BACKUP interruptions.
+#
+
+let $do_restore=0;
+
+# at the very beginning		
+let $sync_point= before_backup_command;
+--source suite/backup_engines/include/backup_restore_interrupt.inc
+
+# before preparations
+let $sync_point= before_backup_prepare;
+--source suite/backup_engines/include/backup_restore_interrupt.inc
+
+# during preparations
+  # before logger initialization
+  let $sync_point= before_backup_logger_init;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+  
+  # before common preparations
+  let $sync_point= before_backup_common_prepare;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # during common preparations
+    # before checking privileges
+    let $sync_point= before_backup_privileges;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+  
+    # before checking that no other BACKUP/RESTORE is running
+    let $sync_point= before_backup_single_op;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+    # before blocking DDLs
+    let $sync_point= before_backup_ddl_block;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # before openning the stream
+  let $sync_point= before_backup_stream_open;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # before creating catalogue
+  let $sync_point= before_backup_catalog;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+# before populating backup catalogue
+let $sync_point= after_backup_start_backup;
+--source suite/backup_engines/include/backup_restore_interrupt.inc
+
+# before do_backup
+let $sync_point= before_do_backup;
+--source suite/backup_engines/include/backup_restore_interrupt.inc
+
+# inside do_backup
+  # before preamble is written
+  let $sync_point= before_backup_meta;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+  let $sync_point= backup_before_write_preamble;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # before write_table_data
+  let $sync_point= before_backup_data;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # inside write_table_data
+    # before initial phase
+    let $sync_point=before_backup_data_init;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+    # before prepare phase
+    let $sync_point=before_backup_data_prepare;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+    # before sync phase
+    let $sync_point=before_backup_data_lock;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+    # inside sync phase
+    let $sync_point=before_backup_data_unlock;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+    # after sync phase
+    let $sync_point=after_backup_binlog;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+    # before final phase
+    let $sync_point=before_backup_data_finish;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # before writing summary section
+  let $sync_point= before_backup_summary;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+# Note: after the call to do_backup() the operation is completed
+# and terminates successfully, even if interruption has happened 
+# after its completion.
+
+#
+# Test RESTORE interruptions.
+#
+
+--replace_column 1 #
+BACKUP DATABASE bup_intr TO 'bup_intr.bkp';
+DROP DATABASE bup_intr;
+
+let $do_restore=1;
+
+# before preparations
+let $sync_point= before_restore_prepare;
+--source suite/backup_engines/include/backup_restore_interrupt.inc
+
+# during preparations
+  # before logger initialization
+  let $sync_point= before_restore_logger_init;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+  
+  # before common preparations
+  let $sync_point= before_restore_common_prepare;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+  
+  # before openning the stream
+  let $sync_point= before_restore_stream_open;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # before creating catalogue
+  let $sync_point= before_restore_catalog;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # before reading header
+  let $sync_point= before_restore_read_header;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # before reading catalogue
+  let $sync_point= before_restore_read_catalog;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # before writing incident event
+  let $sync_point= before_restore_binlog;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+# before do_restore
+let $sync_point= after_backup_start_restore;
+--source suite/backup_engines/include/backup_restore_interrupt.inc
+
+# inside do_restore
+
+  # before disabling fkey constraints
+  let $sync_point= before_restore_fkey_disable;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # before reading metadata and creating objects
+  let $sync_point= before_restore_read_metadata;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+  # Note: now we pass the point when database is created during RESTORE,
+  # thus we need to DROP it after each RESTORE.
+
+  # before locking tables
+  let $sync_point= before_restore_locks_tables;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+  DROP DATABASE bup_intr;
+
+  # before restoring table data
+  let $sync_point= before_restore_table_data;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+  DROP DATABASE bup_intr;
+
+  # inside restore_table_data
+    # before creating restore drivers
+    let $sync_point= restore_before_drivers_create;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+    DROP DATABASE bup_intr;
+
+    # before initializing the drivers
+    let $sync_point= restore_before_drivers_init;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+    DROP DATABASE bup_intr;
+
+    # before reading table data chunk
+    let $sync_point= restore_before_read_data_chunk;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+    DROP DATABASE bup_intr;
+
+    # before sending the data to a driver
+    let $sync_point= restore_before_sending_data;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+    DROP DATABASE bup_intr;
+
+    # before shutting down the drivers
+    let $sync_point= restore_table_data_before_end;
+    --source suite/backup_engines/include/backup_restore_interrupt.inc
+    DROP DATABASE bup_intr;
+
+  # before restoring triggers
+  let $sync_point= before_restore_triggers;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+  DROP DATABASE bup_intr;
+
+  # before reading image summary block
+  let $sync_point= before_restore_completed;
+  --source suite/backup_engines/include/backup_restore_interrupt.inc
+
+
+#
+# Cleanup
+# 
+
+SET DEBUG_SYNC='reset';
+--disable_warnings
+DROP DATABASE IF EXISTS bup_intr;
+--error 0,1
+--remove_file $bdir/bup_intr.bkp
+--enable_warnings
+

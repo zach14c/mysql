@@ -748,31 +748,24 @@ void Database::openDatabase(const char * filename)
 		
 	if (serialLog)
 		{
-		if (COMBINED_VERSION(dbb->odsVersion, dbb->odsMinorVersion) >= VERSION_SERIAL_LOG)
-			{
-			if (dbb->logLength)
-				serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
-				
-			serialLog->open(dbb->logRoot, false);
+		ASSERT (COMBINED_VERSION(dbb->odsVersion, dbb->odsMinorVersion) >= VERSION_SERIAL_LOG);
 
-			try 
-				{
-				serialLog->recover();
-				}
-			catch(SQLError &e)
-				{
-				throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
-				}
+		if (dbb->logLength)
+			serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
 				
-			tableSpaceManager->postRecovery();
-			serialLog->start();
-			}
-		else
+		serialLog->open(dbb->logRoot, false);
+
+		try 
 			{
-			dbb->enableSerialLog();
-			serialLog->open(dbb->logRoot, true);
-			serialLog->start();
+			serialLog->recover();
 			}
+		catch(SQLError &e)
+			{
+			throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
+			}
+				
+		tableSpaceManager->postRecovery();
+		serialLog->start();
 		}
 
 	sequence = dbb->sequence;
@@ -795,7 +788,8 @@ void Database::openDatabase(const char * filename)
 
 	Sync syncDDL(&syncSysDDL, "Database::openDatabase");
 	syncDDL.lock(Shared);
-	
+	checkODSVersion23();
+
 	PreparedStatement *statement = prepareStatement ("select tableid from tables");
 	ResultSet *resultSet = statement->executeQuery();
 
@@ -845,6 +839,43 @@ void Database::openDatabase(const char * filename)
 
 	if (configuration->schedulerEnabled)
 		scheduler->start();
+}
+
+
+// Check if ODS version 2.3 is really 2.3 and not 2.4
+//
+// Background:
+// There was a subtle change from 2.3 to 2.4 in the way multisegment indexes are built.
+// And there are databases that 2.3 in header page, but with 2.4 indexes.
+// This function will fix minor version the header page and Dbb in such case
+//
+// For the check, we use a query that is known to return empty  resultSet if 
+// and only if ODS is <= 2.3 and engine > 2.3.
+void Database::checkODSVersion23()
+{
+	if (dbb->odsVersion == ODS_VERSION2 && dbb->odsMinorVersion == ODS_MINOR_VERSION3)
+		{
+
+		// For the next query, force index code to use 2.4 algorithm for multisegments
+		dbb->odsMinorVersion = ODS_MINOR_VERSION4;
+
+		const char checkVersion24Query[] = 
+			"select privilegeMask from system.privileges where holderType=3 and "
+			"holderSchema='' and holderName='MYSQL' and  objectType=0 and "
+			"objectSchema='FALCON' and objectName='TABLES'";
+		PreparedStatement *statement = prepareStatement(checkVersion24Query);
+		ResultSet *resultSet = statement->executeQuery();
+
+		if (resultSet->next())
+			// Got non-empty result -> have ODS 2.4
+			dbb->setODSMinorVersion(ODS_MINOR_VERSION4);
+		else
+			// Got empty result -> have ODS 2.3
+			dbb->odsMinorVersion = ODS_MINOR_VERSION3;
+
+		resultSet->close();
+		statement->close();
+		}
 }
 
 #ifndef STORAGE_ENGINE
@@ -1609,6 +1640,9 @@ void Database::shutdown()
 	if (shuttingDown)
 		return;
 
+	// Wait for all gophers to finish.
+	waitForWriteComplete(NULL);
+
 	if (updateCardinality)
 		{
 		updateCardinality->close();
@@ -1895,7 +1929,6 @@ void Database::pruneRecords(RecordScavenge *recordScavenge)
 
 	Sync syncTbl(&syncTables, "Database::pruneRecords(tables)");
 	syncTbl.lock(Shared);
-	CycleLock cyleLock(this);
 	
 	for (Table *table = tableList; table; table = table->next)
 		{
@@ -2477,6 +2510,12 @@ void Database::cardinalityThreadMain(void)
 	Thread *thread = Thread::getThread("Database::cardinalityThreadMain");
 
 	thread->sleep(1000);
+
+	// Wait for recovery to finish.
+
+	while (   (!thread->shutdownInProgress) 
+	       && ((!serialLog) || (serialLog->recovering)))
+		thread->sleep(1000);
 
 	while (!thread->shutdownInProgress)
 		{

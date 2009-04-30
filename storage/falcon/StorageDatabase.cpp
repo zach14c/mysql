@@ -311,6 +311,7 @@ int StorageDatabase::nextRow(StorageTable* storageTable, int recordNumber, bool 
 				}
 			
 			recordNumber = record->recordNumber;
+			RECORD_HISTORY(record);
 			storageTable->setRecord(record, lockForUpdate);
 			
 			return recordNumber;
@@ -382,7 +383,8 @@ int StorageDatabase::fetch(StorageConnection *storageConnection, StorageTable* s
 			record->addRef(REC_HISTORY);
 			candidate->release(REC_HISTORY);
 			}
-		
+
+		RECORD_HISTORY(record);
 		storageTable->setRecord(record, lockForUpdate);
 				
 		return 0;
@@ -455,9 +457,10 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 						record->addRef(REC_HISTORY);
 						candidate->release(REC_HISTORY);
 						}
-					
+
+					RECORD_HISTORY(record);
 					storageTable->setRecord(record, lockForUpdate);
-					
+
 					return recordNumber;
 					}
 				
@@ -508,6 +511,7 @@ int StorageDatabase::nextIndexed(StorageTable* storageTable, IndexWalker* indexW
 		if (!record)
 			return StorageErrorRecordNotFound;
 
+		RECORD_HISTORY(record);
 		storageTable->setRecord(record, lockForUpdate);
 		return record->recordNumber;
 		}
@@ -878,7 +882,12 @@ int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int 
 			if (nullFlag)
 				{
 				values[segmentNumber]->setNull();
-				break;
+				if (index->indexVersion < INDEX_VERSION_2)
+					{
+					// Older index version do not handle NULLs correctly -it is not the smallest value.
+					// Thus, we cannot use values past NULL and need to break here.
+					break;
+					}
 				}
 
 			p += len;

@@ -49,6 +49,7 @@ struct st_mysql_plugin
   void * __reserved1;
 };
 #include "plugin_ftparser.h"
+#include "plugin.h"
 enum enum_ftparser_mode
 {
   MYSQL_FTPARSER_SIMPLE_MODE= 0,

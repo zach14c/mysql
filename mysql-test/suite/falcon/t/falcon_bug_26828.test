@@ -1,11 +1,17 @@
 --source include/have_falcon.inc
 --source include/have_partition.inc
 
-SET @@storage_engine = Falcon;
 #
 # Bug #26828: Falcon: crash with two connections and partitions
 #
 --echo *** Bug #26828 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
 --disable_warnings
 DROP SCHEMA IF EXISTS db1;
 --enable_warnings
@@ -22,9 +28,12 @@ PARTITION BY list(a) (
 
 --echo # Establish connection conn1 (user = root)
 connect (conn1,localhost,root,,);
-SET storage_engine = Falcon;
+eval SET @@storage_engine = $engine;
 USE db1;
 
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
 --echo # Switch to connection default
 connection default;
 DELIMITER //;
@@ -47,7 +56,14 @@ DELIMITER ;//
 connection conn1;
 CALL p1();
 
-# Final cleanup.
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
 --echo # Switch to connection default
 connection default;
 disconnect conn1;
