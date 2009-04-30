@@ -2639,6 +2639,13 @@ static int  sys_check_log_path(THD *thd,  set_var *var)
   /* Get dirname of the file path. */
   (void) dirname_part(path, log_file_str, &path_length);
 
+  /* Test if the file name itself is too long */
+  if (res->length()-path_length >= FN_LEN)
+  {
+      my_error(ER_PATH_LENGTH, MYF(0), var->var->name);
+      return 1;
+  }
+
   /* Dirname is empty if file path is relative. */
   if (!path_length)
     return 0;
