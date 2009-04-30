@@ -1,4 +1,4 @@
-/* Copyright (C) 2005 MySQL AB
+/* Copyright (C) 2005 MySQL AB, 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -98,22 +98,7 @@ static int cur_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
 
 /* support for Services */
 
-struct st_service_ref {
-  const char *name;
-  uint version;
-  void *service;
-};
-
-#include <service_versions.h>
-static struct my_snprintf_service_st my_snprintf_handler = {
-  my_snprintf,
-  my_vsnprintf
-};
-
-static struct st_service_ref list_of_services[]=
-{
-  { "my_snprintf_service", VERSION_my_snprintf, &my_snprintf_handler }
-};
+#include "sql_plugin_services.h"
 
 /*
   A mutex LOCK_plugin must be acquired before accessing the
@@ -441,7 +426,7 @@ static st_plugin_dl *plugin_dl_add(const LEX_STRING *dl, int report)
   {
     if ((sym= dlsym(plugin_dl.handle, list_of_services[i].name)))
     {
-      uint ver= (uint)*(void**)sym;
+      uint ver= (uint)(intptr)*(void**)sym;
       if (ver > list_of_services[i].version ||
         (ver >> 8) < (list_of_services[i].version >> 8))
       {
@@ -653,7 +638,7 @@ static plugin_ref intern_plugin_lock(LEX *lex, plugin_ref rc CALLER_INFO_PROTO)
     /*
       For debugging, we do an additional malloc which allows the
       memory manager and/or valgrind to track locked references and
-      double unlocks to aid resolving reference counting.problems.
+      double unlocks to aid resolving reference counting problems.
     */
     if (!(plugin= (plugin_ref) my_malloc_ci(sizeof(pi), MYF(MY_WME))))
       DBUG_RETURN(NULL);
@@ -1014,7 +999,9 @@ static int plugin_initialize(struct st_plugin_int *plugin)
   DBUG_ENTER("plugin_initialize");
 
   safe_mutex_assert_owner(&LOCK_plugin);
-  DBUG_ASSERT(plugin->state == PLUGIN_IS_UNINITIALIZED);
+  uint state= plugin->state;
+  int ret= 1;
+  DBUG_ASSERT(state == PLUGIN_IS_UNINITIALIZED);
 
   pthread_mutex_unlock(&LOCK_plugin);
 
@@ -1036,10 +1023,7 @@ static int plugin_initialize(struct st_plugin_int *plugin)
       goto err;
     }
   }
-
-  pthread_mutex_lock(&LOCK_plugin);
-
-  plugin->state= PLUGIN_IS_READY;
+  state= PLUGIN_IS_READY; // plugin->init() succeeded
 
   if (plugin->plugin->status_vars)
   {
@@ -1056,10 +1040,10 @@ static int plugin_initialize(struct st_plugin_int *plugin)
       {0, 0, SHOW_UNDEF}
     };
     if (add_status_vars(array)) // add_status_vars makes a copy
-      goto err1;
+      goto err;
 #else
     if (add_status_vars(plugin->plugin->status_vars))
-      goto err1;
+      goto err;
 #endif /* FIX_LATER */
   }
 
@@ -1079,11 +1063,12 @@ static int plugin_initialize(struct st_plugin_int *plugin)
     }
   }
 
-  DBUG_RETURN(0);
+  ret= 0;
+
 err:
   pthread_mutex_lock(&LOCK_plugin);
-err1:
-  DBUG_RETURN(1);
+  plugin->state= state;
+  DBUG_RETURN(ret);
 }
 
 
@@ -1748,7 +1733,16 @@ bool mysql_uninstall_plugin(THD *thd, const LEX_STRING *name)
     DBUG_RETURN(TRUE);
 
   pthread_mutex_lock(&LOCK_plugin);
-  if (!(plugin= plugin_find_internal(name, MYSQL_ANY_PLUGIN)))
+  /*
+    Note - it's important that UNINSTALL PLUGIN does not "see" plugins
+    in the intermediate states. To avoid deadlocks and improve concurrency
+    LOCK_plugin is often released when a work is done on a plugin in
+    the intermediate state (e.g. plugin initialization happens outside of
+    LOCK_plugin). Thus we should not allow a plugin to be dropped until
+    it reaches one of the final states.
+  */
+  if (!(plugin= plugin_find_internal(name, MYSQL_ANY_PLUGIN)) ||
+      !(plugin->state == PLUGIN_IS_READY || plugin->state == PLUGIN_IS_DISABLED))
   {
     my_error(ER_SP_DOES_NOT_EXIST, MYF(0), "PLUGIN", name->str);
     goto err;

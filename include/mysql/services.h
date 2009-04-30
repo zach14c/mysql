@@ -21,6 +21,7 @@ extern "C" {
 #endif
 
 #include <mysql/service_my_snprintf.h>
+#include <mysql/service_thd_alloc.h>
 
 #ifdef __cplusplus
 }

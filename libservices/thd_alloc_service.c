@@ -13,6 +13,5 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-#define VERSION_my_snprintf     0x0100
-#define VERSION_thd_alloc       0x0100
-
+#include <service_versions.h>
+void *thd_alloc_servicee= (void*)VERSION_thd_alloc;

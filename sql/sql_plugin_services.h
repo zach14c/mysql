@@ -13,6 +13,32 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-#define VERSION_my_snprintf     0x0100
-#define VERSION_thd_alloc       0x0100
+/* support for Services */
+#include <service_versions.h>
+
+struct st_service_ref {
+  const char *name;
+  uint version;
+  void *service;
+};
+
+static struct my_snprintf_service_st my_snprintf_handler = {
+  my_snprintf,
+  my_vsnprintf
+};
+
+static struct thd_alloc_service_st thd_alloc_handler= {
+  thd_alloc,
+  thd_calloc,
+  thd_strdup,
+  thd_strmake,
+  thd_memdup,
+  thd_make_lex_string
+};
+
+static struct st_service_ref list_of_services[]=
+{
+  { "my_snprintf_service", VERSION_my_snprintf, &my_snprintf_handler },
+  { "thd_alloc_service",   VERSION_thd_alloc,   &thd_alloc_handler }
+};
 

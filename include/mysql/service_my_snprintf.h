@@ -13,15 +13,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-#include <stdarg.h>
-extern struct my_snprintf_service_st {
-  size_t (*my_snprintf_type)(char*, size_t, const char*, ...);
-  size_t (*my_vsnprintf_type)(char *, size_t, const char*, va_list);
-} *my_snprintf_service;
-
-#ifdef MYSQL_DYNAMIC_PLUGIN
-
 /**
+  @file
+  my_snprintf service
+
   Portable and limited vsnprintf() implementation.
 
   This is a portable, limited vsnprintf() implementation, with some
@@ -62,8 +57,22 @@ extern struct my_snprintf_service_st {
 
   More to come (identifier quoting, escaping, see WL#751).
 */
+
+#include <stdarg.h>
+extern struct my_snprintf_service_st {
+  size_t (*my_snprintf_type)(char*, size_t, const char*, ...);
+  size_t (*my_vsnprintf_type)(char *, size_t, const char*, va_list);
+} *my_snprintf_service;
+
+#ifdef MYSQL_DYNAMIC_PLUGIN
+
 #define my_vsnprintf my_snprintf_service->my_vsnprintf_type
 #define my_snprintf my_snprintf_service->my_snprintf_type
+
+#else
+
+size_t my_snprintf(char* to, size_t n, const char* fmt, ...);
+size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap);
 
 #endif
 
