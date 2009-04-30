@@ -1110,7 +1110,10 @@ show_system_thread(enum_thread_type thread)
 class Internal_error_handler
 {
 protected:
-  Internal_error_handler() {}
+  Internal_error_handler() :
+    m_prev_internal_handler(NULL)
+  { }
+
   virtual ~Internal_error_handler() {}
 
 public:
@@ -1145,6 +1148,36 @@ public:
                                 const char* msg,
                                 MYSQL_ERROR ** cond_hdl) = 0;
 
+private:
+  Internal_error_handler *m_prev_internal_handler;
+  friend class THD;
+};
+
+
+/**
+  This class is an internal error handler implementation for DROP DATABASE
+  and DROP TABLE statements. The thing is that there may be warnings during
+  execution of these statements, which should not be exposed to the user.
+  This class is intended to silence such warnings.
+*/
+
+class Drop_table_error_handler : public Internal_error_handler
+{
+public:
+  Drop_table_error_handler(Internal_error_handler *err_handler)
+    :m_err_handler(err_handler)
+  { }
+
+public:
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char *sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char *msg,
+                                MYSQL_ERROR **condition);
+
+private:
+  Internal_error_handler *m_err_handler;
 };
 
 /**
@@ -2282,6 +2315,9 @@ public:
   thd_scheduler scheduler;
 
 public:
+  inline Internal_error_handler *get_internal_handler()
+  { return m_internal_handler; }
+
   /**
     Add an internal error handler to the thread execution context.
     @param handler the exception handler to add

@@ -388,6 +388,32 @@ char *thd_security_context(THD *thd, char *buffer, unsigned int length,
 }
 
 
+/**
+  Implementation of Internal_error_handler::handle_condition().
+  The reason in having this implementation is to silence technical low-level
+  warnings during DROP TABLE operation. Currently we don't want to expose
+  the following warnings during DROP TABLE:
+    - Some of table files are missed or invalid (the table is going to be
+      deleted anyway, so why bother that something was missed);
+    - A trigger associated with the table does not have DEFINER (One of the
+      MySQL specifics now is that triggers are loaded for the table being
+      dropped. So, we may have a warning that trigger does not have DEFINER
+      attribute during DROP TABLE operation).
+
+  @return TRUE if the condition is handled.
+*/
+bool Drop_table_error_handler::handle_condition(THD *thd,
+                                                uint sql_errno,
+                                                const char *sqlstate,
+                                                MYSQL_ERROR::enum_warning_level
+                                                level,
+                                                const char *msg,
+                                                MYSQL_ERROR **condition)
+{
+  return sql_errno == EE_DELETE || sql_errno == ER_TRG_NO_DEFINER;
+}
+
+
 THD::THD()
    :Statement(&main_lex, &main_mem_root, CONVENTIONAL_EXECUTION,
               /* statement id */ 0),
@@ -548,12 +574,15 @@ THD::THD()
 
 void THD::push_internal_handler(Internal_error_handler *handler)
 {
-  /*
-    TODO: The current implementation is limited to 1 handler at a time only.
-    THD and sp_rcontext need to be modified to use a common handler stack.
-  */
-  DBUG_ASSERT(m_internal_handler == NULL);
-  m_internal_handler= handler;
+  if (m_internal_handler)
+  {
+    handler->m_prev_internal_handler= m_internal_handler;
+    m_internal_handler= handler;
+  }
+  else
+  {
+    m_internal_handler= handler;
+  }
 }
 
 
@@ -563,17 +592,23 @@ bool THD::handle_condition(uint sql_errno,
                            const char* msg,
                            MYSQL_ERROR ** cond_hdl)
 {
-  if (m_internal_handler)
+  if (!m_internal_handler)
   {
-    return m_internal_handler->handle_condition(this,
-                                                sql_errno,
-                                                sqlstate,
-                                                level,
-                                                msg,
-                                                cond_hdl);
+    *cond_hdl= NULL;
+    return FALSE;
   }
 
-  *cond_hdl= NULL;
+  for (Internal_error_handler *error_handler= m_internal_handler;
+       error_handler;
+       error_handler= m_internal_handler->m_prev_internal_handler)
+  {
+    if (error_handler-> handle_condition(this, sql_errno, sqlstate, level, msg,
+                                         cond_hdl))
+    {
+      return TRUE;
+    }
+  }
+
   return FALSE;
 }
 
@@ -581,7 +616,7 @@ bool THD::handle_condition(uint sql_errno,
 void THD::pop_internal_handler()
 {
   DBUG_ASSERT(m_internal_handler != NULL);
-  m_internal_handler= NULL;
+  m_internal_handler= m_internal_handler->m_prev_internal_handler;
 }
 
 void THD::raise_error(uint sql_errno)
