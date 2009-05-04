@@ -1410,7 +1410,7 @@ static void fix_max_binlog_size(THD *thd, enum_var_type type)
   mysql_bin_log.set_max_size(max_binlog_size);
 #ifdef HAVE_REPLICATION
   if (!max_relay_log_size)
-    active_mi->rli.relay_log.set_max_size(max_binlog_size);
+    active_mi->rli->relay_log.set_max_size(max_binlog_size);
 #endif
   DBUG_VOID_RETURN;
 }
@@ -1421,7 +1421,7 @@ static void fix_max_relay_log_size(THD *thd, enum_var_type type)
   DBUG_PRINT("info",("max_binlog_size=%lu max_relay_log_size=%lu",
                      max_binlog_size, max_relay_log_size));
 #ifdef HAVE_REPLICATION
-  active_mi->rli.relay_log.set_max_size(max_relay_log_size ?
+  active_mi->rli->relay_log.set_max_size(max_relay_log_size ?
                                         max_relay_log_size: max_binlog_size);
 #endif
   DBUG_VOID_RETURN;

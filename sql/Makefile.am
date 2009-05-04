@@ -84,7 +84,8 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			debug_sync.h \
 			opt_range.h protocol.h rpl_tblmap.h rpl_utility.h \
 			rpl_reporting.h \
-			log.h sql_show.h rpl_rli.h rpl_mi.h \
+			log.h sql_show.h rpl_info.h \
+			rpl_rli.h rpl_rli_file.h rpl_mi.h rpl_mi_file.h \
 			sql_select.h structs.h table.h sql_udf.h hash_filo.h \
 			lex.h lex_symbol.h sql_acl.h sql_crypt.h  \
 			sql_repl.h slave.h rpl_filter.h rpl_injector.h \
@@ -137,6 +138,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_udf.cc sql_analyse.cc sql_analyse.h sql_cache.cc \
 			slave.cc sql_repl.cc rpl_filter.cc rpl_tblmap.cc \
 			rpl_utility.cc rpl_injector.cc rpl_rli.cc rpl_mi.cc \
+			rpl_info.cc rpl_rli_file.cc rpl_mi_file.cc \
 			rpl_reporting.cc \
                         sql_union.cc sql_derived.cc \
 			sql_client.cc \

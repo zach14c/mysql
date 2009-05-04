@@ -10,10 +10,12 @@ extern struct my_snprintf_service_st {
 size_t my_snprintf(char* to, size_t n, const char* fmt, ...);
 size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap);
 #include <mysql/service_thd_alloc.h>
-typedef struct {
+struct st_mysql_lex_string
+{
   char *str;
   unsigned int length;
-} MYSQL_LEX_STRING;
+};
+typedef struct st_mysql_lex_string MYSQL_LEX_STRING;
 extern struct thd_alloc_service_st {
   void *(*thd_alloc_func)(void*, unsigned int);
   void *(*thd_calloc_func)(void*, unsigned int);

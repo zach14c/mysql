@@ -3014,7 +3014,7 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
       {
         char command[128];
         get_privilege_desc(command, sizeof(command),
-                           table_list->grant.want_privilege);
+                           table_list->grant.want_privilege, FALSE);
         my_error(ER_TABLEACCESS_DENIED_ERROR, MYF(0),
                  command, thd->security_ctx->priv_user,
                  thd->security_ctx->host_or_ip, table_list->alias);
@@ -3992,7 +3992,7 @@ err:
   if (!no_errors)				// Not a silent skip of table
   {
     char command[128];
-    get_privilege_desc(command, sizeof(command), want_access);
+    get_privilege_desc(command, sizeof(command), want_access, FALSE);
     my_error(ER_TABLEACCESS_DENIED_ERROR, MYF(0),
              command,
              sctx->priv_user,
@@ -4148,7 +4148,7 @@ bool check_grant_column(THD *thd, GRANT_INFO *grant,
 err:
   rw_unlock(&LOCK_grant);
   char command[128];
-  get_privilege_desc(command, sizeof(command), want_access);
+  get_privilege_desc(command, sizeof(command), want_access, FALSE);
   my_error(ER_COLUMNACCESS_DENIED_ERROR, MYF(0),
            command,
            sctx->priv_user,
@@ -4310,7 +4310,7 @@ err:
   rw_unlock(&LOCK_grant);
 
   char command[128];
-  get_privilege_desc(command, sizeof(command), want_access);
+  get_privilege_desc(command, sizeof(command), want_access, FALSE);
   /*
     Do not give an error message listing a column name unless the user has
     privilege to see all columns.
@@ -5062,16 +5062,25 @@ static int show_routine_grants(THD* thd, LEX_USER *lex_user, HASH *hash,
   return error;
 }
 
-/*
+/**
   Make a clear-text version of the requested privilege.
+
+  @param to         pointer to the buffer
+  @param max_length max length of the description message allowed
+  @param access     privileges to check for access
+  @param any        if TRUE, any of the privileges is sufficient,
+                    if FALSE, all privileges are required
 */
 
-void get_privilege_desc(char *to, uint max_length, ulong access)
+void get_privilege_desc(char *to, uint max_length, ulong access, bool any)
 {
   uint pos;
   char *start=to;
+  char sep=',';
   DBUG_ASSERT(max_length >= 30);		// For end ',' removal
 
+  if (any)
+    sep= '|';
   if (access)
   {
     max_length--;				// Reserve place for end-zero
@@ -5081,7 +5090,7 @@ void get_privilege_desc(char *to, uint max_length, ulong access)
 	  command_lengths[pos] + (uint) (to-start) < max_length)
       {
 	to= strmov(to, command_array[pos]);
-	*to++=',';
+	*to++= sep;
       }
     }
     to--;					// Remove end ','

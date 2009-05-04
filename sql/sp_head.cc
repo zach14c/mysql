@@ -1517,7 +1517,7 @@ sp_head::execute_trigger(THD *thd,
   if (!(grant_info->privilege & TRIGGER_ACL))
   {
     char priv_desc[128];
-    get_privilege_desc(priv_desc, sizeof(priv_desc), TRIGGER_ACL);
+    get_privilege_desc(priv_desc, sizeof(priv_desc), TRIGGER_ACL, FALSE);
 
     my_error(ER_TABLEACCESS_DENIED_ERROR, MYF(0), priv_desc,
              thd->security_ctx->priv_user, thd->security_ctx->host_or_ip,

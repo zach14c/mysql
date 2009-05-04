@@ -43,6 +43,12 @@ pthread_handler_t backup_thread_for_locking(void *arg);
   The Backup_thread structure contains a mutex and condition variable
   for using a thread to open and lock the tables. This is meant to be a
   generic class that can be used elsewhere for opening and locking tables.
+
+  @note This class correctly handles the separate locking thread. However, 
+  the class itself is *not* multi-thread safe. An instance of Locking_thread_st
+  should be used by one thread only. In particular, calling 
+  @c start_locking_thread() from one thread and @c kill_locking_thread() from
+  another thread running in parallel is not guaranteed to work.
 */
 struct Locking_thread_st
 {
@@ -60,6 +66,8 @@ public:
   LOCK_STATE lock_state;           ///< Current state of the lock call
   THD *m_thd;                      ///< Pointer to current thread struct.
   String thd_name;                 ///< Name of locking thread
+  /// Indicates if the locking thread has been started.
+  my_bool m_thread_started;
 
   result_t start_locking_thread(const char *tname);
   void kill_locking_thread();

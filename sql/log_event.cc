@@ -4816,7 +4816,7 @@ int Rotate_log_event::do_update_pos(Relay_log_info *rli)
                         rli->group_master_log_name,
                         (ulong) rli->group_master_log_pos));
     pthread_mutex_unlock(&rli->data_lock);
-    flush_relay_log_info(rli);
+    rli->flush_info();
     
     /*
       Reset thd->options and sql_mode etc, because this could be the signal of
@@ -5805,7 +5805,7 @@ int Stop_log_event::do_update_pos(Relay_log_info *rli)
   else
   {
     rli->inc_group_relay_log_pos(0);
-    flush_relay_log_info(rli);
+    rli->flush_info();
   }
   return 0;
 }
@@ -7137,7 +7137,7 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli)
     do_apply_event(). We still check here to prevent future coding
     errors.
   */
-  DBUG_ASSERT(rli->sql_thd == thd);
+  DBUG_ASSERT(rli->info_thd == thd);
 
   /*
     If there is no locks taken, this is the first binrow event seen
@@ -8006,7 +8006,7 @@ int Table_map_log_event::do_apply_event(Relay_log_info const *rli)
   size_t dummy_len;
   void *memory;
   DBUG_ENTER("Table_map_log_event::do_apply_event(Relay_log_info*)");
-  DBUG_ASSERT(rli->sql_thd == thd);
+  DBUG_ASSERT(rli->info_thd == thd);
 
   /* Step the query id to mark what columns that are actually used. */
   pthread_mutex_lock(&LOCK_thread_count);
@@ -8035,7 +8035,7 @@ int Table_map_log_event::do_apply_event(Relay_log_info const *rli)
 
   int error= 0;
 
-  if (rli->sql_thd->slave_thread /* filtering is for slave only */ &&
+  if (rli->info_thd->slave_thread /* filtering is for slave only */ &&
       (!rpl_filter->db_ok(table_list->db) ||
        (rpl_filter->is_on() && !rpl_filter->tables_ok("", table_list))))
   {
@@ -8399,7 +8399,10 @@ Rows_log_event::write_row(const Relay_log_info *const rli,
      values should be checked. Maybe these two flags can be combined.
   */
   if ((error= prepare_record(table, &m_cols, m_width,
-                             table->file->ht->db_type != DB_TYPE_NDBCLUSTER)))
+                             table->file->ht->db_type != DB_TYPE_NDBCLUSTER,
+                             (rli->info_thd->variables.sql_mode &
+                              (MODE_STRICT_TRANS_TABLES |
+                               MODE_STRICT_ALL_TABLES)))))
     DBUG_RETURN(error);
   
   /* unpack row into table->record[0] */

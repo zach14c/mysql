@@ -1,0 +1,172 @@
+
+# Create database with tables and views
+
+CREATE DATABASE changecase;
+CREATE TABLE changecase.t1 (i int);
+INSERT INTO changecase.t1 VALUES (1);
+CREATE TABLE changecase.t2 (text varchar(20));
+CREATE VIEW changecase.v1 AS SELECT * FROM changecase.t1;
+
+# Add trigger and procedure
+
+CREATE PROCEDURE changecase.trgmsg(a int)
+BEGIN
+INSERT INTO changecase.t2(text) VALUES ('Db trigger fired!');
+END;
+||
+CREATE TRIGGER changecase.afterins AFTER INSERT ON changecase.t1 FOR EACH ROW 
+CALL trgmsg(1);
+||
+CREATE EVENT changecase.ev ON SCHEDULE EVERY 10 second DO 
+BEGIN
+INSERT INTO changecase.t2(text) VALUES ('Db event fired!');
+END;
+||
+
+# Add user with privileges
+
+CREATE USER user_with_grants;
+default: Grant user rights to run backup. Revoke SUPER from one user.
+GRANT SELECT ON changecase.t1 TO 'user_with_grants'@'%';
+GRANT SELECT ON changecase.v1 TO 'user_with_grants'@'%';
+GRANT UPDATE ON changecase.* TO 'user_with_grants'@'%';
+GRANT INSERT ON changecase.* TO 'user_with_grants'@'%';
+GRANT SUPER ON *.* TO 'user_with_grants'@'%';
+FLUSH PRIVILEGES;
+
+# Show procedure, trigger and event
+
+SHOW CREATE PROCEDURE changecase.trgmsg;;
+Procedure	trgmsg
+sql_mode	
+Create Procedure	CREATE DEFINER=`root`@`localhost` PROCEDURE `trgmsg`(a int)
+BEGIN
+INSERT INTO changecase.t2(text) VALUES ('Db trigger fired!');
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+
+SHOW TRIGGERS FROM changecase;;
+Trigger	afterins
+Event	INSERT
+Table	t1
+Statement	CALL trgmsg(1)
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+
+SHOW EVENTS IN changecase;;
+Db	changecase
+Name	ev
+Definer	root@localhost
+Time zone	SYSTEM
+Type	RECURRING
+Execute at	NULL
+Interval value	10
+Interval field	SECOND
+Starts	#
+Ends	NULL
+Status	ENABLED
+Originator	1
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+
+# BACKUP, drop database and user
+
+BACKUP DATABASE changecase TO 'uppercase.bup';
+backup_id
+#
+DROP DATABASE changecase;
+REVOKE ALL ON *.* FROM 'user_with_grants'@'%';
+
+# RESTORE database
+
+# Activate debug hook that makes db names upper-case when checking if
+# a grant statement operates on a db that is restored. Should fail
+SET SESSION DEBUG='+d,restore_catalog_uppercase_names_grant';
+RESTORE FROM 'uppercase.bup';
+ERROR HY000: The grant '22 'user_with_grants'@'%
+22 INSERT ON changecase.*
+32 SET chara' failed. Database not included in the backup image.
+SET SESSION DEBUG='-d';
+DROP DATABASE changecase;
+# Activate debug hook that makes all names upper-case. Should work.
+SET SESSION DEBUG='+d,restore_catalog_uppercase_names';
+RESTORE FROM 'uppercase.bup';
+backup_id
+#
+SET SESSION DEBUG='-d';
+
+# Check contents of restored database
+
+
+SHOW TABLES IN changecase;
+Tables_in_changecase
+t1
+t2
+v1
+
+SELECT * FROM changecase.t1;
+i
+1
+
+# Show procedure, trigger and event
+
+SHOW CREATE PROCEDURE changecase.trgmsg;;
+Procedure	trgmsg
+sql_mode	
+Create Procedure	CREATE DEFINER=`root`@`localhost` PROCEDURE `trgmsg`(a int)
+BEGIN
+INSERT INTO changecase.t2(text) VALUES ('Db trigger fired!');
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+
+SHOW TRIGGERS FROM changecase;;
+Trigger	afterins
+Event	INSERT
+Table	t1
+Statement	CALL trgmsg(1)
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+
+SHOW EVENTS IN changecase;;
+Db	changecase
+Name	ev
+Definer	root@localhost
+Time zone	SYSTEM
+Type	RECURRING
+Execute at	NULL
+Interval value	10
+Interval field	SECOND
+Starts	#
+Ends	NULL
+Status	ENABLED
+Originator	1
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+
+SHOW GRANTS FOR 'user_with_grants'@'%';
+Grants for user_with_grants@%
+GRANT USAGE ON *.* TO 'user_with_grants'@'%'
+GRANT INSERT, UPDATE ON `changecase`.* TO 'user_with_grants'@'%'
+GRANT SELECT ON `changecase`.`v1` TO 'user_with_grants'@'%'
+GRANT SELECT ON `changecase`.`t1` TO 'user_with_grants'@'%'
+
+# Cleanup
+
+DROP DATABASE changecase;
+DROP USER user_with_grants;
