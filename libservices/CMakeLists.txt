@@ -1,4 +1,4 @@
-# Copyright 2009 Sun Microsystems, Inc.
+# Copyright (C) 2006 MySQL AB
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -11,9 +11,10 @@
 # 
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-AM_CPPFLAGS =		-I$(top_srcdir)/include
-pkglib_LIBRARIES =	libmysqlservices.a
-libmysqlservices_a_SOURCES =  my_snprintf_service.c thd_alloc_service.c
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
 
+SET(LIBSERVICES_SOURCES my_snprintf_service.c thd_alloc_service.c)
+
+ADD_LIBRARY(strings ${STRINGS_SOURCES})
