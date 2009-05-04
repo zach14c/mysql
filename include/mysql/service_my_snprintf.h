@@ -42,7 +42,7 @@
   where everithing but the format is optional.
 
   The only possible <flag> is '0'. It has the standard zero-padding semantics.
-  Both <width> and <precision> can be specified as a number or '*'.
+  Both <width> and <precision> can be specified as numbers or '*'.
 
   <length modifier> can be 'l', 'll', or 'z'.
 
@@ -59,6 +59,7 @@
 */
 
 #include <stdarg.h>
+#include <stdlib.h>
 extern struct my_snprintf_service_st {
   size_t (*my_snprintf_type)(char*, size_t, const char*, ...);
   size_t (*my_vsnprintf_type)(char *, size_t, const char*, va_list);

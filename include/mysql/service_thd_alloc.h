@@ -26,14 +26,13 @@
   allocations - they are better served with my_malloc.
 */
 
-#ifndef _m_string_h
-/* This definition must match the one given in m_string.h */
+#include <stdlib.h>
+
 struct st_mysql_lex_string
 {
   char *str;
-  unsigned int length;
+  size_t length;
 };
-#endif /* _m_string_h */
 typedef struct st_mysql_lex_string MYSQL_LEX_STRING;
 
 extern struct thd_alloc_service_st {

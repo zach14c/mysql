@@ -1,8 +1,7 @@
-#include <stdlib.h>
-typedef struct st_mysql MYSQL;
 #include <mysql/services.h>
 #include <mysql/service_my_snprintf.h>
 #include <stdarg.h>
+#include <stdlib.h>
 extern struct my_snprintf_service_st {
   size_t (*my_snprintf_type)(char*, size_t, const char*, ...);
   size_t (*my_vsnprintf_type)(char *, size_t, const char*, va_list);
@@ -10,10 +9,11 @@ extern struct my_snprintf_service_st {
 size_t my_snprintf(char* to, size_t n, const char* fmt, ...);
 size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap);
 #include <mysql/service_thd_alloc.h>
+#include <stdlib.h>
 struct st_mysql_lex_string
 {
   char *str;
-  unsigned int length;
+  size_t length;
 };
 typedef struct st_mysql_lex_string MYSQL_LEX_STRING;
 extern struct thd_alloc_service_st {
@@ -44,7 +44,8 @@ enum enum_mysql_show_type
 {
   SHOW_UNDEF, SHOW_BOOL, SHOW_INT, SHOW_LONG,
   SHOW_LONGLONG, SHOW_CHAR, SHOW_CHAR_PTR,
-  SHOW_ARRAY, SHOW_FUNC, SHOW_DOUBLE
+  SHOW_ARRAY, SHOW_FUNC, SHOW_DOUBLE,
+  SHOW_always_last
 };
 struct st_mysql_show_var {
   const char *name;

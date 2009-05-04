@@ -27,23 +27,15 @@ typedef void (*init_func_p)(const struct my_option *option, uchar* *variable,
 static void default_reporter(enum loglevel level, const char *format, ...);
 my_error_reporter my_getopt_error_reporter= &default_reporter;
 
-static int findopt(char *optpat, uint length,
-                   const struct my_option **opt_res,
-                   char **ffname);
-my_bool getopt_compare_strings(const char *s,
-                               const char *t,
-                               uint length);
-static longlong getopt_ll(char *arg, const struct my_option *optp, int *err);
-static ulonglong getopt_ull(char *arg, const struct my_option *optp,
-                            int *err);
-static double getopt_double(char *arg, const struct my_option *optp, int *err);
-static void init_variables(const struct my_option *options,
-                           init_func_p init_one_value);
-static void init_one_value(const struct my_option *opt, uchar* *, longlong);
-static void fini_one_value(const struct my_option *option, uchar* *variable,
-			   longlong value);
-static int setval(const struct my_option *opts, uchar **value, char *argument,
-                  my_bool set_maximum_value);
+static int findopt(char *, uint, const struct my_option **, char **);
+my_bool getopt_compare_strings(const char *, const char *, uint);
+static longlong getopt_ll(char *, const struct my_option *, int *);
+static ulonglong getopt_ull(char *, const struct my_option *, int *);
+static double getopt_double(char *, const struct my_option *, int *);
+static void init_variables(const struct my_option *, init_func_p);
+static void init_one_value(const struct my_option *opt, uchar **, longlong);
+static void fini_one_value(const struct my_option *, uchar **, longlong);
+static int setval(const struct my_option *, uchar **, char *, my_bool);
 static char *check_struct_option(char *cur_arg, char *key_name);
 
 /*
