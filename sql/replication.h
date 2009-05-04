@@ -132,6 +132,7 @@ typedef struct Binlog_storage_observer {
                      uint32 flags);
 } Binlog_storage_observer;
 
+#ifdef HAVE_REPLICATION
 /**
    Replication binlog transmitter (binlog dump) observer parameter.
 */
@@ -343,6 +344,7 @@ typedef struct Binlog_relay_IO_observer {
   */
   int (*after_reset_slave)(Binlog_relay_IO_param *param);
 } Binlog_relay_IO_observer;
+#endif
 
 
 /**
@@ -389,6 +391,7 @@ int register_binlog_storage_observer(Binlog_storage_observer *observer, void *p)
 */
 int unregister_binlog_storage_observer(Binlog_storage_observer *observer, void *p);
 
+#ifdef HAVE_REPLICATION
 /**
    Register a binlog transmit observer
 
@@ -454,6 +457,7 @@ int unregister_binlog_relay_io_observer(Binlog_relay_IO_observer *observer, void
    @return address of MYSQL structure on success, NULL on failure
 */
 MYSQL *rpl_connect_master(MYSQL *mysql);
+#endif
 
 #ifdef __cplusplus
 }
