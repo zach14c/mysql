@@ -17,4 +17,4 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
 
 SET(LIBSERVICES_SOURCES my_snprintf_service.c thd_alloc_service.c)
 
-ADD_LIBRARY(strings ${STRINGS_SOURCES})
+ADD_LIBRARY(libservices ${LIBSERVICES_SOURCES})

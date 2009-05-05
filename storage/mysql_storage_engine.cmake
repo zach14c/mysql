@@ -29,7 +29,7 @@ IF(NOT SOURCE_SUBLIBS)
     #The dll is linked to the mysqld executable
     SET(dyn_libname ha_${libname})
     ADD_LIBRARY(${dyn_libname} SHARED ${${engine}_SOURCES})
-    TARGET_LINK_LIBRARIES (${dyn_libname}  mysqld)
+    TARGET_LINK_LIBRARIES (${dyn_libname} libservices mysqld)
     MESSAGE("build ${engine} as DLL")
   ENDIF(${ENGINE_BUILD_TYPE} STREQUAL "STATIC")
 ENDIF(NOT SOURCE_SUBLIBS)
