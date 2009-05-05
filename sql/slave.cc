@@ -252,6 +252,14 @@ int init_slave()
   }
 
   active_mi= new Master_info_file(master_info_file);
+  /*
+    If --slave-skip-errors=... was not used, the string value for the
+    system variable has not been set up yet. Do it now.
+  */
+  if (!use_slave_mask)
+  {
+    print_slave_skip_errors();
+  }
 
   if (!active_mi)
   {
@@ -619,8 +627,6 @@ terminate_slave_thread(THD *thd,
                        volatile uint *slave_running,
                        bool skip_lock)
 {
-  int error;
-
   DBUG_ENTER("terminate_slave_thread");
   if (!skip_lock)
   {
