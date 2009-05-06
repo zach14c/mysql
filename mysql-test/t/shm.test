@@ -29,8 +29,10 @@ SET @net_buffer_length= @@global.net_buffer_length;
 SET GLOBAL max_allowed_packet= 1024;
 SET GLOBAL net_buffer_length= 1024;
 
---error 1
---exec echo SELECT '$stmt'| $MYSQL --protocol=memory --shared-memory-base-name=$name 2>&1
+--echo # The following test is disabled until Bug#41860 
+--echo # "Without Windows named pipe" is fixed
+#--error 1
+#--exec echo SELECT '$stmt'| $MYSQL --protocol=memory --shared-memory-base-name=$name 2>&1
 
 SET GLOBAL max_allowed_packet= @max_allowed_packet;
 SET GLOBAL net_buffer_length= @net_buffer_length;
