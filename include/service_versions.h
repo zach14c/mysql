@@ -14,9 +14,9 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #ifdef _WIN32
-#define VERSION extern "C" __declspec(dllexport) void *
+#define SERVICE_VERSION __declspec(dllexport) void *
 #else
-#define VERSION void *
+#define SERVICE_VERSION void *
 #endif
 
 #define VERSION_my_snprintf     0x0100

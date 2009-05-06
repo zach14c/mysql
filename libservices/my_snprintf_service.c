@@ -14,4 +14,4 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #include <service_versions.h>
-VERSION my_snprintf_service= (void*)VERSION_my_snprintf;
+SERVICE_VERSION my_snprintf_service= (void*)VERSION_my_snprintf;
