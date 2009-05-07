@@ -4,7 +4,8 @@
 --error 1193
 SELECT @@global.example_enum_var = 'e2';
 
-INSTALL PLUGIN example SONAME 'ha_example.so';
+--replace_regex /\.dll/.so/
+eval INSTALL PLUGIN example SONAME $HA_EXAMPLE_SO;
 
 SELECT @@global.example_enum_var = 'e2';
 

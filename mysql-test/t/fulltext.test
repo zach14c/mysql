@@ -464,6 +464,14 @@ SELECT GROUP_CONCAT(a) AS st FROM t1 HAVING MATCH(st) AGAINST('test' IN BOOLEAN 
 DROP TABLE t1;
 
 #
+# BUG#42907 - Multi-term boolean fulltext query containing a single
+#             quote fails in 5.1.x
+CREATE TABLE t1(a VARCHAR(64), FULLTEXT(a));
+INSERT INTO t1 VALUES('awrd bwrd cwrd'),('awrd bwrd cwrd'),('awrd bwrd cwrd');
+SELECT * FROM t1 WHERE MATCH(a) AGAINST('+awrd bwrd* +cwrd*' IN BOOLEAN MODE);
+DROP TABLE t1;
+
+#
 # bug#34374 - mysql generates incorrect warning
 #
 create table t1(a text,b date,fulltext index(a))engine=myisam;

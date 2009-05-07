@@ -17,7 +17,6 @@ insert into t1(a) values(5);
 insert into t1(a) values(6);
 =====Removing relay log files and crashing/recoverying the slave=======;
 stop slave IO_THREAD;
-failure
 SET SESSION debug="d,crash_before_rotate_relaylog";
 FLUSH LOGS;
 ERROR HY000: Lost connection to MySQL server during query

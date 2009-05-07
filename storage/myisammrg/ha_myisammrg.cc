@@ -139,7 +139,8 @@ extern int check_definition(MI_KEYDEF *t1_keyinfo,
                             uint t1_keys, uint t1_recs,
                             MI_KEYDEF *t2_keyinfo,
                             MI_COLUMNDEF *t2_recinfo,
-                            uint t2_keys, uint t2_recs, bool strict);
+                            uint t2_keys, uint t2_recs, bool strict,
+                            TABLE *table_arg);
 static void split_file_name(const char *file_name,
 			    LEX_STRING *db, LEX_STRING *name);
 
@@ -728,7 +729,7 @@ int ha_myisammrg::attach_children(void)
       if (check_definition(keyinfo, recinfo, keys, recs,
                            u_table->table->s->keyinfo, u_table->table->s->rec,
                            u_table->table->s->base.keys,
-                           u_table->table->s->base.fields, false))
+                           u_table->table->s->base.fields, false, NULL))
       {
         DBUG_PRINT("error", ("table definition mismatch: '%s'",
                              u_table->table->s->unresolv_file_name));
