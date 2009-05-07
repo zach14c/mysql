@@ -24,6 +24,7 @@ CREATE TABLE mysql_test.t3(c INT);
 SET SESSION DEBUG = "+d,bug43138";
 
 --echo
+--sorted_result
 DROP DATABASE mysql_test;
 
 --echo
