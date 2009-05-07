@@ -139,5 +139,7 @@ Variable_name	Slave_heartbeat_period
 Value	0.500
 A heartbeat has been received by the slave
 drop table t1;
+*** debug: 356 ***
+#connection slave
 set @@global.slave_net_timeout=@restore_slave_net_timeout;
 End of tests

@@ -764,3 +764,6 @@ BACKUP DATABASE *, test to 'broken.bak';
 --error ER_PARSE_ERROR
 BACKUP DATABASE *, db1, db2, db3 to 'broken.bak';
 
+--echo #
+--echo # End of 5.1 tests
+--echo #

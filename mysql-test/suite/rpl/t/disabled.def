@@ -12,11 +12,10 @@
 
 rpl_extraColmaster_innodb  : BUG#40796 2009-04-22 alfranio Crash due to heap corruption in rpl.rpl_extraColmaster_myisam
 rpl_extraColmaster_myisam  : BUG#40796 2009-04-22 alfranio Crash due to heap corruption in rpl.rpl_extraColmaster_myisam
-rpl_binlog_corruption      : BUG#41793 2008-12-30 sven rpl_binlog_corruption disabled in main (needs new mtr)
 rpl_cross_version          : BUG#42311 2009-03-27 joro rpl_cross_version fails on macosx
 rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)
 rpl_cross_version          : Bug#42311 2009-01-23 aelkin
 rpl_heartbeat_basic        : Bug#43828 Sporadic failures (Serge.Kozlov@sun.com)
-rpl_heartbeat_2slaves      : Bug#43828 Sporadic failrues (Serge.Kozlov@sun.com)
+rpl_heartbeat_2slaves      : Bug#43828 Sporadic failures (Serge.Kozlov@sun.com)
 rpl_failed_optimize        : WL#4284: Can't optimize table used by a pending transaction (there is metadata lock on the table).
 rpl_read_only              : WL#4284: Setting Read only won't succeed until all metadata locks are released.

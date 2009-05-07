@@ -173,6 +173,10 @@ while (`select $slave_value = 0`)
 connection master;
 drop table t1;
 
+# debug print out, todo: remove after bug#37714 is fixed
+let $last_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
+echo *** debug: $last_pos ***
+
 #connection slave;
 sync_slave_with_master;
 set @@global.slave_net_timeout=@restore_slave_net_timeout;

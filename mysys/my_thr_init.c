@@ -258,10 +258,12 @@ void my_thread_destroy_mutex(void)
 {
   struct st_my_thread_var *tmp;
   tmp= my_pthread_getspecific(struct st_my_thread_var*,THR_KEY_mysys);
+#ifdef SAFE_MUTEX
   if (tmp)
   {
     safe_mutex_free_deadlock_data(&tmp->mutex);
   }  
+#endif
 
   pthread_mutex_destroy(&THR_LOCK_open);
   pthread_mutex_destroy(&THR_LOCK_lock);

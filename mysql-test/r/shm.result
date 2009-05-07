@@ -2152,4 +2152,12 @@ Warnings:
 Warning	1052	Column 'kundentyp' in group statement is ambiguous
 drop table t1;
 mysqld is alive
+SET @max_allowed_packet= @@global.max_allowed_packet;
+SET @net_buffer_length= @@global.net_buffer_length;
+SET GLOBAL max_allowed_packet= 1024;
+SET GLOBAL net_buffer_length= 1024;
+# The following test is disabled until Bug#41860 
+# "Without Windows named pipe" is fixed
+SET GLOBAL max_allowed_packet= @max_allowed_packet;
+SET GLOBAL net_buffer_length= @net_buffer_length;
 End of 5.0 tests.
