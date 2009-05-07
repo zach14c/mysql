@@ -1,3 +1,6 @@
+SHOW VARIABLES like 'slave_skip_errors';
+Variable_name	Value
+slave_skip_errors	OFF
 #
 # WL#4284: Transactional DDL locking
 #

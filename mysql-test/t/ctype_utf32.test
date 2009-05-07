@@ -788,3 +788,32 @@ SELECT hex(weight_string(s1, 4, 2, 0)) FROM t1 ORDER BY s1;
 DROP TABLE t1;
 SET max_sort_length=DEFAULT;
 SET NAMES latin1;
+
+#
+# Bug#34021 Character sets: crash if concatenate utf32 and number
+#
+
+# Test concat with INT
+drop table if exists t1;
+create table t1 (s1 char(5) character set utf32);
+insert into t1 values ('a');
+insert into t1 select concat(s1, 1) from t1;
+select hex(s1) from t1;
+drop table t1;
+
+# Test concat with DECIMAL (warning is expected)
+drop table if exists t1;
+create table t1 (s1 char(5) character set utf32);
+insert into t1 values ('a');
+insert into t1 select concat(s1, 0.1) from t1;
+select hex(s1) from t1;
+drop table t1;
+
+# Test concat with FLOAT (warning is expected)
+drop table if exists t1;
+create table t1 (s1 char(5) character set utf32);
+insert into t1 values ('a');
+insert into t1 select concat(s1, 1e-1) from t1;
+select hex(s1) from t1;
+drop table t1;
+

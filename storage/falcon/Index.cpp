@@ -375,7 +375,7 @@ void Index::makeKey(Field *field, Value *value, int segment, IndexKey *indexKey,
 		size_t moveLen = MIN(indexKey->keyLength, MAX_PHYSICAL_KEY_LENGTH - 1);
 		memmove (indexKey->key + 1, indexKey->key, moveLen);
 		indexKey->key[0] = 0;
-		indexKey->keyLength = moveLen + 1;
+		indexKey->keyLength = (uint)moveLen + 1;
 		}
 }
 

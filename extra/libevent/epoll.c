@@ -112,9 +112,8 @@ epoll_init(struct event_base *base)
 	if (getrlimit(RLIMIT_NOFILE, &rl) == 0 &&
 	    rl.rlim_cur != RLIM_INFINITY) {
 		/*
-		 * Solaris is somewhat retarded - it's important to drop
-		 * backwards compatibility when making changes.  So, don't
-		 * dare to put rl.rlim_cur here.
+		 * Solaris kernel changes are not backward compatible.
+		 * So, don't dare to put rl.rlim_cur here.
 		 */
 		nfiles = rl.rlim_cur - 1;
 	}

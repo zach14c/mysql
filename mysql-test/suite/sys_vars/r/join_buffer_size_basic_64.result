@@ -60,19 +60,19 @@ Warnings:
 Warning	1292	Truncated incorrect join_buffer_size value: '0'
 SELECT @@global.join_buffer_size;
 @@global.join_buffer_size
-164
+136
 SELECT @@global.join_buffer_size=164  OR @@global.join_buffer_size= 8228;
 @@global.join_buffer_size=164  OR @@global.join_buffer_size= 8228
-1
+0
 SET @@global.join_buffer_size = -1024;
 Warnings:
-Warning	1292	Truncated incorrect join_buffer_size value: '0'
+Warning	1292	Truncated incorrect join_buffer_size value: '-1024'
 SELECT @@global.join_buffer_size;
 @@global.join_buffer_size
-164
+136
 SELECT @@global.join_buffer_size=164  OR @@global.join_buffer_size= 8228;
 @@global.join_buffer_size=164  OR @@global.join_buffer_size= 8228
-1
+0
 SET @@global.join_buffer_size = 8199;
 SELECT @@global.join_buffer_size=8192 OR @@global.join_buffer_size= 8228;
 @@global.join_buffer_size=8192 OR @@global.join_buffer_size= 8228
@@ -96,13 +96,13 @@ Warnings:
 Warning	1292	Truncated incorrect join_buffer_size value: '0'
 SELECT @@session.join_buffer_size=164  OR @@session.join_buffer_size= 8228;
 @@session.join_buffer_size=164  OR @@session.join_buffer_size= 8228
-1
+0
 SET @@session.join_buffer_size = -2;
 Warnings:
-Warning	1292	Truncated incorrect join_buffer_size value: '0'
+Warning	1292	Truncated incorrect join_buffer_size value: '-2'
 SELECT @@session.join_buffer_size=164  OR @@session.join_buffer_size= 8228;
 @@session.join_buffer_size=164  OR @@session.join_buffer_size= 8228
-1
+0
 SET @@session.join_buffer_size = 8199;
 SELECT @@session.join_buffer_size=8192 OR @@session.join_buffer_size= 8228;
 @@session.join_buffer_size=8192 OR @@session.join_buffer_size= 8228
@@ -140,13 +140,13 @@ Warnings:
 Warning	1292	Truncated incorrect join_buffer_size value: '1'
 SELECT @@global.join_buffer_size=164  OR @@global.join_buffer_size= 8228;
 @@global.join_buffer_size=164  OR @@global.join_buffer_size= 8228
-1
+0
 SET @@global.join_buffer_size = FALSE;
 Warnings:
 Warning	1292	Truncated incorrect join_buffer_size value: '0'
 SELECT @@global.join_buffer_size=164  OR @@global.join_buffer_size= 8228;
 @@global.join_buffer_size=164  OR @@global.join_buffer_size= 8228
-1
+0
 'Bug: Errors are not coming on assigning TRUE/FALSE to variable';
 '#---------------------FN_DYNVARS_001_09----------------------#'
 SET @@global.join_buffer_size = 10;
@@ -171,7 +171,7 @@ Warnings:
 Warning	1292	Truncated incorrect join_buffer_size value: '1'
 SELECT @@join_buffer_size=164  OR @@join_buffer_size= 8228;
 @@join_buffer_size=164  OR @@join_buffer_size= 8228
-1
+0
 SELECT local.join_buffer_size;
 ERROR 42S02: Unknown table 'local' in field list
 SELECT session.join_buffer_size;

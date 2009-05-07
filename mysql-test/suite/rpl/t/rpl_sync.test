@@ -66,7 +66,6 @@ source include/wait_for_slave_io_to_stop.inc;
 let $file= query_get_value("SHOW SLAVE STATUS", Relay_Log_File, 1);
 --replace_result $MYSQLD_SLAVE_DATADIR MYSQLD_SLAVE_DATADIR
 --exec echo "failure" > $MYSQLD_SLAVE_DATADIR/$file
---exec cat  $MYSQLD_SLAVE_DATADIR/$file
 
 --exec echo "restart" > $MYSQLTEST_VARDIR/tmp/mysqld.2.expect
 SET SESSION debug="d,crash_before_rotate_relaylog";
@@ -105,6 +104,22 @@ insert into t1(a) values(9);
 connection slave;
 --replace_result $MYSQLD_SLAVE_DATADIR MYSQLD_SLAVE_DATADIR
 --exec cat $MYSQLD_SLAVE_DATADIR/master.backup > $MYSQLD_SLAVE_DATADIR/master.info
+
+let MYSQLD_SLAVE_DATADIR=`select @@datadir`;
+
+--perl
+use strict;
+use warnings;
+my $src= "$ENV{'MYSQLD_SLAVE_DATADIR'}/master.backup";
+my $dst= "$ENV{'MYSQLD_SLAVE_DATADIR'}/master.info";
+open(FILE, "<", $src) or die;
+my @content= <FILE>;
+close FILE;
+open(FILE, ">", $dst) or die;
+binmode FILE;
+print FILE @content;
+close FILE;
+EOF
 
 --exec echo "restart" > $MYSQLTEST_VARDIR/tmp/mysqld.2.expect
 SET SESSION debug="d,crash_before_rotate_relaylog";
