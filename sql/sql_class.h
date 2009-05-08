@@ -24,7 +24,7 @@
 #include "log.h"
 #include "rpl_tblmap.h"
 #include "mdl.h"
-
+#include "replication.h"
 
 #include <waiting_threads.h>
 
