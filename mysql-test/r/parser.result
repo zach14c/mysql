@@ -627,3 +627,36 @@ BACKUP DATABASE *, test to 'broken.bak';
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ' test to 'broken.bak'' at line 1
 BACKUP DATABASE *, db1, db2, db3 to 'broken.bak';
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ' db1, db2, db3 to 'broken.bak'' at line 1
+# Should use myisam
+create logfile group ndb_lg1 add undofile 'ndb_undo1' initial_size=32M;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+create logfile group ndb_lg1 add undofile 'ndb_undo1' engine=myisam;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+create logfile group ndb_lg1 add undofile 'ndb_undo1';
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+create tablespace ndb_ts1 add datafile 'ndb_ts1.dat' use logfile group ndb_lg1 engine=myisam initial_size=32M;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+create tablespace ndb_ts1 add datafile 'ndb_ts1.dat' use logfile group ndb_lg1 engine=myisam;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+create tablespace ndb_ts1 add datafile 'ndb_ts1.dat' use logfile group ndb_lg1;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+alter logfile group ndb_lg1 add undofile 'ndb_undo1' wait;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+alter logfile group ndb_lg1 add undofile 'ndb_undo1' engine=myisam;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+alter logfile group ndb_lg1 add undofile 'ndb_undo1';
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+alter tablespace ndb_ts1 add datafile 'ndb_ts1.dat' initial_size=32M;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+alter tablespace ndb_ts1 add datafile 'ndb_ts1.dat' engine=myisam;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+alter tablespace ndb_ts1 add datafile 'ndb_ts1.dat';
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+drop logfile group ndb_lg1 engine=myisam;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+drop logfile group ndb_lg1;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+drop tablespace ndb_ts1 engine=myisam;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
+drop tablespace ndb_ts1;
+ERROR HY000: Table storage engine 'MyISAM' does not support the create option 'TABLESPACE or LOGFILE GROUP'
