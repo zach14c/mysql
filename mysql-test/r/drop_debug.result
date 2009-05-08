@@ -14,9 +14,9 @@ SET SESSION DEBUG = "+d,bug43138";
 
 DROP DATABASE mysql_test;
 Warnings:
-Error	1051	Unknown table 't3'
-Error	1051	Unknown table 't2'
 Error	1051	Unknown table 't1'
+Error	1051	Unknown table 't2'
+Error	1051	Unknown table 't3'
 
 SET SESSION DEBUG = "-d,bug43138";
 
