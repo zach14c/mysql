@@ -7418,6 +7418,7 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli)
 
     // Do event specific preparations 
     error= do_before_row_operations(rli);
+
     // row processing loop
 
     while (error == 0 && m_curr_row < m_rows_end)
