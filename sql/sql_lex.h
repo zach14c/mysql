@@ -1172,6 +1172,18 @@ public:
     m_echo= echo;
   }
 
+  void save_in_comment_state()
+  {
+    m_echo_saved= m_echo;
+    in_comment_saved= in_comment;
+  }
+
+  void restore_in_comment_state()
+  {
+    m_echo= m_echo_saved;
+    in_comment= in_comment_saved;
+  }
+
   /**
     Skip binary from the input stream.
     @param n number of bytes to accept.
@@ -1440,6 +1452,7 @@ private:
 
   /** Echo the parsed stream to the pre-processed buffer. */
   bool m_echo;
+  bool m_echo_saved;
 
   /** Pre-processed buffer. */
   char *m_cpp_buf;
@@ -1506,6 +1519,7 @@ public:
 
   /** State of the lexical analyser for comments. */
   enum_comment_state in_comment;
+  enum_comment_state in_comment_saved;
 
   /**
     Starting position of the TEXT_STRING or IDENT in the pre-processed
@@ -1838,6 +1852,22 @@ struct LEX: public Query_tables_list
   
   bool escape_used;
   bool is_lex_started; /* If lex_start() did run. For debugging. */
+
+  /*
+    Special case for SELECT .. FOR UPDATE and LOCK TABLES .. WRITE.
+
+    Protect from a impending GRL as otherwise the thread might deadlock
+    if it starts waiting for the GRL in mysql_lock_tables.
+
+    The protection is needed because there is a race between setting
+    the global read lock and waiting for all open tables to be closed.
+    The problem is a circular wait where a thread holding "old" open
+    tables will wait for the global read lock to be released while the
+    thread holding the global read lock will wait for all "old" open
+    tables to be closed -- the flush part of flush tables with read
+    lock.
+  */
+  bool protect_against_global_read_lock;
 
   LEX();
 

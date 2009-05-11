@@ -30,6 +30,8 @@ extern ulong locks_immediate,locks_waited ;
 /**
   Lock types are used to request a lock on a table. Changes in this enumeration
   might affect transactional locks as well.
+  Important: if a new lock type is added, a matching lock description
+            must be added to sql_test.cc's lock_descriptions array.
   @see set_handler_table_locks
   @see read_lock_type_for_table
 */

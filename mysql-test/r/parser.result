@@ -627,3 +627,6 @@ BACKUP DATABASE *, test to 'broken.bak';
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ' test to 'broken.bak'' at line 1
 BACKUP DATABASE *, db1, db2, db3 to 'broken.bak';
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ' db1, db2, db3 to 'broken.bak'' at line 1
+#
+# End of 5.1 tests
+#

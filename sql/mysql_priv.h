@@ -419,6 +419,11 @@ enum open_table_mode
 #define PRECISION_FOR_DOUBLE 53
 #define PRECISION_FOR_FLOAT  24
 
+/* -[digits].E+## */
+#define MAX_FLOAT_STR_LENGTH (FLT_DIG + 6)
+/* -[digits].E+### */
+#define MAX_DOUBLE_STR_LENGTH (DBL_DIG + 7)
+
 /*
   Default time to wait before aborting a new client connection
   that does not respond to "initial server greeting" timely
@@ -870,6 +875,7 @@ inline bool check_identifier_name(LEX_STRING *str)
 {
   return check_identifier_name(str, NAME_CHAR_LEN, 0, "");
 }
+CHARSET_INFO *merge_charset_and_collation(CHARSET_INFO *cs, CHARSET_INFO *cl);
 
 bool parse_sql(THD *thd,
                Parser_state *parser_state,

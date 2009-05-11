@@ -19,7 +19,7 @@
 # define ASSERT(X)
 #else
 # include <assert.h>
-/// Macro to map assertion call when debug is off.
+/** Macro to map assertion call when debug is off. */
 # define ASSERT(X) assert(X)
 #endif
 
@@ -33,12 +33,16 @@
 
 /* local types */
 
-typedef unsigned char bool; ///< definition of bool
-#define TRUE    1  ///< definition of true
-#define FALSE   0  ///< definition of false
+typedef unsigned char bool; /**< definition of bool */
+#ifndef TRUE
+#define TRUE    1  /**< definition of true */
+#endif
+#ifndef FALSE
+#define FALSE   0  /**< definition of false */
+#endif
 
-typedef bstream_byte byte;  ///< type definition of bstream byte
-typedef bstream_blob blob;  ///< type definition of bstream blob
+typedef bstream_byte byte;  /**< type definition of bstream byte */
+typedef bstream_blob blob;  /**< type definition of bstream blob */
 
 /**
   Macro mapping bzro() to memset().
@@ -55,20 +59,20 @@ typedef bstream_blob blob;  ///< type definition of bstream blob
   error.
 */
 
-/// Macro to check write result.
+/** Macro to check write result. */
 #define CHECK_WR_RES(X) \
   do{\
    if ((ret= X) != BSTREAM_OK) goto wr_error;\
   } while(0)
 
-/// Macro to check read ok return.
+/** Macro to check read ok return. */
 #define CHECK_RD_OK(X) \
  do{\
    if ((ret= X) != BSTREAM_OK)\
     { ret=BSTREAM_ERROR; goto rd_error; }\
  } while(0)
 
-/// Macro to check read result.
+/** Macro to check read result. */
 #define CHECK_RD_RES(X) \
  do{\
    if ((ret= X) == BSTREAM_ERROR) goto rd_error;\
@@ -623,7 +627,7 @@ int bstream_rd_image_info(backup_stream *s, struct st_bstream_snapshot_info *inf
   @endverbatim
 */
 
-/// Definition of extra data flag bits.
+/** Definition of extra data flag bits. */
 #define BSTREAM_FLAG_HAS_EXTRA_DATA   0x80
 
 int bstream_wr_db_catalogue(backup_stream*, struct st_bstream_image_header*,
@@ -1461,7 +1465,7 @@ int bstream_rd_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
   @endverbatim
 */
 
-/// Definition of create statement flag bits.
+/** Definition of create statement flag bits. */
 #define BSTREAM_FLAG_HAS_CREATE_STMT 0x40
 
 /**

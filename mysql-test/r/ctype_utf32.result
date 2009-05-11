@@ -1411,3 +1411,40 @@ hex(weight_string(s1, 4, 2, 0))
 DROP TABLE t1;
 SET max_sort_length=DEFAULT;
 SET NAMES latin1;
+drop table if exists t1;
+Warnings:
+Note	1051	Unknown table 't1'
+create table t1 (s1 char(5) character set utf32);
+insert into t1 values ('a');
+insert into t1 select concat(s1, 1) from t1;
+select hex(s1) from t1;
+hex(s1)
+00000061
+0000006100000031
+drop table t1;
+drop table if exists t1;
+Warnings:
+Note	1051	Unknown table 't1'
+create table t1 (s1 char(5) character set utf32);
+insert into t1 values ('a');
+insert into t1 select concat(s1, 0.1) from t1;
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x30\x2E\x31' for column 's1' at row 1
+select hex(s1) from t1;
+hex(s1)
+00000061
+00000061
+drop table t1;
+drop table if exists t1;
+Warnings:
+Note	1051	Unknown table 't1'
+create table t1 (s1 char(5) character set utf32);
+insert into t1 values ('a');
+insert into t1 select concat(s1, 1e-1) from t1;
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x30\x2E\x31' for column 's1' at row 1
+select hex(s1) from t1;
+hex(s1)
+00000061
+00000061
+drop table t1;
