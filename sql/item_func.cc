@@ -2767,7 +2767,7 @@ longlong Item_func_find_in_set::val_int()
 
   if ((int) (buffer->length() - find->length()) >= 0)
   {
-    my_wc_t wc;
+    my_wc_t wc= 0;
     CHARSET_INFO *cs= cmp_collation.collation;
     const char *str_begin= buffer->ptr();
     const char *str_end= buffer->ptr();

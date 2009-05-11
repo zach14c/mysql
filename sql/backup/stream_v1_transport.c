@@ -20,7 +20,7 @@
 # define ASSERT(X)
 #else
 # include <assert.h>
-/// Macro to map assertion call when debug is off.
+/** Macro to map assertion call when debug is off. */
 # define ASSERT(X) assert(X)
 #endif
 
@@ -68,12 +68,16 @@
 
 /* Local type definitions. */
 
-#define TRUE    1  ///< definition of true
-#define FALSE   0  ///< definition of false
+#ifndef TRUE
+#define TRUE    1  /**< definition of true */
+#endif
+#ifndef FALSE
+#define FALSE   0  /**< definition of false */
+#endif
 
-typedef unsigned char bool; ///< Type definition of unsigned character to bool.
-typedef bstream_byte byte;  ///< Type definition of bstream_byte to byte.
-typedef bstream_blob blob;  ///< Type definition of bstream_blob to blob.
+typedef unsigned char bool; /**< Type definition of unsigned character to bool. */
+typedef bstream_byte byte;  /**< Type definition of bstream_byte to byte. */
+typedef bstream_blob blob;  /**< Type definition of bstream_blob to blob. */
 
 /**
   Macro mapping bzro() to memset().
@@ -174,20 +178,20 @@ extern byte get_byte_size_t(size_t value);
  *
  *************************************************************************/
 
-#define FR_EOC    0x80  ///< bits for EOC fragment
-#define FR_EOS    0xC0  ///< bits for EOS fragment
-#define FR_MORE   0x00  ///< bits for MORE fragment
-#define FR_LAST   0x40  ///< bits for LAST fragment
+#define FR_EOC    0x80  /**< bits for EOC fragment */
+#define FR_EOS    0xC0  /**< bits for EOS fragment */
+#define FR_MORE   0x00  /**< bits for MORE fragment */
+#define FR_LAST   0x40  /**< bits for LAST fragment */
 
-#define FR_TYPE_MASK  0xC0  ///< type bits for mask
-#define FR_LEN_MASK   (~FR_TYPE_MASK)  ///< type length for mask
+#define FR_TYPE_MASK  0xC0  /**< type bits for mask */
+#define FR_LEN_MASK   (~FR_TYPE_MASK)  /**< type length for mask */
 
 /** biggest size of small fragment */
 #define FR_SMALL_MAX  ((size_t)FR_LEN_MASK)
-#define FR_BIG        0x80        ///< type bits for big fragment
-#define FR_HUGE       0xC0        ///< type bits for huge fragment
-#define FR_BIG_SHIFT  6           ///< value shift for big fragment 
-#define FR_HUGE_SHIFT 12          ///< value shift for huge fragment 
+#define FR_BIG        0x80        /**< type bits for big fragment */
+#define FR_HUGE       0xC0        /**< type bits for huge fragment */
+#define FR_BIG_SHIFT  6           /**< value shift for big fragment */
+#define FR_HUGE_SHIFT 12          /**< value shift for huge fragment */
 /** header for the biggest possible chunk */
 #define FR_HUGE_MAX_HDR (FR_HUGE|FR_LEN_MASK)
 /** size of the biggest possible chunk */
@@ -311,15 +315,15 @@ int read_fragment_header(byte **header)
  (parameter S) to write/read bytes to/from underlying stream.
 */
 
-/// Macro mapping as_write to write method call result.
+/** Macro mapping as_write to write method call result. */
 #define as_write(S,Data,Env) \
   ((S)->write ? (S)->write((S),(Data),(Env)) : BSTREAM_ERROR)
 
-/// Macro mapping as_read to read method call result.
+/** Macro mapping as_read to read method call result. */
 #define as_read(S,Buf,Env) \
   ((S)->read ?(S)->read((S),(Buf),(Env)) : BSTREAM_ERROR)
 
-/// Macro mapping as_forward to forward method call result.
+/** Macro mapping as_forward to forward method call result. */
 #define as_forward(S,Off) \
   ((S)->forward ? (S)->forward((S),(Off)) : (*(Off)=0, BSTREAM_ERROR))
 
@@ -584,7 +588,7 @@ int close_current_fragment(backup_stream *s)
 
  *************************************************************************/
 
-/// Input buffer macro to check validity.
+/** Input buffer macro to check validity. */
 #define IBUF_INV(B) \
   ASSERT((B).begin <= (B).pos); \
   ASSERT((B).begin <= (B).header); \

@@ -127,15 +127,6 @@ if test "x$havepoll" = "xyes" ; then
 	needsignal=yes
 fi
 
-haveepoll=no
-AC_CHECK_FUNCS(epoll_ctl, [haveepoll=yes])
-if test "x$haveepoll" = "xyes" ; then
-	AC_DEFINE(HAVE_EPOLL, 1,
-		[Define if your system supports the epoll system calls])
-	AC_LIBOBJ(epoll)
-	needsignal=yes
-fi
-
 havedevpoll=no
 if test "x$ac_cv_header_sys_devpoll_h" = "xyes"; then
 	AC_DEFINE(HAVE_DEVPOLL, 1,
@@ -205,9 +196,10 @@ if test "x$ac_cv_header_sys_event_h" = "xyes"; then
 	fi
 fi
 
-haveepollsyscall=no
+haveepoll=no
 if test "x$ac_cv_header_sys_epoll_h" = "xyes"; then
-	if test "x$haveepoll" = "xno" ; then
+	AC_CHECK_FUNCS(epoll_ctl, [haveepoll=yes], )
+	if test "x$haveepoll" = "xyes" ; then
 		AC_MSG_CHECKING(for epoll system call)
     AC_RUN_IFELSE(
       [AC_LANG_PROGRAM(

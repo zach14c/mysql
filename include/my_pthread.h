@@ -495,7 +495,6 @@ void safe_mutex_free_deadlock_data(safe_mutex_t *mp);
 #define my_pthread_mutex_lock(A,B) pthread_mutex_lock(A)
 #define safe_mutex_assert_owner(mp)
 #define safe_mutex_assert_not_owner(mp)
-#define safe_mutex_free_deadlock_data(mp)
 #endif /* SAFE_MUTEX */
 
 #if defined(MY_PTHREAD_FASTMUTEX) && !defined(SAFE_MUTEX)

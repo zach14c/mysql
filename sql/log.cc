@@ -1714,6 +1714,7 @@ void LOGGER::cleanup_base()
   {
     table_log_handler->cleanup();
     delete table_log_handler;
+    table_log_handler= NULL;
   }
   if (file_log_handler)
     file_log_handler->cleanup();
@@ -1724,7 +1725,11 @@ void LOGGER::cleanup_end()
 {
   DBUG_ASSERT(inited == 1);
   if (file_log_handler)
+  {
     delete file_log_handler;
+    file_log_handler=NULL;
+  }
+  inited= 0;
 }
 
 

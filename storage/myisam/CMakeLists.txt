@@ -59,6 +59,8 @@ IF(NOT SOURCE_SUBLIBS)
   ADD_EXECUTABLE(rt_test rt_test.c)
   TARGET_LINK_LIBRARIES(rt_test myisam mysys dbug strings zlib)
   
+  SET_TARGET_PROPERTIES(myisamchk myisampack PROPERTIES LINK_FLAGS "setargv.obj")
+
   IF(EMBED_MANIFESTS)
     MYSQL_EMBED_MANIFEST("myisam_ftdump" "asInvoker")
     MYSQL_EMBED_MANIFEST("myisamchk" "asInvoker")

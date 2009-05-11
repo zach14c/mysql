@@ -16,12 +16,12 @@
 #ifndef __INTERLOCK_H
 #define __INTERLOCK_H
 
-#if defined(__sparcv8) || defined(__sparcv9) || defined(__sun)
+#if defined(__sun)
 #include <sys/atomic.h>
 
-#if defined(__SunOS_5_9) && defined(__SUNPRO_CC) && defined(__sparc)
+#if (defined(__SunOS_5_8) || defined(__SunOS_5_9)) && defined(__SUNPRO_CC) && defined(__sparc)
 #include "CompareAndSwapSparc.h"
-#endif /* __SunOS_5_9 && __SUNPRO_CC && __sparc */
+#endif
 
 #endif
 
@@ -144,16 +144,16 @@ inline int inline_cas (volatile int *target, int compare, int exchange)
 		);
 	return ret;
     /*
-       We are running Sun Studio on SPARC or x86
+       We are running Sun Studio on Solaris >= 10 (SPARC or x86), use libc implementation
        Todo: get assembler version of atomic_cas_uint().
      */
-#elif (defined(__sparcv8) || defined(__sparcv9) || defined(__sun)) && !defined(__GNUC__)
-#if defined(__SunOS_5_10) || defined(__SunOS_5_11)
-    return (compare == atomic_cas_uint((volatile uint_t *)target, compare, exchange));
-#else
-	/* Use inline assembly for Solaris 9 */
+#elif (defined(__SunOS_5_10) || defined(__SunOS_5_11)) && defined(__SUNPRO_CC)
+	return (compare == atomic_cas_uint((volatile uint_t *)target, compare, exchange));
+    /*
+       We are running Sun Studio on Solaris < 10 (SPARC, no x86 yet), use inline assembler
+    */
+#elif defined(__sparc) && defined(__SUNPRO_CC)
 	return cas_sparc(target, compare, exchange);
-#endif
 
 #else
 #  error inline_cas not defined for this platform
@@ -255,16 +255,16 @@ inline char inline_cas_pointer (volatile void **target, void *compare, void *exc
 	}
 	return ret;
     /*
-       We are running Sun Studio on SPARC or x86
+       We are running Sun Studio on Solaris >= 10 (SPARC or x86), use libc implementation
        Todo: get assembler version of atomic_cas_ptr().
      */
-#elif (defined(__sparcv8) || defined(__sparcv9) || defined(__sun)) && !defined(__GNUC__)
-#if defined(__SunOS_5_10) || defined(__SunOS_5_11)
-    return (char)(compare == atomic_cas_ptr(target, compare, exchange));
-#else
-	/* Use inline assembly for Solaris 9 */
+#elif (defined(__SunOS_5_10) || defined(__SunOS_5_11)) && defined(__SUNPRO_CC)
+	return (char)(compare == atomic_cas_ptr(target, compare, exchange));
+    /*
+       We are running Sun Studio on Solaris < 10 (SPARC, no x86 yet), use inline assembler
+    */
+#elif defined(__sparc) && defined(__SUNPRO_CC)
 	return cas_pointer_sparc(target, compare, exchange);
-#endif
 
 #else
 #  error inline_cas not defined for this platform
