@@ -100,10 +100,14 @@ bool trans_begin(THD *thd, uint flags)
 
   DBUG_ASSERT(!thd->locked_tables_mode);
 
-  thd->mdl_context.release_all_locks();
-
   if (trans_commit_implicit(thd))
     DBUG_RETURN(TRUE);
+
+  /*
+    Release transactional metadata locks only after the
+    transaction has been committed.
+  */
+  thd->mdl_context.release_all_locks();
 
   thd->options|= OPTION_BEGIN;
   thd->server_status|= SERVER_STATUS_IN_TRANS;

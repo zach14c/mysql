@@ -2550,11 +2550,11 @@ sp_decl:
             LEX *lex= Lex;
             sp_pcontext *spc= lex->spcont;
 
-	    if (spc->find_cond(&$2, TRUE))
-	    {
-	      my_error(ER_SP_DUP_COND, MYF(0), $2.str);
-	      MYSQL_YYABORT;
-	    }
+            if (spc->find_cond(&$2, TRUE))
+            {
+              my_error(ER_SP_DUP_COND, MYF(0), $2.str);
+              MYSQL_YYABORT;
+            }
 	    if(YYTHD->lex->spcont->push_cond(&$2, $5))
               MYSQL_YYABORT;
             $$.vars= $$.hndlrs= $$.curs= 0;
@@ -2570,7 +2570,7 @@ sp_decl:
             sp_pcontext *ctx= lex->spcont;
             sp_instr_hpush_jump *i=
               new sp_instr_hpush_jump(sp->instructions(), ctx, $2,
-	                              ctx->current_var_count());
+                                      ctx->current_var_count());
             if (i == NULL ||
 	        sp->add_instr(i) ||
                 sp->push_backpatch(i, ctx->push_label((char *)"", 0)))
@@ -3303,6 +3303,7 @@ sp_if:
                 sp->add_cont_backpatch(i) ||
                 sp->add_instr(i))
               MYSQL_YYABORT;
+
             sp->restore_lex(YYTHD);
           }
           sp_proc_stmts1
@@ -3314,6 +3315,7 @@ sp_if:
             if (i == NULL ||
                 sp->add_instr(i))
               MYSQL_YYABORT;
+
             sp->backpatch(ctx->pop_label());
             sp->push_backpatch(i, ctx->push_label((char *)"", 0));
           }
@@ -3581,7 +3583,7 @@ sp_unlabeled_control:
             if (i == NULL ||
                 lex->sphead->add_instr(i))
               MYSQL_YYABORT;
-	  }
+          }
         | WHILE_SYM 
           { Lex->sphead->reset_lex(YYTHD); }
           expr DO_SYM
@@ -3592,7 +3594,7 @@ sp_unlabeled_control:
             sp_instr_jump_if_not *i = new sp_instr_jump_if_not(ip, lex->spcont,
                                                                $3, lex);
             if (i == NULL ||
-	    /* Jumping forward */
+            /* Jumping forward */
                 sp->push_backpatch(i, lex->spcont->last_label()) ||
                 sp->new_cont_backpatch(i) ||
                 sp->add_instr(i))
@@ -3734,7 +3736,8 @@ change_ts_option:
         ;
 
 tablespace_option_list:
-        tablespace_options
+          /* empty */ 
+        | tablespace_options
         ;
 
 tablespace_options:
@@ -3755,7 +3758,8 @@ tablespace_option:
         ;
 
 alter_tablespace_option_list:
-        alter_tablespace_options
+          /* empty */
+        | alter_tablespace_options
         ;
 
 alter_tablespace_options:
@@ -3773,7 +3777,8 @@ alter_tablespace_option:
         ;
 
 logfile_group_option_list:
-        logfile_group_options
+          /* empty */ 
+        | logfile_group_options
         ;
 
 logfile_group_options:
@@ -3793,7 +3798,8 @@ logfile_group_option:
         ;
 
 alter_logfile_group_option_list:
-          alter_logfile_group_options
+          /* empty */ 
+        | alter_logfile_group_options
         ;
 
 alter_logfile_group_options:
@@ -3961,11 +3967,6 @@ opt_ts_engine:
             }
             lex->alter_tablespace_info->storage_engine= $4;
           }
-        ;
-
-opt_ts_wait:
-          /* empty */
-        | ts_wait
         ;
 
 ts_wait:
@@ -10161,12 +10162,12 @@ drop:
             lex->drop_if_exists= $3;
             lex->spname= $4;
           }
-        | DROP TABLESPACE tablespace_name opt_ts_engine opt_ts_wait
+        | DROP TABLESPACE tablespace_name drop_ts_options_list
           {
             LEX *lex= Lex;
             lex->alter_tablespace_info->ts_cmd_type= DROP_TABLESPACE;
           }
-        | DROP LOGFILE_SYM GROUP_SYM logfile_group_name opt_ts_engine opt_ts_wait
+        | DROP LOGFILE_SYM GROUP_SYM logfile_group_name drop_ts_options_list
           {
             LEX *lex= Lex;
             lex->alter_tablespace_info->ts_cmd_type= DROP_LOGFILE_GROUP;
@@ -10217,6 +10218,21 @@ opt_temporary:
           /* empty */ { $$= 0; }
         | TEMPORARY { $$= 1; }
         ;
+
+drop_ts_options_list:
+          /* empty */
+        | drop_ts_options
+
+drop_ts_options:
+          drop_ts_option
+        | drop_ts_options drop_ts_option
+        | drop_ts_options_list ',' drop_ts_option
+        ;
+
+drop_ts_option:
+          opt_ts_engine
+      	| ts_wait
+
 /*
 ** Insert : add new data to table
 */

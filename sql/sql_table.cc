@@ -1498,6 +1498,8 @@ bool mysql_rm_table(THD *thd,TABLE_LIST *tables, my_bool if_exists,
                     my_bool drop_temporary)
 {
   bool error, need_start_waiting= FALSE;
+  Drop_table_error_handler err_handler(thd->get_internal_handler());
+
   DBUG_ENTER("mysql_rm_table");
 
   /* mark for close and remove all cached entries */
@@ -1509,7 +1511,9 @@ bool mysql_rm_table(THD *thd,TABLE_LIST *tables, my_bool if_exists,
       DBUG_RETURN(TRUE);
   }
 
+  thd->push_internal_handler(&err_handler);
   error= mysql_rm_table_part2(thd, tables, if_exists, drop_temporary, 0, 0);
+  thd->pop_internal_handler();
 
   if (need_start_waiting)
     start_waiting_global_read_lock(thd);
@@ -1648,9 +1652,6 @@ int mysql_rm_table_part2(THD *thd, TABLE_LIST *tables, bool if_exists,
         }
     }
   }
-
-  /* Don't give warnings for not found errors, as we already generate notes */
-  thd->no_warnings_for_error= 1;
 
   for (table= tables; table; table= table->next_local)
   {
@@ -1793,11 +1794,18 @@ int mysql_rm_table_part2(THD *thd, TABLE_LIST *tables, bool if_exists,
         wrong_tables.append(',');
       wrong_tables.append(String(table->table_name,system_charset_info));
     }
+
+    DBUG_EXECUTE_IF("bug43138",
+                    my_printf_error(ER_BAD_TABLE_ERROR,
+                                    ER(ER_BAD_TABLE_ERROR), MYF(0),
+                                    table->table_name););
+
     DBUG_PRINT("table", ("table: %p  s: %p", table->table,
                          table->table ? table->table->s : (TABLE_SHARE *)-1));
   }
   thd->thread_specific_used|= tmp_table_deleted;
   error= 0;
+
   if (wrong_tables.length())
   {
     if (!foreign_key_error)
@@ -1890,7 +1898,6 @@ err:
   }
 
 end:
-  thd->no_warnings_for_error= 0;
   DBUG_RETURN(error);
 }
 
