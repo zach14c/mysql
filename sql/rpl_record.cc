@@ -208,7 +208,7 @@ unpack_row(Relay_log_info const *rli,
            TABLE *table, uint const colcnt,
            uchar const *const row_data, MY_BITMAP const *cols,
            uchar const **const row_end, ulong *const master_reclength,
-           bool unpack_blobs)
+           bool unpack_blobs, const bool abort_on_warning, const bool first_row)
 {
   DBUG_ENTER("unpack_row");
   DBUG_ASSERT(row_data);
@@ -265,12 +265,34 @@ unpack_row(Relay_log_info const *rli,
       /* Field...::unpack() cannot return 0 */
       DBUG_ASSERT(pack_ptr != NULL);
 
-      if ((null_bits & null_mask) && f->maybe_null())
+      if (null_bits & null_mask)
       {
-        DBUG_PRINT("debug", ("Was NULL; null mask: 0x%x; null bits: 0x%x",
-                             null_mask, null_bits));
-
-        f->set_null();
+        if (f->maybe_null())
+        {
+          DBUG_PRINT("debug", ("Was NULL; null mask: 0x%x; null bits: 0x%x",
+                               null_mask, null_bits));
+          f->set_null();
+        }
+        else
+        {
+          MYSQL_ERROR::enum_warning_level error_type=
+            MYSQL_ERROR::WARN_LEVEL_NOTE;
+          if (abort_on_warning && (table->file->has_transactions() ||
+                                   first_row))
+          {
+            error = HA_ERR_ROWS_EVENT_APPLY;
+            error_type= MYSQL_ERROR::WARN_LEVEL_ERROR;
+          }
+          else 
+          {
+            f->set_default();
+            error_type= MYSQL_ERROR::WARN_LEVEL_WARN;
+          }
+          push_warning_printf(current_thd, error_type,
+                              ER_BAD_NULL_ERROR,
+                              ER(ER_BAD_NULL_ERROR),
+                              f->field_name);
+        }
       }
       else if (!unpack_blobs && f->unireg_check==Field::BLOB_FIELD)
       {
@@ -382,7 +404,8 @@ unpack_row(Relay_log_info const *rli,
   @retval ER_NO_DEFAULT_FOR_FIELD Default value could not be checked for a field
  */ 
 int prepare_record(TABLE *const table, const MY_BITMAP *cols, uint width,
-                   const bool check, const bool abort_on_warning)
+                   const bool check, const bool abort_on_warning,
+                   const bool first_row)
 {
   DBUG_ENTER("prepare_record");
 
@@ -409,14 +432,23 @@ int prepare_record(TABLE *const table, const MY_BITMAP *cols, uint width,
       if ((f->flags &  NO_DEFAULT_VALUE_FLAG) &&
           (f->real_type() != MYSQL_TYPE_ENUM))
       {
-        push_warning_printf(current_thd, abort_on_warning?
-                            MYSQL_ERROR::WARN_LEVEL_ERROR :
-                            MYSQL_ERROR::WARN_LEVEL_WARN,
+        MYSQL_ERROR::enum_warning_level error_type=
+          MYSQL_ERROR::WARN_LEVEL_NOTE;
+        if (abort_on_warning && (table->file->has_transactions() ||
+                                 first_row))
+        {
+          error= HA_ERR_ROWS_EVENT_APPLY;
+          error_type= MYSQL_ERROR::WARN_LEVEL_ERROR;
+        }
+        else 
+        {
+          f->set_default();
+          error_type= MYSQL_ERROR::WARN_LEVEL_WARN;
+        }
+        push_warning_printf(current_thd, error_type,
                             ER_NO_DEFAULT_FOR_FIELD,
                             ER(ER_NO_DEFAULT_FOR_FIELD),
                             f->field_name);
-        if (abort_on_warning)
-          error = HA_ERR_ROWS_EVENT_APPLY;
       }
     }
   }

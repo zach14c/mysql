@@ -313,7 +313,7 @@ last_uniq_key(TABLE *table, uint keyno)
 
   Returns TRUE if different.
 */
-static bool record_compare(TABLE *table)
+static bool record_compare(TABLE *table, const MY_BITMAP *cols_in_readset)
 {
   /*
     Need to set the X bit and the filler bits in both records since
@@ -342,16 +342,25 @@ static bool record_compare(TABLE *table)
     }
   }
 
-  if (table->s->blob_fields + table->s->varchar_fields == 0)
+  /*   
+     We can compare the record straight away if:
+       i) there are no blob and varchar fields
+      ii) all columns were read or the slave SE provides partial reads
+  */
+  if ((table->s->blob_fields + table->s->varchar_fields == 0) &&
+      (bitmap_is_set_all(cols_in_readset) || 
+      (table->file->ha_table_flags() & HA_PARTIAL_COLUMN_READ)))
   {
     result= cmp_record(table,record[1]);
     goto record_compare_exit;
   }
 
-  /* Compare null bits */
-  if (memcmp(table->null_flags,
-       table->null_flags+table->s->rec_buff_length,
-       table->s->null_bytes))
+  /* Compare null bits only if all fields were read or slave SE has partial reads */
+  if ((bitmap_is_set_all(cols_in_readset) || 
+        (table->file->ha_table_flags() & HA_PARTIAL_COLUMN_READ)) && 
+      memcmp(table->null_flags,
+             table->null_flags+table->s->rec_buff_length,
+             table->s->null_bytes))
   {
     result= TRUE;       // Diff in NULL value
     goto record_compare_exit;
@@ -360,10 +369,14 @@ static bool record_compare(TABLE *table)
   /* Compare updated fields */
   for (Field **ptr=table->field ; *ptr ; ptr++)
   {
-    if ((*ptr)->cmp_binary_offset(table->s->rec_buff_length))
-    {
-      result= TRUE;
-      goto record_compare_exit;
+    /* compare field if it is set */
+    if (bitmap_is_set(cols_in_readset, (*ptr)->field_index))
+    { 
+      if ((*ptr)->cmp_binary_offset(table->s->rec_buff_length))
+      {
+        result= TRUE;
+        goto record_compare_exit;
+      }
     }
   }
 
@@ -644,6 +657,7 @@ replace_record(THD *thd, TABLE *table,
 
   @param table Pointer to table to search
   @param key   Pointer to key to use for search, if table has key
+  @param cols  Bitmap denoting the columns read in the BI image.
 
   @pre <code>table->record[0]</code> shall contain the row to locate
   and <code>key</code> shall contain a key to use for searching, if
@@ -659,7 +673,7 @@ replace_record(THD *thd, TABLE *table,
   <code>table->record[1]</code>, error code otherwise.
  */
 
-static int find_and_fetch_row(TABLE *table, uchar *key)
+static int find_and_fetch_row(TABLE *table, uchar *key, MY_BITMAP *cols)
 {
   DBUG_ENTER("find_and_fetch_row(TABLE *table, uchar *key, uchar *record)");
   DBUG_PRINT("enter", ("table: %p, key: %p  record: %p",
@@ -761,7 +775,7 @@ static int find_and_fetch_row(TABLE *table, uchar *key)
       DBUG_RETURN(0);
     }
 
-    while (record_compare(table))
+    while (record_compare(table, cols))
     {
       int error;
 
@@ -837,7 +851,7 @@ static int find_and_fetch_row(TABLE *table, uchar *key)
   DBUG_RETURN(error);
       }
     }
-    while (restart_count < 2 && record_compare(table));
+    while (restart_count < 2 && record_compare(table, cols));
 
     /*
       Have to restart the scan to be able to fetch the next row.
@@ -1060,7 +1074,7 @@ int Delete_rows_log_event_old::do_exec_row(TABLE *table)
   int error;
   DBUG_ASSERT(table != NULL);
 
-  if (!(error= ::find_and_fetch_row(table, m_key)))
+  if (!(error= ::find_and_fetch_row(table, m_key, &m_cols)))
   { 
     /*
       Now we should have the right row to delete.  We are using
@@ -1168,7 +1182,7 @@ int Update_rows_log_event_old::do_exec_row(TABLE *table)
 {
   DBUG_ASSERT(table != NULL);
 
-  int error= ::find_and_fetch_row(table, m_key);
+  int error= ::find_and_fetch_row(table, m_key, &m_cols);
   if (error)
     return error;
 
@@ -2387,7 +2401,7 @@ int Old_rows_log_event::find_row(const Relay_log_info *rli)
      */ 
     DBUG_PRINT("info",("non-unique index, scanning it to find matching record")); 
 
-    while (record_compare(table))
+    while (record_compare(table, &m_cols))
     {
       /*
         We need to set the null bytes to ensure that the filler bit
@@ -2463,7 +2477,7 @@ int Old_rows_log_event::find_row(const Relay_log_info *rli)
         DBUG_RETURN(error);
       }
     }
-    while (restart_count < 2 && record_compare(table));
+    while (restart_count < 2 && record_compare(table, &m_cols));
     
     /* 
       Note: above record_compare will take into accout all record fields 
