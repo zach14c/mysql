@@ -410,7 +410,8 @@ bool Drop_table_error_handler::handle_condition(THD *thd,
                                                 const char *msg,
                                                 MYSQL_ERROR **condition)
 {
-  return sql_errno == EE_DELETE || sql_errno == ER_TRG_NO_DEFINER;
+  return (sql_errno == EE_DELETE && my_errno == ENOENT)
+       || sql_errno == ER_TRG_NO_DEFINER;
 }
 
 
