@@ -33,7 +33,7 @@ our $print_testcases;
 our $skip_rpl;
 our $do_test;
 our $skip_test;
-our $opt_skip_combination;
+our $skip_combinations;
 our $binlog_format;
 our $enable_disabled;
 our $default_storage_engine;
@@ -93,7 +93,6 @@ sub init_pattern {
 
 sub collect_test_cases ($$) {
   my $suites= shift; # Semicolon separated list of test suites
-  my %found_suites;
   my $opt_cases= shift;
   my $cases= []; # Array of hash(one hash for each testcase)
 
@@ -103,7 +102,6 @@ sub collect_test_cases ($$) {
   foreach my $suite (split(",", $suites))
   {
     push(@$cases, collect_one_suite($suite, $opt_cases));
-    $found_suites{$suite}= 1;
   }
 
   if ( @$opt_cases )
@@ -115,23 +113,28 @@ sub collect_test_cases ($$) {
     {
       my $found= 0;
       my ($sname, $tname, $extension)= split_testname($test_name_spec);
-      if (defined($sname) && !defined($found_suites{$sname}))
-      {
-	$found_suites{$sname}= 1;
-	push(@$cases, collect_one_suite($sname));
-      }
-
       foreach my $test ( @$cases )
       {
 	# test->{name} is always in suite.name format
 	if ( $test->{name} =~ /.*\.$tname/ )
 	{
 	  $found= 1;
+	  last;
 	}
       }
       if ( not $found )
       {
-	mtr_error("Could not find '$tname' in '$suites' suite(s)");
+	mtr_error("Could not find '$tname' in '$suites' suite(s)") unless $sname;
+	# If suite was part of name, find it there
+	my ($this_case) = collect_one_suite($sname, [ $tname ]);
+	if ($this_case)
+        {
+	  push (@$cases, $this_case);
+	}
+	else
+	{
+	  mtr_error("Could not find '$tname' in '$sname' suite");
+        }
       }
     }
   }
@@ -383,7 +386,7 @@ sub collect_one_suite($)
   # Read combinations for this suite and build testcases x combinations
   # if any combinations exists
   # ----------------------------------------------------------------------
-  if ( ! $opt_skip_combination )
+  if ( ! $skip_combinations )
   {
     my @combinations;
     my $combination_file= "$suitedir/combinations";
