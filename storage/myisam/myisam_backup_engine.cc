@@ -974,7 +974,7 @@ Log_backup::Log_backup(const char *log_name_arg) : log_name(log_name_arg),
     except that it allows us to verify that what restore sends us is really a
     log.
   */
-  log_file_backup.init(fd, ~(ULL(0)), LOG_FILE_CODE);
+  log_file_backup.init(fd, ~(0ULL), LOG_FILE_CODE);
   state= OK;
   DBUG_VOID_RETURN;
 }

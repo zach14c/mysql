@@ -4314,7 +4314,7 @@ uint prep_alter_part_table(THD *thd, TABLE *table, Alter_info *alter_info,
       alt_part_info->part_type= tab_part_info->part_type;
       alt_part_info->subpart_type= tab_part_info->subpart_type;
       if (alt_part_info->set_up_defaults_for_partitioning(table->file,
-                                                          ULL(0), 
+                                                          0ULL, 
                                                           tab_part_info->no_parts))
       {
         DBUG_RETURN(TRUE);
@@ -4735,7 +4735,7 @@ state of p1.
       alt_part_info->no_subparts= tab_part_info->no_subparts;
       DBUG_ASSERT(!alt_part_info->use_default_partitions);
       if (alt_part_info->set_up_defaults_for_partitioning(table->file,
-                                                          ULL(0), 
+                                                          0ULL, 
                                                           0))
       {
         DBUG_RETURN(TRUE);
@@ -4876,7 +4876,7 @@ the generated partition syntax in a correct manner.
         tab_part_info->use_default_no_subpartitions= FALSE;
       }
       if (tab_part_info->check_partition_info(thd, (handlerton**)NULL,
-                                              table->file, ULL(0), FALSE))
+                                              table->file, 0ULL, FALSE))
       {
         DBUG_RETURN(TRUE);
       }

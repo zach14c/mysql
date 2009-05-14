@@ -944,7 +944,7 @@ static my_bool allocate_head(MARIA_FILE_BITMAP *bitmap, uint size,
       a full page or a tail page
     */
     if ((!bits && best_data) ||
-        ((bits & LL(04444444444444444)) == LL(04444444444444444)))
+        ((bits & 04444444444444444LL) == 04444444444444444LL))
       continue;
     for (i= 0; i < 16 ; i++, bits >>= 3)
     {
@@ -1029,8 +1029,8 @@ static my_bool allocate_tail(MARIA_FILE_BITMAP *bitmap, uint size,
       quite common case if we have blobs.
     */
 
-    if ((!bits && best_data) || bits == LL(0xffffffffffff) ||
-        bits == LL(04444444444444444))
+    if ((!bits && best_data) || bits == 0xffffffffffffLL ||
+        bits == 04444444444444444LL)
       continue;
     for (i= 0; i < 16; i++, bits >>= 3)
     {
@@ -1160,14 +1160,14 @@ static ulong allocate_full_pages(MARIA_FILE_BITMAP *bitmap,
       bits= prefix_bits= uint6korr(data_start - 6);
       DBUG_ASSERT(bits != 0);
       /* 111 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 */
-      if (!(bits & LL(07000000000000000)))
+      if (!(bits & 07000000000000000LL))
       {
         data_start-= 6;
         do
         {
           prefix_area_size++;
           bits<<= 3;
-        } while (!(bits & LL(07000000000000000)));
+        } while (!(bits & 07000000000000000LL));
         area_size+= prefix_area_size;
         /* Calculate offset to page from data_start */
         prefix_area_size= 16 - prefix_area_size;
@@ -1217,11 +1217,11 @@ static ulong allocate_full_pages(MARIA_FILE_BITMAP *bitmap,
     best_prefix_area_size= 16 - best_prefix_area_size;
     if (best_area_size < best_prefix_area_size)
     {
-      tmp= (LL(1) << best_area_size*3) - 1;
+      tmp= (1LL << best_area_size*3) - 1;
       best_area_size= best_prefix_area_size;    /* for easy end test */
     }
     else
-      tmp= (LL(1) << best_prefix_area_size*3) - 1;
+      tmp= (1LL << best_prefix_area_size*3) - 1;
     tmp<<= (16 - best_prefix_area_size) * 3;
     DBUG_ASSERT((best_prefix_bits & tmp) == 0);
     best_prefix_bits|= tmp;

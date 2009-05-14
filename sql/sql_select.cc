@@ -2220,7 +2220,7 @@ JOIN::reinit()
 
   unit->offset_limit_cnt= (ha_rows)(select_lex->offset_limit ?
                                     select_lex->offset_limit->val_uint() :
-                                    ULL(0));
+                                    0ULL);
 
   first_record= 0;
 

@@ -2131,7 +2131,7 @@ void st_select_lex::print_limit(THD *thd,
                     ((Item_in_subselect*)item)->exec_method ==
                     Item_in_subselect::MATERIALIZATION) ?
                    TRUE :
-                   (select_limit->val_int() == LL(1)) &&
+                   (select_limit->val_int() == 1LL) &&
                    offset_limit == 0));
       return;
     }
@@ -2534,7 +2534,7 @@ void st_select_lex_unit::set_limit(st_select_lex *sl)
   if (val != (ulonglong)select_limit_val)
     select_limit_val= HA_POS_ERROR;
 #endif
-  val= sl->offset_limit ? sl->offset_limit->val_uint() : ULL(0);
+  val= sl->offset_limit ? sl->offset_limit->val_uint() : 0ULL;
   offset_limit_cnt= (ha_rows)val;
 #ifndef BIG_TABLES
   /* Check for truncation. */

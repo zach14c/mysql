@@ -985,7 +985,7 @@ Log_backup::Log_backup(const char *log_name_arg) : log_name(log_name_arg),
     except that it allows us to verify that what restore sends us is really a
     log.
   */
-  log_file_backup.init(fd, ~(ULL(0)), LOG_FILE_CODE);
+  log_file_backup.init(fd, ~(0ULL), LOG_FILE_CODE);
   state= OK;
   DBUG_VOID_RETURN;
 }
@@ -1977,7 +1977,7 @@ result_t Table_restore::post_restore()
         old and empty.
       */
       pthread_mutex_lock(&share->bitmap.bitmap_lock);
-      share->bitmap.page= ~(ULL(0)); /* to force a read below */
+      share->bitmap.page= ~0ULL; /* to force a read below */
       (void)_ma_bitmap_get_page_bits(mi_info, &share->bitmap, 1);
       pthread_mutex_unlock(&share->bitmap.bitmap_lock);
     }

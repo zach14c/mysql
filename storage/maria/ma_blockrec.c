@@ -5238,7 +5238,7 @@ restart_bitmap_scan:
       {
         bits= uint6korr(data);
         /* Skip not allocated pages and blob / full tail pages */
-        if (bits && bits != LL(07777777777777777))
+        if (bits && bits != 07777777777777777LL)
           break;
       }
       bit_pos= 0;
@@ -5296,8 +5296,6 @@ my_bool _ma_compare_block_record(MARIA_HA *info __attribute__ ((unused)),
 
   NOTES
     This is mostly used to store field numbers and lengths of strings.
-    We have to cast the result for the LL() becasue of a bug in Forte CC
-    compiler.
 
     Packing used is:
     nr < 251 is stored as is (in 1 byte)

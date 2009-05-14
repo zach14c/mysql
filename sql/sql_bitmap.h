@@ -58,7 +58,7 @@ public:
     intersect(map2buff);
     if (map.n_bits > sizeof(ulonglong) * 8)
       bitmap_set_above(&map, sizeof(ulonglong),
-                       test(map2buff & (LL(1) << (sizeof(ulonglong) * 8 - 1))));
+                       test(map2buff & (1LL << (sizeof(ulonglong) * 8 - 1))));
   }
   void subtract(Bitmap& map2) { bitmap_subtract(&map, &map2.map); }
   void merge(Bitmap& map2) { bitmap_union(&map, &map2.map); }

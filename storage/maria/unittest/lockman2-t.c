@@ -219,7 +219,7 @@ pthread_handler_t test_lockman(void *arg)
   for (x= ((int)(intptr)(&m)); m > 0; m--)
   {
     /* three prime numbers */
-    x= (uint) ((x*LL(3628273133) + LL(1500450271)) % LL(9576890767));
+    x= (uint) ((x*3628273133LL + 1500450271LL) % 9576890767LL);
     row=  x % Nrows + Ntables;
     table= row % Ntables;
     locklevel= (x/Nrows) & 3;

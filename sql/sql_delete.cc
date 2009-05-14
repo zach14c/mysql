@@ -1021,7 +1021,7 @@ static bool mysql_truncate_by_delete(THD *thd, TABLE_LIST *table_list)
   mysql_init_select(thd->lex);
   thd->clear_current_stmt_binlog_row_based();
   /* Delete all rows from table */
-  error= mysql_delete(thd, table_list, NULL, NULL, HA_POS_ERROR, LL(0), TRUE);
+  error= mysql_delete(thd, table_list, NULL, NULL, HA_POS_ERROR, 0LL, TRUE);
   /*
     All effects of a TRUNCATE TABLE operation are rolled back if a row by row
     deletion fails. Otherwise, operation is automatically committed at the end.

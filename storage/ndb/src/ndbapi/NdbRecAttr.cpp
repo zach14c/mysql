@@ -392,8 +392,8 @@ ndbrecattr_print_formatted(NdbOut& out, const NdbRecAttr &r,
     {
       ulonglong tmp=r.u_64_value();
       long part1,part2,part3;
-      part1=(long) (tmp/LL(1000000));
-      part2=(long) (tmp - (ulonglong) part1*LL(1000000));
+      part1=(long) (tmp/1000000LL);
+      part2=(long) (tmp - (ulonglong) part1*1000000LL);
       char buf[40];
       char* pos=(char*) buf+19;
       *pos--=0;

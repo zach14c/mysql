@@ -3437,7 +3437,7 @@ static void print_redo_phase_progress(TRANSLOG_ADDRESS addr)
      end_offset);
   if (initial_remainder == (ulonglong)(-1))
     initial_remainder= local_remainder;
-  percentage_done= (uint) ((initial_remainder - local_remainder) * ULL(100) /
+  percentage_done= (uint) ((initial_remainder - local_remainder) * 100ULL /
                            initial_remainder);
   if ((percentage_done - percentage_printed) >= 10)
   {
