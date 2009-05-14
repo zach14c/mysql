@@ -266,6 +266,25 @@ const char *set_thd_proc_info(THD *thd, const char *info,
 }
 
 extern "C"
+const char* thd_enter_cond(MYSQL_THD thd, pthread_cond_t *cond,
+                           pthread_mutex_t *mutex, const char *msg)
+{
+  if (!thd)
+    thd= current_thd;
+
+  return thd->enter_cond(cond, mutex, msg);
+}
+
+extern "C"
+void thd_exit_cond(MYSQL_THD thd, const char *old_msg)
+{
+  if (!thd)
+    thd= current_thd;
+
+  thd->exit_cond(old_msg);
+}
+
+extern "C"
 void **thd_ha_data(const THD *thd, const struct handlerton *hton)
 {
   return (void **) &thd->ha_data[hton->slot].ha_ptr;

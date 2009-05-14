@@ -1,0 +1,47 @@
+#
+# BUG#40045: Replication failure on RBR + no PK + UPDATE + integer key +
+#            char with no key
+#
+# BUG#40007: Replication failure with RBR + no PK + 2 indexed fields 
+#
+# Test Description
+# ================
+#  
+#   (see rpl_row_record_find_myisam.test)
+#
+
+source include/master-slave.inc;
+source include/have_binlog_format_row.inc;
+connection master;
+source include/have_falcon.inc;
+connection slave;
+source include/have_falcon.inc;
+connection master;
+
+--echo #################################################################
+--echo # CASE 2: Falcon - master, Falcon - slave
+--echo #################################################################
+
+let $master_engine= Falcon;
+let $slave_engine= Falcon;
+
+-- source extra/rpl_tests/rpl_row_record_find.test
+
+--echo #################################################################
+--echo # CASE 3: Falcon - master, MyISAM - slave
+--echo #################################################################
+
+let $master_engine= Falcon;
+let $slave_engine= MyISAM;
+
+-- source extra/rpl_tests/rpl_row_record_find.test
+
+--echo #################################################################
+--echo # CASE 4: MyISAM - master, Falcon - slave
+--echo #################################################################
+
+let $master_engine= MyISAM;
+let $slave_engine= Falcon;
+
+-- source extra/rpl_tests/rpl_row_record_find.test
+

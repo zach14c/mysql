@@ -235,24 +235,11 @@ bool log_in_use(const char* log_name)
 
 bool purge_error_message(THD* thd, int res)
 {
-  uint errmsg= 0;
+  uint errcode;
 
-  switch (res)  {
-  case 0: break;
-  case LOG_INFO_EOF:	errmsg= ER_UNKNOWN_TARGET_BINLOG; break;
-  case LOG_INFO_IO:	errmsg= ER_IO_ERR_LOG_INDEX_READ; break;
-  case LOG_INFO_INVALID:errmsg= ER_BINLOG_PURGE_PROHIBITED; break;
-  case LOG_INFO_SEEK:	errmsg= ER_FSEEK_FAIL; break;
-  case LOG_INFO_MEM:	errmsg= ER_OUT_OF_RESOURCES; break;
-  case LOG_INFO_FATAL:	errmsg= ER_BINLOG_PURGE_FATAL_ERR; break;
-  case LOG_INFO_IN_USE: errmsg= ER_LOG_IN_USE; break;
-  case LOG_INFO_EMFILE: errmsg= ER_BINLOG_PURGE_EMFILE; break;
-  default:		errmsg= ER_LOG_PURGE_UNKNOWN_ERR; break;
-  }
-
-  if (errmsg)
+  if ((errcode= purge_log_get_error_code(res)) != 0)
   {
-    my_message(errmsg, ER(errmsg), MYF(0));
+    my_message(errcode, ER(errcode), MYF(0));
     return TRUE;
   }
   my_ok(thd);
@@ -1516,9 +1503,11 @@ bool change_master(THD* thd, Master_info* mi)
   if (lex_mi->relay_log_name)
   {
     need_relay_log_purge= 0;
-    strmake(mi->rli->group_relay_log_name,lex_mi->relay_log_name,
+    char relay_log_name[FN_REFLEN];
+    mi->rli->relay_log.make_log_name(relay_log_name, lex_mi->relay_log_name);
+    strmake(mi->rli->group_relay_log_name, relay_log_name,
 	    sizeof(mi->rli->group_relay_log_name)-1);
-    strmake(mi->rli->event_relay_log_name,lex_mi->relay_log_name,
+    strmake(mi->rli->event_relay_log_name, relay_log_name,
 	    sizeof(mi->rli->event_relay_log_name)-1);
   }
 
