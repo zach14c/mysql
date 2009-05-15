@@ -3165,13 +3165,31 @@ static int fill_schema_table_from_frm(THD *thd, TABLE_LIST *tables,
   int error;
   char key[MAX_DBKEY_LENGTH];
   uint key_length;
+  char db_name_buff[NAME_LEN + 1], table_name_buff[NAME_LEN + 1];
   MDL_request mdl_request;
 
   bzero((char*) &table_list, sizeof(TABLE_LIST));
   bzero((char*) &tbl, sizeof(TABLE));
 
-  table_list.table_name= table_name->str;
-  table_list.db= db_name->str;
+  if (lower_case_table_names)
+  {
+    /*
+      In lower_case_table_names > 0 metadata locking and table definition
+      cache subsystems require normalized (lowercased) database and table
+      names as input.
+    */
+    strmov(db_name_buff, db_name->str);
+    strmov(table_name_buff, table_name->str);
+    my_casedn_str(files_charset_info, db_name_buff);
+    my_casedn_str(files_charset_info, table_name_buff);
+    table_list.db= db_name_buff;
+    table_list.table_name= table_name_buff;
+  }
+  else
+  {
+    table_list.table_name= table_name->str;
+    table_list.db= db_name->str;
+  }
 
   /*
     TODO: investigate if in this particular situation we can get by
