@@ -24,7 +24,7 @@
 #include "log.h"
 #include "rpl_tblmap.h"
 #include "mdl.h"
-
+// #include "replication.h"
 
 #include <waiting_threads.h>
 
@@ -1997,7 +1997,7 @@ public:
   inline void exit_cond(const char* old_msg)
   {
     /*
-      Putting the mutex unlock in exit_cond() ensures that
+      Putting the mutex unlock in thd_exit_cond() ensures that
       mysys_var->current_mutex is always unlocked _before_ mysys_var->mutex is
       locked (if that would not be the case, you'll get a deadlock if someone
       does a THD::awake() on you).

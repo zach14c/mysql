@@ -35,7 +35,13 @@ public:
 
   THD *info_thd; 
 
-  bool inited;
+  /*
+    inited changes its value within LOCK_active_mi-guarded critical
+    sections  at times of start_slave_threads() (0->1) and end_slave() (1->0).
+    Readers may not acquire the mutex while they realize potential concurrency
+    issue.
+  */
+  volatile bool inited;
   volatile bool abort_slave;
   volatile uint slave_running;
   volatile ulong slave_run_id;

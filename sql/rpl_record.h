@@ -29,11 +29,11 @@ int unpack_row(Relay_log_info const *rli,
                TABLE *table, uint const colcnt,
                uchar const *const row_data, MY_BITMAP const *cols,
                uchar const **const row_end, ulong *const master_reclength,
-               bool unpack_blobs);
+               bool unpack_blobs, const bool= TRUE, const bool= TRUE);
 
 // Fill table's record[0] with default values.
 int prepare_record(TABLE *const, const MY_BITMAP *cols, uint width,
-                   const bool, const bool= FALSE);
+                   const bool, const bool= TRUE, const bool= TRUE);
 #endif
 
 #endif

@@ -102,7 +102,7 @@ FILE		*falcon_log_file;
 
 // Determine the largest memory address, assume 64-bits max
 
-static const ulonglong MSB = ULL(1) << ((sizeof(void *)*8 - 1) & 63);
+static const ulonglong MSB = 1ULL << ((sizeof(void *)*8 - 1) & 63);
 ulonglong max_memory_address = MSB | (MSB - 1);
 
 // These are the isolation levels we actually use.
@@ -3018,7 +3018,7 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 					// encode it as a BigInt to support unsigned values 
 					// with the MSB set in the index
 
-					if (((Field_num*)field)->unsigned_flag && (temp & LL(0x8000000000000000)))
+					if (((Field_num*)field)->unsigned_flag && (temp & 0x8000000000000000ULL))
 						{
 						BigInt bigInt;
 						bigInt.set((uint64)temp);
@@ -4011,12 +4011,12 @@ static MYSQL_SYSVAR_STR(scavenge_schedule, falcon_scavenge_schedule,
 static MYSQL_SYSVAR_ULONGLONG(record_memory_max, falcon_record_memory_max,
   PLUGIN_VAR_RQCMDARG, // | PLUGIN_VAR_READONLY,
   "The maximum size of the record memory cache.",
-  NULL, StorageInterface::updateRecordMemoryMax, LL(250)<<20, 0, (ulonglong) max_memory_address, LL(1)<<20);
+  NULL, StorageInterface::updateRecordMemoryMax, 250LL<<20, 0, (ulonglong) max_memory_address, 1LL<<20);
 
 static MYSQL_SYSVAR_ULONGLONG(serial_log_file_size, falcon_serial_log_file_size,
   PLUGIN_VAR_RQCMDARG,
   "If serial log file grows larger than this value, it will be truncated when it is reused",
-  NULL, NULL , LL(10)<<20, LL(1)<<20,LL(0x7fffffffffffffff), LL(1)<<20);
+  NULL, NULL , 10LL<<20, 1LL<<20,0x7fffffffffffffffLL, 1LL<<20);
 
 /***
 static MYSQL_SYSVAR_UINT(allocation_extent, falcon_allocation_extent,
@@ -4028,7 +4028,7 @@ static MYSQL_SYSVAR_UINT(allocation_extent, falcon_allocation_extent,
 static MYSQL_SYSVAR_ULONGLONG(page_cache_size, falcon_page_cache_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "The amount of memory to be used for the database page cache.",
-  NULL, NULL, LL(4)<<20, LL(2)<<20, (ulonglong) max_memory_address, LL(1)<<20);
+  NULL, NULL, 4LL<<20, 2LL<<20, (ulonglong) max_memory_address, 1LL<<20);
 
 static MYSQL_THDVAR_BOOL(consistent_read, PLUGIN_VAR_OPCMDARG,
    "Enable Consistent Read Mode for Repeatable Reads",

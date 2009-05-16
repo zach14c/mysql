@@ -235,24 +235,11 @@ bool log_in_use(const char* log_name)
 
 bool purge_error_message(THD* thd, int res)
 {
-  uint errmsg= 0;
+  uint errcode;
 
-  switch (res)  {
-  case 0: break;
-  case LOG_INFO_EOF:	errmsg= ER_UNKNOWN_TARGET_BINLOG; break;
-  case LOG_INFO_IO:	errmsg= ER_IO_ERR_LOG_INDEX_READ; break;
-  case LOG_INFO_INVALID:errmsg= ER_BINLOG_PURGE_PROHIBITED; break;
-  case LOG_INFO_SEEK:	errmsg= ER_FSEEK_FAIL; break;
-  case LOG_INFO_MEM:	errmsg= ER_OUT_OF_RESOURCES; break;
-  case LOG_INFO_FATAL:	errmsg= ER_BINLOG_PURGE_FATAL_ERR; break;
-  case LOG_INFO_IN_USE: errmsg= ER_LOG_IN_USE; break;
-  case LOG_INFO_EMFILE: errmsg= ER_BINLOG_PURGE_EMFILE; break;
-  default:		errmsg= ER_LOG_PURGE_UNKNOWN_ERR; break;
-  }
-
-  if (errmsg)
+  if ((errcode= purge_log_get_error_code(res)) != 0)
   {
-    my_message(errmsg, ER(errmsg), MYF(0));
+    my_message(errcode, ER(errcode), MYF(0));
     return TRUE;
   }
   my_ok(thd);
@@ -471,7 +458,7 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
   struct event_coordinates coord_buf;
   struct timespec *heartbeat_ts= NULL;
   struct event_coordinates *coord= NULL;
-  if (heartbeat_period != LL(0))
+  if (heartbeat_period != 0LL)
   {
     heartbeat_ts= &heartbeat_buf;
     set_timespec_nsec(*heartbeat_ts, 0);
@@ -843,11 +830,11 @@ impossible position";
           {
             if (coord)
             {
-              DBUG_ASSERT(heartbeat_ts && heartbeat_period != LL(0));
+              DBUG_ASSERT(heartbeat_ts && heartbeat_period != 0LL);
               set_timespec_nsec(*heartbeat_ts, heartbeat_period);
             }
             ret= mysql_bin_log.wait_for_update_bin_log(thd, heartbeat_ts);
-            DBUG_ASSERT(ret == 0 || heartbeat_period != LL(0) && coord != NULL);
+            DBUG_ASSERT(ret == 0 || heartbeat_period != 0LL && coord != NULL);
             if (ret == ETIMEDOUT || ret == ETIME)
             {
 #ifndef DBUG_OFF
@@ -1459,7 +1446,7 @@ bool change_master(THD* thd, Master_info* mi)
   else
     mi->heartbeat_period= (float) min(SLAVE_MAX_HEARTBEAT_PERIOD,
                                       (slave_net_timeout/2.0));
-  mi->received_heartbeats= LL(0); // counter lives until master is CHANGEd
+  mi->received_heartbeats= 0LL; // counter lives until master is CHANGEd
   /*
     reset the last time server_id list if the current CHANGE MASTER 
     is mentioning IGNORE_SERVER_IDS= (...)
@@ -1516,9 +1503,11 @@ bool change_master(THD* thd, Master_info* mi)
   if (lex_mi->relay_log_name)
   {
     need_relay_log_purge= 0;
-    strmake(mi->rli->group_relay_log_name,lex_mi->relay_log_name,
+    char relay_log_name[FN_REFLEN];
+    mi->rli->relay_log.make_log_name(relay_log_name, lex_mi->relay_log_name);
+    strmake(mi->rli->group_relay_log_name, relay_log_name,
 	    sizeof(mi->rli->group_relay_log_name)-1);
-    strmake(mi->rli->event_relay_log_name,lex_mi->relay_log_name,
+    strmake(mi->rli->event_relay_log_name, relay_log_name,
 	    sizeof(mi->rli->event_relay_log_name)-1);
   }
 

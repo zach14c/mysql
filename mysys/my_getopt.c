@@ -27,23 +27,15 @@ typedef void (*init_func_p)(const struct my_option *option, uchar* *variable,
 static void default_reporter(enum loglevel level, const char *format, ...);
 my_error_reporter my_getopt_error_reporter= &default_reporter;
 
-static int findopt(char *optpat, uint length,
-                   const struct my_option **opt_res,
-                   char **ffname);
-my_bool getopt_compare_strings(const char *s,
-                               const char *t,
-                               uint length);
-static longlong getopt_ll(char *arg, const struct my_option *optp, int *err);
-static ulonglong getopt_ull(char *arg, const struct my_option *optp,
-                            int *err);
-static double getopt_double(char *arg, const struct my_option *optp, int *err);
-static void init_variables(const struct my_option *options,
-                           init_func_p init_one_value);
-static void init_one_value(const struct my_option *opt, uchar* *, longlong);
-static void fini_one_value(const struct my_option *option, uchar* *variable,
-			   longlong value);
-static int setval(const struct my_option *opts, uchar **value, char *argument,
-                  my_bool set_maximum_value);
+static int findopt(char *, uint, const struct my_option **, char **);
+my_bool getopt_compare_strings(const char *, const char *, uint);
+static longlong getopt_ll(char *, const struct my_option *, int *);
+static ulonglong getopt_ull(char *, const struct my_option *, int *);
+static double getopt_double(char *, const struct my_option *, int *);
+static void init_variables(const struct my_option *, init_func_p);
+static void init_one_value(const struct my_option *opt, uchar **, longlong);
+static void fini_one_value(const struct my_option *, uchar **, longlong);
+static int setval(const struct my_option *, uchar **, char *, my_bool);
 static char *check_struct_option(char *cur_arg, char *key_name);
 
 /*
@@ -119,6 +111,7 @@ int handle_options(int *argc, char ***argv,
   const struct my_option *optp;
   uchar* *value;
   int error, i;
+  my_bool is_cmdline_arg= 1;
 
   LINT_INIT(opt_found);
   /* handle_options() assumes arg0 (program name) always exists */
@@ -128,10 +121,34 @@ int handle_options(int *argc, char ***argv,
   (*argv)++; /*      --- || ----      */
   init_variables(longopts, init_one_value);
 
+  /*
+    Search for args_separator, if found, then the first part of the
+    arguments are loaded from configs
+  */
+  for (pos= *argv, pos_end=pos+ *argc; pos != pos_end ; pos++)
+  {
+    if (*pos == args_separator)
+    {
+      is_cmdline_arg= 0;
+      break;
+    }
+  }
+
   for (pos= *argv, pos_end=pos+ *argc; pos != pos_end ; pos++)
   {
     char **first= pos;
     char *cur_arg= *pos;
+    if (!is_cmdline_arg && (cur_arg == args_separator))
+    {
+      is_cmdline_arg= 1;
+
+      /* save the separator too if skip unkown options  */
+      if (my_getopt_skip_unknown)
+        (*argv)[argvpos++]= cur_arg;
+      else
+        (*argc)--;
+      continue;
+    }
     if (cur_arg[0] == '-' && cur_arg[1] && !end_of_options) /* must be opt */
     {
       char *argument=    0;
@@ -423,8 +440,12 @@ invalid value '%s'",
 	}
 	else if (optp->arg_type == REQUIRED_ARG && !optend)
 	{
-	  /* Check if there are more arguments after this one */
-	  if (!*++pos)
+	  /* Check if there are more arguments after this one,
+
+             Note: options loaded from config file that requires value
+             should always be in the form '--option=value'.
+           */
+	  if (!is_cmdline_arg || !*++pos)
 	  {
 	    if (my_getopt_print_errors)
               my_getopt_error_reporter(ERROR_LEVEL,

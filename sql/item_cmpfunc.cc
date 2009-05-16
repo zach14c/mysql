@@ -157,7 +157,7 @@ static int agg_cmp_type(Item_result *type, Item **items, uint nitems)
   @brief Aggregates field types from the array of items.
 
   @param[in] items  array of items to aggregate the type from
-  @paran[in] nitems number of items in the array
+  @param[in] nitems number of items in the array
 
   @details This function aggregates field types from the array of items.
     Found type is supposed to be used later as the result field type

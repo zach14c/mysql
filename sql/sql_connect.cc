@@ -218,7 +218,7 @@ void time_out_user_resource_limits(THD *thd, USER_CONN *uc)
   DBUG_ENTER("time_out_user_resource_limits");
 
   /* If more than a hour since last check, reset resource checking */
-  if (check_time  - uc->reset_utime >= LL(3600000000))
+  if (check_time  - uc->reset_utime >= 3600000000LL)
   {
     uc->questions=1;
     uc->updates=0;

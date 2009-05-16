@@ -87,8 +87,6 @@ my_ulonglong net_field_length_ll(uchar **packet)
 
   NOTES
     This is mostly used to store lengths of strings.
-    We have to cast the result for the LL() becasue of a bug in Forte CC
-    compiler.
 
   RETURN
    Position in 'pkg' after the packed length
@@ -96,19 +94,19 @@ my_ulonglong net_field_length_ll(uchar **packet)
 
 uchar *net_store_length(uchar *packet, ulonglong length)
 {
-  if (length < (ulonglong) LL(251))
+  if (length < 251ULL)
   {
     *packet=(uchar) length;
     return packet+1;
   }
   /* 251 is reserved for NULL */
-  if (length < (ulonglong) LL(65536))
+  if (length < 65536ULL)
   {
     *packet++=252;
     int2store(packet,(uint) length);
     return packet+2;
   }
-  if (length < (ulonglong) LL(16777216))
+  if (length < 16777216ULL)
   {
     *packet++=253;
     int3store(packet,(ulong) length);

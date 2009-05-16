@@ -1126,22 +1126,6 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 #define INT32(v)	(int32) (v)
 #define MYF(v)		STATIC_CAST(myf)(v)
 
-#ifndef LL
-#ifdef HAVE_LONG_LONG
-#define LL(A) A ## LL
-#else
-#define LL(A) A ## L
-#endif
-#endif
-
-#ifndef ULL
-#ifdef HAVE_LONG_LONG
-#define ULL(A) A ## ULL
-#else
-#define ULL(A) A ## UL
-#endif
-#endif
-
 /*
   Defines to make it possible to prioritize register assignments. No
   longer that important with modern compilers.

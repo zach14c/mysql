@@ -3044,7 +3044,7 @@ Locked_tables_list::unlock_locked_tables(THD *thd)
                      the locked tables list. Passing a TABLE_LIST
                      instance that is not part of locked tables
                      list will lead to a crash.
-  @parma  remove_from_locked_tables
+  @param  remove_from_locked_tables
                       TRUE if the table is removed from the list
                       permanently.
 

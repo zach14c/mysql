@@ -1072,7 +1072,7 @@ int wt_thd_cond_timedwait(WT_THD *thd, pthread_mutex_t *mutex)
     ret= WT_OK;
   rc_unlock(rc);
 
-  set_timespec_time_nsec(timeout, starttime, (*thd->timeout_short)*ULL(1000));
+  set_timespec_time_nsec(timeout, starttime, (*thd->timeout_short)*1000ULL);
   if (ret == WT_TIMEOUT && !thd->killed)
     ret= pthread_cond_timedwait(&rc->cond, mutex, &timeout);
   if (ret == WT_TIMEOUT && !thd->killed)
@@ -1084,7 +1084,7 @@ int wt_thd_cond_timedwait(WT_THD *thd, pthread_mutex_t *mutex)
       ret= WT_DEADLOCK;
     else if (*thd->timeout_long > *thd->timeout_short)
     {
-      set_timespec_time_nsec(timeout, starttime, (*thd->timeout_long)*ULL(1000));
+      set_timespec_time_nsec(timeout, starttime, (*thd->timeout_long)*1000ULL);
       if (!thd->killed)
         ret= pthread_cond_timedwait(&rc->cond, mutex, &timeout);
     }

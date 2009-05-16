@@ -391,8 +391,8 @@ int my_pthread_mutex_trylock(pthread_mutex_t *mutex);
 #define set_timespec_time_nsec(ABSTIME,TIME,NSEC) do {                  \
   ulonglong nsec= (NSEC);                                               \
   ulonglong now= (TIME) + (nsec/100);                                   \
-  (ABSTIME).MY_tv_sec=  (now / ULL(10000000));                          \
-  (ABSTIME).MY_tv_nsec= (now % ULL(10000000) * 100 + (nsec % 100));     \
+  (ABSTIME).MY_tv_sec=  (now / 10000000ULL);                          \
+  (ABSTIME).MY_tv_nsec= (now % 10000000ULL * 100 + (nsec % 100));     \
 } while(0)
 #endif /* !set_timespec_time_nsec */
 

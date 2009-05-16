@@ -30,12 +30,12 @@
 #endif
 
 #undef  ULONGLONG_MAX
-#define ULONGLONG_MAX                (~(ulonglong) 0)
-#define MAX_NEGATIVE_NUMBER        ((ulonglong) LL(0x8000000000000000))
+#define ULONGLONG_MAX              ~0ULL
+#define MAX_NEGATIVE_NUMBER        0x8000000000000000ULL
 #define INIT_CNT  9
-#define LFACTOR   ULL(1000000000)
-#define LFACTOR1  ULL(10000000000)
-#define LFACTOR2  ULL(100000000000)
+#define LFACTOR   1000000000ULL
+#define LFACTOR1  10000000000ULL
+#define LFACTOR2  100000000000ULL
 
 static unsigned long lfactor[9]=
 {

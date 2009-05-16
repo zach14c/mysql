@@ -1343,7 +1343,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     if (!(uptime= (ulong) (thd->start_time - server_start_time)))
       queries_per_second1000= 0;
     else
-      queries_per_second1000= thd->query_id * LL(1000) / uptime;
+      queries_per_second1000= thd->query_id * 1000LL / uptime;
 
 #if defined(SAFEMALLOC) || !defined(EMBEDDED_LIBRARY)
     length=
@@ -6609,11 +6609,11 @@ void st_select_lex::set_lock_for_tables(thr_lock_type lock_type)
     operation and also for any single select union construct of the form
     @verbatim
     (SELECT ... ORDER BY order_list [LIMIT n]) ORDER BY ... 
-    @endvarbatim
+    @endverbatim
     or of the form
-    @varbatim
+    @verbatim
     (SELECT ... ORDER BY LIMIT n) ORDER BY ...
-    @endvarbatim
+    @endverbatim
   
   @param thd_arg		   thread handle
 

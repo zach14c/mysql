@@ -132,17 +132,9 @@ typedef int mode_t;
 #undef _REENTRANT			/* Crashes something for win32 */
 #undef SAFE_MUTEX			/* Can't be used on windows */
 
-#if defined(_MSC_VER) && _MSC_VER >= 1310
-#define LL(A)           A##ll
-#define ULL(A)          A##ull
-#else
-#define LL(A)           ((__int64) A)
-#define ULL(A)          ((unsigned __int64) A)
-#endif
-
-#define LONGLONG_MIN	LL(0x8000000000000000)
-#define LONGLONG_MAX	LL(0x7FFFFFFFFFFFFFFF)
-#define ULONGLONG_MAX	ULL(0xFFFFFFFFFFFFFFFF)
+#define LONGLONG_MIN	0x8000000000000000LL
+#define LONGLONG_MAX	0x7FFFFFFFFFFFFFFFLL
+#define ULONGLONG_MAX	0xFFFFFFFFFFFFFFFFULL
 
 /* Type information */
 
@@ -285,7 +277,7 @@ inline ulonglong double2ulonglong(double d)
 #define STACK_DIRECTION -1
 
 /* Difference between GetSystemTimeAsFileTime() and now() */
-#define OFFSET_TO_EPOCH ULL(116444736000000000)
+#define OFFSET_TO_EPOCH 116444736000000000ULL
 
 #define HAVE_PERROR
 #define HAVE_VFPRINT
